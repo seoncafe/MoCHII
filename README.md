@@ -1,6 +1,6 @@
 # MoCHII v1.00
 
-MoCHII (**MO**nte **C**arlo for **H II** regions) is a Monte-Carlo
+MoCHII (**Mo**nte **C**arlo for **H II** regions) is a Monte-Carlo
 photoionization and radiative-transfer code (Fortran 90 + MPI) for **dusty
 photoionized nebulae** on adaptive octree (AMR) and uniform Cartesian grids.
 One self-consistent radiation field drives both the gas and the dust: the
@@ -69,4 +69,4 @@ the CHIANTI fitting pipeline.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-07-12 17:08 KST
+Last updated: 2026-07-12 17:18 KST
