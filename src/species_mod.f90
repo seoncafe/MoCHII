@@ -30,6 +30,7 @@ module species_mod
   public :: metal_cooling, species_write, species_resize
   public :: species_opacity_add, species_ne, metal_heating
   public :: metal_cooling_H
+  public :: species_ne_prepare, species_ne_cached
   public :: n_elements, elem_name, elem_nstage, elem_abund
 
   integer, parameter :: MAX_EL = 8, MAX_ST = 6
@@ -75,6 +76,17 @@ module species_mod
   !--- photoheating per particle [erg/s] (transition, leaf); filled with
   !--- the Gamma's, consumed by metal_heating (par%metal_heat).
   type(gamma_block) :: eheat(MAX_EL)
+
+  !--- rate cache for the n_e fixed point at one (leaf, T): all the
+  !--- transition coefficients are functions of T (and the leaf Gammas)
+  !--- only, so species_ne_prepare evaluates them ONCE and
+  !--- species_ne_cached reduces each fixed-point iteration to
+  !--- multiply-adds.  Without this, solve_ion_cell with par%metal_ne
+  !--- re-evaluated every Badnell/Voronov/CX fit up to 200 times per
+  !--- trial temperature (the 185-minute L6 PDR run).
+  real(kind=wp) :: cch_gam(MAX_ST, MAX_EL), cch_ci(MAX_ST, MAX_EL)
+  real(kind=wp) :: cch_rec(MAX_ST, MAX_EL), cch_cxi(MAX_ST, MAX_EL)
+  real(kind=wp) :: cch_cxr(MAX_ST, MAX_EL)
 
 contains
 
@@ -354,6 +366,62 @@ contains
        end do
     end do
   end subroutine species_gamma_compute
+
+  !=========================================================================
+  ! Fill the (leaf, T) rate cache for the n_e fixed point.
+  !=========================================================================
+  subroutine species_ne_prepare(il, T)
+    implicit none
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T
+    integer :: ie, it
+    do ie = 1, n_elements
+       do it = 1, elems(ie)%nstage-1
+          cch_gam(it,ie) = egam(ie)%g(it,il)
+          cch_ci(it,ie)  = voronov_ci(elems(ie)%ci(1:5,it), T)
+          cch_rec(it,ie) = alpha_rec(elems(ie), it, T)
+          cch_cxi(it,ie) = 0.0_wp
+          cch_cxr(it,ie) = 0.0_wp
+          if (elems(ie)%cxi_form(it) > 0) cch_cxi(it,ie) = &
+             cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+          if (elems(ie)%cxr_form(it) > 0) cch_cxr(it,ie) = &
+             cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+       end do
+    end do
+  end subroutine species_ne_prepare
+
+  !=========================================================================
+  ! Metal electrons from the cached rates (same product chain and the
+  ! same arithmetic order as species_fractions, so the results are
+  ! identical to the uncached path).
+  !=========================================================================
+  real(kind=wp) function species_ne_cached(nH, ne, nHI, nHII) result(nem)
+    implicit none
+    real(kind=wp), intent(in) :: nH, ne, nHI, nHII
+    real(kind=wp) :: r(MAX_ST), rion, rrec, s, prod, fr
+    integer :: ie, it, i, ns
+    nem = 0.0_wp
+    do ie = 1, n_elements
+       ns = elems(ie)%nstage
+       do it = 1, ns-1
+          rion = cch_gam(it,ie) + ne*cch_ci(it,ie)
+          if (cch_cxi(it,ie) > 0.0_wp) rion = rion + nHII*cch_cxi(it,ie)
+          rrec = ne*cch_rec(it,ie)
+          if (cch_cxr(it,ie) > 0.0_wp) rrec = rrec + nHI*cch_cxr(it,ie)
+          r(it) = rion/max(rrec, tinest)
+       end do
+       s = 1.0_wp;  prod = 1.0_wp
+       do i = 1, ns-1
+          prod = prod*r(i)
+          s = s + prod
+       end do
+       fr = 1.0_wp/s
+       do i = 2, ns
+          fr = fr*r(i-1)
+          nem = nem + elems(ie)%abund*nH*fr*real(i-1, wp)
+       end do
+    end do
+  end function species_ne_cached
 
   !=========================================================================
   ! Electrons contributed by the metal cascade [cm^-3] at the current

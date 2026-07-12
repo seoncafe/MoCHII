@@ -31,7 +31,20 @@ module memory_mod
   integer :: nprocs, p_rank, h_rank, hostcomm, same_hrank_comm, num_hosts
 
   public create_shared_mem, create_mem, reduce_mem, &
-         destroy_shared_mem_window, destroy_shared_mem_all, get_window, destroy_mem
+         destroy_shared_mem_window, destroy_shared_mem_all, get_window, destroy_mem, &
+         destroy_shared_mem
+
+  !--- destroy_shared_mem(array): the counterpart of create_shared_mem —
+  !--- looks the window up from the array pointer (get_window), frees it
+  !--- (collective on hostcomm; the freed slot in windows() becomes
+  !--- MPI_WIN_NULL, so destroy_shared_mem_all skips it), and nullifies
+  !--- the pointer.  Lets the octree re-refinement recycle the old
+  !--- grid's shared memory instead of leaking it until finalize.
+  !--- (MoCHII, 2026-07-12; extend with further ranks/kinds as needed.)
+  interface destroy_shared_mem
+     module procedure destroy_shared_mem_1D_real64, destroy_shared_mem_2D_real64, &
+                      destroy_shared_mem_1D_int32,  destroy_shared_mem_2D_int32
+  end interface destroy_shared_mem
 
   interface create_shared_mem
      module procedure create_shared_mem_1D_real64, create_shared_mem_2D_real64, create_shared_mem_3D_real64, &
@@ -2788,6 +2801,42 @@ contains
   !-- num_windows should be reset.
   num_windows = 0
   end subroutine destroy_shared_mem_all
+  !---------------------------
+  subroutine destroy_shared_mem_1D_real64(array)
+  implicit none
+  real(kind=real64), pointer, intent(inout) :: array(:)
+  integer :: win
+  call get_window(array, win)
+  if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
+  array => null()
+  end subroutine destroy_shared_mem_1D_real64
+  !---------------------------
+  subroutine destroy_shared_mem_2D_real64(array)
+  implicit none
+  real(kind=real64), pointer, intent(inout) :: array(:,:)
+  integer :: win
+  call get_window(array, win)
+  if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
+  array => null()
+  end subroutine destroy_shared_mem_2D_real64
+  !---------------------------
+  subroutine destroy_shared_mem_1D_int32(array)
+  implicit none
+  integer(kind=int32), pointer, intent(inout) :: array(:)
+  integer :: win
+  call get_window(array, win)
+  if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
+  array => null()
+  end subroutine destroy_shared_mem_1D_int32
+  !---------------------------
+  subroutine destroy_shared_mem_2D_int32(array)
+  implicit none
+  integer(kind=int32), pointer, intent(inout) :: array(:,:)
+  integer :: win
+  call get_window(array, win)
+  if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
+  array => null()
+  end subroutine destroy_shared_mem_2D_int32
   !---------------------------
   subroutine destroy_shared_mem_window(win)
   implicit none

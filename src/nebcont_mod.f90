@@ -184,8 +184,16 @@ contains
     integer,       intent(in) :: Z
     real :: xlf(1), gf(1)
     integer :: iflag
-    xlf(1) = real(log10(nu))
-    call getGauntFF(real(log10(real(Z,wp))), real(log10(T)), xlf, gf, iflag)
+    if (par%gaunt_vh14) then
+       block
+         use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
+         call gaunt_vh14_setup()
+         gf(1) = real(gauntff_vh14(real(Z,wp), T, nu))
+       end block
+    else
+       xlf(1) = real(log10(nu))
+       call getGauntFF(real(log10(real(Z,wp))), real(log10(T)), xlf, gf, iflag)
+    end if
     g = 6.8391e-38_wp*real(Z*Z,wp)*real(gf(1),wp) &
         * exp(-nu*HCRYD_K/T)/sqrt(T) * 1.0e40_wp
   end function gamma_ff

@@ -459,12 +459,30 @@ public
      logical            :: metal_heat   = .false.
      logical            :: grain_pe     = .false.
      real(kind=wp)      :: pe_scale     = 1.0_wp
+     !--- He I EXCITED-level recombination radiation as a fourth diffuse
+     !--- channel (needs diffuse_field): ~60% of He II recombinations end
+     !--- in excited levels whose decay photons ionize H — AGN3 low-density
+     !--- branching, 3/4 -> 2^3S (19.82 eV), 1/4 x 2/3 -> 2^1P (584 A,
+     !--- 21.22 eV), 1/4 x 1/3 -> 2^1S (two-photon; probability 0.56 of an
+     !--- H-ionizing photon, energy sampled flat in [13.6, 20.62] eV).
+     logical            :: hei_diffuse  = .false.
+     !--- free-free Gaunt factors from the van Hoof et al. (2014) table
+     !--- (data/gauntff_vh14.dat) instead of the ported Hummer (1988)
+     !--- getGauntFF — the PLAN item-3 swap; off by default so the
+     !--- recorded gates reproduce.
+     logical            :: gaunt_vh14   = .false.
      !--- peel-off imaging of the band: after convergence, one extra
      !--- transport pass peels direct (stellar + diffuse) and
      !--- dust-scattered contributions toward the observers
      !--- (par%obsx/y/z or par%alpha/beta/gamma, par%nxim/nyim,
      !--- par%dxim/dyim auto-sized) -> '<base>_image'.
      logical            :: ion_peel     = .false.
+     !--- bin-resolved peel images: accumulate one image for each band
+     !--- bin -> 'direct_cube'/'scatt_cube' (nxim, nyim, nnu_ion) blocks
+     !--- (hardness maps, synthetic EUV/FUV photometry); the
+     !--- band-integrated channel images are still written (derived from
+     !--- the cube).
+     logical            :: peel_bins    = .false.
      !--- convergence criterion: 'cell' = cell-max tests (max|dx_HII| <
      !--- gas_tol, max|dTe|/Te < gas_tol_te — stall at the front-cell MC
      !--- noise floor and at no-heating cells); 'vol' = volume-integrated
@@ -507,6 +525,13 @@ public
      !--- them like line emissivities (IR optically thin, so a column
      !--- map IS the image).
      real(kind=wp)      :: dust_emis_bands(8) = nan64
+     !--- x_HII-dependent PAH survival in the EMISSION model: the leaf's
+     !--- SEDust spectrum is assembled from the model's output channels
+     !--- with the PAH channel weighted by (xHI + f_ion_pah xHII)
+     !--- [divided by the dust survival (xHI + f_ion_dust xHII) under
+     !--- laursen09_live, whose rhokap already carries it].  Requires a
+     !--- model with an explicit 'PAH' channel (astrodust).
+     logical            :: sed_pah_live = .false.
      !--- PAH share of the reference extinction and the PAH survival in
      !--- ionized gas (laursen09_live: PLAN section 7 item 3 option).
      real(kind=wp)      :: f_pah        = 0.0_wp

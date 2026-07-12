@@ -34,6 +34,9 @@ module sedust_mod
   type(dust_model_t)         :: dmodel
   integer                    :: nl_sed = 0
   real(kind=wp), allocatable :: lam_sed(:)
+  !--- index of the model's 'PAH' output channel (0 = none; the
+  !--- par%sed_pah_live weighting needs it).
+  integer                    :: ipah_chan = 0
 
 contains
 
@@ -74,11 +77,28 @@ contains
 
     nl_sed  = dust_nlam(dmodel)
     lam_sed = dust_lambda(dmodel)
+
+    !--- locate the 'PAH' output channel for par%sed_pah_live.
+    ipah_chan = 0
+    if (par%sed_pah_live) then
+       block
+         integer :: ic
+         do ic = 1, dmodel%n_channel
+            if (trim(dmodel%channel_name(ic)) == 'PAH') ipah_chan = ic
+         end do
+         if (ipah_chan == 0 .and. mpar%p_rank == 0) write(*,'(a)') &
+            ' SEDU: WARNING: sed_pah_live needs a model with a ''PAH'' '// &
+            'channel (astrodust); weighting disabled.'
+       end block
+    end if
+
     if (mpar%p_rank == 0) then
        write(*,'(a)')    ' SEDU: SEDust dust-emission model ready'
        write(*,'(2a)')   ' SEDU: model  = ', trim(dmodel%name)
        write(*,'(a,i6,a,2es11.3)') ' SEDU: grid   = ', nl_sed, &
           ' points, lambda range [um] = ', lam_sed(1), lam_sed(nl_sed)
+       if (ipah_chan > 0) write(*,'(a,i2,a)') &
+          ' SEDU: live PAH weighting on channel', ipah_chan, ' (''PAH'')'
     end if
   end subroutine sedust_setup
 
@@ -92,12 +112,14 @@ contains
     use jtally_mod,      only : jt_ion
     use ion_band_mod,    only : ion_e, ion_dnu
     use utility,         only : get_base_name, is_finite
+    use gas_state_mod,   only : gas_xHI
     implicit none
     real(kind=wp), intent(in) :: heat_dust(:)
     real(kind=wp), allocatable :: Ltot(:), Jsed(:), lamI(:), pdf(:)
-    real(kind=wp), allocatable :: lam_b(:), Jlam_b(:)
-    real(kind=wp), allocatable :: em_band(:,:)
+    real(kind=wp), allocatable :: lam_b(:), Jlam_b(:), lamI_ch(:,:)
     real(kind=wp) :: band_wl(8), vol, Labs, esum, dlam1, extra
+    real(kind=wp) :: xh, wd, wpah
+    real(kind=wp), allocatable :: em_band(:,:)
     character(len=192) :: outname
     integer :: il, ic, k, b, unit, ierr, ndone, nmine, nband, ib
 
@@ -158,7 +180,22 @@ contains
        end do
        Jsed(1) = Jsed(1) + extra/(dlam1*1.0e-6_wp)
        !--- SEDust emission shape, normalized to the absorbed power.
-       call dust_emission(dmodel, Jsed, lamI)
+       !--- With sed_pah_live the PAH channel is weighted by the leaf's
+       !--- PAH survival (xHI + f_ion_pah xHII), divided under
+       !--- laursen09_live by the dust survival already in rhokap.
+       if (ipah_chan > 0) then
+          if (.not. allocated(lamI_ch)) &
+             allocate(lamI_ch(nl_sed, dmodel%n_channel))
+          call dust_emission(dmodel, Jsed, lamI, lamI_ch)
+          xh   = gas_xHI(il)
+          wpah = xh + par%f_ion_pah*(1.0_wp - xh)
+          wd   = 1.0_wp
+          if (trim(par%dust_model) == 'laursen09_live') &
+             wd = max(xh + par%f_ion_dust*(1.0_wp - xh), tinest)
+          lamI = lamI + (wpah/wd - 1.0_wp)*lamI_ch(:, ipah_chan)
+       else
+          call dust_emission(dmodel, Jsed, lamI)
+       end if
        do k = 1, nl_sed
           pdf(k) = max(lamI(k), 0.0_wp)/lam_sed(k)
        end do

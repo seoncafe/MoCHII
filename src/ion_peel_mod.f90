@@ -163,7 +163,13 @@ contains
        observer(i)%steradian_pix = par%dxim*par%dyim*deg2rad**2
     end do
 
-    nchan = merge(2, 1, par%add_fuv)
+    !--- channel axis: band-integrated (1 or 2 channels) or, with
+    !--- par%peel_bins, one image per band bin.
+    if (par%peel_bins) then
+       nchan = par%nnu_ion
+    else
+       nchan = merge(2, 1, par%add_fuv)
+    end if
     allocate(img_dir(par%nxim, par%nyim, nchan, par%nobs), &
              img_sca(par%nxim, par%nyim, nchan, par%nobs))
     img_dir = 0.0_wp
@@ -184,6 +190,10 @@ contains
   integer function peel_channel(inu) result(ch)
     use ion_band_mod, only : ion_e
     integer, intent(in) :: inu
+    if (par%peel_bins) then
+       ch = inu
+       return
+    end if
     ch = 1
     if (nchan == 2 .and. ion_e(inu) < par%eion_min) ch = 2
   end function peel_channel
@@ -356,22 +366,69 @@ contains
        fac = 1.0_wp/(par%distance2cm**2 * observer(k)%steradian_pix)
        suffix = ''
        if (par%nobs > 1) write(suffix,'(a,i0)') '_obs', k
-       do ch = 1, nchan
-          call io_append_image(file, img_dir(:,:,ch,k)*fac, status, bitpix=-64)
-          write(extname,'(4a)') 'direct_', trim(chname(ch)), trim(suffix)
-          call io_put_keyword(file,'EXTNAME',trim(extname), &
-               'direct surface brightness [erg/s/cm^2/sr]',status)
-          call io_put_keyword(file,'DXIM',   par%dxim,  'pixel [deg]', status)
-          call io_put_keyword(file,'DIST',   observer(k)%distance, &
-               'observer distance (code units)', status)
-          call io_put_keyword(file,'ALPHA',  observer(k)%alpha, '[deg]', status)
-          call io_put_keyword(file,'BETA',   observer(k)%beta,  '[deg]', status)
-          call io_put_keyword(file,'GAMMA',  observer(k)%gamma, '[deg]', status)
-          call io_append_image(file, img_sca(:,:,ch,k)*fac, status, bitpix=-64)
-          write(extname,'(4a)') 'scatt_', trim(chname(ch)), trim(suffix)
-          call io_put_keyword(file,'EXTNAME',trim(extname), &
-               'scattered surface brightness [erg/s/cm^2/sr]',status)
-       end do
+
+       if (par%peel_bins) then
+          !--- bin-resolved cubes + the band-integrated channel images
+          !--- derived from them.
+          block
+            use ion_band_mod, only : ion_e
+            real(kind=wp), allocatable :: img2(:,:)
+            integer :: b, ich, nch2
+            call io_append_image(file, img_dir(:,:,:,k)*fac, status, bitpix=-64)
+            write(extname,'(2a)') 'direct_cube', trim(suffix)
+            call io_put_keyword(file,'EXTNAME',trim(extname), &
+                 'direct I(x,y,bin) [erg/s/cm^2/sr]',status)
+            call io_put_keyword(file,'DXIM', par%dxim, 'pixel [deg]', status)
+            call io_put_keyword(file,'DIST', observer(k)%distance, &
+                 'observer distance (code units)', status)
+            call io_append_image(file, img_sca(:,:,:,k)*fac, status, bitpix=-64)
+            write(extname,'(2a)') 'scatt_cube', trim(suffix)
+            call io_put_keyword(file,'EXTNAME',trim(extname), &
+                 'scattered I(x,y,bin) [erg/s/cm^2/sr]',status)
+            allocate(img2(par%nxim, par%nyim))
+            nch2 = merge(2, 1, par%add_fuv)
+            do ich = 1, nch2
+               img2 = 0.0_wp
+               do b = 1, par%nnu_ion
+                  if (ich == 1 .and. ion_e(b) <  par%eion_min) cycle
+                  if (ich == 2 .and. ion_e(b) >= par%eion_min) cycle
+                  img2 = img2 + img_dir(:,:,b,k)
+               end do
+               call io_append_image(file, img2*fac, status, bitpix=-64)
+               write(extname,'(4a)') 'direct_', trim(chname(ich)), trim(suffix)
+               call io_put_keyword(file,'EXTNAME',trim(extname), &
+                    'direct surface brightness [erg/s/cm^2/sr]',status)
+               img2 = 0.0_wp
+               do b = 1, par%nnu_ion
+                  if (ich == 1 .and. ion_e(b) <  par%eion_min) cycle
+                  if (ich == 2 .and. ion_e(b) >= par%eion_min) cycle
+                  img2 = img2 + img_sca(:,:,b,k)
+               end do
+               call io_append_image(file, img2*fac, status, bitpix=-64)
+               write(extname,'(4a)') 'scatt_', trim(chname(ich)), trim(suffix)
+               call io_put_keyword(file,'EXTNAME',trim(extname), &
+                    'scattered surface brightness [erg/s/cm^2/sr]',status)
+            end do
+            deallocate(img2)
+          end block
+       else
+          do ch = 1, nchan
+             call io_append_image(file, img_dir(:,:,ch,k)*fac, status, bitpix=-64)
+             write(extname,'(4a)') 'direct_', trim(chname(ch)), trim(suffix)
+             call io_put_keyword(file,'EXTNAME',trim(extname), &
+                  'direct surface brightness [erg/s/cm^2/sr]',status)
+             call io_put_keyword(file,'DXIM',   par%dxim,  'pixel [deg]', status)
+             call io_put_keyword(file,'DIST',   observer(k)%distance, &
+                  'observer distance (code units)', status)
+             call io_put_keyword(file,'ALPHA',  observer(k)%alpha, '[deg]', status)
+             call io_put_keyword(file,'BETA',   observer(k)%beta,  '[deg]', status)
+             call io_put_keyword(file,'GAMMA',  observer(k)%gamma, '[deg]', status)
+             call io_append_image(file, img_sca(:,:,ch,k)*fac, status, bitpix=-64)
+             write(extname,'(4a)') 'scatt_', trim(chname(ch)), trim(suffix)
+             call io_put_keyword(file,'EXTNAME',trim(extname), &
+                  'scattered surface brightness [erg/s/cm^2/sr]',status)
+          end do
+       end if
     end do
     call io_close(file, status)
     write(*,'(2a)') ' PEEL: images written to: ', trim(outname)

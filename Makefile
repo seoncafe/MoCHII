@@ -81,6 +81,7 @@ OBJS	= \
 	photo_xsec.o \
 	recomb_mod.o \
 	gaunt.o \
+	gaunt_vh14_mod.o \
 	cooling_mod.o \
 	gas_state_mod.o \
 	ion_band_mod.o \

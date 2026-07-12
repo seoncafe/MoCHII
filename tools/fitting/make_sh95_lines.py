@@ -77,5 +77,72 @@ def main():
           f" (expect ~2.87)")
 
 
+SRC2 = os.path.expanduser("~/RT_Codes/Storey_Hummer/data/e2b.d.gz")
+OUT2 = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                    "..", "..", "data", "atomic", "sh95_heii_caseB.txt")
+
+# He II lines (n_upper, n_lower, label, vacuum wavelength [A])
+LINES2 = [(3, 2, "HeII1640", 1640.4), (4, 3, "HeII4686", 4687.0),
+          (5, 3, "HeII3204", 3204.0), (5, 4, "HeII10126", 10126.4),
+          (7, 4, "HeII5413", 5413.0), (9, 4, "HeII4543", 4542.9)]
+
+
+def main_heii():
+    """He II (Z = 2) case B from the ORIGINAL CDS file e2b.d: header
+    'ntemp ndens'; blocks 'dens z temp case ntop ncut' followed by
+    ncut(ncut-1)/2 emissivities indexed (intrat.f)
+        k = (ncut-nu)(ncut+nu-1)/2 + nl,  ncut = 25;
+    an alpha-tot table follows the blocks (ignored).  Values are
+    4 pi j / (n_e n_HeIII) [erg cm^3 s^-1]."""
+    import gzip
+    toks = gzip.open(SRC2, "rt").read().split()
+    p = 0
+    ntemp, ndens = int(toks[p]), int(toks[p+1]); p += 2
+    temps = np.zeros(ntemp); denss = np.zeros(ndens)
+    E = {}
+    for ia in range(ntemp):
+        for ib in range(ndens):
+            dens = float(toks[p]); temp = float(toks[p+2])
+            case = toks[p+3]; ncut = int(toks[p+5])
+            assert case == "B", f"unexpected case token {case}"
+            p += 6
+            ne_vals = ncut*(ncut-1)//2
+            vals = np.array(toks[p:p+ne_vals], dtype=float)
+            p += ne_vals
+            temps[ia] = temp;  denss[ib] = dens
+            for (nu, nl, lab, wl) in LINES2:
+                k = (ncut-nu)*(ncut+nu-1)//2 + nl
+                E.setdefault(lab, np.zeros((ntemp, ndens)))[ia, ib] = vals[k-1]
+
+    with open(OUT2, "w") as fh:
+        fh.write("# Storey & Hummer (1995, MNRAS 272, 41) He II (Z=2) case-B "
+                 "line emissivities 4 pi j / (n_e n_HeIII) [erg cm^3 s^-1]\n")
+        fh.write("# source file: Storey_Hummer/data/e2b.d.gz (original CDS "
+                 "table), parsed by tools/fitting/make_sh95_lines.py "
+                 "(2026-07-12)\n")
+        fh.write("# grid: NT temperatures [K], ND densities [cm^-3]; then "
+                 "one block for each line: label nu nl lambda[A], NT x ND "
+                 "values (T rows, n_e columns)\n")
+        fh.write(f"GRID {ntemp} {ndens}\n")
+        fh.write("T " + " ".join(f"{t:.4e}" for t in temps) + "\n")
+        fh.write("NE " + " ".join(f"{d:.4e}" for d in denss) + "\n")
+        for (nu, nl, lab, wl) in LINES2:
+            fh.write(f"LINE {lab} {nu} {nl} {wl:.1f}\n")
+            for ia in range(ntemp):
+                fh.write(" ".join(f"{E[lab][ia, ib]:.4e}"
+                                  for ib in range(ndens)) + "\n")
+    print(f"wrote {os.path.relpath(OUT2)} ({ntemp} T x {ndens} ne)")
+    # sanity at T = 1e4 K: alpha_eff(4686) ~ 3.57e-13 cm^3/s (AGN3), so
+    # 4 pi j(4686)/(ne nHeIII) = alpha_eff h nu ~ 1.51e-24 erg cm^3/s;
+    # and 1640/4686 ~ 6.6-7.
+    ia = np.argmin(abs(temps - 1e4)); ib = np.argmin(abs(denss - 1e4))
+    print(f"check: 4pi j(4686)/(ne nHeIII) at T={temps[ia]:.0f}, "
+          f"ne={denss[ib]:.0f} = {E['HeII4686'][ia, ib]:.4e} "
+          f"(expect ~1.51e-24)")
+    print(f"check: 1640/4686 = "
+          f"{E['HeII1640'][ia, ib]/E['HeII4686'][ia, ib]:.3f} (expect ~6.6-7)")
+
+
 if __name__ == "__main__":
     main()
+    main_heii()

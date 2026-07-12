@@ -41,9 +41,14 @@ contains
   !=========================================================================
   subroutine amr_refine_front()
     use mpi
-    use gas_opacity_mod, only : gas_opacity_setup
-    use jtally_mod,      only : jtally_ion_resize
+    use gas_opacity_mod, only : gas_opacity_setup, kap_ion
+    use jtally_mod,      only : jtally_ion_resize, jt_ion
     use species_mod,     only : species_resize
+    use gas_state_mod,   only : gas_nH_p => gas_nH, gas_xHI_p => gas_xHI, &
+                                gas_xHeI_p => gas_xHeI, &
+                                gas_xHeII_p => gas_xHeII, &
+                                gas_ne_p => gas_ne, gas_Te_p => gas_Te
+    use memory_mod,      only : destroy_shared_mem
     implicit none
     real(kind=wp), allocatable :: s_nH(:), s_x1(:), s_x2(:), s_x3(:), &
                                   s_ne(:), s_te(:), s_rk(:)
@@ -107,6 +112,34 @@ contains
        s_rk(il) = amr_grid%rhokap(jl)
     end do
 
+    !--- 4b. recycle the OLD grid's shared-memory windows: nothing below
+    !--- reads the old tree or state (everything needed is in the local
+    !--- old_*/s_* copies), so free them BEFORE the rebuild — collective,
+    !--- every rank runs this routine.  Without the recycling every
+    !--- re-refinement leaks a full grid's shared memory until finalize.
+    !--- jt_ion is a per-rank array, not a window — jtally_ion_resize
+    !--- deallocates it properly.
+    call destroy_shared_mem(amr_grid%parent)
+    call destroy_shared_mem(amr_grid%children)
+    call destroy_shared_mem(amr_grid%level)
+    call destroy_shared_mem(amr_grid%cx)
+    call destroy_shared_mem(amr_grid%cy)
+    call destroy_shared_mem(amr_grid%cz)
+    call destroy_shared_mem(amr_grid%ch)
+    call destroy_shared_mem(amr_grid%ileaf)
+    call destroy_shared_mem(amr_grid%icell_of_leaf)
+    call destroy_shared_mem(amr_grid%neighbor)
+    call destroy_shared_mem(amr_grid%rhokap)
+    call destroy_shared_mem(gas_nH_p)
+    call destroy_shared_mem(gas_xHI_p)
+    call destroy_shared_mem(gas_xHeI_p)
+    call destroy_shared_mem(gas_xHeII_p)
+    call destroy_shared_mem(gas_ne_p)
+    call destroy_shared_mem(gas_Te_p)
+    call destroy_shared_mem(kap_ion)
+    if (mpar%p_rank == 0) write(*,'(a)') &
+       ' AMR: recycled the shared-memory windows of the old grid'
+
     !--- 5. rebuild the octree + neighbors + rhokap
     call amr_build_tree(nx_(1:nnew), ny_(1:nnew), nz_(1:nnew), &
                         nlev_(1:nnew), nnew, -half, half, -half, half, &
@@ -131,6 +164,7 @@ contains
     deallocate(front, old_cx, old_cy, old_cz, old_ch, old_children, &
                old_ileaf, nx_, ny_, nz_, nlev_, s_nH, s_x1, s_x2, s_x3, &
                s_ne, s_te, s_rk)
+
   end subroutine amr_refine_front
 
   !=========================================================================

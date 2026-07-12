@@ -39,7 +39,7 @@ contains
   ! they are the only electrons, e.g. n_e ~ n_CII in the PDR zone).
   subroutine solve_ion_cell(gH, gHe1, gHe2, nH, T, caseA, &
                             xHI, xHeI, xHeII, ne, il)
-    use species_mod, only : species_ne, n_elements
+    use species_mod, only : species_ne_prepare, species_ne_cached, n_elements
     real(kind=wp), intent(in)    :: gH, gHe1, gHe2, nH, T
     logical,       intent(in)    :: caseA
     real(kind=wp), intent(inout) :: xHI, xHeI, xHeII
@@ -53,6 +53,10 @@ contains
     with_metal_ne = .false.
     if (present(il)) with_metal_ne = par%metal_ne .and. par%use_metals &
                                      .and. n_elements > 0
+    !--- T is fixed inside the fixed point: evaluate the metal rate
+    !--- coefficients once (species_ne_cached reduces each iteration
+    !--- below to multiply-adds).
+    if (with_metal_ne) call species_ne_prepare(il, T)
 
     yHe = par%He_abund
     if (caseA) then
@@ -80,7 +84,7 @@ contains
        xHeIII = xHeII * r2
        ne = nH * ((1.0_wp - xHI) + yHe*(xHeII + 2.0_wp*xHeIII))
        if (with_metal_ne) &
-          ne = ne + species_ne(il, T, ne_old, nH*xHI, nH*(1.0_wp - xHI))
+          ne = ne + species_ne_cached(nH, ne_old, nH*xHI, nH*(1.0_wp - xHI))
        ne = max(0.5_wp*(ne + ne_old), 1.0e-12_wp*nH)
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
     end do

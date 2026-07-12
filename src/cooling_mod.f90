@@ -181,7 +181,17 @@ contains
     do i = 1, NU
        xlf(i) = real(log10(u(i)/ryd_over_kt))
     end do
-    call getGauntFF(real(log10(Zc)), real(log10(T)), xlf, g, iflag)
+    if (par%gaunt_vh14) then
+       block
+         use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
+         call gaunt_vh14_setup()
+         do i = 1, NU
+            g(i) = real(gauntff_vh14(Zc, T, u(i)/ryd_over_kt))
+         end do
+       end block
+    else
+       call getGauntFF(real(log10(Zc)), real(log10(T)), xlf, g, iflag)
+    end if
     gm = 0.0_wp
     do i = 1, NU
        gm = gm + real(g(i),wp)*exp(-u(i))*du(i)

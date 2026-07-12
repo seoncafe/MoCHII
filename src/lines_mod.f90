@@ -111,6 +111,52 @@ contains
       end do
     end block
 
+    !--- He II recombination lines (SH95 Z = 2 case B; needs the He III
+    !--- zone — the luminosities weight n_e n_HeIII).
+    if (sh95_nlines(ion=2) > 0) then
+       block
+         real(kind=wp) :: LHe(12), wlhe(12), xHeIII
+         integer :: kk, nlhe
+         nlhe = sh95_nlines(ion=2)
+         LHe = 0.0_wp
+         do kk = 1, nlhe
+            wlhe(kk) = sh95_wl(kk, ion=2)
+         end do
+         if (do_emis) then
+            allocate(em(nlhe, gas_nleaf))
+            em = 0.0_wp
+         end if
+         do il = 1, gas_nleaf
+            nH = gas_nH(il)
+            if (nH <= 0.0_wp) cycle
+            xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
+            if (xHeIII <= 1.0e-30_wp) cycle
+            T  = gas_Te(il);  ne = gas_ne(il)
+            vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)) &
+                  *par%distance2cm)**3
+            do kk = 1, nlhe
+               emis(kk) = ne*nH*par%He_abund*xHeIII &
+                          *sh95_emis(kk, T, ne, ion=2)
+               LHe(kk)  = LHe(kk) + emis(kk)*vol
+            end do
+            if (do_emis) em(1:nlhe, il) = emis(1:nlhe)
+         end do
+         do kk = 1, nlhe
+            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'he', 2, wlhe(kk), &
+               LHe(kk), LHe(kk)/LHb, trim(sh95_label(kk, ion=2))
+         end do
+         if (do_emis) then
+            call io_append_image(efile, em, status, bitpix=-64)
+            call io_put_keyword(efile,'EXTNAME','emis_heii', &
+                 'SH95 He II line emissivities [erg/s/cm^3]',status)
+            call io_append_image(efile, wlhe(1:nlhe), status, bitpix=-64)
+            call io_put_keyword(efile,'EXTNAME','wl_heii', &
+                 'He II line wavelengths [A]',status)
+            deallocate(em)
+         end if
+       end block
+    end if
+
     do ie = 1, n_elements
        do ist = 1, elem_nstage(ie)
           write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)//'/nlevel_', &
