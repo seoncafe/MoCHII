@@ -1,0 +1,16 @@
+# MoCHII Tier-2 n-level atom data: [Ne II] (ne_2), lowest 2 levels
+# source: CHIANTI v11.0.2 .elvlc/.wgfa/.scups (tools/fitting/fit_nlevel_tier2.py)
+# levels: index  g  E[cm^-1] (observed preferred)
+# rad: l u A[s^-1] (duplicate rows summed)
+# ups: l u type C dE[Ry] st_lo st_hi logf ncheb c_0..c_{n-1} maxerr
+#   logf=1: the series stores log10 of the scaled Upsilon (apply 10^y before descaling)
+#   Upsilon(T) = Burgess-Tully descaled Chebyshev series; see fit_nlevel_tier2.py header for the evaluation recipe
+# fit range: 1.0e+03 - 1.0e+05 K; worst transition fit error: 0.16%
+# generated on 2026-07-11
+NLEV 2
+    1    4.0          0.0000
+    2    2.0        780.4000
+NRAD 1
+    1   2  8.321000e-03
+NUPS 1
+    1   2  2 1.116000e+01 7.108000e-03 7.39400447e-02 8.88695579e-01 0 10  3.23809470e-01 5.34923602e-02 7.74408299e-03 1.08054546e-02 8.88466276e-04 3.14033830e-03 3.23305942e-04 4.54729023e-04 3.44419993e-04 -3.65070297e-04  0.160%

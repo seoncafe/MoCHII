@@ -1,0 +1,33 @@
+&parameters
+ ! MoCHII G0 gate: uniform-density neutral sphere, central point source,
+ ! fixed ion fractions (no feedback).  Compare Gamma(r) per leaf against
+ ! the analytic point-source attenuation (check_g0_gamma.py).
+
+ par%no_photons    = 1.0e8
+ par%no_print      = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'amr_sphere_L5.fits'
+ par%dust_model    = 'none'          ! gas-only gate
+ par%distance_unit = 'pc'            ! boxlen 2.0 -> 2 pc
+
+ !--- ionizing band
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 16
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 1.0e5           ! blackbody source
+ par%luminosity    = 1.0e38          ! band luminosity [erg/s]
+
+ !--- fixed G0 gas state (nH = 1 cm^-3 from the AMR file)
+ par%xHI_init      = 0.1
+ par%xHeI_init     = 1.0
+ par%xHeII_init    = 0.0
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'g0_gamma.h5'
+/

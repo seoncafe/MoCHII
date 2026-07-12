@@ -1,0 +1,47 @@
+&parameters
+ ! MoCHII G1 gate: Stromgren sphere.  Uniform nH = 100 cm^-3 sphere
+ ! (R = 4 pc), central blackbody source (4e4 K) with band photon rate
+ ! Q_H = 1e49 s^-1, case B, fixed Te = 1e4 K.
+ ! Analytic (sharp-edge): R_S = 3.153 pc; exact profile from the 1D
+ ! radial-marching reference in check_g1_stromgren.py.
+
+ par%no_photons    = 4.0e7
+ par%no_print      = 4.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'amr_sphere_L6_nH100.fits'
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ !--- ionizing band: L set so that Q_H = 1e49 s^-1 (mean E = 19.834 eV)
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+ par%luminosity    = 3.177837e38
+
+ !--- initial state: fully neutral
+ par%xHI_init      = 1.0
+ par%xHeI_init     = 1.0
+ par%xHeII_init    = 0.0
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ !--- G1 iteration (case B on-the-spot, fixed Te)
+ par%gas_niter     = 100
+ par%gas_tol       = 2.0e-3
+ par%te_fixed      = 1.0e4
+ par%ion_relax     = 1.0
+ par%case_ab       = 'B'
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'peel_free.h5'
+
+ !--- peel-off imaging
+ par%ion_peel      = .true.
+ par%nxim          = 201
+ par%nyim          = 201
+/

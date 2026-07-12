@@ -1,0 +1,55 @@
+&parameters
+ ! FUV-option smoke: dusty Stromgren with par%add_fuv (two-segment band:
+ ! 16 FUV bins on 6-13.598 eV under 32 ionizing bins) + metals with
+ ! par%ion_metal_abs.  par%luminosity is the IONIZING luminosity
+ ! (Q_H = 1e49 s^-1 at 4e4 K); the FUV part rides on top automatically.
+
+ par%no_photons    = 8.0e6
+ par%no_print      = 8.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'amr_sphere_L6_nH100.fits'
+ par%dust_model    = 'global_dgr'
+ par%distance_unit = 'pc'
+
+ !--- ionizing band + FUV extension
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%add_fuv       = .true.
+ par%efuv_min      = 6.0
+ par%nnu_fuv       = 16
+ par%tstar         = 4.0e4
+ par%luminosity    = 3.178e38
+
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.0
+ par%xHeII_init    = 1.0
+ par%He_abund      = 0.1
+
+ !--- thermal + metals (HII20 abundances + Mg/Fe gas-phase)
+ par%gas_niter     = 60
+ par%gas_tol       = 2.0e-3
+ par%ion_relax     = 1.0
+ par%case_ab       = 'B'
+ par%solve_te      = .true.
+ par%atomic_dir    = '../../data/atomic'
+ par%use_metals    = .true.
+ par%abund_Mg      = 3.0e-6
+ par%abund_Fe      = 3.0e-7
+ par%ion_metal_abs = .true.
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'd_fuv_vol.h5'
+
+ !--- dust in the band (MW D03 EUV extinction + scattering)
+ par%ion_add_dust  = .true.
+ par%ion_dust_scatter = .true.
+ par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%cext_dust     = 4.868e-22
+ par%DGR           = 1.0
+ par%conv_crit     = 'vol'
+/
