@@ -20,7 +20,7 @@ infrared dust/PAH spectrum.
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
   in the band.
 - **Gas physics**: H/He photoionization equilibrium and thermal balance;
-  metals (C, N, O, Ne, S, Ar, Mg, Fe) as trace species with Verner et al.
+  metals (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) as trace species with Verner et al.
   (1996) cross sections, Badnell radiative + dielectronic recombination,
   Voronov (1997) collisional ionization, and charge exchange; all atomic
   rates are fitted offline from CHIANTI and evaluated as closed forms at
@@ -42,8 +42,8 @@ infrared dust/PAH spectrum.
   1994).
 - **Grids**: adaptive octree read from a generic AMR file (RAMSES /
   Illustris-TNG converters available), with optional solution-driven
-  re-refinement at the ionization front; or a uniform Cartesian grid with
-  fast DDA traversal.
+  re-refinement at the ionization front; or a uniform Cartesian grid
+  (raster storage, integer-arithmetic traversal, no tree in memory).
 - **Parallelism and I/O**: MPI with MPI-3 shared memory (one grid copy per
   node); HDF5 or FITS output through a format-agnostic interface; Python
   readers and a 2D map maker under `tools/python/`.
@@ -69,4 +69,4 @@ the CHIANTI fitting pipeline.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-07-13 01:06 KST
+Last updated: 2026-07-13 01:11 KST
