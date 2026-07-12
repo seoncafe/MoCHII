@@ -1,5 +1,9 @@
 # MoCHII v1.00
 
+<p align="center">
+  <img src="docs/mochii_icon.png" width="230" alt="MoCHII icon">
+</p>
+
 MoCHII (**Mo**nte **C**arlo for **H II** regions) is a Monte-Carlo
 photoionization and radiative-transfer code (Fortran 90 + MPI) for **dusty
 photoionized nebulae** on adaptive octree (AMR) and uniform Cartesian grids.
