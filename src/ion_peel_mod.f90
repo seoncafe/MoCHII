@@ -221,6 +221,7 @@ contains
        if (ix < 1 .or. ix > observer(k)%nxim .or. &
            iy < 1 .or. iy > observer(k)%nyim) cycle
        call raytrace_ion_tau_only_amr(pobs, tau)
+       if (tau > 500.0_wp) cycle      ! e^-tau = 0 to any precision
        contrib = photon%Lpacket*photon%wgt/(fourpi*r2)*exp(-tau)
        img_dir(ix, iy, ch, k) = img_dir(ix, iy, ch, k) + contrib
     end do
@@ -241,7 +242,10 @@ contains
     integer :: ix, iy, i, k, ch
 
     ch = peel_channel(photon%inu)
-    gg = ion_dust_g(photon%inu)
+    !--- the D03 table carries <cos> = 1.000 in the EUV; g = 1 with a
+    !--- perfectly forward peel direction gives 0/0 in the HG phase
+    !--- function — clamp (one NaN contribution poisons the image sum).
+    gg = min(ion_dust_g(photon%inu), 0.9999_wp)
     do k = 1, par%nobs
        pobs = photon
        pobs%kx = observer(k)%x - photon%x
@@ -262,13 +266,46 @@ contains
        if (ix < 1 .or. ix > observer(k)%nxim .or. &
            iy < 1 .or. iy > observer(k)%nyim) cycle
        call raytrace_ion_tau_only_amr(pobs, tau)
+       !--- e^-tau = 0 to any precision; skipping also avoids a
+       !--- -fp-model fast underflow pathology (the -O0 -check build is
+       !--- clean, the fast build produced Inf/NaN pixels through the
+       !--- extreme-dynamic-range exp/accumulate chain).
+       if (tau > 500.0_wp) cycle
        cosa = photon%kx*pobs%kx + photon%ky*pobs%ky + photon%kz*pobs%kz
        peel = (1.0_wp - gg*gg) &
-              /((1.0_wp + gg*gg) - 2.0_wp*gg*cosa)**1.5_wp/fourpi
+              /max((1.0_wp + gg*gg) - 2.0_wp*gg*cosa, tinest)**1.5_wp/fourpi
        contrib = photon%Lpacket*photon%wgt*peel/r2*exp(-tau)
+       !--- defensive: a non-finite contribution would poison the whole
+       !--- image sum.  Bit test on the exponent field — an ordinary
+       !--- NaN comparison is folded away under -fp-model fast.
+       if (nonfinite(contrib)) then
+          write(*,'(a,i4,7es13.5,4l2)') ' PEEL: non-finite contrib:', &
+             photon%inu, gg, cosa, tau, photon%wgt, photon%Lpacket, r2, &
+             peel, nonfinite(tau), nonfinite(photon%wgt), &
+             nonfinite(peel), nonfinite(cosa)
+          cycle
+       end if
        img_sca(ix, iy, ch, k) = img_sca(ix, iy, ch, k) + contrib
+       !--- event trap: the pixel must stay finite if every added
+       !--- contrib is finite; firing here with a finite contrib means
+       !--- the += chain itself (or another writer) is at fault.
+       if (nonfinite(img_sca(ix, iy, ch, k))) &
+          write(*,'(a,2i5,2es13.5)') ' PEEL: pixel went non-finite at', &
+             ix, iy, contrib, img_sca(ix, iy, ch, k)
     end do
   end subroutine ion_peel_scatter
+
+  !=========================================================================
+  ! .true. for NaN or Inf: exponent bits all set.  Immune to -fp-model
+  ! fast folding (pure integer arithmetic).
+  !=========================================================================
+  logical function nonfinite(x)
+    use iso_fortran_env, only : int64
+    real(kind=wp), intent(in) :: x
+    integer(int64) :: bits
+    bits = transfer(x, 0_int64)
+    nonfinite = iand(ishft(bits, -52), 2047_int64) == 2047_int64
+  end function nonfinite
 
   !=========================================================================
   ! Reduce and write the images: surface brightness at the observer,
@@ -287,6 +324,24 @@ contains
     integer :: k, ch, ierr, status
     character(len=8), parameter :: chname(2) = ['ion     ', 'fuv     ']
 
+    !--- NaN bisection: count non-finite pixels rank-locally BEFORE the
+    !--- reduce and globally after (the guarded contrib line never
+    !--- fires, so the poison enters elsewhere).
+    block
+      integer :: i1, i2, i3, i4, nbad
+      nbad = 0
+      do i4 = 1, size(img_sca,4);  do i3 = 1, size(img_sca,3)
+      do i2 = 1, size(img_sca,2);  do i1 = 1, size(img_sca,1)
+         if (nonfinite(img_sca(i1,i2,i3,i4))) then
+            nbad = nbad + 1
+            if (nbad <= 3) write(*,'(a,i4,a,4i5,es13.5)') &
+               ' PEEL: rank', mpar%p_rank, ' local non-finite at', &
+               i1, i2, i3, i4, img_sca(i1,i2,i3,i4)
+         end if
+      end do;  end do;  end do;  end do
+      if (nbad > 0) write(*,'(a,i4,a,i6)') ' PEEL: rank', mpar%p_rank, &
+         ' local non-finite count =', nbad
+    end block
     call MPI_ALLREDUCE(MPI_IN_PLACE, img_dir, size(img_dir), &
                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, img_sca, size(img_sca), &

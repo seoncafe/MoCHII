@@ -29,6 +29,7 @@ module species_mod
   public :: species_setup, species_gamma_compute, species_fractions
   public :: metal_cooling, species_write, species_resize
   public :: species_opacity_add, species_ne, metal_heating
+  public :: metal_cooling_H
   public :: n_elements, elem_name, elem_nstage, elem_abund
 
   integer, parameter :: MAX_EL = 8, MAX_ST = 6
@@ -374,6 +375,45 @@ contains
        end do
     end do
   end function species_ne
+
+  !=========================================================================
+  ! H-impact fine-structure cooling [erg s^-1 cm^-3]: [C II] 158 um and
+  ! [O I] 63 um excited by NEUTRAL HYDROGEN collisions — the dominant
+  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the Tier-1 fits are
+  ! electron-impact only).  Two-level, low-density limit:
+  !   Lambda = n_ion n_HI (g_u/g_l) q_ul^H e^{-dE/kT} dE
+  ! with q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005)
+  ! and  q_ul^H([O I])  = 9.2e-11 (T/100)^0.67 cm^3/s.  Part of the
+  ! par%grain_pe PDR thermal package (without it the photoelectric
+  ! heating has no coolant below the Ly-alpha regime and the PDR zone
+  ! runs away to ~10^4 K).
+  !=========================================================================
+  real(kind=wp) function metal_cooling_H(il, T, nH, ne, nHI, nHII) result(cool)
+    implicit none
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
+    real(kind=wp), parameter :: kb = 1.380649e-16_wp
+    real(kind=wp) :: frac(MAX_ST), nion, qlu
+    integer :: ie
+    cool = 0.0_wp
+    do ie = 1, n_elements
+       select case (trim(elems(ie)%name))
+       case ('c')
+          if (elems(ie)%nstage < 2) cycle
+          call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+          nion = elems(ie)%abund*nH*frac(2)                 ! C II
+          qlu  = 2.0_wp*7.6e-10_wp*(T/100.0_wp)**0.14_wp &  ! g_u/g_l = 4/2
+                 *exp(-91.25_wp/T)
+          cool = cool + nion*nHI*qlu*(91.25_wp*kb)
+       case ('o')
+          call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+          nion = elems(ie)%abund*nH*frac(1)                 ! O I
+          qlu  = 0.6_wp*9.2e-11_wp*(T/100.0_wp)**0.67_wp &  ! g_u/g_l = 3/5
+                 *exp(-227.7_wp/T)
+          cool = cool + nion*nHI*qlu*(227.7_wp*kb)
+       end select
+    end do
+  end function metal_cooling_H
 
   !=========================================================================
   ! Metal photoheating [erg s^-1 cm^-3] (par%metal_heat): the heating

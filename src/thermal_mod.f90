@@ -60,19 +60,50 @@ contains
     end if
     !--- PDR: grain photoelectric heating + grain recombination cooling
     !--- (Bakes & Tielens 1994 fits) driven by the local FUV field.
+    !--- Two guards, both found by the PDR gate (runaway to 12-35 kK
+    !--- without them): (i) the BT94 fits are evaluated at
+    !--- min(T, 1e4 K) — outside their fit range the T^0.7 term of
+    !--- epsilon diverges and heating runs away through the H
+    !--- collisional-ionization feedback; (ii) both terms carry an
+    !--- x_HI weight — the BT94 charging parameter knows only the FUV
+    !--- field, so in ionized gas (EUV-charged grains, and the grain
+    !--- energy already routed to the IR via Heat_dust) it would badly
+    !--- overestimate; grain photoelectric GAS heating belongs to the
+    !--- predominantly neutral zone.
     if (par%grain_pe) then
        block
          use gas_rates_mod, only : g0_fuv
-         real(kind=wp) :: g0, xpe, eps, beta, dscale
+         use species_mod,   only : metal_cooling_H
+         use octree_mod,    only : amr_grid
+         !--- MW reference dust extinction per H (D03 V band) — the
+         !--- normalization of the BT94 fits.
+         real(kind=wp), parameter :: CEXT_MW_V = 4.868e-22_wp
+         real(kind=wp) :: g0, xpe, eps, beta, dscale, Tpe
+         !--- H-impact [C II]/[O I] fine-structure cooling: the PDR-zone
+         !--- coolant that balances the photoelectric heating (electron
+         !--- Tier-1 cooling alone lets the zone run away to ~10^4 K).
+         if (par%use_metals) &
+            net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, &
+                                        nH*(1.0_wp - xHI))
          g0 = g0_fuv(il)
          if (g0 > 0.0_wp) then
-            dscale = par%pe_scale*par%DGR/1.0e-2_wp
-            xpe = g0*sqrt(T)/max(ne, 1.0e-12_wp*nH)
+            !--- dust amount relative to MW from the leaf opacity itself
+            !--- (robust against the DGR-vs-cext_dust input conventions;
+            !--- the first gate run had DGR=1 with the MW extinction
+            !--- already folded into cext_dust — the naive DGR/0.01
+            !--- scale made the PE heating 100x too strong and drove
+            !--- the PDR zone to a false 12 kK Ly-alpha-capped
+            !--- equilibrium).
+            dscale = par%pe_scale * xHI &
+                     * (amr_grid%rhokap(il)/par%distance2cm) &
+                     / (max(nH, tinest)*CEXT_MW_V)
+            Tpe = min(T, 1.0e4_wp)
+            xpe = g0*sqrt(Tpe)/max(ne, 1.0e-12_wp*nH)
             eps = 4.87e-2_wp/(1.0_wp + 4.0e-3_wp*xpe**0.73_wp) &
-                + 3.65e-2_wp*(T/1.0e4_wp)**0.7_wp/(1.0_wp + 2.0e-4_wp*xpe)
+                + 3.65e-2_wp*(Tpe/1.0e4_wp)**0.7_wp/(1.0_wp + 2.0e-4_wp*xpe)
             net = net + 1.3e-24_wp*eps*g0*nH*dscale
-            beta = 0.74_wp/T**0.068_wp
-            net = net - 4.65e-30_wp*T**0.94_wp*xpe**beta*ne*nH*dscale
+            beta = 0.74_wp/Tpe**0.068_wp
+            net = net - 4.65e-30_wp*Tpe**0.94_wp*xpe**beta*ne*nH*dscale
          end if
        end block
     end if
@@ -149,6 +180,18 @@ contains
        xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
        ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
                     + par%He_abund*(xHeII_new(il) + 2.0_wp*xHeIII))
+       !--- metal electrons in the WRITTEN state too (the solve already
+       !--- had them in its closure; the state n_e drives the Tier-2
+       !--- excitation and the outputs — in the PDR zone it IS the
+       !--- metal contribution, n_e ~ A_C n_H).
+       if (par%metal_ne .and. par%use_metals) then
+          block
+            use species_mod, only : species_ne, n_elements
+            if (n_elements > 0) ne_new(il) = ne_new(il) &
+               + species_ne(il, te, ne_new(il), nH*xHI_new(il), &
+                            nH*(1.0_wp - xHI_new(il)))
+          end block
+       end if
        te_new(il) = te
        max_dx  = max(max_dx,  abs(xHI_new(il) - gas_xHI(il)))
        max_dte = max(max_dte, abs(te_new(il) - gas_Te(il))/gas_Te(il))

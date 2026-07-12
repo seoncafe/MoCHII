@@ -135,6 +135,15 @@ contains
        xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
        ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
                     + yHe*(xHeII_new(il) + 2.0_wp*xHeIII))
+       !--- metal electrons in the written state (par%metal_ne).
+       if (par%metal_ne .and. par%use_metals) then
+          block
+            use species_mod, only : species_ne, n_elements
+            if (n_elements > 0) ne_new(il) = ne_new(il) &
+               + species_ne(il, T, ne_new(il), nH*xHI_new(il), &
+                            nH*(1.0_wp - xHI_new(il)))
+          end block
+       end if
        max_dx = max(max_dx, abs(xHI_new(il) - gas_xHI(il)))
        vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
        sum_dxv = sum_dxv + vol*abs(xHI_new(il) - gas_xHI(il))

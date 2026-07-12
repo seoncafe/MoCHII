@@ -106,6 +106,11 @@ OBJS	= \
 
 OBJECTS = $(patsubst %.o, $(SRCDIR)/%.o, $(OBJS))
 
+# ion_peel_mod: precise FP (the fast=2 build produced Inf pixels through
+# the extreme-dynamic-range peel accumulation; -O0 -check is clean).
+$(SRCDIR)/ion_peel_mod.o: FFLAGS += -fp-model precise
+
+
 # MoCafe policy: no inter-module dependency lists — always a full rebuild
 # (module .mod staleness otherwise bites after editing define.f90 etc.).
 default: clean
