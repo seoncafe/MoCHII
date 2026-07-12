@@ -69,4 +69,4 @@ the CHIANTI fitting pipeline.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-07-13 00:11 KST
+Last updated: 2026-07-13 00:31 KST

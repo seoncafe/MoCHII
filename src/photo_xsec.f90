@@ -21,7 +21,7 @@ module photo_xsec
   implicit none
   private
 
-  public :: sigma_vfky96, sigma_HI, sigma_HeI, sigma_HeII
+  public :: sigma_vfky96, sigma_vy95, sigma_HI, sigma_HeI, sigma_HeII
 
   real(kind=wp), parameter :: Mb2cm2 = 1.0e-18_wp
 
@@ -47,6 +47,29 @@ contains
     Fy = ((x - 1.0_wp)**2 + y_w**2) * z**(-Q) * (1.0_wp + sqrt(z/y_a))**(-P)
     sigma = s_0 * Fy * Mb2cm2
   end function sigma_vfky96
+
+  !=========================================================================
+  ! Verner & Yakovlev (1995) subshell fit — the outer-shell cross section
+  ! for the elements ABSENT from the VFKY96 outer-shell table (P, Cl, K;
+  ! the same hybrid as MOCASSIN phFitEl):
+  !   y = E/E_0,  Q = 5.5 + l - 0.5 P
+  !   sigma = sigma_0 ((y-1)^2 + y_w^2) y^(-Q) (1 + sqrt(y/y_a))^(-P)
+  ! with l the subshell orbital quantum number.
+  !=========================================================================
+  elemental real(kind=wp) function sigma_vy95(E, E_th, E_0, s_0, y_a, P, &
+                                              y_w, l) result(sigma)
+    real(kind=wp), intent(in) :: E, E_th, E_0, s_0, y_a, P, y_w, l
+    real(kind=wp) :: y, Q, Fy
+    if (E < E_th) then
+       sigma = 0.0_wp
+       return
+    end if
+    y  = E/E_0
+    Q  = 5.5_wp + l - 0.5_wp*P
+    Fy = ((y - 1.0_wp)**2 + y_w**2) * y**(-Q) &
+         * (1.0_wp + sqrt(y/y_a))**(-P)
+    sigma = s_0 * Fy * Mb2cm2
+  end function sigma_vy95
 
   !=========================================================================
   elemental real(kind=wp) function sigma_HI(E) result(sigma)

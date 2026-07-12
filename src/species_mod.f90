@@ -33,7 +33,7 @@ module species_mod
   public :: species_ne_prepare, species_ne_cached
   public :: n_elements, elem_name, elem_nstage, elem_abund
 
-  integer, parameter :: MAX_EL = 8, MAX_ST = 6
+  integer, parameter :: MAX_EL = 11, MAX_ST = 6
 
   type element_type
      character(len=2) :: name = ''
@@ -42,7 +42,11 @@ module species_mod
      real(kind=wp) :: abund = 0.0_wp
      !--- transition data (index 1..nstage-1)
      real(kind=wp) :: eth(MAX_ST)      = 0.0_wp
-     real(kind=wp) :: photo(8,MAX_ST)  = 0.0_wp   ! Eth,E0,s0,ya,P,yw,y0,y1
+     !--- photo_form 1: VFKY96 (Eth,E0,s0,ya,P,yw,y0,y1); 2: VY95 outer
+     !--- shell (Eth,E0,s0,ya,P,yw,l) for the elements absent from the
+     !--- VFKY96 table (Cl).
+     integer       :: photo_form(MAX_ST) = 1
+     real(kind=wp) :: photo(8,MAX_ST)  = 0.0_wp
      real(kind=wp) :: ci(5,MAX_ST)     = 0.0_wp   ! dE,P,A,X,K (Voronov)
      real(kind=wp) :: rr(6,MAX_ST)     = 0.0_wp   ! A,B,T0,T1,C,T2 (Badnell)
      integer       :: ndr(MAX_ST)      = 0
@@ -102,15 +106,17 @@ contains
     use mpi
     implicit none
     integer, intent(in) :: nleaf
-    character(len=8)   :: names(8)
-    real(kind=wp)      :: abunds(8)
+    character(len=8)   :: names(11)
+    real(kind=wp)      :: abunds(11)
     character(len=256) :: fname
     logical :: exists
     integer :: k, ie, i, ierr
 
-    names  = [character(len=8) :: 'c', 'n', 'o', 'ne', 's', 'ar', 'mg', 'fe']
+    names  = [character(len=8) :: 'c', 'n', 'o', 'ne', 's', 'ar', 'mg', &
+              'fe', 'si', 'cl', 'ca']
     abunds = [par%abund_C, par%abund_N, par%abund_O, par%abund_Ne, &
-              par%abund_S, par%abund_Ar, par%abund_Mg, par%abund_Fe]
+              par%abund_S, par%abund_Ar, par%abund_Mg, par%abund_Fe, &
+              par%abund_Si, par%abund_Cl, par%abund_Ca]
 
     n_elements = 0
     do k = 1, size(names)
@@ -187,6 +193,10 @@ contains
           read(line,*) key, el%eth(it)
        case ('PHOTO')
           read(line,*) key, el%photo(1:8,it)
+          el%photo_form(it) = 1
+       case ('PHOTO2')
+          read(line,*) key, el%photo(1:7,it)
+          el%photo_form(it) = 2
        case ('CI')
           read(line,*) key, el%ci(1:5,it)
        case ('RR')
@@ -306,9 +316,7 @@ contains
     do ie = 1, n_elements
        do it = 1, elems(ie)%nstage-1
           do inu = 1, nnu
-             sig(inu,it) = sigma_vfky96(ion_e(inu), el8(ie,it,1), &
-                el8(ie,it,2), el8(ie,it,3), el8(ie,it,4), el8(ie,it,5), &
-                el8(ie,it,6), el8(ie,it,7), el8(ie,it,8))
+             sig(inu,it) = species_sigma(ie, it, ion_e(inu))
           end do
        end do
        do il = 1, nleaf
@@ -345,9 +353,7 @@ contains
     do ie = 1, n_elements
        do it = 1, elems(ie)%nstage-1
           do inu = 1, par%nnu_ion
-             sig(inu) = sigma_vfky96(ion_e(inu), el8(ie,it,1), el8(ie,it,2), &
-                        el8(ie,it,3), el8(ie,it,4), el8(ie,it,5), &
-                        el8(ie,it,6), el8(ie,it,7), el8(ie,it,8))
+             sig(inu) = species_sigma(ie, it, ion_e(inu))
           end do
           do il = 1, nleaf
              ic  = amr_grid%icell_of_leaf(il)
@@ -507,6 +513,25 @@ contains
     integer, intent(in) :: ie, it, k
     el8 = elems(ie)%photo(k, it)
   end function el8
+
+  !=========================================================================
+  ! Photoionization cross section of (element ie, stage it) at E [eV]:
+  ! VFKY96 or the VY95 outer-shell form by photo_form.
+  !=========================================================================
+  real(kind=wp) function species_sigma(ie, it, E) result(sig)
+    use photo_xsec, only : sigma_vy95
+    integer,       intent(in) :: ie, it
+    real(kind=wp), intent(in) :: E
+    if (elems(ie)%photo_form(it) == 2) then
+       sig = sigma_vy95(E, el8(ie,it,1), el8(ie,it,2), el8(ie,it,3), &
+                        el8(ie,it,4), el8(ie,it,5), el8(ie,it,6), &
+                        el8(ie,it,7))
+    else
+       sig = sigma_vfky96(E, el8(ie,it,1), el8(ie,it,2), el8(ie,it,3), &
+                          el8(ie,it,4), el8(ie,it,5), el8(ie,it,6), &
+                          el8(ie,it,7), el8(ie,it,8))
+    end if
+  end function species_sigma
 
   !=========================================================================
   ! Stage fractions of element ie in leaf il at (T, n_e, x_HI): the product

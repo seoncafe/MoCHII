@@ -68,6 +68,17 @@ IONS = {
     "MgII":  ("mg", 2, 3),
     "FeII":  ("fe", 2, 13),
     "FeIII": ("fe", 3, 14),
+    # Si, Cl, Ca ([Si II] 34.8um; Si III] 1883/1892; Si IV 1394/1403;
+    # [Cl II] 8579/9124; [Cl III] 5518/5538 density pair; [Cl IV] 8046;
+    # Ca II H&K + IR triplet; [Ca V] 5309/6087).
+    "SiII":  ("si", 2, 5),
+    "SiIII": ("si", 3, 5),
+    "SiIV":  ("si", 4, 3),
+    "ClII":  ("cl", 2, 5),
+    "ClIII": ("cl", 3, 5),
+    "ClIV":  ("cl", 4, 5),
+    "CaII":  ("ca", 2, 5),
+    "CaV":   ("ca", 5, 5),
 }
 
 SPEC_LABEL = {
@@ -77,6 +88,9 @@ SPEC_LABEL = {
     "NIII": "[N III]", "OI": "[O I]",
     "ArIII": "[Ar III]", "ArIV": "[Ar IV]",
     "MgII": "Mg II", "FeII": "[Fe II]", "FeIII": "[Fe III]",
+    "SiII": "[Si II]", "SiIII": "Si III]", "SiIV": "Si IV",
+    "ClII": "[Cl II]", "ClIII": "[Cl III]", "ClIV": "[Cl IV]",
+    "CaII": "Ca II", "CaV": "[Ca V]",
 }
 
 with open(os.path.join(DBASE, "VERSION")) as fh:

@@ -438,6 +438,14 @@ public
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
+     !--- further registry elements (default 0 = off; pass GAS-PHASE
+     !--- values — Si and especially Ca are strongly depleted onto
+     !--- grains, Cl is nearly undepleted; typical Orion gas-phase:
+     !--- Si 3e-6, Cl 3e-7, Ca 2e-8).  Five stages each; Cl uses the
+     !--- VY95 outer-shell photoionization form (absent from VFKY96).
+     real(kind=wp)      :: abund_Si     = 0.0_wp
+     real(kind=wp)      :: abund_Cl     = 0.0_wp
+     real(kind=wp)      :: abund_Ca     = 0.0_wp
      !--- metal photoionization absorption in kap_ion (active with
      !--- use_metals): sum over stages of n_el frac_i sigma_VFKY96,i(E).
      !--- Negligible next to H/He above 13.6 eV; the only GAS opacity in

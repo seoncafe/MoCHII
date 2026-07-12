@@ -74,6 +74,17 @@ IONS = {
     "MgII":  ("mg", 2, [51400.0, 101000.0, 200000.0]),
     "FeII":  ("fe", 2, [600.0, 3000.0, 12000.0, 20000.0, 60000.0]),
     "FeIII": ("fe", 3, [900.0, 29000.0, 36000.0, 100000.0]),
+    # Si, Cl, Ca (5-stage registry; Si V / Cl V and the Ca III/IV gaps
+    # carry no cooling — level data absent or excitation negligible at
+    # nebular temperatures).
+    "SiII":  ("si", 2, [290.0, 45000.0, 63000.0, 150000.0]),
+    "SiIII": ("si", 3, [500.0, 76800.0, 110000.0, 148000.0, 300000.0]),
+    "SiIV":  ("si", 4, [103000.0, 200000.0]),
+    "ClII":  ("cl", 2, [1000.0, 1430.0, 16560.0, 34000.0, 100000.0]),
+    "ClIII": ("cl", 3, [26100.0, 41600.0, 100000.0, 250000.0]),
+    "ClIV":  ("cl", 4, [700.0, 1900.0, 20700.0, 43800.0, 130000.0]),
+    "CaII":  ("ca", 2, [19700.0, 25400.0, 60000.0]),
+    "CaV":   ("ca", 5, [2400.0, 5900.0, 27000.0, 55000.0, 150000.0]),
 }
 
 SPEC_LABEL = {  # for plot titles (ASCII / LaTeX-safe)
@@ -83,6 +94,9 @@ SPEC_LABEL = {  # for plot titles (ASCII / LaTeX-safe)
     "SII": "[S II]", "SIII": "[S III]", "NeII": "[Ne II]",
     "NeIII": "[Ne III]", "ArIII": "[Ar III]", "ArIV": "[Ar IV]",
     "MgII": "Mg II", "FeII": "[Fe II]", "FeIII": "[Fe III]",
+    "SiII": "[Si II]", "SiIII": "Si III]", "SiIV": "Si IV",
+    "ClII": "[Cl II]", "ClIII": "[Cl III]", "ClIV": "[Cl IV]",
+    "CaII": "Ca II", "CaV": "[Ca V]",
 }
 
 

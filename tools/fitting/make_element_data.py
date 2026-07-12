@@ -35,7 +35,8 @@ OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 # (element, Z, number of stages tracked; the highest stage is terminal)
 ELEMENTS = [("c", 6, 4), ("n", 7, 3), ("o", 8, 3), ("ne", 10, 3),
-            ("s", 16, 4), ("ar", 18, 4), ("mg", 12, 3), ("fe", 26, 4)]
+            ("s", 16, 4), ("ar", 18, 4), ("mg", 12, 3), ("fe", 26, 4),
+            ("si", 14, 5), ("cl", 17, 5), ("ca", 20, 5)]
 
 # published VFKY96 thresholds E_th [eV] by (Z, n_electron)
 ETH = {(6, 6): 11.260, (6, 5): 24.383, (6, 4): 47.888,
@@ -47,7 +48,13 @@ ETH = {(6, 6): 11.260, (6, 5): 24.383, (6, 4): 47.888,
        (18, 18): 15.760, (18, 17): 27.630, (18, 16): 40.740,
        (18, 15): 59.810,
        (12, 12): 7.646, (12, 11): 15.035,
-       (26, 26): 7.902, (26, 25): 16.199, (26, 24): 30.651}
+       (26, 26): 7.902, (26, 25): 16.199, (26, 24): 30.651,
+       (14, 14): 8.152, (14, 13): 16.346, (14, 12): 33.493,
+       (14, 11): 45.142,
+       (17, 17): 12.970, (17, 16): 23.810, (17, 15): 39.610,
+       (17, 14): 53.470,
+       (20, 20): 6.113, (20, 19): 11.872, (20, 18): 50.913,
+       (20, 17): 67.273}
 
 # charge exchange with H, first transition: (form, coefficients)
 # forms: 1 a*(T/300)^b*exp(-c/T4); 2 a*T4^b + c*T4^d;
@@ -72,6 +79,13 @@ CX = {
     # Fe (Huang A5/A6): Fe + H+ fast constant (RV72); reverse with barrier.
     "fe": dict(CXI=(6, [4.0e-9, 0.0, 0.0, 0.0, 0, 0]),
                CXR=(1, [1.16e-9, 0.072, 6.61, 0, 0, 0])),
+    # Si (KF96 via the MOCASSIN chex row 14,2): recombination direction
+    # only (Si+ + H0); the forward direction is not tabulated.
+    "si": dict(CXI=(0, [0]*6),
+               CXR=(6, [1.23e-9, 0.24, 3.17, 4.18e-3, 0, 0])),
+    # Cl, Ca: no KF96/Huang transcription available — no CX.
+    "cl": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
+    "ca": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
 }
 
 # charge exchange with H, higher transitions (recombination direction only;
@@ -100,6 +114,9 @@ CX_HIGH = {
     ("mg", 2): (6, [8.58e-14, 2.49e-3, 0.0293, -4.33, 0, 0]),
     ("fe", 2): (6, [1.26e-9, 0.0772, -0.41, -7.31, 0, 0]),
     ("fe", 3): (6, [3.42e-9, 0.51, -2.06, -8.99, 0, 0]),
+    # Si higher stages (KF96 via the MOCASSIN chex rows 14,3 / 14,4).
+    ("si", 2): (6, [4.90e-10, -8.74e-2, -0.36, -0.79, 0, 0]),
+    ("si", 3): (6, [7.58e-9, 0.37, 1.06, -4.09, 0, 0]),
 }
 
 
@@ -111,6 +128,40 @@ def parse_ph2():
                          txt):
         nz, ne = int(m.group(1)), int(m.group(2))
         out[(nz, ne)] = [float(x) for x in m.group(3).split(",")]
+    return out
+
+
+MOCASSIN_DATA = os.path.expanduser(
+    "~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/data")
+# subshell orbital quantum number by shell index (1s 2s 2p 3s 3p 3d 4s)
+VY95_LEVEL = [0, 0, 1, 0, 1, 2, 0]
+VY95_NTOT = [1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5,
+             6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7]
+
+
+def parse_ph1():
+    """Verner & Yakovlev (1995) subshell parameters from the MOCASSIN
+    data/ph1.dat (sequential; the read order replicates phInit): for
+    each (nz, ne, shell) six values E_th, E_0, sigma_0, y_a, P, y_w.
+    Returns {(nz, ne): (params of the OUTER shell, l of that shell)} —
+    the outer-shell VY95 fit used for the elements absent from the
+    VFKY96 PH2 table (P, Cl, K; MOCASSIN phFitEl does the same)."""
+    toks = open(os.path.join(MOCASSIN_DATA, "ph1.dat")).read().split()
+    p = 0
+    out = {}
+    for j in range(1, 31):              # nz
+        for k in range(1, min(j, 30)+1):   # ne
+            nt = VY95_NTOT[k-1]
+            if j == k and k > 18:
+                nt = 7
+            if j == k+1 and j in (20, 21, 22, 25, 26):
+                nt = 7
+            rows = []
+            for _ in range(nt):
+                rows.append([float(x) for x in toks[p:p+6]])
+                p += 6
+            nout = nt                     # outer shell = last one read
+            out[(j, k)] = (rows[nout-1], VY95_LEVEL[min(nout, 7)-1])
     return out
 
 
@@ -166,6 +217,7 @@ def read_drparams(el, stage):
 
 def main():
     ph2 = parse_ph2()
+    ph1 = parse_ph1()
     cf = parse_cf()
     with open(os.path.join(DBASE, "VERSION")) as fh:
         chianti_version = fh.read().strip()
@@ -197,9 +249,19 @@ def main():
                 ne_ion = Z - (i - 1)          # electrons of stage i
                 fh.write(f"TRANSITION {i}\n")
                 fh.write(f"ETH {ETH[(Z, ne_ion)]:.4f}\n")
-                p = ph2[(Z, ne_ion)]
-                fh.write("PHOTO " + " ".join(f"{v:.6e}" for v in
-                         [ETH[(Z, ne_ion)]] + p) + "\n")
+                if (Z, ne_ion) in ph2:
+                    p = ph2[(Z, ne_ion)]
+                    fh.write("PHOTO " + " ".join(f"{v:.6e}" for v in
+                             [ETH[(Z, ne_ion)]] + p) + "\n")
+                else:
+                    # element absent from the VFKY96 outer-shell table
+                    # (P, Cl, K): the Verner & Yakovlev (1995) outer-shell
+                    # fit, as in MOCASSIN phFitEl.
+                    row, lsub = ph1[(Z, ne_ion)]
+                    eth, e0, s0, ya, pp, yw = row
+                    fh.write("PHOTO2 " + " ".join(f"{v:.6e}" for v in
+                             [eth, e0, s0, ya, pp, yw,
+                              float(lsub)]) + "\n")
                 v = cf[(Z, ne_ion)]
                 fh.write("CI " + " ".join(f"{x:.6e}" for x in
                          [v[0], v[1], v[2], v[3], v[4]]) + "\n")
