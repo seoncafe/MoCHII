@@ -1,8 +1,4 @@
-# MoCHII v1.00
-
-<p align="center">
-  <img src="docs/mochii_icon.png" width="230" alt="MoCHII icon">
-</p>
+# MoCHII v1.00 <img src="docs/mochii_icon.png" width="64" alt="MoCHII icon" align="top">
 
 MoCHII (**Mo**nte **C**arlo for **H II** regions) is a Monte-Carlo
 photoionization and radiative-transfer code (Fortran 90 + MPI) for **dusty
@@ -65,7 +61,7 @@ mpirun -np 8 ./MoCHII.x input.in
 ```
 
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
-formats, and worked examples; `docs/MoCHII_gas_physics.pdf` for the atomic
+formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
 data, algorithms, and validation results; and `docs/MoCHII_fitting.pdf` for
 the CHIANTI fitting pipeline.
 
