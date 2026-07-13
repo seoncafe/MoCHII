@@ -123,6 +123,19 @@ CX_HIGH = {
     ("si", 4): (6, [7.58e-9, 0.37, 1.06, -4.09, 0, 0]),      # chex(14,4) Si4+ + H0 -> Si3+
 }
 
+# Badnell 2023 RR+DR overrides for ions where CHIANTI 11 still carries older
+# fits.  Si II (Si+ + e -> Si0): CHIANTI 11 = Abdel-Naby et al. (2012);
+# Badnell's 2023 refit (Cloudy c23.01 badnell_rr.dat/badnell_dr.dat magic
+# 20230511/20230512, M=1 ground level) weakens the ~1e4-K DR resonance, so the
+# total recombination is ~0.48x the CHIANTI value at 1e4 K (0.663/0.476/0.847
+# at 5e3/1e4/2e4 K).  This is an UPGRADE (newer than CHIANTI for this ion), not
+# a downgrade to the Cloudy bundle.  Format: (RR[A,B,T0,T1,C,T2], DR_c, DR_E).
+RRDR_OVERRIDE = {
+    ("si", 1): ([3.262e-11, 0.6270, 15.90, 4.237e7, 0.2333, 5.828e4],
+                [3.408e-8, 1.913e-7, 1.679e-7, 7.523e-7, 8.386e-5, 4.083e-3],
+                [24.31, 129.3, 427.2, 3729.0, 5.514e4, 1.295e5]),
+}
+
 
 def parse_ph2():
     txt = open(os.path.join(VERNER_DIR, "phfit2.f")).read()
@@ -269,22 +282,29 @@ def main():
                 v = cf[(Z, ne_ion)]
                 fh.write("CI " + " ".join(f"{x:.6e}" for x in
                          [v[0], v[1], v[2], v[3], v[4]]) + "\n")
-                rr = read_rrparams(el, i + 1)
-                if rr[0] == "bad":
-                    fh.write("RR " + " ".join(f"{x:.6e}" for x in rr[1]) + "\n")
-                else:   # power law alpha = A (T/1e4)^-eta
-                    fh.write("RR2 " + " ".join(f"{x:.6e}" for x in rr[1]) + "\n")
-                dr = read_drparams(el, i + 1)
-                if dr is None:
-                    fh.write("DR 0\n")
-                elif dr[0] == "t1":
-                    _, c, E = dr
-                    fh.write(f"DR {len(c)} " +
-                             " ".join(f"{x:.6e}" for x in c) + "  " +
-                             " ".join(f"{x:.6e}" for x in E) + "\n")
-                else:   # SVS82: alpha = A T^-3/2 e^-T0/T (1 + B e^-T1/T)
-                    fh.write("DR2 " +
-                             " ".join(f"{x:.6e}" for x in dr[1]) + "\n")
+                if (el, i) in RRDR_OVERRIDE:
+                    rr_o, drc_o, dre_o = RRDR_OVERRIDE[(el, i)]
+                    fh.write("RR " + " ".join(f"{x:.6e}" for x in rr_o) + "\n")
+                    fh.write(f"DR {len(drc_o)} " +
+                             " ".join(f"{x:.6e}" for x in drc_o) + "  " +
+                             " ".join(f"{x:.6e}" for x in dre_o) + "\n")
+                else:
+                    rr = read_rrparams(el, i + 1)
+                    if rr[0] == "bad":
+                        fh.write("RR " + " ".join(f"{x:.6e}" for x in rr[1]) + "\n")
+                    else:   # power law alpha = A (T/1e4)^-eta
+                        fh.write("RR2 " + " ".join(f"{x:.6e}" for x in rr[1]) + "\n")
+                    dr = read_drparams(el, i + 1)
+                    if dr is None:
+                        fh.write("DR 0\n")
+                    elif dr[0] == "t1":
+                        _, c, E = dr
+                        fh.write(f"DR {len(c)} " +
+                                 " ".join(f"{x:.6e}" for x in c) + "  " +
+                                 " ".join(f"{x:.6e}" for x in E) + "\n")
+                    else:   # SVS82: alpha = A T^-3/2 e^-T0/T (1 + B e^-T1/T)
+                        fh.write("DR2 " +
+                                 " ".join(f"{x:.6e}" for x in dr[1]) + "\n")
                 if i == 1:
                     for key in ("CXI", "CXR"):
                         form, coef = CX[el][key]
