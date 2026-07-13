@@ -14,9 +14,10 @@ module ion_balance_mod
 ! The converged fractions are written to the shared gas-state arrays with
 ! under-relaxation par%ion_relax (1 = none; < 1 damps oscillation at sharp
 ! I-fronts, the known failure mode flagged in docs/PLAN.md section 3).
-! Every rank runs the identical solve (inputs are ALLREDUCEd tallies), so
-! all ranks agree on max|delta x_HII|; only h_rank 0 writes the shared
-! arrays, bracketed by node barriers.
+! Only the node-local rank 0 runs the solve (the inputs are ALLREDUCEd
+! tallies, so every node's rank 0 is identical); it writes the shared
+! arrays directly and broadcasts max|delta x_HII| to the other node ranks,
+! which skip the per-leaf work entirely.
 !---------------------------------------------------------------------------
   use define
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_nleaf
@@ -117,6 +118,12 @@ contains
     w   = par%ion_relax
     caseA = trim(par%case_ab) == 'A'
 
+    !--- only the node-local rank 0 solves.  jt_ion is ALLREDUCEd over
+    !--- MPI_COMM_WORLD, so every node's rank 0 sees the identical tally and
+    !--- produces identical values; the other node ranks skip the (expensive)
+    !--- per-leaf solve and receive the state through shared memory + the
+    !--- convergence metrics by broadcast.
+    if (mpar%h_rank == 0) then
     allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &
              ne_new(gas_nleaf))
 
@@ -158,18 +165,21 @@ contains
     end do
     dx_vol = sum_dxv / max(sum_xv, tinest)
 
-    !--- write back (h_rank 0 only; identical values on every rank).
-    call MPI_BARRIER(mpar%hostcomm, ierr)
-    if (mpar%h_rank == 0) then
-       do il = 1, gas_nleaf
-          gas_xHI(il)   = xHI_new(il)
-          gas_xHeI(il)  = xHeI_new(il)
-          gas_xHeII(il) = xHeII_new(il)
-          gas_ne(il)    = ne_new(il)
-       end do
-    end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    !--- write the solved state straight into the node-shared arrays.
+    do il = 1, gas_nleaf
+       gas_xHI(il)   = xHI_new(il)
+       gas_xHeI(il)  = xHeI_new(il)
+       gas_xHeII(il) = xHeII_new(il)
+       gas_ne(il)    = ne_new(il)
+    end do
     deallocate(xHI_new, xHeI_new, xHeII_new, ne_new)
+    end if   ! h_rank == 0
+
+    !--- broadcast the metrics to the node's other ranks and barrier so the
+    !--- shared-memory writes are visible before this returns.
+    call MPI_BCAST(max_dx, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(dx_vol, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BARRIER(mpar%hostcomm, ierr)
   end subroutine gas_equilibrium_update
 
 end module ion_balance_mod

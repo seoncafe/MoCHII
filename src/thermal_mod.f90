@@ -132,6 +132,11 @@ contains
 
     caseA = trim(par%case_ab) == 'A'
     w     = par%ion_relax
+    !--- only the node-local rank 0 solves; jt_ion is ALLREDUCEd over
+    !--- MPI_COMM_WORLD so every node's rank 0 is identical.  The other node
+    !--- ranks skip the (expensive) bisection-with-metals and receive the
+    !--- state through shared memory + the metrics by broadcast.
+    if (mpar%h_rank == 0) then
     allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &
              ne_new(gas_nleaf), te_new(gas_nleaf))
 
@@ -204,18 +209,24 @@ contains
     dx_vol  = sum_dxv  / max(sum_xv,  tinest)
     dte_vol = sum_dtev / max(sum_tev, tinest)
 
-    call MPI_BARRIER(mpar%hostcomm, ierr)
-    if (mpar%h_rank == 0) then
-       do il = 1, gas_nleaf
-          gas_xHI(il)   = xHI_new(il)
-          gas_xHeI(il)  = xHeI_new(il)
-          gas_xHeII(il) = xHeII_new(il)
-          gas_ne(il)    = ne_new(il)
-          gas_Te(il)    = te_new(il)
-       end do
-    end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    !--- write the solved state straight into the node-shared arrays.
+    do il = 1, gas_nleaf
+       gas_xHI(il)   = xHI_new(il)
+       gas_xHeI(il)  = xHeI_new(il)
+       gas_xHeII(il) = xHeII_new(il)
+       gas_ne(il)    = ne_new(il)
+       gas_Te(il)    = te_new(il)
+    end do
     deallocate(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
+    end if   ! h_rank == 0
+
+    !--- broadcast the metrics to the node's other ranks and barrier so the
+    !--- shared-memory writes are visible before this returns.
+    call MPI_BCAST(max_dx,  1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(max_dte, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(dx_vol,  1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(dte_vol, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BARRIER(mpar%hostcomm, ierr)
   end subroutine gas_thermal_update
 
 end module thermal_mod
