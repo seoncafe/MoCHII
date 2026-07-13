@@ -124,7 +124,10 @@ contains
      case ('')
         par%distance2cm = 1.0_wp
      case default
-        par%distance2cm = kpc2cm
+        if (mpar%p_rank == 0) write(*,'(a)') &
+           'ERROR: unknown par%distance_unit ('''//trim(par%distance_unit)// &
+           ''') — use ''kpc'', ''pc'', ''au'', or '''' (cm).'
+        call MPI_FINALIZE(ierr);  stop
   end select
 
   if (len_trim(par%out_file) == 0) then

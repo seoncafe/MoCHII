@@ -25,6 +25,12 @@ module sh95_mod
   end type sh95_tab_type
   type(sh95_tab_type) :: tab(2)
 
+  !--- warn once (not each of the millions of leaf x line evaluations) when
+  !--- T exceeds the 30000 K table maximum: the H line emissivity is then
+  !--- frozen at the grid edge, which under the default te_max = 50000 K can
+  !--- affect hot cells.  Low-T and low/high-ne clamps are benign.
+  logical :: sh95_warned_thi = .false.
+
 contains
 
   integer function ion_of(ion)
@@ -122,6 +128,12 @@ contains
     associate(nT => tab(io)%nT, nD => tab(io)%nD, &
               tgrid => tab(io)%tgrid, dgrid => tab(io)%dgrid, &
               etab => tab(io)%etab)
+    if (T > tgrid(nT) .and. .not. sh95_warned_thi) then
+       sh95_warned_thi = .true.
+       if (mpar%p_rank == 0) write(*,'(a,f0.0,a,f0.0,a)') &
+          ' SH95: WARNING - T = ', T, ' K exceeds the table max ', tgrid(nT), &
+          ' K; H/He II line emissivity frozen at the grid edge (shown once).'
+    end if
     lt = min(max(T,  tgrid(1)), tgrid(nT))
     ld = min(max(ne, dgrid(1)), dgrid(nD))
     do iT = 1, nT-1

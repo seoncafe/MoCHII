@@ -77,8 +77,11 @@ contains
        else
           xHI = 1.0_wp
        end if
-       r1 = (gHe1 + cHe1*ne) / (aHe2*ne)
-       r2 = (gHe2 + cHe2*ne) / (aHe3*ne)
+       !--- r1 = He+/He0, r2 = He++/He+.  Cap at 1e150 (physical values stay
+       !--- below ~1e15 given the ne floor) so r1*r2 cannot overflow to Inf
+       !--- and produce a 0*Inf = NaN in xHeII below.
+       r1 = min((gHe1 + cHe1*ne) / (aHe2*ne), 1.0e150_wp)
+       r2 = min((gHe2 + cHe2*ne) / (aHe3*ne), 1.0e150_wp)
        xHeI   = 1.0_wp / (1.0_wp + r1 + r1*r2)
        xHeII  = xHeI * r1
        xHeIII = xHeII * r2
