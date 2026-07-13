@@ -1,10 +1,12 @@
 module sh95_mod
 !---------------------------------------------------------------------------
-! MoCHII: case-B recombination line emissivities on a (T, n_e) grid:
-! H I (ion 1, sh95_hi_caseB.txt) and He II (ion 2, sh95_heii_caseB.txt)
-! from Storey & Hummer (1995, MNRAS 272, 41) via
-! tools/fitting/make_sh95_lines.py; He I (ion 3, hei_porter_caseB.txt)
-! from Porter et al. (2012, 2013) via tools/fitting/make_hei_lines.py.
+! MoCHII: recombination line emissivities on a (T, n_e) grid:
+! H I (ion 1) and He II (ion 2) from Storey & Hummer (1995, MNRAS 272, 41)
+! via tools/fitting/make_sh95_lines.py, in the case that matches the
+! ionization balance (par%case_ab: sh95_{hi,heii}_caseA.txt for case A,
+! sh95_{hi,heii}_caseB.txt for case B); He I (ion 3, hei_porter_caseB.txt)
+! from Porter et al. (2012, 2013) via tools/fitting/make_hei_lines.py
+! (case B only — there is no case-A Porter set).
 ! Bilinear interpolation in (log T, log n_e), clamped at the grid edges.
 ! sh95_emis returns 4 pi j / (n_e n_ion) [erg cm^3 s^-1] with n_ion =
 ! n_p (H I), n_HeIII (He II) or n_HeII (He I).  The ion argument is
@@ -61,10 +63,20 @@ contains
   subroutine sh95_setup()
     use mpi
     implicit none
-    call sh95_load(trim(par%atomic_dir)//'/sh95_hi_caseB.txt', tab(1), &
+    character(len=64) :: hi_file, heii_file
+    !--- select the SH95 tables that match the ionization case.
+    if (trim(par%case_ab) == 'A') then
+       hi_file   = 'sh95_hi_caseA.txt'
+       heii_file = 'sh95_heii_caseA.txt'
+    else
+       hi_file   = 'sh95_hi_caseB.txt'
+       heii_file = 'sh95_heii_caseB.txt'
+    end if
+    call sh95_load(trim(par%atomic_dir)//'/'//trim(hi_file), tab(1), &
                    'H I', required=.true.)
-    call sh95_load(trim(par%atomic_dir)//'/sh95_heii_caseB.txt', tab(2), &
+    call sh95_load(trim(par%atomic_dir)//'/'//trim(heii_file), tab(2), &
                    'He II', required=.false.)
+    !--- He I Porter is case B only (no case-A Porter set) regardless of case.
     call sh95_load(trim(par%atomic_dir)//'/hei_porter_caseB.txt', tab(3), &
                    'He I', required=.false.)
   end subroutine sh95_setup
@@ -78,7 +90,7 @@ contains
     logical,             intent(in)    :: required
     character(len=256) :: line
     character(len=16)  :: key
-    integer :: unit, ios, ia, nu_, nl_, ierr
+    integer :: unit, ios, ia, nu_, nl_, ierr, islash
 
     if (t%nlin > 0) return                     ! already loaded
     open(newunit=unit, file=fname, status='old', iostat=ios)
@@ -113,9 +125,11 @@ contains
        end select
     end do
     close(unit)
-    if (mpar%p_rank == 0) write(*,'(4a,i0,a)') &
-       ' SH95: ', trim(name), ' case-B emissivities loaded', &
-       ' (', t%nlin, ' lines)'
+    !--- report the actual file loaded (its name encodes the case).
+    islash = index(fname, '/', back=.true.)
+    if (mpar%p_rank == 0) write(*,'(5a,i0,a)') &
+       ' SH95: ', trim(name), ' emissivities loaded from ', &
+       trim(fname(islash+1:)), ' (', t%nlin, ' lines)'
   end subroutine sh95_load
 
   !=========================================================================
