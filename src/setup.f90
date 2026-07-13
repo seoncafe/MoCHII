@@ -81,6 +81,12 @@ contains
         'ERROR: par%car_walk must be ''dda'' (default) or ''shared''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%ci_model) /= 'voronov' .and. &
+      trim(par%ci_model) /= 'dere_hybrid') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
 
   !--- ionizing band (G0: the only transport mode).
   if (.not. par%use_ion_band) then

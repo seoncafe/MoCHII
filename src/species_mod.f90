@@ -23,6 +23,7 @@ module species_mod
   use define
   use photo_xsec, only : sigma_vfky96
   use cooling_mod, only : tier1_fit_type, tier1_load, tier1_eval
+  use recomb_mod,  only : ci_dere_ratio
   implicit none
   private
 
@@ -383,7 +384,8 @@ contains
     do ie = 1, n_elements
        do it = 1, elems(ie)%nstage-1
           cch_gam(it,ie) = egam(ie)%g(it,il)
-          cch_ci(it,ie)  = voronov_ci(elems(ie)%ci(1:5,it), T)
+          cch_ci(it,ie)  = voronov_ci(elems(ie)%ci(1:5,it), T) &
+                           * ci_dere_ratio(elems(ie)%Z, it)
           cch_rec(it,ie) = alpha_rec(elems(ie), it, T)
           cch_cxi(it,ie) = 0.0_wp
           cch_cxr(it,ie) = 0.0_wp
@@ -547,7 +549,8 @@ contains
     ns = elems(ie)%nstage
     do it = 1, ns-1
        rion = egam(ie)%g(it,il) &
-            + ne*voronov_ci(elems(ie)%ci(1:5,it), T)
+            + ne*voronov_ci(elems(ie)%ci(1:5,it), T) &
+               *ci_dere_ratio(elems(ie)%Z, it)
        if (elems(ie)%cxi_form(it) > 0) &
           rion = rion + nHII*cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
        rrec = ne*alpha_rec(elems(ie), it, T)

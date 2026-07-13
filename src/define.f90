@@ -568,6 +568,10 @@ public
      real(kind=wp)      :: te_fixed     = 1.0e4_wp
      real(kind=wp)      :: ion_relax    = 1.0_wp
      character(len=1)   :: case_ab      = 'B'
+     !--- collisional ionization: 'voronov' (default, Voronov 1997) or
+     !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
+     !--- ratio per stage, Cloudy c23.01 DereRatio).
+     character(len=16)  :: ci_model     = 'voronov'
      !--- Stage G2: thermal balance.  solve_te replaces the fixed-Te solve
      !--- with heating = cooling bisection in [te_min, te_max]; convergence
      !--- additionally requires max |delta Te|/Te < gas_tol_te.  Tier-1
