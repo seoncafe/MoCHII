@@ -8,7 +8,8 @@ module cellinfo_mod
 !--- center are returned per cell; the photon's current cell id is derived from
 !--- its Cartesian indices ('car') or its leaf index ('amr').
   use define
-  use octree_mod, only : amr_grid
+  use octree_mod, only : amr_grid, leaf_cell, leaf_half, &
+                         cell_cx, cell_cy, cell_cz, cell_ch
   implicit none
   public
 
@@ -54,8 +55,7 @@ contains
   integer,         intent(in) :: ic
   integer :: icell
   if (trim(par%grid_type) == 'amr') then
-     icell = amr_grid%icell_of_leaf(ic)
-     vol   = (2.0_wp*amr_grid%ch(icell))**3
+     vol   = (2.0_wp*leaf_half(ic))**3
   else
      vol   = grid%dx*grid%dy*grid%dz
   endif
@@ -68,8 +68,8 @@ contains
   real(kind=wp),   intent(out) :: x, y, z
   integer :: i, j, k, icell
   if (trim(par%grid_type) == 'amr') then
-     icell = amr_grid%icell_of_leaf(ic)
-     x = amr_grid%cx(icell);  y = amr_grid%cy(icell);  z = amr_grid%cz(icell)
+     icell = leaf_cell(ic)
+     x = cell_cx(icell);  y = cell_cy(icell);  z = cell_cz(icell)
   else
      call car_ijk(grid, ic, i, j, k)
      x = (grid%xface(i)+grid%xface(i+1))*0.5_wp
@@ -89,11 +89,11 @@ contains
   integer :: i, j, k, icell
   real(kind=wp) :: h
   if (trim(par%grid_type) == 'amr') then
-     icell = amr_grid%icell_of_leaf(ic)
-     h = amr_grid%ch(icell)
-     photon%x = amr_grid%cx(icell) + (2.0_wp*rand_number()-1.0_wp)*h
-     photon%y = amr_grid%cy(icell) + (2.0_wp*rand_number()-1.0_wp)*h
-     photon%z = amr_grid%cz(icell) + (2.0_wp*rand_number()-1.0_wp)*h
+     icell = leaf_cell(ic)
+     h = cell_ch(icell)
+     photon%x = cell_cx(icell) + (2.0_wp*rand_number()-1.0_wp)*h
+     photon%y = cell_cy(icell) + (2.0_wp*rand_number()-1.0_wp)*h
+     photon%z = cell_cz(icell) + (2.0_wp*rand_number()-1.0_wp)*h
      photon%icell_amr = ic
   else
      call car_ijk(grid, ic, i, j, k)

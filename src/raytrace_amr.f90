@@ -62,7 +62,7 @@ contains
 
     tau = 0.0_wp
     do while (photon%inside)
-      icell = amr_grid%icell_of_leaf(il)
+      icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       rhokap = amr_grid%rhokap(il)
 
@@ -146,7 +146,7 @@ contains
     end if
 
     do
-      icell  = amr_grid%icell_of_leaf(il)
+      icell  = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       rhokap = amr_grid%rhokap(il)
       if (jt_first) then
@@ -296,6 +296,11 @@ contains
     real(wp) :: tau, t_exit, d_step, kap, wl
     logical  :: do_tally
 
+    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
+       call raytrace_ion_to_tau_uni(photon, tau_in)
+       return
+    end if
+
     inu = photon%inu
     do_tally = photon%nscatt > 0
     wl = photon%wgt*photon%Lpacket
@@ -313,7 +318,7 @@ contains
 
     tau = 0.0_wp
     do while (photon%inside)
-      icell = amr_grid%icell_of_leaf(il)
+      icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       kap = kap_ion(inu, il)
       if (tau + t_exit*kap >= tau_in) then
@@ -353,6 +358,11 @@ contains
     real(wp) :: x, y, z, kx, ky, kz, t_exit, kap
     real(wp) :: tau, expo, expo_out, wl
 
+    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
+       call raytrace_ion_to_edge_uni(photon0, tau_edge_out)
+       return
+    end if
+
     x  = photon0%x;    y  = photon0%y;    z  = photon0%z
     kx = photon0%kx;   ky = photon0%ky;   kz = photon0%kz
     il  = photon0%icell_amr
@@ -368,7 +378,7 @@ contains
     end if
 
     do
-      icell = amr_grid%icell_of_leaf(il)
+      icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       kap = kap_ion(inu, il)
       if (kap*t_exit > 0.0_wp) then
@@ -392,6 +402,187 @@ contains
   end subroutine raytrace_ion_to_edge_amr
 
   !=========================================================================
+  ! Incremental Amanatides-Woo walks for the uniform grid
+  ! (par%uni_walk = 'dda'): per-ray tMax/tDelta per axis, the inner loop
+  ! advances by comparisons and additions only — no cell-geometry reads.
+  ! The tally expressions are identical to the shared walks; only the
+  ! step computation differs (results agree statistically, not bitwise).
+  !=========================================================================
+  subroutine dda_init(x, y, z, kx, ky, kz, ix, iy, iz, stp, tmax, tdel, ok)
+    use define
+    implicit none
+    real(wp), intent(in)  :: x, y, z, kx, ky, kz
+    integer,  intent(out) :: ix, iy, iz, stp(3)
+    real(wp), intent(out) :: tmax(3), tdel(3)
+    logical,  intent(out) :: ok
+    real(wp) :: d, pos(3), kk(3), org(3)
+    integer  :: n(3), a
+
+    d = amr_grid%dcell
+    pos = [x, y, z];  kk = [kx, ky, kz]
+    org = [amr_grid%xmin, amr_grid%ymin, amr_grid%zmin]
+    n   = [amr_grid%nx, amr_grid%ny, amr_grid%nz]
+    ok = .true.
+    ix = min(max(int((x - org(1))/d), 0), n(1)-1)
+    iy = min(max(int((y - org(2))/d), 0), n(2)-1)
+    iz = min(max(int((z - org(3))/d), 0), n(3)-1)
+    block
+      integer :: idx(3)
+      idx = [ix, iy, iz]
+      do a = 1, 3
+         if (kk(a) > 0.0_wp) then
+            stp(a)  = 1
+            tmax(a) = (org(a) + real(idx(a)+1, wp)*d - pos(a))/kk(a)
+            tdel(a) = d/kk(a)
+         else if (kk(a) < 0.0_wp) then
+            stp(a)  = -1
+            tmax(a) = (org(a) + real(idx(a), wp)*d - pos(a))/kk(a)
+            tdel(a) = -d/kk(a)
+         else
+            stp(a)  = 0
+            tmax(a) = hugest
+            tdel(a) = hugest
+         end if
+      end do
+    end block
+  end subroutine dda_init
+
+  subroutine raytrace_ion_to_edge_uni(photon0, tau_edge_out)
+    use define
+    use gas_opacity_mod, only : kap_ion
+    implicit none
+    type(photon_type), intent(in) :: photon0
+    real(wp), intent(out), optional :: tau_edge_out
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau
+    real(wp) :: wl, expo, expo_out
+    logical  :: ok
+
+    call dda_init(photon0%x, photon0%y, photon0%z, photon0%kx, &
+                  photon0%ky, photon0%kz, ix, iy, iz, stp, tmax, tdel, ok)
+    nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
+    inu = photon0%inu
+    wl  = photon0%wgt*photon0%Lpacket
+    expo = 1.0_wp;  tau = 0.0_wp;  t_cur = 0.0_wp
+    if (present(tau_edge_out)) tau_edge_out = 0.0_wp
+
+    do
+      il  = 1 + ix + nx*(iy + ny*iz)
+      a   = minloc(tmax, dim=1)
+      seg = tmax(a) - t_cur
+      kap = kap_ion(inu, il)
+      if (kap*seg > 0.0_wp) then
+        expo_out = expo*exp(-kap*seg)
+        jt_ion(inu,il) = jt_ion(inu,il) + wl*(expo - expo_out)/kap
+        expo = expo_out
+      else
+        jt_ion(inu,il) = jt_ion(inu,il) + wl*expo*seg
+      end if
+      tau = tau + kap*seg
+      if (tau >= tau_huge) exit
+      t_cur = tmax(a)
+      tmax(a) = tmax(a) + tdel(a)
+      select case (a)
+      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) exit
+      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) exit
+      case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) exit
+      end select
+    end do
+    if (present(tau_edge_out)) tau_edge_out = tau
+  end subroutine raytrace_ion_to_edge_uni
+
+  subroutine raytrace_ion_to_tau_uni(photon, tau_in)
+    use define
+    use gas_opacity_mod, only : kap_ion
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(wp),          intent(in)    :: tau_in
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau, wl, d_step
+    logical  :: ok, do_tally
+
+    call dda_init(photon%x, photon%y, photon%z, photon%kx, photon%ky, &
+                  photon%kz, ix, iy, iz, stp, tmax, tdel, ok)
+    nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
+    inu = photon%inu
+    do_tally = photon%nscatt > 0
+    wl = photon%wgt*photon%Lpacket
+    tau = 0.0_wp;  t_cur = 0.0_wp
+
+    do
+      il  = 1 + ix + nx*(iy + ny*iz)
+      a   = minloc(tmax, dim=1)
+      seg = tmax(a) - t_cur
+      kap = kap_ion(inu, il)
+      if (tau + seg*kap >= tau_in) then
+        if (kap > 0.0_wp) then
+          d_step = (tau_in - tau)/kap
+        else
+          d_step = seg
+        end if
+        if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*d_step
+        t_cur = t_cur + d_step
+        exit
+      end if
+      if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*seg
+      tau = tau + seg*kap
+      t_cur = tmax(a)
+      tmax(a) = tmax(a) + tdel(a)
+      select case (a)
+      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) then
+                   photon%inside = .false.;  exit
+                end if
+      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) then
+                   photon%inside = .false.;  exit
+                end if
+      case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) then
+                   photon%inside = .false.;  exit
+                end if
+      end select
+    end do
+
+    !--- final position from the total path length travelled.
+    photon%x = photon%x + t_cur*photon%kx
+    photon%y = photon%y + t_cur*photon%ky
+    photon%z = photon%z + t_cur*photon%kz
+    if (photon%inside) then
+       photon%icell_amr = 1 + ix + nx*(iy + ny*iz)
+    end if
+  end subroutine raytrace_ion_to_tau_uni
+
+  subroutine raytrace_ion_tau_only_uni(photon0, tau_out)
+    use define
+    use gas_opacity_mod, only : kap_ion
+    implicit none
+    type(photon_type), intent(in)  :: photon0
+    real(wp),          intent(out) :: tau_out
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    real(wp) :: tmax(3), tdel(3), t_cur, seg, tau
+    logical  :: ok
+
+    call dda_init(photon0%x, photon0%y, photon0%z, photon0%kx, &
+                  photon0%ky, photon0%kz, ix, iy, iz, stp, tmax, tdel, ok)
+    nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
+    inu = photon0%inu
+    tau = 0.0_wp;  t_cur = 0.0_wp
+    do
+      il  = 1 + ix + nx*(iy + ny*iz)
+      a   = minloc(tmax, dim=1)
+      seg = tmax(a) - t_cur
+      tau = tau + kap_ion(inu, il)*seg
+      if (tau >= tau_huge) exit
+      t_cur = tmax(a)
+      tmax(a) = tmax(a) + tdel(a)
+      select case (a)
+      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) exit
+      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) exit
+      case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) exit
+      end select
+    end do
+    tau_out = tau
+  end subroutine raytrace_ion_tau_only_uni
+
+  !=========================================================================
   ! MoCHII peel-off: optical depth from the photon position to the box
   ! edge along the photon direction at its band bin — NO tally (the peel
   ! contribution is virtual; tallying it would double count).
@@ -405,6 +596,11 @@ contains
 
     integer  :: il, il_new, icell, iface, inu
     real(wp) :: x, y, z, kx, ky, kz, t_exit, tau
+
+    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
+       call raytrace_ion_tau_only_uni(photon0, tau_out)
+       return
+    end if
 
     x  = photon0%x;    y  = photon0%y;    z  = photon0%z
     kx = photon0%kx;   ky = photon0%ky;   kz = photon0%kz
@@ -420,7 +616,7 @@ contains
     end if
 
     do
-      icell = amr_grid%icell_of_leaf(il)
+      icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       tau = tau + kap_ion(inu, il)*t_exit
       if (tau >= tau_huge) exit

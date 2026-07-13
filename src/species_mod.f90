@@ -342,7 +342,7 @@ contains
   ! (all elements, all leaves); call after jtally_ion_reduce each iteration.
   !=========================================================================
   subroutine species_gamma_compute()
-    use octree_mod,   only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     use jtally_mod,   only : jt_ion
     use ion_band_mod, only : ion_e
     implicit none
@@ -356,8 +356,7 @@ contains
              sig(inu) = species_sigma(ie, it, ion_e(inu))
           end do
           do il = 1, nleaf
-             ic  = amr_grid%icell_of_leaf(il)
-             vol = (2.0_wp*amr_grid%ch(ic))**3
+             vol = (2.0_wp*leaf_half(il))**3
              fac = 1.0_wp/(vol*par%distance2cm**2)
              fJ  = 0.0_wp
              fH  = 0.0_wp

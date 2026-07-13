@@ -97,6 +97,92 @@ contains
 
   !=========================================================================
   !=========================================================================
+  ! Geometry accessors: analytic in uniform mode (the cx/cy/cz/ch and
+  ! leaf-map arrays are NOT allocated there — the "true" uniform
+  ! backend), plain array reads on the octree.  The analytic center
+  ! expressions are the SAME ones amr_build_uniform previously used to
+  ! fill the arrays, so values are bit-identical.
+  !=========================================================================
+  pure subroutine uni_ixyz(icell, ix, iy, iz)
+    integer, intent(in)  :: icell
+    integer, intent(out) :: ix, iy, iz
+    integer :: rem
+    iz  = (icell-1)/(amr_grid%nx*amr_grid%ny)
+    rem = (icell-1) - iz*amr_grid%nx*amr_grid%ny
+    iy  = rem/amr_grid%nx
+    ix  = rem - iy*amr_grid%nx
+  end subroutine uni_ixyz
+
+  pure real(wp) function cell_cx(icell)
+    integer, intent(in) :: icell
+    integer :: ix, iy, iz
+    if (amr_grid%uniform) then
+       call uni_ixyz(icell, ix, iy, iz)
+       cell_cx = amr_grid%xmin + (real(ix,wp) + 0.5_wp)*amr_grid%dcell
+    else
+       cell_cx = amr_grid%cx(icell)
+    end if
+  end function cell_cx
+
+  pure real(wp) function cell_cy(icell)
+    integer, intent(in) :: icell
+    integer :: ix, iy, iz
+    if (amr_grid%uniform) then
+       call uni_ixyz(icell, ix, iy, iz)
+       cell_cy = amr_grid%ymin + (real(iy,wp) + 0.5_wp)*amr_grid%dcell
+    else
+       cell_cy = amr_grid%cy(icell)
+    end if
+  end function cell_cy
+
+  pure real(wp) function cell_cz(icell)
+    integer, intent(in) :: icell
+    integer :: ix, iy, iz
+    if (amr_grid%uniform) then
+       call uni_ixyz(icell, ix, iy, iz)
+       cell_cz = amr_grid%zmin + (real(iz,wp) + 0.5_wp)*amr_grid%dcell
+    else
+       cell_cz = amr_grid%cz(icell)
+    end if
+  end function cell_cz
+
+  pure real(wp) function cell_ch(icell)
+    integer, intent(in) :: icell
+    if (amr_grid%uniform) then
+       cell_ch = 0.5_wp*amr_grid%dcell
+    else
+       cell_ch = amr_grid%ch(icell)
+    end if
+  end function cell_ch
+
+  pure integer function leaf_cell(il)      ! leaf index -> cell index
+    integer, intent(in) :: il
+    if (amr_grid%uniform) then
+       leaf_cell = il
+    else
+       leaf_cell = amr_grid%icell_of_leaf(il)
+    end if
+  end function leaf_cell
+
+  !--- leaf-level conveniences (the idioms the gas modules use)
+  pure real(wp) function leaf_cx(il)
+    integer, intent(in) :: il
+    leaf_cx = cell_cx(leaf_cell(il))
+  end function leaf_cx
+  pure real(wp) function leaf_cy(il)
+    integer, intent(in) :: il
+    leaf_cy = cell_cy(leaf_cell(il))
+  end function leaf_cy
+  pure real(wp) function leaf_cz(il)
+    integer, intent(in) :: il
+    leaf_cz = cell_cz(leaf_cell(il))
+  end function leaf_cz
+  pure real(wp) function leaf_half(il)     ! cell half-width of a leaf
+    integer, intent(in) :: il
+    leaf_half = cell_ch(leaf_cell(il))
+  end function leaf_half
+
+  !=========================================================================
   ! Uniform-grid raster index of (x,y,z); 1-based, 0 outside.
   !=========================================================================
   integer function uni_index(x, y, z) result(il)
@@ -229,8 +315,8 @@ contains
     real(wp), intent(out) :: t_exit
     integer,  intent(out) :: iface
     real(wp) :: h, cx, cy, cz, t(6)
-    cx = amr_grid%cx(icell);  cy = amr_grid%cy(icell);  cz = amr_grid%cz(icell)
-    h  = amr_grid%ch(icell)
+    cx = cell_cx(icell);  cy = cell_cy(icell);  cz = cell_cz(icell)
+    h  = cell_ch(icell)
     if (kx > 0.0_wp) then
       t(1) = (cx + h - x) / kx;  t(2) = hugest
     else if (kx < 0.0_wp) then
@@ -581,28 +667,13 @@ contains
     amr_grid%nleaf  = nx*ny*nz
     amr_grid%levelmax = nint(log(real(nx,wp))/log(2.0_wp))
 
-    call create_shared_mem(amr_grid%cx, [amr_grid%ncells])
-    call create_shared_mem(amr_grid%cy, [amr_grid%ncells])
-    call create_shared_mem(amr_grid%cz, [amr_grid%ncells])
-    call create_shared_mem(amr_grid%ch, [amr_grid%ncells])
-    call create_shared_mem(amr_grid%ileaf,         [amr_grid%ncells])
-    call create_shared_mem(amr_grid%icell_of_leaf, [amr_grid%nleaf])
-    if (mpar%h_rank == 0) then
-       do il = 1, amr_grid%ncells
-          iz = (il-1)/(nx*ny)
-          iy = ((il-1) - iz*nx*ny)/nx
-          ix = (il-1) - iz*nx*ny - iy*nx
-          amr_grid%cx(il) = xmin + (real(ix,wp) + 0.5_wp)*amr_grid%dcell
-          amr_grid%cy(il) = ymin + (real(iy,wp) + 0.5_wp)*amr_grid%dcell
-          amr_grid%cz(il) = zmin + (real(iz,wp) + 0.5_wp)*amr_grid%dcell
-          amr_grid%ch(il) = 0.5_wp*amr_grid%dcell
-          amr_grid%ileaf(il)         = il
-          amr_grid%icell_of_leaf(il) = il
-       end do
-    end if
+    !--- the true uniform backend: NO geometry arrays — centers, half
+    !--- widths, and the leaf<->cell maps come analytically from the
+    !--- raster index (cell_cx/cy/cz/ch, leaf_cell accessors).
     call MPI_BARRIER(mpar%hostcomm, ierr)
     if (mpar%p_rank == 0) write(*,'(a,3i5,a)') &
-       ' UNI: uniform grid ', nx, ny, nz, ' (raster order, DDA traversal)'
+       ' UNI: uniform grid ', nx, ny, nz, &
+       ' (raster order, analytic geometry — no tree arrays)'
   end subroutine amr_build_uniform
 
   ! ---- private helpers ----

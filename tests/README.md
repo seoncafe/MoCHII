@@ -15,5 +15,5 @@ results are recorded in CLAUDE.md and docs/MoCHII_physics.pdf.
 | `g4_tng` | Illustris-TNG post-processing demo |
 | `d_dusty` | dusty Stromgren, scattering bracket, T_dust/IR, SEDust smokes (`sedust_smoke.in`, `dustemis_smoke.in`, `pahlive_smoke.in`), FUV option (`d_fuv_*.in`, `check_fuv.py`) |
 | `peel` | peel-off imaging: optically-thin analytic direct gate (`peel_thin.in`, `check_peel.py`), scattered morphology (`peel_scat.in`), bin cubes (`peel_cube.in`) |
-| `uni_dda` | uniform grid vs single-level octree, bit-identical + timing (`check_uni.py`) |
+| `uni_dda` | uniform grid vs single-level octree: shared walk bit-identical; incremental DDA walk (`uni_walk='dda'`) to rounding + timing (`check_uni.py`) |
 | `pdr` | PDR physics: metal electrons, photoelectric heating, H-impact cooling (`pdr_L5.in`, `check_pdr.py`) |

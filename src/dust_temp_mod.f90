@@ -165,7 +165,7 @@ contains
 
   !=========================================================================
   subroutine dust_ir_write(heat_dust)
-    use octree_mod, only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     use utility,    only : get_base_name
     implicit none
     real(kind=wp), intent(in) :: heat_dust(:)
@@ -177,8 +177,7 @@ contains
     Lnu = 0.0_wp;  Labs = 0.0_wp
     do il = 1, amr_grid%nleaf
        if (t_dust(il) <= 0.0_wp) cycle
-       ic  = amr_grid%icell_of_leaf(il)
-       vol = (2.0_wp*amr_grid%ch(ic)*par%distance2cm)**3
+       vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        kd  = amr_grid%rhokap(il)/par%distance2cm
        Labs = Labs + heat_dust(il)*vol
        do k = 1, NLAM_IR

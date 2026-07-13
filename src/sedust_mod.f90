@@ -108,7 +108,7 @@ contains
   !=========================================================================
   subroutine sedust_compute_write(heat_dust)
     use mpi
-    use octree_mod,      only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     use jtally_mod,      only : jt_ion
     use ion_band_mod,    only : ion_e, ion_dnu
     use utility,         only : get_base_name, is_finite
@@ -150,8 +150,7 @@ contains
            mod(ndone, nmine/5) == 0) write(*,'(a,i0,a,i0)') &
           ' SEDU: rank0 ', ndone, '/', nmine
        if (heat_dust(il) <= 0.0_wp) cycle
-       ic  = amr_grid%icell_of_leaf(il)
-       vol = (2.0_wp*amr_grid%ch(ic)*par%distance2cm)**3
+       vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        Labs = heat_dust(il)*vol
        !--- J_lambda [SI, W/m^2/sr/m] of this leaf on the band bins.
        do b = 1, par%nnu_ion
@@ -270,7 +269,7 @@ contains
   ! flux-conserving column map of these blocks IS the dust-band image.
   !=========================================================================
   subroutine dustemis_write(em_band, band_wl, nband)
-    use octree_mod, only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
     use iofile_mod
     use utility,    only : get_base_name
     implicit none
@@ -290,11 +289,10 @@ contains
 
     allocate(lxyz(amr_grid%nleaf,3), tmp(amr_grid%nleaf))
     do il = 1, amr_grid%nleaf
-       ic = amr_grid%icell_of_leaf(il)
-       lxyz(il,1) = amr_grid%cx(ic)
-       lxyz(il,2) = amr_grid%cy(ic)
-       lxyz(il,3) = amr_grid%cz(ic)
-       tmp(il)    = 2.0_wp*amr_grid%ch(ic)
+       lxyz(il,1) = leaf_cx(il)
+       lxyz(il,2) = leaf_cy(il)
+       lxyz(il,3) = leaf_cz(il)
+       tmp(il)    = 2.0_wp*leaf_half(il)
     end do
     call io_append_image(file, lxyz, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','LeafXYZ', &

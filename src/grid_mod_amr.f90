@@ -202,7 +202,7 @@ contains
      else if (par%tauhomo > 0.0_wp) then
         volsum = 0.0_wp;  kapsum = 0.0_wp
         do il = 1, nleaf
-           vol = (2.0_wp * amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
+           vol = (2.0_wp * leaf_half(il))**3
            if (amr_grid%rhokap(il) > 0.0_wp) then
               volsum = volsum + vol
               kapsum = kapsum + amr_grid%rhokap(il) * vol
@@ -236,7 +236,7 @@ contains
      taupole      = amr_pole_tau()
      volsum = 0.0_wp;  kapsum = 0.0_wp
      do il = 1, nleaf
-        vol = (2.0_wp * amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
+        vol = (2.0_wp * leaf_half(il))**3
         if (amr_grid%rhokap(il) > 0.0_wp) then
            volsum = volsum + vol
            kapsum = kapsum + amr_grid%rhokap(il) * vol
@@ -274,7 +274,7 @@ contains
   kx = 0.0_wp;  ky = 0.0_wp;  kz = 1.0_wp
   il = amr_find_leaf(x, y, z)
   do while (il > 0)
-     icell = amr_grid%icell_of_leaf(il)
+     icell = leaf_cell(il)
      call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
      tau = tau + amr_grid%rhokap(il) * t_exit
      x = x + t_exit*kx;  y = y + t_exit*ky;  z = z + t_exit*kz

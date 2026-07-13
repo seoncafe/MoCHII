@@ -14,7 +14,7 @@ module gas_rates_mod
 ! J_ion(nnu, nleaf), the energy grid, and leaf centers.
 !---------------------------------------------------------------------------
   use define
-  use octree_mod,   only : amr_grid
+  use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use jtally_mod,   only : jt_ion
   use ion_band_mod, only : ion_e, ion_de, ion_nu, ion_dnu
   use photo_xsec,   only : sigma_HI, sigma_HeI, sigma_HeII
@@ -60,7 +60,7 @@ contains
     heat_dust = 0.0_wp; g0_fuv = 0.0_wp
 
     do il = 1, nleaf
-       vol = (2.0_wp * amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
+       vol = (2.0_wp * leaf_half(il))**3
        fac = 1.0_wp / (vol * par%distance2cm**2)     ! -> 4 pi J_nu dnu per bin
        do inu = 1, par%nnu_ion
           fJ  = jt_ion(inu, il) * fac                ! 4 pi J dnu [erg/s/cm^2]
@@ -142,9 +142,8 @@ contains
     !--- J_nu(nnu, nleaf) [erg/s/cm^2/Hz/sr]
     allocate(jnu(par%nnu_ion, nleaf))
     do il = 1, nleaf
-       ic = amr_grid%icell_of_leaf(il)
        do inu = 1, par%nnu_ion
-          jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*amr_grid%ch(ic))**3 &
+          jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
                         * ion_dnu(inu) * par%distance2cm**2)
        end do
     end do
@@ -182,10 +181,9 @@ contains
 
     allocate(leafxyz(nleaf,3))
     do il = 1, nleaf
-       ic = amr_grid%icell_of_leaf(il)
-       leafxyz(il,1) = amr_grid%cx(ic)
-       leafxyz(il,2) = amr_grid%cy(ic)
-       leafxyz(il,3) = amr_grid%cz(ic)
+       leafxyz(il,1) = leaf_cx(il)
+       leafxyz(il,2) = leaf_cy(il)
+       leafxyz(il,3) = leaf_cz(il)
     end do
     call io_append_image(file, leafxyz, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','LeafXYZ','leaf center x,y,z (code units)',status)

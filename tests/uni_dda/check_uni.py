@@ -55,7 +55,30 @@ def times(log):
 it_a, tot_a = times("uni_amr.log")
 it_d, tot_d = times("uni_dda.log")
 print(f"per-iteration wall time [min]: amr median {np.median(it_a):.3f}, "
-      f"dda median {np.median(it_d):.3f}  -> speedup x{np.median(it_a)/np.median(it_d):.2f}")
-print(f"total run [min]: amr {tot_a:.2f}, dda {tot_d:.2f}")
+      f"shared median {np.median(it_d):.3f}  -> speedup x{np.median(it_a)/np.median(it_d):.2f}")
+print(f"total run [min]: amr {tot_a:.2f}, shared {tot_d:.2f}")
 ok = dx.max() < 5e-3 and abs(vion_d/vion_a - 1) < 1e-3
-print("GATE:", "PASS" if ok else "FAIL")
+print("GATE (uniform/shared vs octree):", "PASS" if ok else "FAIL")
+
+# --- uni_walk='dda' (incremental Amanatides-Woo): the FP step order
+# --- differs from the shared walk, so bit-identity is NOT expected;
+# --- compare statistically against the shared-walk run.
+import os
+if os.path.exists("uni_ddaw_rates.h5"):
+    xyz_w, xhi_w, ne_w = load("uni_ddaw")
+    kw = np.argsort(keys(xyz_w))
+    dxw = np.abs(xhi_d[kd] - xhi_w[kw])
+    print(f"\ndda vs shared |d x_HI|: max = {dxw.max():.3e}, "
+          f"median = {np.median(dxw):.3e}")
+    vion_w = (1.0 - xhi_w).sum()
+    print(f"V_ion ratio (dda/shared) = {vion_w/vion_d:.6f}")
+    R_w = (3.0 * vion_w * (8.0**3 / xhi_w.size) / (4 * np.pi))**(1 / 3)
+    print(f"R_eff: dda {R_w:.4f} pc")
+    it_w, tot_w = times("uni_ddaw.log")
+    print(f"per-iteration wall time [min]: shared median {np.median(it_d):.3f}, "
+          f"dda median {np.median(it_w):.3f}  -> speedup x{np.median(it_d)/np.median(it_w):.2f}")
+    print(f"total run [min]: shared {tot_d:.2f}, dda {tot_w:.2f}")
+    # front cells sit at the MC-noise floor (~few e-2 at 4e7 packets);
+    # V_ion is the converged volume-integrated measure.
+    ok_w = abs(vion_w/vion_d - 1) < 2e-3 and np.median(dxw) < 1e-6
+    print("GATE (dda vs shared):", "PASS" if ok_w else "FAIL")

@@ -21,7 +21,7 @@ module diffuse_mod
 ! total leaf luminosity, then a channel CDF within the leaf.
 !---------------------------------------------------------------------------
   use define
-  use octree_mod,    only : amr_grid
+  use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                             gas_Te, gas_nleaf
   use recomb_mod
@@ -71,8 +71,7 @@ contains
        end if
        T  = gas_Te(il)
        ne = gas_ne(il)
-       vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)) &
-             * par%distance2cm)**3
+       vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        kT_eV  = kboltz_cgs*T/ev2erg
        xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
        nHII    = nH*(1.0_wp - gas_xHI(il))
@@ -133,13 +132,12 @@ contains
        end if
     end do
     il = lo
-    ic = amr_grid%icell_of_leaf(il)
-    half = amr_grid%ch(ic)
+    half = leaf_half(il)
 
     !--- uniform position within the leaf
-    photon%x = amr_grid%cx(ic) + (2.0_wp*rand_number() - 1.0_wp)*half
-    photon%y = amr_grid%cy(ic) + (2.0_wp*rand_number() - 1.0_wp)*half
-    photon%z = amr_grid%cz(ic) + (2.0_wp*rand_number() - 1.0_wp)*half
+    photon%x = leaf_cx(il) + (2.0_wp*rand_number() - 1.0_wp)*half
+    photon%y = leaf_cy(il) + (2.0_wp*rand_number() - 1.0_wp)*half
+    photon%z = leaf_cz(il) + (2.0_wp*rand_number() - 1.0_wp)*half
 
     cost = 2.0_wp*rand_number() - 1.0_wp
     sint = sqrt(1.0_wp - cost*cost)

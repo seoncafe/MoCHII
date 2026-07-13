@@ -19,7 +19,7 @@ module lines_mod
 ! and the x_<el>_stages fraction blocks.
 !---------------------------------------------------------------------------
   use define
-  use octree_mod,    only : amr_grid
+  use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, &
                             gas_ne, gas_Te, gas_nleaf
   use species_mod,   only : n_elements, elem_name, elem_nstage, elem_abund, &
@@ -79,7 +79,7 @@ contains
          nH = gas_nH(il)
          if (nH <= 0.0_wp) cycle
          T  = gas_Te(il);  ne = gas_ne(il)
-         vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il))*par%distance2cm)**3
+         vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
          do kk = 1, nlh
             emis(kk) = ne*nH*(1.0_wp - gas_xHI(il))*sh95_emis(kk, T, ne)
             LH(kk)   = LH(kk) + emis(kk)*vol
@@ -132,8 +132,7 @@ contains
             xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
             if (xHeIII <= 1.0e-30_wp) cycle
             T  = gas_Te(il);  ne = gas_ne(il)
-            vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)) &
-                  *par%distance2cm)**3
+            vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
             do kk = 1, nlhe
                emis(kk) = ne*nH*par%He_abund*xHeIII &
                           *sh95_emis(kk, T, ne, ion=2)
@@ -180,8 +179,7 @@ contains
              call species_fractions(ie, il, T, ne, nHI, nHII, frac)
              nion = elem_abund(ie)*nH*frac(ist)
              if (nion <= 1.0e-30_wp) cycle
-             vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)) &
-                   *par%distance2cm)**3
+             vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
              call nlevel_emissivities(atom, T, ne, emis)
              Lline(1:nl) = Lline(1:nl) + emis(1:nl)*nion*vol
              if (do_emis) em(1:nl, il) = emis(1:nl)*nion
@@ -227,10 +225,9 @@ contains
     status = 0
     allocate(lxyz(gas_nleaf,3))
     do il = 1, gas_nleaf
-       ic = amr_grid%icell_of_leaf(il)
-       lxyz(il,1) = amr_grid%cx(ic)
-       lxyz(il,2) = amr_grid%cy(ic)
-       lxyz(il,3) = amr_grid%cz(ic)
+       lxyz(il,1) = leaf_cx(il)
+       lxyz(il,2) = leaf_cy(il)
+       lxyz(il,3) = leaf_cz(il)
     end do
     call io_append_image(efile, lxyz, status, bitpix=-64)
     call io_put_keyword(efile,'EXTNAME','LeafXYZ', &
@@ -241,8 +238,7 @@ contains
 
     allocate(tmp(gas_nleaf))
     do il = 1, gas_nleaf
-       ic = amr_grid%icell_of_leaf(il)
-       tmp(il) = 2.0_wp*amr_grid%ch(ic)      ! leaf edge length, code units
+       tmp(il) = 2.0_wp*leaf_half(il)        ! leaf edge length, code units
     end do
     call io_append_image(efile, tmp, status, bitpix=-64)
     call io_put_keyword(efile,'EXTNAME','LeafSize', &

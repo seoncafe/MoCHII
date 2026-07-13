@@ -118,7 +118,7 @@ contains
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
   subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
     use mpi
-    use octree_mod, only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     implicit none
     real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol
 
@@ -195,7 +195,7 @@ contains
        te_new(il) = te
        max_dx  = max(max_dx,  abs(xHI_new(il) - gas_xHI(il)))
        max_dte = max(max_dte, abs(te_new(il) - gas_Te(il))/gas_Te(il))
-       vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
+       vol = (2.0_wp*leaf_half(il))**3
        sum_dxv  = sum_dxv  + vol*abs(xHI_new(il) - gas_xHI(il))
        sum_xv   = sum_xv   + vol*(1.0_wp - xHI_new(il))
        sum_dtev = sum_dtev + vol*ne_new(il)*abs(te_new(il) - gas_Te(il))

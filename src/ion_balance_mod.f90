@@ -99,7 +99,7 @@ contains
   ! solution has.
   subroutine gas_equilibrium_update(max_dx, dx_vol)
     use mpi
-    use octree_mod, only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     implicit none
     real(kind=wp), intent(out) :: max_dx, dx_vol
 
@@ -149,7 +149,7 @@ contains
           end block
        end if
        max_dx = max(max_dx, abs(xHI_new(il) - gas_xHI(il)))
-       vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il)))**3
+       vol = (2.0_wp*leaf_half(il))**3
        sum_dxv = sum_dxv + vol*abs(xHI_new(il) - gas_xHI(il))
        sum_xv  = sum_xv  + vol*(1.0_wp - xHI_new(il))
     end do

@@ -278,7 +278,7 @@ contains
   ! Grid-integrated continuum spectrum: '<base>_nebcont.txt'.
   !=========================================================================
   subroutine nebcont_write()
-    use octree_mod,    only : amr_grid
+    use octree_mod, only : amr_grid, leaf_half
     use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                               gas_Te, gas_nleaf
     use photo_xsec,    only : sigma_HI, sigma_HeI, sigma_HeII
@@ -297,7 +297,7 @@ contains
        nH = gas_nH(il)
        if (nH <= 0.0_wp) cycle
        T  = gas_Te(il);  ne = gas_ne(il)
-       vol = (2.0_wp*amr_grid%ch(amr_grid%icell_of_leaf(il))*par%distance2cm)**3
+       vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        xHeIII  = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
        nHII    = nH*(1.0_wp - gas_xHI(il))
        nHeII_n = nH*par%He_abund*gas_xHeII(il)

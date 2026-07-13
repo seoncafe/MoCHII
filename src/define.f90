@@ -491,6 +491,13 @@ public
      !--- band-integrated channel images are still written (derived from
      !--- the cube).
      logical            :: peel_bins    = .false.
+     !--- uniform-grid walk: 'shared' = the octree walks with integer
+     !--- index arithmetic replacing the neighbor table (bit-identical
+     !--- to the octree run); 'dda' = dedicated incremental
+     !--- Amanatides-Woo walks (per-ray tMax/tDelta, no cell-geometry
+     !--- reads in the inner loop — statistically identical, faster on
+     !--- large grids).
+     character(len=8)   :: uni_walk     = 'shared'
      !--- convergence criterion: 'cell' = cell-max tests (max|dx_HII| <
      !--- gas_tol, max|dTe|/Te < gas_tol_te — stall at the front-cell MC
      !--- noise floor and at no-heating cells); 'vol' = volume-integrated
