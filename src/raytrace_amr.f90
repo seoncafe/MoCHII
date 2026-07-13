@@ -261,11 +261,14 @@ contains
        sint = sqrt(1.0_wp - cost*cost)
        phi  = twopi*rand_number()
        kx = photon%kx;  ky = photon%ky;  kz = photon%kz
+       norm = sqrt(kx*kx + ky*ky + kz*kz)
+       if (norm <= 0.0_wp) exit
+       kx = kx/norm;  ky = ky/norm;  kz = kz/norm
        !--- orthonormal frame (u, v, k)
        if (abs(kz) < 0.99_wp) then
           ux = -ky;  uy = kx;  uz = 0.0_wp
        else
-          ux = 1.0_wp;  uy = 0.0_wp;  uz = 0.0_wp
+          ux = 0.0_wp;  uy = -kz;  uz = ky
        end if
        norm = sqrt(ux*ux + uy*uy + uz*uz)
        ux = ux/norm;  uy = uy/norm;  uz = uz/norm
@@ -273,6 +276,10 @@ contains
        photon%kx = sint*(cos(phi)*ux + sin(phi)*vx) + cost*kx
        photon%ky = sint*(cos(phi)*uy + sin(phi)*vy) + cost*ky
        photon%kz = sint*(cos(phi)*uz + sin(phi)*vz) + cost*kz
+       norm = sqrt(photon%kx**2 + photon%ky**2 + photon%kz**2)
+       photon%kx = photon%kx/norm
+       photon%ky = photon%ky/norm
+       photon%kz = photon%kz/norm
        photon%nscatt = photon%nscatt + 1
        !--- next flight (unforced); segments tally into jt_ion
        tau = -log(max(rand_number(), tinest))

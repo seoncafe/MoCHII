@@ -253,13 +253,14 @@ contains
     type(photon_type), intent(in) :: photon
     type(photon_type) :: pobs
     real(kind=wp) :: r2, r, vdet(3), tau, cosa, gg, peel, contrib
+    real(kind=wp) :: knorm2, hg_den, hg_den_min
     integer :: ix, iy, i, k, ch
 
     ch = peel_channel(photon%inu)
     !--- the D03 table carries <cos> = 1.000 in the EUV; g = 1 with a
     !--- perfectly forward peel direction gives 0/0 in the HG phase
     !--- function — clamp (one NaN contribution poisons the image sum).
-    gg = min(ion_dust_g(photon%inu), 0.9999_wp)
+    gg = min(max(ion_dust_g(photon%inu), -0.9999_wp), 0.9999_wp)
     do k = 1, par%nobs
        pobs = photon
        pobs%kx = observer(k)%x - photon%x
@@ -280,14 +281,17 @@ contains
        if (ix < 1 .or. ix > observer(k)%nxim .or. &
            iy < 1 .or. iy > observer(k)%nyim) cycle
        call raytrace_ion_tau_only_amr(pobs, tau)
-       !--- e^-tau = 0 to any precision; skipping also avoids a
-       !--- -fp-model fast underflow pathology (the -O0 -check build is
-       !--- clean, the fast build produced Inf/NaN pixels through the
-       !--- extreme-dynamic-range exp/accumulate chain).
+       !--- Contributions below exp(-500) are negligible at image precision;
+       !--- skipping also keeps the following products in the normal range.
        if (tau > 500.0_wp) cycle
-       cosa = photon%kx*pobs%kx + photon%ky*pobs%ky + photon%kz*pobs%kz
-       peel = (1.0_wp - gg*gg) &
-              /max((1.0_wp + gg*gg) - 2.0_wp*gg*cosa, tinest)**1.5_wp/fourpi
+       knorm2 = photon%kx**2 + photon%ky**2 + photon%kz**2
+       if (knorm2 <= 0.0_wp) cycle
+       cosa = (photon%kx*pobs%kx + photon%ky*pobs%ky + photon%kz*pobs%kz) &
+              /sqrt(knorm2)
+       cosa = min(max(cosa, -1.0_wp), 1.0_wp)
+       hg_den_min = (1.0_wp - abs(gg))**2
+       hg_den = max((1.0_wp + gg*gg) - 2.0_wp*gg*cosa, hg_den_min)
+       peel = (1.0_wp - gg*gg)/(hg_den*sqrt(hg_den)*fourpi)
        contrib = photon%Lpacket*photon%wgt*peel/r2*exp(-tau)
        !--- defensive: a non-finite contribution would poison the whole
        !--- image sum.  Bit test on the exponent field — an ordinary
