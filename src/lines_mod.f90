@@ -53,6 +53,14 @@ contains
     do_emis = par%emis_output
     status  = 0
 
+    !--- the SH95 H I / He II tables are intrinsic case B; the ionization
+    !--- balance may run case A (par%case_ab='A', or diffuse_field forces
+    !--- it).  Flag the mixed treatment so it is not read as self-consistent
+    !--- (a case-A SH95 table would be needed for full consistency).
+    if (trim(par%case_ab) /= 'B') write(*,'(a)') &
+       ' LINE: WARNING - ionization uses case '//trim(par%case_ab)// &
+       ' but the SH95 H I/He II lines are intrinsic case B (mixed).'
+
     !--- emissivity file: open and write the state blocks first.
     if (do_emis) then
        call io_open_new(efile, trim(get_base_name(par%out_file))//'_emis'// &
@@ -102,6 +110,8 @@ contains
       write(unit,'(a)') '# MoCHII line luminosities (converged state)'
       write(unit,'(a)') '# H I recombination lines: Storey & Hummer (1995) '// &
          'case B, bilinear (log T, log ne) interpolation'
+      write(unit,'(a)') '# (lines are intrinsic case B; ionization balance '// &
+         'ran case '//trim(par%case_ab)//')'
       write(unit,'(a)') '# metals: Tier-2 n-level solve per leaf'
       write(unit,'(a,es14.6,a)') '# L(Hbeta) = ', LHb, ' erg/s'
       write(unit,'(a)') '# elem stage  lambda[A]      L[erg/s]     L/L(Hbeta)'

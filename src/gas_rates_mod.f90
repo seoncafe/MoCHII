@@ -43,6 +43,8 @@ contains
     implicit none
     integer  :: il, inu, nleaf
     real(kind=wp) :: vol, fac, hnu, sHI, sHeI, sHeII, fJ
+    real(kind=wp) :: sig_HI(par%nnu_ion), sig_HeI(par%nnu_ion), &
+                     sig_HeII(par%nnu_ion)
 
     nleaf = amr_grid%nleaf
     if (allocated(gamma_HI)) then
@@ -59,6 +61,14 @@ contains
     heat_HI  = 0.0_wp;  heat_HeI  = 0.0_wp;  heat_HeII  = 0.0_wp
     heat_dust = 0.0_wp; g0_fuv = 0.0_wp
 
+    !--- cross sections depend only on the (fixed) band, not on the leaf:
+    !--- evaluate once per bin instead of nleaf times (identical values).
+    do inu = 1, par%nnu_ion
+       sig_HI(inu)   = sigma_HI(ion_e(inu))
+       sig_HeI(inu)  = sigma_HeI(ion_e(inu))
+       sig_HeII(inu) = sigma_HeII(ion_e(inu))
+    end do
+
     do il = 1, nleaf
        vol = (2.0_wp * leaf_half(il))**3
        fac = 1.0_wp / (vol * par%distance2cm**2)     ! -> 4 pi J_nu dnu per bin
@@ -66,9 +76,9 @@ contains
           fJ  = jt_ion(inu, il) * fac                ! 4 pi J dnu [erg/s/cm^2]
           if (fJ <= 0.0_wp) cycle
           hnu = ion_e(inu) * ev2erg                  ! photon energy [erg]
-          sHI   = sigma_HI(ion_e(inu))
-          sHeI  = sigma_HeI(ion_e(inu))
-          sHeII = sigma_HeII(ion_e(inu))
+          sHI   = sig_HI(inu)
+          sHeI  = sig_HeI(inu)
+          sHeII = sig_HeII(inu)
           gamma_HI(il)   = gamma_HI(il)   + fJ*sHI  /hnu
           gamma_HeI(il)  = gamma_HeI(il)  + fJ*sHeI /hnu
           gamma_HeII(il) = gamma_HeII(il) + fJ*sHeII/hnu

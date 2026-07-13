@@ -64,6 +64,13 @@ contains
   else
      write(*,*) 'Error in reading the data file :', trim(fname),' status = ',status
   endif
+  !--- abort on open/read failure: falling through would use an unallocated
+  !--- (or garbage) arr and undefined n1/n2/n3 below.
+  if (status /= 0) then
+     write(*,*) 'read_3D: cannot read ', trim(fname), ' (status = ', status, &
+                ') - aborting.'
+     error stop
+  endif
 
   if (present(reduce_factor)) then
      if (reduce_factor > 1) then

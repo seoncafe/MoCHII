@@ -48,7 +48,7 @@ contains
     implicit none
     real(kind=wp), allocatable :: cosa(:), cosb(:), cosg(:)
     real(kind=wp), allocatable :: sina(:), sinb(:), sing(:)
-    real(kind=wp) :: dist_scale
+    real(kind=wp) :: dist_scale, robs
     integer :: i, ierr
 
     if (any(is_finite(par%phase_angle)))       par%alpha = -par%phase_angle
@@ -117,9 +117,16 @@ contains
              observer(i)%y = par%obsy(i)
              observer(i)%z = par%obsz(i)
           end if
-          cosb(i) = observer(i)%z/par%distance
-          if (abs(cosb(i) - 1.0_wp) < eps) cosb(i) =  1.0_wp
-          if (abs(cosb(i) + 1.0_wp) < eps) cosb(i) = -1.0_wp
+          !--- direction cosine from the observer's OWN radius (always in
+          !--- [-1,1]); observer(i)%z/par%distance can exceed 1 when the
+          !--- observers sit at different radii -> sqrt(1-cosb^2) = NaN.
+          robs = sqrt(par%obsx(i)**2 + par%obsy(i)**2 + par%obsz(i)**2)
+          if (robs > 0.0_wp) then
+             cosb(i) = par%obsz(i)/robs
+          else
+             cosb(i) = 1.0_wp
+          end if
+          cosb(i) = min(max(cosb(i), -1.0_wp), 1.0_wp)
           sinb(i) = sqrt(1.0_wp - cosb(i)**2)
           par%beta(i) = atan2(sinb(i), cosb(i))*rad2deg
           cosg(i) = cos(par%gamma(i)*deg2rad); sing(i) = sin(par%gamma(i)*deg2rad)
