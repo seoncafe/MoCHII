@@ -166,6 +166,50 @@ contains
        end block
     end if
 
+    !--- He I recombination lines (Porter case B; emitted by He+ recombining,
+    !--- so the luminosities weight n_e n_HeII).
+    if (sh95_nlines(ion=3) > 0) then
+       block
+         real(kind=wp) :: LHe1(12), wlhe1(12)
+         integer :: kk, nlhe1
+         nlhe1 = sh95_nlines(ion=3)
+         LHe1 = 0.0_wp
+         do kk = 1, nlhe1
+            wlhe1(kk) = sh95_wl(kk, ion=3)
+         end do
+         if (do_emis) then
+            allocate(em(nlhe1, gas_nleaf))
+            em = 0.0_wp
+         end if
+         do il = 1, gas_nleaf
+            nH = gas_nH(il)
+            if (nH <= 0.0_wp) cycle
+            if (gas_xHeII(il) <= 1.0e-30_wp) cycle
+            T  = gas_Te(il);  ne = gas_ne(il)
+            vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+            do kk = 1, nlhe1
+               emis(kk) = ne*nH*par%He_abund*gas_xHeII(il) &
+                          *sh95_emis(kk, T, ne, ion=3)
+               LHe1(kk) = LHe1(kk) + emis(kk)*vol
+            end do
+            if (do_emis) em(1:nlhe1, il) = emis(1:nlhe1)
+         end do
+         do kk = 1, nlhe1
+            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'he', 1, wlhe1(kk), &
+               LHe1(kk), LHe1(kk)/LHb, trim(sh95_label(kk, ion=3))
+         end do
+         if (do_emis) then
+            call io_append_image(efile, em, status, bitpix=-64)
+            call io_put_keyword(efile,'EXTNAME','emis_hei', &
+                 'Porter He I line emissivities [erg/s/cm^3]',status)
+            call io_append_image(efile, wlhe1(1:nlhe1), status, bitpix=-64)
+            call io_put_keyword(efile,'EXTNAME','wl_hei', &
+                 'He I line wavelengths [A]',status)
+            deallocate(em)
+         end if
+       end block
+    end if
+
     do ie = 1, n_elements
        do ist = 1, elem_nstage(ie)
           write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)//'/nlevel_', &

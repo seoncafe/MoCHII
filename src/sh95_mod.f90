@@ -1,13 +1,14 @@
 module sh95_mod
 !---------------------------------------------------------------------------
-! MoCHII: Storey & Hummer (1995, MNRAS 272, 41) case-B recombination line
-! emissivities: H I (ion 1, from sh95_hi_caseB.txt) and He II (ion 2,
-! from sh95_heii_caseB.txt; both produced by
-! tools/fitting/make_sh95_lines.py).  Principal lines on the (T, n_e)
-! grid; bilinear interpolation in (log T, log n_e), clamped at the grid
-! edges.  sh95_emis returns 4 pi j / (n_e n_ion) [erg cm^3 s^-1] with
-! n_ion = n_p (H I) or n_HeIII (He II).  The ion argument is optional
-! and defaults to 1 (H I) for the original callers.
+! MoCHII: case-B recombination line emissivities on a (T, n_e) grid:
+! H I (ion 1, sh95_hi_caseB.txt) and He II (ion 2, sh95_heii_caseB.txt)
+! from Storey & Hummer (1995, MNRAS 272, 41) via
+! tools/fitting/make_sh95_lines.py; He I (ion 3, hei_porter_caseB.txt)
+! from Porter et al. (2012, 2013) via tools/fitting/make_hei_lines.py.
+! Bilinear interpolation in (log T, log n_e), clamped at the grid edges.
+! sh95_emis returns 4 pi j / (n_e n_ion) [erg cm^3 s^-1] with n_ion =
+! n_p (H I), n_HeIII (He II) or n_HeII (He I).  The ion argument is
+! optional and defaults to 1 (H I) for the original callers.
 !---------------------------------------------------------------------------
   use define
   implicit none
@@ -23,7 +24,7 @@ module sh95_mod
      character(len=12) :: labels(MAXL)
      real(kind=wp)     :: wls(MAXL)
   end type sh95_tab_type
-  type(sh95_tab_type) :: tab(2)
+  type(sh95_tab_type) :: tab(3)
 
   !--- warn once (not each of the millions of leaf x line evaluations) when
   !--- T exceeds the 30000 K table maximum: the H line emissivity is then
@@ -64,6 +65,8 @@ contains
                    'H I', required=.true.)
     call sh95_load(trim(par%atomic_dir)//'/sh95_heii_caseB.txt', tab(2), &
                    'He II', required=.false.)
+    call sh95_load(trim(par%atomic_dir)//'/hei_porter_caseB.txt', tab(3), &
+                   'He I', required=.false.)
   end subroutine sh95_setup
 
   !=========================================================================
