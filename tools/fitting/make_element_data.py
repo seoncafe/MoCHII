@@ -27,7 +27,7 @@ the Verner sources directly.  Run:  python3 make_element_data.py
 import os
 import re
 
-DATE = "2026-07-11"
+DATE = "2026-07-13"
 VERNER_DIR = os.path.expanduser("~/RT_Codes/Verner_Fortran_sub")
 DBASE = os.path.expanduser("~/RT_Codes/CHIANTI/dbase")
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -79,10 +79,12 @@ CX = {
     # Fe (Huang A5/A6): Fe + H+ fast constant (RV72); reverse with barrier.
     "fe": dict(CXI=(6, [4.0e-9, 0.0, 0.0, 0.0, 0, 0]),
                CXR=(1, [1.16e-9, 0.072, 6.61, 0, 0, 0])),
-    # Si (KF96 via the MOCASSIN chex row 14,2): recombination direction
-    # only (Si+ + H0); the forward direction is not tabulated.
-    "si": dict(CXI=(0, [0]*6),
-               CXR=(6, [1.23e-9, 0.24, 3.17, 4.18e-3, 0, 0])),
+    # Si (Huang et al. 2023 A9/A10): Si0 + H+ -> Si+ ionization and
+    # Si+ + H0 -> Si0 recombination at the first boundary (A10 = 2.371e-12
+    # at 1e4 K).  The old code put the MOCASSIN chex(14,2) = Si2+ + H0 rate
+    # here, one boundary too low; that rate now sits at transition 2 below.
+    "si": dict(CXI=(1, [7.41e-11, 0.85, 0.0, 0, 0, 0]),
+               CXR=(1, [4.71e-11, 0.95, 6.32, 0, 0, 0])),
     # Cl, Ca: no KF96/Huang transcription available — no CX.
     "cl": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
     "ca": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
@@ -91,32 +93,34 @@ CX = {
 # charge exchange with H, higher transitions (recombination direction only;
 # the ionization direction is endothermic and negligible there).  Kingdon &
 # Ferland (1996) fits k = a*1e-9 * t4^b * (1 + c*exp(d*t4)) [cm^3 s^-1],
-# transcribed from the MOCASSIN update_mod.f90 chex table (X^2+ + H0 for
-# transition 2; X^3+ + H0 for transition 3).  Fit validity ~5e3-5e4 K.
+# transcribed from the MOCASSIN update_mod.f90 chex table.  Fit validity
+# ~5e3-5e4 K.
+#
+# Stage convention (corrected): MOCASSIN chex(Z,ion) is the reaction
+# X^(ion+) + H0 -> X^((ion-1)+) (reactant charge = ion; its comment labels
+# the PRODUCT ion).  MoCHII transition i recombines X^(i+) -> X^((i-1)+),
+# so CX_HIGH[(el, i)] = chex(Z, i).  The earlier table used chex(Z, i+1)
+# for C/N/O/Ne/S/Ar/Si (reading MOCASSIN's product-labeled comment as the
+# reactant), which put every higher-transition rate one ionization stage
+# too low — e.g. C2+ + H0 -> C+ was 3.27e-9 (the C3+ rate) instead of the
+# correct 1.04e-12.  Mg/Fe were already right (Huang labels).
 CX_HIGH = {
-    ("c", 2):  (6, [3.25e-9, 0.21, 0.19, -3.29, 0, 0]),
-    ("c", 3):  (6, [3.3246e-7, -0.11, -0.995, -1.58e-3, 0, 0]),
-    ("n", 2):  (6, [4.54e-9, 0.57, -0.65, -0.89, 0, 0]),
-    ("o", 2):  (6, [3.98e-9, 0.26, 0.56, -2.62, 0, 0]),
-    ("ne", 2): (6, [1.473e-8, 4.52e-2, -0.84, -0.31, 0, 0]),
-    ("s", 2):  (6, [2.29e-9, 4.02e-2, 1.59, -6.06, 0, 0]),
-    ("s", 3):  (6, [6.44e-9, 0.13, 2.69, -5.69, 0, 0]),
-    # KF96 argon.  NOTE: the MOCASSIN chex table assigns chex(18,3) twice
-    # (the second assignment is the Ca+2 row, a transcription slip that
-    # overwrites Ar+2 there); the values below are the KF96 Ar entries.
-    ("ar", 2): (6, [4.57e-9, 0.27, -0.18, -1.57, 0, 0]),
-    ("ar", 3): (6, [6.37e-9, 2.12, 10.21, -6.22, 0, 0]),
-    # Mg/Fe higher stages.  Stage attribution note: the Huang (2023)
-    # image-verified transcription labels 8.58e-14... as Mg2+ + H and
-    # 1.26e-9... as Fe2+ + H; the MOCASSIN chex table files the same
-    # numbers one stage LOWER (its Mg+/Fe+ slots) — the Huang labels are
-    # adopted here.  Mg3+/Fe3+ rows from the MOCASSIN chex table (KF96).
-    ("mg", 2): (6, [8.58e-14, 2.49e-3, 0.0293, -4.33, 0, 0]),
-    ("fe", 2): (6, [1.26e-9, 0.0772, -0.41, -7.31, 0, 0]),
-    ("fe", 3): (6, [3.42e-9, 0.51, -2.06, -8.99, 0, 0]),
-    # Si higher stages (KF96 via the MOCASSIN chex rows 14,3 / 14,4).
-    ("si", 2): (6, [4.90e-10, -8.74e-2, -0.36, -0.79, 0, 0]),
-    ("si", 3): (6, [7.58e-9, 0.37, 1.06, -4.09, 0, 0]),
+    ("c", 2):  (6, [1.67e-13, 2.79, 304.72, -4.07, 0, 0]),   # chex(6,2)  C2+ + H0 -> C+
+    ("c", 3):  (6, [3.25e-9, 0.21, 0.19, -3.29, 0, 0]),      # chex(6,3)  C3+ + H0 -> C2+
+    ("n", 2):  (6, [3.05e-10, 0.60, 2.65, -0.93, 0, 0]),     # chex(7,2)  N2+ + H0 -> N+
+    ("o", 2):  (6, [1.04e-9, 0.27, 2.02, -5.92, 0, 0]),      # chex(8,2)  O2+ + H0 -> O+
+    ("ne", 2): (6, [1.0e-14, 0.0, 0.0, 0.0, 0, 0]),          # chex(10,2) Ne2+ + H0 -> Ne+ (negligible)
+    ("s", 2):  (6, [1.0e-14, 0.0, 0.0, 0.0, 0, 0]),          # chex(16,2) S2+ + H0 -> S+ (negligible)
+    ("s", 3):  (6, [2.29e-9, 4.02e-2, 1.59, -6.06, 0, 0]),   # chex(16,3) S3+ + H0 -> S2+
+    ("ar", 2): (6, [1.0e-14, 0.0, 0.0, 0.0, 0, 0]),          # chex(18,2) Ar2+ + H0 -> Ar+ (negligible)
+    ("ar", 3): (6, [4.57e-9, 0.27, -0.18, -1.57, 0, 0]),     # chex(18,3) Ar3+ + H0 -> Ar2+
+    # Mg/Fe: already correct (Huang reactant labels land on chex(Z,i)).
+    ("mg", 2): (6, [8.58e-14, 2.49e-3, 0.0293, -4.33, 0, 0]),# chex(12,2) Mg2+ + H0 -> Mg+
+    ("fe", 2): (6, [1.26e-9, 0.0772, -0.41, -7.31, 0, 0]),   # chex(26,2) Fe2+ + H0 -> Fe+
+    ("fe", 3): (6, [3.42e-9, 0.51, -2.06, -8.99, 0, 0]),     # chex(26,3) Fe3+ + H0 -> Fe2+
+    ("si", 2): (6, [1.23e-9, 0.24, 3.17, 4.18e-3, 0, 0]),    # chex(14,2) Si2+ + H0 -> Si+
+    ("si", 3): (6, [4.90e-10, -8.74e-2, -0.36, -0.79, 0, 0]),# chex(14,3) Si3+ + H0 -> Si2+
+    ("si", 4): (6, [7.58e-9, 0.37, 1.06, -4.09, 0, 0]),      # chex(14,4) Si4+ + H0 -> Si3+
 }
 
 
