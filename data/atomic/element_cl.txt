@@ -1,8 +1,8 @@
 # MoCHII element rate data: CL (Z=17, 5 stages, highest terminal)
 # PHOTO: E_th[eV] E0 sigma0[Mb] ya P yw y0 y1 (VFKY96 outer shell, phfit2.f PH2)
 # CI: dE[eV] P A X K (Voronov 1997, cfit.f)
-# RR: A B T0 T1 C T2 (Badnell 2006, CHIANTI v11.0.2 .rrparams of the recombining ion)
-# DR: n, c_i [cm^3 s^-1 K^1.5], E_i [K] (Badnell group, CHIANTI .drparams; n=0 if absent)
+# RR: A B T0 T1 C T2 (Badnell/Strathclyde TAMOC, data/atomic/badnell_rr.dat M=1; else CHIANTI v11.0.2 .rrparams)
+# DR: n, c_i [cm^3 s^-1 K^1.5], E_i [K] (Badnell/Strathclyde TAMOC, data/atomic/badnell_dr.dat M=1; else CHIANTI .drparams; n=0 if absent)
 # DR2: A B T0 T1 (Shull & Van Steenberg 1982 form, alpha = A T^-3/2 e^-T0/T (1 + B e^-T1/T))
 # RR2: A eta (power law alpha = A (T/1e4)^-eta; CHIANTI rrparams type 3)
 # CXI/CXR: form, 6 coefficients (charge exchange with H+ / H0; Huang et al. 2023 Table 4 transcription;
@@ -38,7 +38,7 @@ TRANSITION 4
 ETH 53.4700
 PHOTO2 5.347000e+01 3.505000e+01 2.148000e+01 4.500000e+01 5.900000e+00 2.600000e-01 1.000000e+00
 CI 5.350000e+01 1.000000e+00 1.100000e-08 3.280000e-01 2.500000e-01
-RR 3.996000e-10 7.062000e-01 3.177000e+01 2.018000e+07 4.670000e-02 8.299000e+04
-DR 5 1.399000e-06 1.371000e-05 1.215000e-04 1.183000e-03 4.048000e-02  5.776000e+02 2.707000e+03 1.065000e+04 6.346000e+04 2.407000e+05
+RR 3.302000e-10 6.980000e-01 4.421000e+01 2.143000e+07 4.830000e-02 7.260000e+04
+DR 6 1.399000e-06 1.378000e-05 1.214000e-04 4.726000e-04 1.128000e-02 2.993000e-02  5.776000e+02 2.714000e+03 1.067000e+04 4.822000e+04 1.740000e+05 2.656000e+05
 CXI 0 0 0 0 0 0 0
 CXR 0 0 0 0 0 0 0
