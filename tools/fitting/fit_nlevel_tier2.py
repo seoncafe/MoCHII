@@ -183,7 +183,7 @@ def _maxerr(tr, st_lo, st_hi, coeffs, logf, ups_ref):
     return np.abs(fit[mask] / ups_ref[mask] - 1.0).max()
 
 
-def build_ion(name, elem, stage, nlev):
+def build_ion(name, elem, stage, nlev, suffix=""):
     d = ion_dir(elem, stage)
     lev_raw = read_elvlc(os.path.join(d, f"{elem}_{stage}.elvlc"))
     levels = {}
@@ -205,7 +205,7 @@ def build_ion(name, elem, stage, nlev):
         worst = max(worst, err)
         ups_rows.append((tr, st_lo, st_hi, cf, logf, err))
 
-    path = os.path.join(OUTDIR, f"nlevel_{elem}_{stage}.txt")
+    path = os.path.join(OUTDIR, f"nlevel_{elem}_{stage}{suffix}.txt")
     with open(path, "w") as fh:
         fh.write(f"# MoCHII Tier-2 n-level atom data: {SPEC_LABEL[name]}"
                  f" ({elem}_{stage}), lowest {nlev} levels\n")
@@ -244,4 +244,14 @@ if __name__ == "__main__":
     for name, (el, st, nlev) in IONS.items():
         path, nl, nr, nu, worst = build_ion(name, el, st, nlev)
         print(f"{name:6s} {nl:4d} {nr:4d} {nu:4d} {worst*100:12.3f}%"
+              f"   -> {os.path.basename(path)}")
+
+    # Optional expanded Fe II/III models (par%fe_levels_full): the compact
+    # files above keep the solver small for the default run; these _full
+    # files add the higher terms for iron-line studies.  Fe III to 34 levels
+    # (the full 3d^6 optical multiplets), Fe II to 16.
+    FE_FULL = {"FeII": ("fe", 2, 16), "FeIII": ("fe", 3, 34)}
+    for name, (el, st, nlev) in FE_FULL.items():
+        path, nl, nr, nu, worst = build_ion(name, el, st, nlev, suffix="_full")
+        print(f"{name+'*':6s} {nl:4d} {nr:4d} {nu:4d} {worst*100:12.3f}%"
               f"   -> {os.path.basename(path)}")

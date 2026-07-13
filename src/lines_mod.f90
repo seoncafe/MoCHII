@@ -43,7 +43,8 @@ contains
     character(len=256) :: fname
     character(len=192) :: outname
     character(len=64)  :: extname
-    real(kind=wp) :: Lline(100), emis(100), frac(6), wl(100)
+    character(len=8)   :: nlsuf
+    real(kind=wp) :: Lline(600), emis(600), frac(6), wl(600)
     real(kind=wp) :: T, ne, nH, vol, nion, LHb, t4, nHI, nHII
     real(kind=wp), allocatable :: em(:,:)
     integer :: ie, ist, il, k, unit, nl, status, ic
@@ -212,8 +213,12 @@ contains
 
     do ie = 1, n_elements
        do ist = 1, elem_nstage(ie)
-          write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)//'/nlevel_', &
-             trim(elem_name(ie)), '_', ist, '.txt'
+          !--- optional expanded Fe II/III model (par%fe_levels_full).
+          nlsuf = ''
+          if (par%fe_levels_full .and. trim(elem_name(ie)) == 'fe') &
+             nlsuf = '_full'
+          write(fname,'(a,a,a,i0,a,a)') trim(par%atomic_dir)//'/nlevel_', &
+             trim(elem_name(ie)), '_', ist, trim(nlsuf), '.txt'
           call nlevel_load(trim(fname), atom, ok)
           if (.not. ok) cycle
           nl = nlevel_nlines(atom)

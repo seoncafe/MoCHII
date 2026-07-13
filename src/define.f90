@@ -601,6 +601,9 @@ public
      !--- case A rates (case B double-counts the on-the-spot absorption).
      logical            :: diffuse_field = .false.
      logical            :: use_metals   = .false.
+     !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
+     !--- 16/34 levels) instead of the compact 13/14-level defaults.
+     logical            :: fe_levels_full = .false.
      real(kind=wp)      :: abund_C      = 2.2e-4_wp
      real(kind=wp)      :: abund_N      = 4.0e-5_wp
      real(kind=wp)      :: abund_O      = 3.3e-4_wp

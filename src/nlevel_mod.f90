@@ -29,7 +29,7 @@ module nlevel_mod
   public :: nlevel_load, nlevel_emissivities, nlevel_atom_type
   public :: nlevel_nlines, nlevel_line_ident
 
-  integer, parameter :: MAXLEV = 16, MAXTR = 100
+  integer, parameter :: MAXLEV = 40, MAXTR = 600
 
   type nlevel_atom_type
      logical :: loaded = .false.
@@ -74,16 +74,19 @@ contains
        read(line,*) key, n
        select case (trim(key))
        case ('NLEV')
+          if (n > MAXLEV) call nlevel_toobig(fname, 'NLEV', n, MAXLEV)
           atom%nlev = n
           do k = 1, n
              read(unit,*) i, atom%g(k), atom%e_cm1(k)
           end do
        case ('NRAD')
+          if (n > MAXTR) call nlevel_toobig(fname, 'NRAD', n, MAXTR)
           atom%nrad = n
           do k = 1, n
              read(unit,*) atom%rl(k), atom%ru(k), atom%A(k)
           end do
        case ('NUPS')
+          if (n > MAXTR) call nlevel_toobig(fname, 'NUPS', n, MAXTR)
           atom%nups = n
           do k = 1, n
              read(unit,'(a)') line
@@ -100,6 +103,15 @@ contains
     atom%loaded = atom%nlev > 0 .and. atom%nups > 0
     ok = atom%loaded
   end subroutine nlevel_load
+
+  !=========================================================================
+  subroutine nlevel_toobig(fname, key, n, nmax)
+    character(len=*), intent(in) :: fname, key
+    integer,          intent(in) :: n, nmax
+    write(*,'(a,i0,a,i0,a)') 'ERROR: '//trim(fname)//' '//trim(key)//' = ', &
+       n, ' exceeds the nlevel_mod limit ', nmax, ' (raise MAXLEV/MAXTR).'
+    error stop
+  end subroutine nlevel_toobig
 
   !=========================================================================
   ! Upsilon(T) from the stored Chebyshev fit (the header recipe).
