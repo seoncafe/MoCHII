@@ -46,6 +46,10 @@ DEG_MAX = 12
 # (element, stage, NLEV) — lowest levels needed for the optical/IR
 # diagnostics; extra levels are harmless to the solver.
 IONS = {
+    # Optional collisional H I Balmer component (par%h_coll_effects):
+    # the 25-level H I atom solved with collisional excitation from the
+    # ground level gives the non-recombination (collisional) line emission.
+    "HI":    ("h", 1, 25),
     "OII":   ("o", 2, 5),
     "OIII":  ("o", 3, 6),
     "NII":   ("n", 2, 5),
@@ -82,6 +86,7 @@ IONS = {
 }
 
 SPEC_LABEL = {
+    "HI": "H I",
     "OII": "[O II]", "OIII": "[O III]", "NII": "[N II]",
     "SII": "[S II]", "SIII": "[S III]", "NeII": "[Ne II]",
     "NeIII": "[Ne III]", "CII": "[C II]", "CIII": "C III]",

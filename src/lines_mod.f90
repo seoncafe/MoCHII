@@ -211,6 +211,79 @@ contains
        end block
     end if
 
+    !--- optional collisional H I Balmer component (par%h_coll_effects):
+    !--- solve the 25-level H I atom with collisional excitation from the
+    !--- ground level and integrate the Balmer emission grouped into
+    !--- Halpha/Hbeta/Hgamma windows.  Written as separate 'hc' rows so it
+    !--- never contaminates the SH95 recombination H lines above.  Physics
+    !--- caveat: nlevel_emissivities uses the atom's raw optically-thin
+    !--- (case-A) radiative cascade; under case B the trapped Lyman photons
+    !--- would enhance the Balmer collisional component somewhat.  This is a
+    !--- first-cut collisional estimate, output separately by design.
+    if (par%h_coll_effects) then
+       call nlevel_load(trim(par%atomic_dir)//'/nlevel_h_1.txt', atom, ok)
+       if (.not. ok) then
+          write(*,'(a)') ' LINE: note - collisional H I file '// &
+             'nlevel_h_1.txt not found; skipping the hc rows.'
+       else
+          block
+            real(kind=wp) :: Lc(3), gemis(3), wlk, wlhc(3)
+            integer :: kk, ig
+            real(kind=wp), allocatable :: emc(:,:)
+            nl = nlevel_nlines(atom)
+            Lc = 0.0_wp
+            wlhc = [6564.60_wp, 4862.65_wp, 4341.66_wp]  ! Halpha/Hbeta/Hgamma
+            if (do_emis) then
+               allocate(emc(3, gas_nleaf))
+               emc = 0.0_wp
+            end if
+            do il = 1, gas_nleaf
+               nH = gas_nH(il)
+               if (nH <= 0.0_wp) cycle
+               T   = gas_Te(il);  ne = gas_ne(il)
+               nHI = nH*gas_xHI(il)
+               if (nHI <= 1.0e-30_wp) cycle
+               vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+               call nlevel_emissivities(atom, T, ne, emis)
+               gemis = 0.0_wp
+               do kk = 1, nl
+                  wlk = nlevel_line_ident(atom, kk)
+                  if      (wlk >= 6520.0_wp .and. wlk <= 6600.0_wp) then
+                     ig = 1
+                  else if (wlk >= 4840.0_wp .and. wlk <= 4880.0_wp) then
+                     ig = 2
+                  else if (wlk >= 4320.0_wp .and. wlk <= 4360.0_wp) then
+                     ig = 3
+                  else
+                     cycle
+                  end if
+                  gemis(ig) = gemis(ig) + emis(kk)
+               end do
+               Lc(1:3) = Lc(1:3) + nHI*gemis(1:3)*vol
+               if (do_emis) emc(1:3, il) = nHI*gemis(1:3)
+            end do
+            write(unit,'(a)') '# hc: collisional H I Balmer component'// &
+               ' (excitation of neutral H from the ground level;'// &
+               ' separate from the SH95 recombination H lines)'
+            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(1), &
+               Lc(1), Lc(1)/LHb, 'Halpha_c'
+            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(2), &
+               Lc(2), Lc(2)/LHb, 'Hbeta_c'
+            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(3), &
+               Lc(3), Lc(3)/LHb, 'Hgamma_c'
+            if (do_emis) then
+               call io_append_image(efile, emc, status, bitpix=-64)
+               call io_put_keyword(efile,'EXTNAME','emis_hc', &
+                    'collisional H I Balmer emissivities [erg/s/cm^3]',status)
+               call io_append_image(efile, wlhc, status, bitpix=-64)
+               call io_put_keyword(efile,'EXTNAME','wl_hc', &
+                    'collisional H I Balmer wavelengths [A]',status)
+               deallocate(emc)
+            end if
+          end block
+       end if
+    end if
+
     do ie = 1, n_elements
        do ist = 1, elem_nstage(ie)
           !--- optional expanded Fe II/III model (par%fe_levels_full).

@@ -520,6 +520,13 @@ public
      !--- with wl_* wavelength arrays, plus the state needed for maps
      !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HeI/HeII, x_<el>_stages).
      logical            :: emis_output  = .false.
+     !--- optional collisional H I Balmer component (Halpha/Hbeta/Hgamma):
+     !--- solve a 25-level H I atom with collisional excitation from the
+     !--- ground level and write the non-recombination line luminosities as
+     !--- separate 'hc' rows in <base>_lines.txt (audit item on the I-front /
+     !--- hot-cell bias where n_HI and free electrons coexist).  Off by
+     !--- default -> no change to the SH95 recombination H lines.
+     logical            :: h_coll_effects = .false.
      !--- G0 gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
      real(kind=wp)      :: xHI_init     = 1.0_wp
