@@ -17,7 +17,7 @@ contains
   !---------------------------------------------------------------
   integer function ncell_total(grid) result(n)
   type(grid_type), intent(in) :: grid
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      n = amr_grid%nleaf
   else
      n = grid%nx*grid%ny*grid%nz
@@ -29,7 +29,7 @@ contains
   integer function cell_id_of_photon(photon, grid) result(ic)
   type(photon_type), intent(in) :: photon
   type(grid_type),   intent(in) :: grid
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      ic = photon%icell_amr
   else
      ic = (photon%kcell-1)*grid%nx*grid%ny + (photon%jcell-1)*grid%nx + photon%icell
@@ -41,7 +41,7 @@ contains
   type(grid_type), intent(in) :: grid
   integer,         intent(in) :: ic
   integer :: i, j, k
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      rhk = amr_grid%rhokap(ic)
   else
      call car_ijk(grid, ic, i, j, k)
@@ -54,7 +54,7 @@ contains
   type(grid_type), intent(in) :: grid
   integer,         intent(in) :: ic
   integer :: icell
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      vol   = (2.0_wp*leaf_half(ic))**3
   else
      vol   = grid%dx*grid%dy*grid%dz
@@ -67,7 +67,7 @@ contains
   integer,         intent(in)  :: ic
   real(kind=wp),   intent(out) :: x, y, z
   integer :: i, j, k, icell
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      icell = leaf_cell(ic)
      x = cell_cx(icell);  y = cell_cy(icell);  z = cell_cz(icell)
   else
@@ -88,7 +88,7 @@ contains
   type(photon_type), intent(inout) :: photon
   integer :: i, j, k, icell
   real(kind=wp) :: h
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      icell = leaf_cell(ic)
      h = cell_ch(icell)
      photon%x = cell_cx(icell) + (2.0_wp*rand_number()-1.0_wp)*h
@@ -114,7 +114,7 @@ contains
   type(photon_type), intent(inout) :: photon
   integer :: i, j, k
   call cell_center(grid, ic, photon%x, photon%y, photon%z)
-  if (trim(par%grid_type) == 'amr') then
+  if (trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car') then
      photon%icell_amr = ic
   else
      call car_ijk(grid, ic, i, j, k)

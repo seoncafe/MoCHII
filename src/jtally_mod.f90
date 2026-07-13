@@ -144,7 +144,7 @@ contains
   logical :: is_amr
 
   if (mpar%p_rank /= 0 .or. .not. associated(jt_sum)) return
-  is_amr = trim(par%grid_type) == 'amr'
+  is_amr = trim(par%grid_type) == 'amr' .or. trim(par%grid_type) == 'car'
 
   !--- energy-conservation check (jt_sum carries Lpacket; A = tally, B = counter).
   eabs_A = 0.0_wp

@@ -296,8 +296,8 @@ contains
     real(wp) :: tau, t_exit, d_step, kap, wl
     logical  :: do_tally
 
-    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
-       call raytrace_ion_to_tau_uni(photon, tau_in)
+    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+       call raytrace_ion_to_tau_car(photon, tau_in)
        return
     end if
 
@@ -358,8 +358,8 @@ contains
     real(wp) :: x, y, z, kx, ky, kz, t_exit, kap
     real(wp) :: tau, expo, expo_out, wl
 
-    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
-       call raytrace_ion_to_edge_uni(photon0, tau_edge_out)
+    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+       call raytrace_ion_to_edge_car(photon0, tau_edge_out)
        return
     end if
 
@@ -402,8 +402,8 @@ contains
   end subroutine raytrace_ion_to_edge_amr
 
   !=========================================================================
-  ! Incremental Amanatides-Woo walks for the uniform grid
-  ! (par%uni_walk = 'dda'): per-ray tMax/tDelta per axis, the inner loop
+  ! Incremental Amanatides-Woo walks for the Cartesian (car) grid
+  ! (par%car_walk = 'dda'): per-ray tMax/tDelta per axis, the inner loop
   ! advances by comparisons and additions only — no cell-geometry reads.
   ! The tally expressions are identical to the shared walks; only the
   ! step computation differs (results agree statistically, not bitwise).
@@ -447,7 +447,7 @@ contains
     end block
   end subroutine dda_init
 
-  subroutine raytrace_ion_to_edge_uni(photon0, tau_edge_out)
+  subroutine raytrace_ion_to_edge_car(photon0, tau_edge_out)
     use define
     use gas_opacity_mod, only : kap_ion
     implicit none
@@ -489,9 +489,9 @@ contains
       end select
     end do
     if (present(tau_edge_out)) tau_edge_out = tau
-  end subroutine raytrace_ion_to_edge_uni
+  end subroutine raytrace_ion_to_edge_car
 
-  subroutine raytrace_ion_to_tau_uni(photon, tau_in)
+  subroutine raytrace_ion_to_tau_car(photon, tau_in)
     use define
     use gas_opacity_mod, only : kap_ion
     implicit none
@@ -548,9 +548,9 @@ contains
     if (photon%inside) then
        photon%icell_amr = 1 + ix + nx*(iy + ny*iz)
     end if
-  end subroutine raytrace_ion_to_tau_uni
+  end subroutine raytrace_ion_to_tau_car
 
-  subroutine raytrace_ion_tau_only_uni(photon0, tau_out)
+  subroutine raytrace_ion_tau_only_car(photon0, tau_out)
     use define
     use gas_opacity_mod, only : kap_ion
     implicit none
@@ -580,7 +580,7 @@ contains
       end select
     end do
     tau_out = tau
-  end subroutine raytrace_ion_tau_only_uni
+  end subroutine raytrace_ion_tau_only_car
 
   !=========================================================================
   ! MoCHII peel-off: optical depth from the photon position to the box
@@ -597,8 +597,8 @@ contains
     integer  :: il, il_new, icell, iface, inu
     real(wp) :: x, y, z, kx, ky, kz, t_exit, tau
 
-    if (amr_grid%uniform .and. trim(par%uni_walk) == 'dda') then
-       call raytrace_ion_tau_only_uni(photon0, tau_out)
+    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+       call raytrace_ion_tau_only_car(photon0, tau_out)
        return
     end if
 

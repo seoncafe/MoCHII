@@ -17,7 +17,7 @@ module ion_peel_mod
 ! the ionizing (E >= par%eion_min) and FUV channels when par%add_fuv.
 ! Observers are defined exactly as in MoCafe: par%obsx/y/z (positions or
 ! directions) or par%alpha/beta/gamma angle lists, par%distance,
-! par%nxim/nyim, par%dxim/dyim (auto-sized from par%rmax when unset).
+! par%nxim/nyim, par%dxim/dyim (auto-sized to frame the box when unset).
 ! Output: '<base>_image' (HDF5/FITS) — direct_ion/scatt_ion (+ _fuv)
 ! blocks for each observer (suffix _obs<k> when par%nobs > 1).
 !
@@ -149,13 +149,17 @@ contains
     end do
     deallocate(cosa, cosb, cosg, sina, sinb, sing)
 
-    !--- image plane: auto pixel scale from the sphere radius (par%rmax
-    !--- is the half box for the AMR grid).
+    !--- image plane: auto pixel scale to frame the whole box (half extent
+    !--- par%xmax/ymax/zmax; the box diagonal is sqrt(3) times the half size).
     if (.not. (is_finite(par%dxim) .and. is_finite(par%dyim))) then
-       par%dxim = atan2(par%rmax*sqrt(3.0_wp), par%distance) &
-                  /(par%nxim/2.0_wp)*rad2deg
-       par%dyim = atan2(par%rmax*sqrt(3.0_wp), par%distance) &
-                  /(par%nyim/2.0_wp)*rad2deg
+       block
+         real(wp) :: boxhalf
+         boxhalf = maxval([par%xmax, par%ymax, par%zmax])
+         par%dxim = atan2(boxhalf*sqrt(3.0_wp), par%distance) &
+                    /(par%nxim/2.0_wp)*rad2deg
+         par%dyim = atan2(boxhalf*sqrt(3.0_wp), par%distance) &
+                    /(par%nyim/2.0_wp)*rad2deg
+       end block
     end if
     do i = 1, par%nobs
        observer(i)%nxim = par%nxim;  observer(i)%nyim = par%nyim

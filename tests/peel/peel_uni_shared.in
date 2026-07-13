@@ -9,7 +9,7 @@
  par%iseed         = 1234
 
  par%grid_type     = 'uniform'
- par%uni_walk      = 'shared'
+ par%car_walk      = 'shared'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
  par%dust_model    = 'global_dgr'
  par%distance_unit = 'pc'

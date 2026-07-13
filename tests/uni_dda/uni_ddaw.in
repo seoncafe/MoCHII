@@ -10,7 +10,7 @@
  par%iseed         = 1234
 
  par%grid_type     = 'uniform'
- par%uni_walk      = 'dda'
+ par%car_walk      = 'dda'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
  par%dust_model    = 'none'
  par%distance_unit = 'pc'

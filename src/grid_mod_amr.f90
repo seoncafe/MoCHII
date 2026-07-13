@@ -49,82 +49,135 @@ contains
         'python/AMR_grid/convert_ramses_to_generic.py first.'
      call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
   end if
-  if (len_trim(par%amr_file) == 0) then
-     if (mpar%p_rank == 0) write(*,'(a)') 'ERROR: par%amr_file is empty (grid_type=amr).'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  end if
 
-  !--- read leaf data (every rank; identical read-only data).
-  call generic_amr_read(trim(par%amr_file), xleaf, yleaf, zleaf, lev, &
-       nH, nleaf, boxlen, &
-       metallicity=Zarr, xHI=xHIarr, ndust=ndustarr, &
-       origin_x=ox, origin_y=oy, origin_z=oz)
+  if (len_trim(par%amr_file) > 0) then
+     !--- read leaf data from a file (every rank; identical read-only data).
+     call generic_amr_read(trim(par%amr_file), xleaf, yleaf, zleaf, lev, &
+          nH, nleaf, boxlen, &
+          metallicity=Zarr, xHI=xHIarr, ndust=ndustarr, &
+          origin_x=ox, origin_y=oy, origin_z=oz)
+     !--- recenter the box on the origin: shift leaf coords by the box center.
+     cxb = ox + 0.5_wp*boxlen;  cyb = oy + 0.5_wp*boxlen;  czb = oz + 0.5_wp*boxlen
+     xleaf = xleaf - cxb;  yleaf = yleaf - cyb;  zleaf = zleaf - czb
+     half  = 0.5_wp * boxlen
+     par%xmax = half;  par%ymax = half;  par%zmax = half
+  else
+     !--- MoCHII: build a single-level Cartesian ('car') grid from the
+     !--- namelist (par%nx/ny/nz, par%xmax/ymax/zmax), no file.  The car
+     !--- traversal uses one cell size, so the cells must be cubic.
+     block
+       real(wp) :: dcx, dcy, dcz
+       integer  :: ix, iy, iz
+       dcx = 2.0_wp*par%xmax/real(par%nx, wp)
+       dcy = 2.0_wp*par%ymax/real(par%ny, wp)
+       dcz = 2.0_wp*par%zmax/real(par%nz, wp)
+       if (abs(dcy-dcx) > 1.0e-9_wp*dcx .or. abs(dcz-dcx) > 1.0e-9_wp*dcx) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: car grid needs cubic cells: 2*xmax/nx = 2*ymax/ny = 2*zmax/nz.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       nleaf  = par%nx*par%ny*par%nz
+       boxlen = 2.0_wp*par%xmax
+       half   = par%xmax
+       allocate(xleaf(nleaf), yleaf(nleaf), zleaf(nleaf), lev(nleaf), nH(nleaf))
+       lev = 0;  nH = 1.0_wp
+       il = 0
+       do iz = 0, par%nz-1
+          do iy = 0, par%ny-1
+             do ix = 0, par%nx-1
+                il = il + 1     ! = 1 + ix + nx*(iy + ny*iz): raster order
+                xleaf(il) = -par%xmax + (real(ix,wp)+0.5_wp)*dcx
+                yleaf(il) = -par%ymax + (real(iy,wp)+0.5_wp)*dcy
+                zleaf(il) = -par%zmax + (real(iz,wp)+0.5_wp)*dcz
+             end do
+          end do
+       end do
+     end block
+  end if
   have_Z     = allocated(Zarr)
   have_xHI   = allocated(xHIarr)
   have_ndust = allocated(ndustarr)
-
-  !--- recenter the box on the origin: shift leaf coords by the box center.
-  cxb = ox + 0.5_wp*boxlen;  cyb = oy + 0.5_wp*boxlen;  czb = oz + 0.5_wp*boxlen
-  xleaf = xleaf - cxb;  yleaf = yleaf - cyb;  zleaf = zleaf - czb
-  half  = 0.5_wp * boxlen
-  par%rmax = half;  par%xmax = half;  par%ymax = half;  par%zmax = half
   par%xyz_symmetry = .false.;  par%xy_periodic = .false.;  par%z_symmetry = .false.
 
+  !--- MoCHII gas-density model (both 'car' and 'amr'): a uniform density
+  !--- (par%nH_const) and/or a spherical sphere/shell cut (par%rmax/rmin) let
+  !--- a sharp geometry be resolved by the octree while the density stays
+  !--- uniform.  Applied on the leaf centers before the grid is built.
+  if (par%nH_const >= 0.0_wp) nH = par%nH_const
+  if (par%rmax > 0.0_wp .or. par%rmin > 0.0_wp) then
+     do il = 1, nleaf
+        rho = sqrt(xleaf(il)**2 + yleaf(il)**2 + zleaf(il)**2)
+        if (par%rmax > 0.0_wp .and. rho > par%rmax) nH(il) = 0.0_wp
+        if (par%rmin > 0.0_wp .and. rho < par%rmin) nH(il) = 0.0_wp
+     end do
+  end if
+
   if (mpar%p_rank == 0) then
-     write(*,'(a,i12)')   ' AMR: nleaf      = ', nleaf
-     write(*,'(a,f12.5)') ' AMR: boxlen     = ', boxlen
-     write(*,'(a,a)')     ' AMR: dust_model = ', trim(par%dust_model)
+     write(*,'(a,a)')     ' GRID: type       = ', trim(par%grid_type)
+     write(*,'(a,i12)')   ' GRID: nleaf      = ', nleaf
+     write(*,'(a,f12.5)') ' GRID: boxlen     = ', boxlen
+     write(*,'(a,a)')     ' GRID: dust_model = ', trim(par%dust_model)
+     if (par%nH_const >= 0.0_wp) write(*,'(a,es12.4)') ' GRID: nH_const   = ', par%nH_const
+     if (par%rmax > 0.0_wp)      write(*,'(a,f12.5)')  ' GRID: rmax       = ', par%rmax
+     if (par%rmin > 0.0_wp)      write(*,'(a,f12.5)')  ' GRID: rmin       = ', par%rmin
   end if
 
   !--- build the octree + neighbor table (shared memory), or — for
-  !--- grid_type='uniform' — the raster-ordered Cartesian grid with DDA
+  !--- grid_type='car' — the raster-ordered Cartesian grid with DDA
   !--- traversal (no tree, no neighbor table; PLAN section 4).
-  if (trim(par%grid_type) == 'uniform') then
-     block
-       integer,  allocatable :: perm(:)
-       real(wp), allocatable :: tmp(:)
-       real(wp) :: dc
-       integer :: nxu, ix, iy, iz, idx
-       if (any(lev /= lev(1))) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: grid_type=''uniform'' needs a single-level leaf list.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-       end if
-       nxu = 2**lev(1)
-       if (nleaf /= nxu**3) then
-          if (mpar%p_rank == 0) write(*,'(a,i0,a,i0)') &
-             'ERROR: uniform grid expects nleaf = (2^level)^3 = ', &
-             nxu**3, ', got ', nleaf
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-       end if
-       !--- permutation file row -> raster slot, then reorder every
-       !--- leaf array so that leaf index = raster index.
-       dc = boxlen/real(nxu, wp)
-       allocate(perm(nleaf), tmp(nleaf))
-       perm = 0
-       do il = 1, nleaf
-          ix = min(max(int((xleaf(il) + half)/dc), 0), nxu-1)
-          iy = min(max(int((yleaf(il) + half)/dc), 0), nxu-1)
-          iz = min(max(int((zleaf(il) + half)/dc), 0), nxu-1)
-          idx = 1 + ix + nxu*(iy + nxu*iz)
-          if (perm(idx) /= 0) then
+  if (trim(par%grid_type) == 'car') then
+     if (len_trim(par%amr_file) > 0) then
+        !--- file 'car' grid: a single-level octree-style leaf list, permuted
+        !--- from file row to raster slot so that leaf index = raster index.
+        block
+          integer,  allocatable :: perm(:)
+          real(wp), allocatable :: tmp(:)
+          real(wp) :: dc
+          integer :: nxu, ix, iy, iz, idx
+          if (any(lev /= lev(1))) then
              if (mpar%p_rank == 0) write(*,'(a)') &
-                'ERROR: uniform grid: two leaves map to one raster cell.'
+                'ERROR: grid_type=''car'' from a file needs a single-level leaf list.'
              call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
           end if
-          perm(idx) = il
-       end do
-       tmp = xleaf;  xleaf = tmp(perm)
-       tmp = yleaf;  yleaf = tmp(perm)
-       tmp = zleaf;  zleaf = tmp(perm)
-       tmp = nH;     nH    = tmp(perm)
-       if (have_Z)     then;  tmp = Zarr;     Zarr     = tmp(perm);  end if
-       if (have_xHI)   then;  tmp = xHIarr;   xHIarr   = tmp(perm);  end if
-       if (have_ndust) then;  tmp = ndustarr; ndustarr = tmp(perm);  end if
-       deallocate(perm, tmp)
-       call amr_build_uniform(nxu, nxu, nxu, -half, half, -half, half, &
-                              -half, half)
-     end block
+          nxu = 2**lev(1)
+          if (nleaf /= nxu**3) then
+             if (mpar%p_rank == 0) write(*,'(a,i0,a,i0)') &
+                'ERROR: car grid from a file expects nleaf = (2^level)^3 = ', &
+                nxu**3, ', got ', nleaf
+             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          end if
+          dc = boxlen/real(nxu, wp)
+          allocate(perm(nleaf), tmp(nleaf))
+          perm = 0
+          do il = 1, nleaf
+             ix = min(max(int((xleaf(il) + half)/dc), 0), nxu-1)
+             iy = min(max(int((yleaf(il) + half)/dc), 0), nxu-1)
+             iz = min(max(int((zleaf(il) + half)/dc), 0), nxu-1)
+             idx = 1 + ix + nxu*(iy + nxu*iz)
+             if (perm(idx) /= 0) then
+                if (mpar%p_rank == 0) write(*,'(a)') &
+                   'ERROR: car grid: two leaves map to one raster cell.'
+                call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             end if
+             perm(idx) = il
+          end do
+          tmp = xleaf;  xleaf = tmp(perm)
+          tmp = yleaf;  yleaf = tmp(perm)
+          tmp = zleaf;  zleaf = tmp(perm)
+          tmp = nH;     nH    = tmp(perm)
+          if (have_Z)     then;  tmp = Zarr;     Zarr     = tmp(perm);  end if
+          if (have_xHI)   then;  tmp = xHIarr;   xHIarr   = tmp(perm);  end if
+          if (have_ndust) then;  tmp = ndustarr; ndustarr = tmp(perm);  end if
+          deallocate(perm, tmp)
+          call amr_build_car(nxu, nxu, nxu, -half, half, -half, half, &
+                             -half, half)
+        end block
+     else
+        !--- namelist 'car' grid: already in raster order.
+        call amr_build_car(par%nx, par%ny, par%nz, &
+                           -par%xmax, par%xmax, -par%ymax, par%ymax, &
+                           -par%zmax, par%zmax)
+     end if
   else
      call amr_build_tree(xleaf, yleaf, zleaf, lev, nleaf, &
                          -half, half, -half, half, -half, half)

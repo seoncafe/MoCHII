@@ -60,7 +60,7 @@ print(f"total run [min]: amr {tot_a:.2f}, shared {tot_d:.2f}")
 ok = dx.max() < 5e-3 and abs(vion_d/vion_a - 1) < 1e-3
 print("GATE (uniform/shared vs octree):", "PASS" if ok else "FAIL")
 
-# --- uni_walk='dda' (incremental Amanatides-Woo): the FP step order
+# --- car_walk='dda' (incremental Amanatides-Woo): the FP step order
 # --- differs from the shared walk, so bit-identity is NOT expected;
 # --- compare statistically against the shared-walk run.
 import os

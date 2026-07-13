@@ -170,6 +170,12 @@ public
      real(kind=wp) :: rmax = -999.0
      real(kind=wp) :: rmin = 0.0
      !real(kind=wp) :: rsource = 0.0_wp
+     !--- MoCHII gas-density model applied to the leaf grid (both 'car' and
+     !--- 'amr'): par%nH_const >= 0 overrides every leaf's nH with a uniform
+     !--- value [cm^-3]; par%rmax > 0 zeroes nH outside radius rmax (sphere),
+     !--- and par%rmin > 0 zeroes nH inside rmin (spherical shell).  Radii are
+     !--- in par%distance_unit.  nH_const < 0 keeps the file/column density.
+     real(kind=wp) :: nH_const = -1.0_wp
      !--- continuum parameters
      real(kind=wp) :: source_zscale          = nan64
      !--- radial scale length of an 'exponential' stellar disk source; when set,
@@ -491,13 +497,14 @@ public
      !--- band-integrated channel images are still written (derived from
      !--- the cube).
      logical            :: peel_bins    = .false.
-     !--- uniform-grid walk: 'shared' = the octree walks with integer
-     !--- index arithmetic replacing the neighbor table (bit-identical
-     !--- to the octree run); 'dda' = dedicated incremental
+     !--- car-grid walk: 'dda' (default) = dedicated incremental
      !--- Amanatides-Woo walks (per-ray tMax/tDelta, no cell-geometry
-     !--- reads in the inner loop — statistically identical, faster on
-     !--- large grids).
-     character(len=8)   :: uni_walk     = 'shared'
+     !--- reads in the inner loop — the natural, fastest car traversal);
+     !--- 'shared' = the octree walks with integer index arithmetic
+     !--- replacing the neighbor table, a verification mode that is
+     !--- bit-identical to the single-level octree run (the cross-check
+     !--- DDA cannot provide — it differs at rounding by design).
+     character(len=8)   :: car_walk     = 'dda'
      !--- convergence criterion: 'cell' = cell-max tests (max|dx_HII| <
      !--- gas_tol, max|dTe|/Te < gas_tol_te — stall at the front-cell MC
      !--- noise floor and at no-heating cells); 'vol' = volume-integrated

@@ -49,21 +49,36 @@ contains
   call MPI_COMM_SPLIT(MPI_COMM_WORLD, mpar%h_rank, mpar%p_rank, mpar%SAME_HRANK_COMM, ierr)
   call MPI_COMM_SIZE(mpar%SAME_HRANK_COMM, mpar%SAME_HRANK_NPROC, ierr)
 
-  !--- MoCHII grids: 'amr' (octree) or 'uniform' (raster + DDA traversal;
-  !--- same leaf-list file at a single level).
-  if (trim(par%grid_type) /= 'amr' .and. trim(par%grid_type) /= 'uniform') then
+  !--- MoCHII grids: 'amr' (octree) or 'car' (single-level Cartesian, raster
+  !--- order; 'uniform' is accepted as a backward-compatible alias).  Either
+  !--- grid reads a leaf-list file (par%amr_file); a 'car' grid may instead be
+  !--- built from the namelist (par%nx/ny/nz + par%xmax/ymax/zmax).
+  if (trim(par%grid_type) == 'uniform') par%grid_type = 'car'
+  if (trim(par%grid_type) /= 'amr' .and. trim(par%grid_type) /= 'car') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: MoCHII requires par%grid_type = ''amr'' or ''uniform''.'
+        'ERROR: MoCHII requires par%grid_type = ''amr'' or ''car''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (len_trim(par%amr_file) == 0) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: grid_type=''amr''/''uniform'' requires par%amr_file.'
-     call MPI_FINALIZE(ierr);  stop
+     if (trim(par%grid_type) == 'amr') then
+        if (mpar%p_rank == 0) write(*,'(a)') &
+           'ERROR: grid_type=''amr'' requires par%amr_file (refinement structure).'
+        call MPI_FINALIZE(ierr);  stop
+     else if (par%nx < 2 .or. par%xmax <= 0.0_wp) then
+        if (mpar%p_rank == 0) write(*,'(a)') &
+           'ERROR: grid_type=''car'' without par%amr_file needs par%nx>=2 and par%xmax>0.'
+        call MPI_FINALIZE(ierr);  stop
+     end if
   endif
-  if (trim(par%grid_type) == 'uniform' .and. par%refine_front) then
+  if (trim(par%grid_type) == 'car' .and. par%refine_front) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: refine_front needs the octree (par%grid_type = ''amr'').'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (trim(par%grid_type) == 'car' .and. &
+      trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'shared') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%car_walk must be ''dda'' (default) or ''shared''.'
      call MPI_FINALIZE(ierr);  stop
   endif
 

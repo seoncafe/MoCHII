@@ -9,10 +9,11 @@
  par%no_print      = 4.0e7
  par%iseed         = 1234
 
- par%grid_type     = 'uniform'
- par%car_walk      = 'shared'
+ par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
  par%dust_model    = 'none'
+ par%nH_const      = 100.0
+ par%rmax          = 4.0
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1e49 s^-1 (mean E = 19.834 eV)
@@ -39,5 +40,5 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
- par%out_file        = 'uni_dda.h5'
+ par%out_file        = 'car_amr_ovr.h5'
 /

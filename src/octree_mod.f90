@@ -52,13 +52,13 @@ module octree_mod
     ! ------ dust opacity of each leaf (size nleaf) -- shared memory ------
     real(wp), pointer :: rhokap(:) => null()  ! grey dust opacity per code length
 
-    ! ------ uniform-grid mode (grid_type='uniform') ------
+    ! ------ single-level Cartesian mode (grid_type='car') ------
     ! A single-level Cartesian grid in raster order (leaf = cell =
     ! 1 + ix + nx*(iy + ny*iz), 0-based ix/iy/iz): no tree topology and
     ! no neighbor table are built; the leaf finder and the face-neighbor
     ! step become integer arithmetic (the DDA traversal — amr_cell_exit
     ! already computes the exact plane-crossing step).
-    logical  :: uniform = .false.
+    logical  :: car = .false.
     integer  :: nx = 0, ny = 0, nz = 0
     real(wp) :: dcell = 0.0_wp
   end type amr_grid_type
@@ -76,8 +76,8 @@ contains
     if (x < amr_grid%xmin .or. x > amr_grid%xmax .or. &
         y < amr_grid%ymin .or. y > amr_grid%ymax .or. &
         z < amr_grid%zmin .or. z > amr_grid%zmax) return
-    if (amr_grid%uniform) then
-      ileaf = uni_index(x, y, z)
+    if (amr_grid%car) then
+      ileaf = car_index(x, y, z)
       return
     end if
     icell = 1
@@ -97,13 +97,13 @@ contains
 
   !=========================================================================
   !=========================================================================
-  ! Geometry accessors: analytic in uniform mode (the cx/cy/cz/ch and
-  ! leaf-map arrays are NOT allocated there — the "true" uniform
+  ! Geometry accessors: analytic in car mode (the cx/cy/cz/ch and
+  ! leaf-map arrays are NOT allocated there — the "true" Cartesian
   ! backend), plain array reads on the octree.  The analytic center
-  ! expressions are the SAME ones amr_build_uniform previously used to
+  ! expressions are the SAME ones amr_build_car previously used to
   ! fill the arrays, so values are bit-identical.
   !=========================================================================
-  pure subroutine uni_ixyz(icell, ix, iy, iz)
+  pure subroutine car_ixyz(icell, ix, iy, iz)
     integer, intent(in)  :: icell
     integer, intent(out) :: ix, iy, iz
     integer :: rem
@@ -111,13 +111,13 @@ contains
     rem = (icell-1) - iz*amr_grid%nx*amr_grid%ny
     iy  = rem/amr_grid%nx
     ix  = rem - iy*amr_grid%nx
-  end subroutine uni_ixyz
+  end subroutine car_ixyz
 
   pure real(wp) function cell_cx(icell)
     integer, intent(in) :: icell
     integer :: ix, iy, iz
-    if (amr_grid%uniform) then
-       call uni_ixyz(icell, ix, iy, iz)
+    if (amr_grid%car) then
+       call car_ixyz(icell, ix, iy, iz)
        cell_cx = amr_grid%xmin + (real(ix,wp) + 0.5_wp)*amr_grid%dcell
     else
        cell_cx = amr_grid%cx(icell)
@@ -127,8 +127,8 @@ contains
   pure real(wp) function cell_cy(icell)
     integer, intent(in) :: icell
     integer :: ix, iy, iz
-    if (amr_grid%uniform) then
-       call uni_ixyz(icell, ix, iy, iz)
+    if (amr_grid%car) then
+       call car_ixyz(icell, ix, iy, iz)
        cell_cy = amr_grid%ymin + (real(iy,wp) + 0.5_wp)*amr_grid%dcell
     else
        cell_cy = amr_grid%cy(icell)
@@ -138,8 +138,8 @@ contains
   pure real(wp) function cell_cz(icell)
     integer, intent(in) :: icell
     integer :: ix, iy, iz
-    if (amr_grid%uniform) then
-       call uni_ixyz(icell, ix, iy, iz)
+    if (amr_grid%car) then
+       call car_ixyz(icell, ix, iy, iz)
        cell_cz = amr_grid%zmin + (real(iz,wp) + 0.5_wp)*amr_grid%dcell
     else
        cell_cz = amr_grid%cz(icell)
@@ -148,7 +148,7 @@ contains
 
   pure real(wp) function cell_ch(icell)
     integer, intent(in) :: icell
-    if (amr_grid%uniform) then
+    if (amr_grid%car) then
        cell_ch = 0.5_wp*amr_grid%dcell
     else
        cell_ch = amr_grid%ch(icell)
@@ -157,7 +157,7 @@ contains
 
   pure integer function leaf_cell(il)      ! leaf index -> cell index
     integer, intent(in) :: il
-    if (amr_grid%uniform) then
+    if (amr_grid%car) then
        leaf_cell = il
     else
        leaf_cell = amr_grid%icell_of_leaf(il)
@@ -185,7 +185,7 @@ contains
   !=========================================================================
   ! Uniform-grid raster index of (x,y,z); 1-based, 0 outside.
   !=========================================================================
-  integer function uni_index(x, y, z) result(il)
+  integer function car_index(x, y, z) result(il)
     real(wp), intent(in) :: x, y, z
     integer :: ix, iy, iz
     ix = int((x - amr_grid%xmin)/amr_grid%dcell)
@@ -195,7 +195,7 @@ contains
     iy = min(max(iy, 0), amr_grid%ny-1)
     iz = min(max(iz, 0), amr_grid%nz-1)
     il = 1 + ix + amr_grid%nx*(iy + amr_grid%ny*iz)
-  end function uni_index
+  end function car_index
 
   !=========================================================================
   integer function amr_find_cell(x, y, z) result(icell_out)
@@ -205,8 +205,8 @@ contains
     if (x < amr_grid%xmin .or. x > amr_grid%xmax .or. &
         y < amr_grid%ymin .or. y > amr_grid%ymax .or. &
         z < amr_grid%zmin .or. z > amr_grid%zmax) return
-    if (amr_grid%uniform) then
-      icell_out = uni_index(x, y, z)
+    if (amr_grid%car) then
+      icell_out = car_index(x, y, z)
       return
     end if
     icell = 1
@@ -238,8 +238,8 @@ contains
     if (x < amr_grid%xmin .or. x > amr_grid%xmax .or. &
         y < amr_grid%ymin .or. y > amr_grid%ymax .or. &
         z < amr_grid%zmin .or. z > amr_grid%zmax) return
-    if (amr_grid%uniform) then
-      icell_out = uni_index(x, y, z)
+    if (amr_grid%car) then
+      icell_out = car_index(x, y, z)
       return
     end if
     icell = 1
@@ -523,8 +523,8 @@ contains
     real(wp), intent(in) :: x, y, z
     integer :: ineigh, child, ioct
     il_new = 0
-    if (amr_grid%uniform) then
-      il_new = uni_next(icell, iface)
+    if (amr_grid%car) then
+      il_new = car_next(icell, iface)
       return
     end if
     ineigh = amr_grid%neighbor(iface, icell)
@@ -574,8 +574,8 @@ contains
     real(wp), intent(out) :: h_gap
     integer :: ineigh, child, ioct
     il_new = 0;  icell_gap = 0;  h_gap = 0.0_wp
-    if (amr_grid%uniform) then
-      il_new = uni_next(icell, iface)
+    if (amr_grid%car) then
+      il_new = car_next(icell, iface)
       return
     end if
     ineigh = amr_grid%neighbor(iface, icell)
@@ -620,7 +620,7 @@ contains
   ! Uniform-grid face-neighbor step: pure integer arithmetic (the DDA
   ! traversal step; no neighbor table).  Returns 0 outside the box.
   !=========================================================================
-  integer function uni_next(icell, iface) result(il_new)
+  integer function car_next(icell, iface) result(il_new)
     integer, intent(in) :: icell, iface
     integer :: ix, iy, iz, rem
     iz  = (icell-1)/(amr_grid%nx*amr_grid%ny)
@@ -641,14 +641,14 @@ contains
     else
        il_new = 1 + ix + amr_grid%nx*(iy + amr_grid%ny*iz)
     end if
-  end function uni_next
+  end function car_next
 
   !=========================================================================
-  ! Build the uniform-grid geometry (grid_type='uniform'): cx/cy/cz/ch and
+  ! Build the single-level Cartesian geometry (grid_type='car'): cx/cy/cz/ch and
   ! identity leaf maps in raster order; no tree topology, no neighbor
   ! table.  The caller must pass the state arrays already raster-ordered.
   !=========================================================================
-  subroutine amr_build_uniform(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax)
+  subroutine amr_build_car(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax)
     use memory_mod, only : create_shared_mem
     use mpi
     implicit none
@@ -656,7 +656,7 @@ contains
     real(wp), intent(in) :: xmin, xmax, ymin, ymax, zmin, zmax
     integer :: il, ix, iy, iz, ierr
 
-    amr_grid%uniform = .true.
+    amr_grid%car = .true.
     amr_grid%nx = nx;  amr_grid%ny = ny;  amr_grid%nz = nz
     amr_grid%xmin = xmin;  amr_grid%xmax = xmax;  amr_grid%xrange = xmax - xmin
     amr_grid%ymin = ymin;  amr_grid%ymax = ymax;  amr_grid%yrange = ymax - ymin
@@ -667,14 +667,14 @@ contains
     amr_grid%nleaf  = nx*ny*nz
     amr_grid%levelmax = nint(log(real(nx,wp))/log(2.0_wp))
 
-    !--- the true uniform backend: NO geometry arrays — centers, half
+    !--- the true Cartesian backend: NO geometry arrays — centers, half
     !--- widths, and the leaf<->cell maps come analytically from the
     !--- raster index (cell_cx/cy/cz/ch, leaf_cell accessors).
     call MPI_BARRIER(mpar%hostcomm, ierr)
     if (mpar%p_rank == 0) write(*,'(a,3i5,a)') &
-       ' UNI: uniform grid ', nx, ny, nz, &
+       ' CAR: Cartesian grid ', nx, ny, nz, &
        ' (raster order, analytic geometry — no tree arrays)'
-  end subroutine amr_build_uniform
+  end subroutine amr_build_car
 
   ! ---- private helpers ----
 
