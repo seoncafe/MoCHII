@@ -20,7 +20,9 @@ program main
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion
   use raytrace_amr_mod,only : transport_ion_packet
-  use gas_rates_mod,   only : gas_rates_compute, gas_rates_write
+  use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
+                              run_converged, run_iters, run_final_dx, &
+                              run_final_dte
   use ion_balance_mod, only : gas_equilibrium_update
   use thermal_mod,     only : gas_thermal_update
   use cooling_mod,     only : cooling_setup
@@ -60,6 +62,8 @@ program main
   !--- recomputed from zero each iteration (opacity changed).
   niter = max(par%gas_niter, 1)
   n_step = max(1_int64, int(par%nprint,int64)/mpar%nproc)
+  converged = .false.
+  max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
      jt_ion(:,:) = 0.0_wp
      call time_stamp(dtime)
@@ -134,6 +138,28 @@ program main
         exit
      end if
   end do
+
+  !--- record the convergence state (written to the rates header) and warn
+  !--- when the iteration hit the cap without converging.
+  run_converged = converged
+  run_iters     = min(iter, niter)
+  run_final_dx  = max_dx
+  run_final_dte = max_dte
+  !--- Only rank 0 evaluates the (namelist-set) require_convergence flag and
+  !--- issues the collective abort; a single-rank MPI_ABORT tears down the
+  !--- whole communicator.  This avoids letting any other rank act on its own
+  !--- copy of the flag.
+  if (par%gas_niter >= 1 .and. .not. converged .and. mpar%p_rank == 0) then
+     write(6,'(a,i0,2(a,es10.3),a)') &
+        ' WARNING: gas iteration did NOT converge in ', niter, &
+        ' iterations (max|dx_HII| = ', max_dx, ', max|dTe|/Te = ', max_dte, &
+        '); the written state is not at equilibrium.'
+     if (par%require_convergence) then
+        write(6,'(a)') &
+           ' ERROR: par%require_convergence is set; stopping before output.'
+        call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+     end if
+  end if
 
   !--- peel-off imaging pass: one extra transport of the CONVERGED state
   !--- with observer peeling (direct at emission for stellar and diffuse

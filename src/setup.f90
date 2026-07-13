@@ -30,6 +30,7 @@ contains
      stop
   endif
 
+  par%require_convergence = .false.   ! definite baseline; namelist may override
   open(newunit=unit,file=trim(model_infile),status='old')
   read(unit,parameters)
   close(unit)

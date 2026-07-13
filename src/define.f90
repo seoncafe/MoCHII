@@ -514,6 +514,9 @@ public
      !--- (n_e weight removes vacuum / no-heating cells).  Both measures
      !--- are printed each iteration.
      character(len=8)   :: conv_crit    = 'cell'
+     !--- abort (nonzero exit) if the gas iteration hits gas_niter without
+     !--- converging; default off -> warn but still write the output.
+     logical            :: require_convergence = .false.
      !--- leaf-by-leaf line emissivities -> '<base>_emis' (HDF5/FITS):
      !--- emis_h (SH95 H I lines) and emis_<el>_<stage> blocks
      !--- [erg/s/cm^3; sum(emis*V) = L_line, rows match <base>_lines.txt]

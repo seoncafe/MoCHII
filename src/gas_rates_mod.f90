@@ -24,6 +24,7 @@ module gas_rates_mod
   public :: gas_rates_compute, gas_rates_write
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
   public :: heat_dust, g0_fuv
+  public :: run_converged, run_iters, run_final_dx, run_final_dte
 
   real(kind=wp), allocatable :: gamma_HI(:), gamma_HeI(:), gamma_HeII(:)
   real(kind=wp), allocatable :: heat_HI(:),  heat_HeI(:),  heat_HeII(:)
@@ -35,6 +36,14 @@ module gas_rates_mod
   !--- / 1.6e-3 erg/s/cm^2 (nonzero only with par%add_fuv); drives the
   !--- grain photoelectric heating (par%grain_pe).
   real(kind=wp), allocatable :: g0_fuv(:)
+
+  !--- convergence state of the gas iteration, set by main.f90 after the
+  !--- loop and written to the rates-file header so an unconverged run is
+  !--- self-documenting (the iteration can hit the cap without converging).
+  logical       :: run_converged = .false.
+  integer       :: run_iters     = 0
+  real(kind=wp) :: run_final_dx  = 0.0_wp
+  real(kind=wp) :: run_final_dte = 0.0_wp
 
 contains
 
@@ -126,6 +135,10 @@ contains
     call io_put_keyword(file,'TOT_LUM', par%luminosity,'band luminosity [erg/s]',status)
     call io_put_keyword(file,'DIST_CM', par%distance2cm,'distance unit (cm)',   status)
     call io_put_keyword(file,'nphotons',par%no_photons, 'number of photons',    status)
+    call io_put_keyword(file,'CONVERGD',run_converged,'gas iteration converged',status)
+    call io_put_keyword(file,'NITERDON',run_iters,   'gas iterations run',      status)
+    call io_put_keyword(file,'FINALDX', run_final_dx, 'final max|delta x_HII|',  status)
+    call io_put_keyword(file,'FINALDTE',run_final_dte,'final max|delta Te|/Te',  status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HeI','He I photoionization rate [s^-1]',status)
     call io_append_image(file, gamma_HeII, status, bitpix=-64)
