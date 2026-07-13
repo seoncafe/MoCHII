@@ -88,6 +88,33 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
+  !--- general parameter sanity (fail fast rather than run on nonsense).
+  if (par%no_photons < 1.0_wp) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%no_photons must be >= 1.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%ion_relax must be in (0, 1].'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (trim(par%case_ab) /= 'A' .and. trim(par%case_ab) /= 'B') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%case_ab must be ''A'' or ''B''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%solve_te .and. par%te_min >= par%te_max) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%solve_te needs par%te_min < par%te_max.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%ion_peel .and. (par%nxim < 1 .or. par%nyim < 1)) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+
   !--- ionizing band (G0: the only transport mode).
   if (.not. par%use_ion_band) then
      if (mpar%p_rank == 0) write(*,'(a)') &
