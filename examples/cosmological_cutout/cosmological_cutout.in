@@ -21,9 +21,11 @@
  par%xHeII_init    = 0.9
 
  par%gas_niter     = 25
+ ! the turbulent cutout + re-refinement has a higher Monte Carlo floor,
+ ! so the tolerances are set looser than the smooth-sphere examples
  par%conv_crit     = 'vol'
- par%gas_tol       = 1.0e-2
- par%gas_tol_te    = 2.0e-2
+ par%gas_tol       = 3.0e-2
+ par%gas_tol_te    = 3.5e-2
  par%case_ab       = 'B'
 
  par%solve_te      = .true.
