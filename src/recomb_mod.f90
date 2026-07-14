@@ -2,13 +2,15 @@ module recomb_mod
 !---------------------------------------------------------------------------
 ! MoCHII: recombination and collisional-ionization rate coefficients.
 !
-! Recombination — Hui & Gnedin (1997, MNRAS 292, 27) analytic fits, case A
-! and case B, for H II, He II, He III, as functions of T [K]; accuracy
-! better than ~0.7% over 1-1e9 K.  He II dielectronic recombination is
-! negligible at HII-region temperatures; the fitting pipeline supplies
-! Badnell (2006) RR + DR coefficients for the metal cascade anyway.
-! At T = 1e4 K:
-! alpha_B(H II) = 2.594e-13 cm^3 s^-1 (canonical 2.59e-13).
+! Recombination — selected by par%recomb_model, for H II, He II, He III as
+! functions of T [K].
+!   'badnell_mao' (default): total radiative recombination alpha_A from the
+!     Badnell (2023) RR fit; the ground-level (n=1) direct-capture alpha_1
+!     from the Mao & Kaastra (2016, A&A 587, A84; J/A+A/587/A84) level fit;
+!     case B alpha_B = alpha_A - alpha_1.  He II -> He I includes the Badnell
+!     three-term DR sum (negligible below ~5e4 K); H II and He III have no DR.
+!   'hui_gnedin': Hui & Gnedin (1997, MNRAS 292, 27) case-A/B fits, retained
+!     so the recorded gates reproduce.
 !
 ! Collisional ionization — Voronov (1997, ADNDT 65, 1) fits for H I, He I,
 ! He II:  k(T) = A (1 + P sqrt(U)) U^K exp(-U) / (X + U),  U = dE/T_eV.
@@ -30,51 +32,161 @@ module recomb_mod
 contains
 
   !=========================================================================
-  ! Hui & Gnedin (1997) recombination fits; lambda = 2 T_TR / T.
+  ! Public recombination coefficients: dispatch on par%recomb_model.
+  ! 'hui_gnedin' -> the hg_* helpers; anything else -> the badnell_mao
+  ! (default) path (Badnell 2023 RR + Mao & Kaastra 2016 alpha_1).
   !=========================================================================
   elemental real(kind=wp) function alphaA_HII(T) result(a)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*T_TR_HI/T
-    a = 1.269e-13_wp * lam**1.503_wp / (1.0_wp + (lam/0.522_wp)**0.470_wp)**1.923_wp
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaA_HII(T)
+    else
+       a = rr_badnell(T, 8.318e-11_wp, 0.7472_wp, 2.965_wp, 7.001e5_wp, 0.0_wp, 0.0_wp)
+    end if
   end function alphaA_HII
 
   elemental real(kind=wp) function alphaB_HII(T) result(a)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*T_TR_HI/T
-    a = 2.753e-14_wp * lam**1.500_wp / (1.0_wp + (lam/2.740_wp)**0.407_wp)**2.242_wp
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaB_HII(T)
+    else
+       a = alphaA_HII(T) - alpha1_HII(T)
+    end if
   end function alphaB_HII
 
   elemental real(kind=wp) function alphaA_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*T_TR_HeI/T
-    a = 3.000e-14_wp * lam**0.654_wp
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaA_HeII(T)
+    else
+       a = rr_badnell(T, 5.235e-11_wp, 0.6988_wp, 7.301_wp, 4.475e6_wp, 0.0829_wp, 1.682e5_wp) &
+           + dr_HeII_badnell(T)
+    end if
   end function alphaA_HeII
 
   elemental real(kind=wp) function alphaB_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*T_TR_HeI/T
-    a = 1.260e-14_wp * lam**0.750_wp
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaB_HeII(T)
+    else
+       a = alphaA_HeII(T) - alpha1_HeII(T)
+    end if
   end function alphaB_HeII
 
-  !--- He III is hydrogenic (Z=2): the H fit evaluated on lambda(T_TR_HeII),
-  !--- scaled by Z (alpha_Z(T) = Z alpha_H(T/Z^2)).
   elemental real(kind=wp) function alphaA_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*T_TR_HeII/T
-    a = 2.0_wp * 1.269e-13_wp * lam**1.503_wp / (1.0_wp + (lam/0.522_wp)**0.470_wp)**1.923_wp
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaA_HeIII(T)
+    else
+       a = rr_badnell(T, 1.818e-10_wp, 0.7492_wp, 1.017e1_wp, 2.786e6_wp, 0.0_wp, 0.0_wp)
+    end if
   end function alphaA_HeIII
 
   elemental real(kind=wp) function alphaB_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
+    if (trim(par%recomb_model) == 'hui_gnedin') then
+       a = hg_alphaB_HeIII(T)
+    else
+       a = alphaA_HeIII(T) - alpha1_HeIII(T)
+    end if
+  end function alphaB_HeIII
+
+  !=========================================================================
+  ! Badnell (2023) radiative recombination fit and the He II -> He I
+  ! dielectronic three-term sum.
+  !=========================================================================
+  elemental real(kind=wp) function rr_badnell(T, A, B, T0, T1, Cc, T2) result(rr)
+    real(kind=wp), intent(in) :: T, A, B, T0, T1, Cc, T2
+    real(kind=wp) :: bp, tt
+    bp = B + Cc*exp(-T2/T)
+    tt = sqrt(T/T0)
+    rr = A / ( tt * (1.0_wp+tt)**(1.0_wp-bp) * (1.0_wp + sqrt(T/T1))**(1.0_wp+bp) )
+  end function rr_badnell
+
+  elemental real(kind=wp) function dr_HeII_badnell(T) result(dr)
+    real(kind=wp), intent(in) :: T
+    dr = T**(-1.5_wp) * ( 1.417e-3_wp*exp(-4.633e5_wp/T) &
+                        + 2.235e-4_wp*exp(-5.532e5_wp/T) &
+                        - 2.185e-5_wp*exp(-8.887e5_wp/T) )
+  end function dr_HeII_badnell
+
+  !=========================================================================
+  ! Mao & Kaastra (2016, A&A 587, A84) level radiative-recombination fit.
+  ! T [K] is converted to eV; a0 is in units of 1e-10 cm^3 s^-1.
+  !=========================================================================
+  elemental real(kind=wp) function rr_mao(T, a0, b0, c0, a1, b1, a2, b2) result(rr)
+    real(kind=wp), intent(in) :: T, a0, b0, c0, a1, b1, a2, b2
+    real(kind=wp) :: te
+    te = T * (kboltz_cgs/ev2erg)
+    rr = a0*1.0e-10_wp * te**(-b0 - c0*log(te)) &
+         * (1.0_wp + a2*te**(-b2)) / (1.0_wp + a1*te**(-b1))
+  end function rr_mao
+
+  !--- n=1 ground-level direct-capture rate (Mao & Kaastra 2016 coefficients).
+  elemental real(kind=wp) function alpha1_HII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    a = rr_mao(T, 2.3390e-2_wp, 1.2310_wp, 1.0380e-2_wp, 1.6430e1_wp, &
+               7.5080e-1_wp, 8.9970e-2_wp, 3.5560e-1_wp)
+  end function alpha1_HII
+
+  elemental real(kind=wp) function alpha1_HeIII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    a = rr_mao(T, 1.6140e-1_wp, 1.1180_wp, 1.4260e-2_wp, 3.7370e1_wp, &
+               7.3750e-1_wp, 4.4050e-1_wp, 3.6220e-1_wp)
+  end function alpha1_HeIII
+
+  elemental real(kind=wp) function alpha1_HeII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    a = rr_mao(T, 3.7790e-2_wp, 1.1400_wp, 3.9760e-3_wp, 1.2030e2_wp, &
+               9.9590e-1_wp, 3.6800_wp, 4.1030e-1_wp)
+  end function alpha1_HeII
+
+  !=========================================================================
+  ! Hui & Gnedin (1997) recombination fits; lambda = 2 T_TR / T.
+  !=========================================================================
+  elemental real(kind=wp) function hg_alphaA_HII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lam
+    lam = 2.0_wp*T_TR_HI/T
+    a = 1.269e-13_wp * lam**1.503_wp / (1.0_wp + (lam/0.522_wp)**0.470_wp)**1.923_wp
+  end function hg_alphaA_HII
+
+  elemental real(kind=wp) function hg_alphaB_HII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lam
+    lam = 2.0_wp*T_TR_HI/T
+    a = 2.753e-14_wp * lam**1.500_wp / (1.0_wp + (lam/2.740_wp)**0.407_wp)**2.242_wp
+  end function hg_alphaB_HII
+
+  elemental real(kind=wp) function hg_alphaA_HeII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lam
+    lam = 2.0_wp*T_TR_HeI/T
+    a = 3.000e-14_wp * lam**0.654_wp
+  end function hg_alphaA_HeII
+
+  elemental real(kind=wp) function hg_alphaB_HeII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lam
+    lam = 2.0_wp*T_TR_HeI/T
+    a = 1.260e-14_wp * lam**0.750_wp
+  end function hg_alphaB_HeII
+
+  !--- He III is hydrogenic (Z=2): the H fit evaluated on lambda(T_TR_HeII),
+  !--- scaled by Z (alpha_Z(T) = Z alpha_H(T/Z^2)).
+  elemental real(kind=wp) function hg_alphaA_HeIII(T) result(a)
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lam
+    lam = 2.0_wp*T_TR_HeII/T
+    a = 2.0_wp * 1.269e-13_wp * lam**1.503_wp / (1.0_wp + (lam/0.522_wp)**0.470_wp)**1.923_wp
+  end function hg_alphaA_HeIII
+
+  elemental real(kind=wp) function hg_alphaB_HeIII(T) result(a)
+    real(kind=wp), intent(in) :: T
     real(kind=wp) :: lam
     lam = 2.0_wp*T_TR_HeII/T
     a = 2.0_wp * 2.753e-14_wp * lam**1.500_wp / (1.0_wp + (lam/2.740_wp)**0.407_wp)**2.242_wp
-  end function alphaB_HeIII
+  end function hg_alphaB_HeIII
 
   !=========================================================================
   ! Voronov (1997) collisional-ionization rate coefficients [cm^3 s^-1].

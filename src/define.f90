@@ -591,6 +591,10 @@ public
      !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
      !--- ratio per stage, Cloudy c23.01 DereRatio).
      character(len=16)  :: ci_model     = 'voronov'
+     !--- H/He recombination: 'badnell_mao' (default) = Badnell 2023 RR
+     !--- (+DR for He II) total alpha_A, Mao & Kaastra 2016 n=1 ground-level
+     !--- alpha_1, case B = alpha_A - alpha_1; 'hui_gnedin' = Hui & Gnedin 1997.
+     character(len=16)  :: recomb_model = 'badnell_mao'
      !--- thermal balance.  solve_te replaces the fixed-Te solve
      !--- with heating = cooling bisection in [te_min, te_max]; convergence
      !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling

@@ -105,6 +105,12 @@ contains
         'ERROR: par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%recomb_model) /= 'badnell_mao' .and. &
+      trim(par%recomb_model) /= 'hui_gnedin') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%recomb_model must be ''badnell_mao'' (default) or ''hui_gnedin''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
 
   !--- general parameter sanity (fail fast rather than run on nonsense).
   if (par%no_photons < 1.0_wp) then
