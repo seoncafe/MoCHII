@@ -76,7 +76,7 @@ public
 ! maximum number of albedo/asymmetry-factor values in a single-run (a,g) scan
   integer, parameter :: MAX_SCAN = 32
 
-! maximum number of stellar source components (multi-population SED, Stage 6)
+! maximum number of stellar source components (multi-population SED)
   integer, parameter :: MAX_SRC = 16
 
 ! tinest = the smallest positive number
@@ -220,7 +220,7 @@ public
      !--- When use_ag_list = .true., par%hgg is the simulated g0; the scattered image
      !--- becomes a 4-D array scatt(x,y,albedo_list,hgg_list).  Empty (NaN) lists are
      !--- auto-filled with the canonical paper grids (a=0.1..1.0, g=0.0..0.9).
-     !--- SED (multi-wavelength) mode (MoCafe v2.00, Stage 1).  When
+     !--- SED (multi-wavelength) mode.  When
      !--- use_sed = .true., a single run transports photons over a log-spaced
      !--- wavelength grid [lambda_min, lambda_max] (um) with nlambda bins.
      !--- Dust properties C_ext/albedo/g vs lambda are read from kext_file
@@ -237,11 +237,11 @@ public
      character(len=128) :: kext_file       = ''
      character(len=128) :: source_spectrum = ''
      real(kind=wp)      :: tstar           = -999.0_wp
-     !--- Stage 2: mean-intensity tally J_lambda(x,y,z) in each cell (Lucy 1999
+     !--- mean-intensity tally J_lambda(x,y,z) in each cell (Lucy 1999
      !--- pathlength estimator); writes '<base>_jlam.<ext>'.  Requires
      !--- use_sed and the plain Cartesian grid.
      logical            :: save_jlam       = .false.
-     !--- Stage 3: dust thermal emission via the SEDust library (Mode 1, Lucy
+     !--- dust thermal emission via the SEDust library (Mode 1, Lucy
      !--- 1999; non-iterative first version).  Requires use_sed + save_jlam.
      !--- par%luminosity must be the physical stellar luminosity in erg/s for
      !--- absolute dust temperatures.  Writes '<base>_dustsed.<ext>'.
@@ -275,14 +275,14 @@ public
      !--- sed_workdir (defaults point at the copied SEDust/data/zubko).
      character(len=256) :: sed_zubko_config = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
      character(len=256) :: sed_zubko_dir    = '../data/zubko/'
-     !--- Lucy iteration for dust self-absorption (Stage 3 follow-up #1).
+     !--- Lucy iteration for dust self-absorption.
      !--- dust_niter = max iterations (1 = non-iterative); dust_nphotons =
      !--- dust-emission photons per iteration; dust_tol = relative-change
      !--- convergence on the total emitted (=absorbed) luminosity.
      integer            :: dust_niter       = 1
      real(kind=wp)      :: dust_no_photons  = 1.0e6_wp
      real(kind=wp)      :: dust_tol         = 1.0e-3_wp
-     !--- fast emission-table path (Stage 3 follow-up #3): interpolate the
+     !--- fast emission-table path: interpolate the
      !--- emission spectrum in the field-intensity scaling U over a fixed
      !--- reference shape, instead of an exact SEDust solve per cell.  Much
      !--- faster on large grids; approximate where the local spectral shape
@@ -294,7 +294,7 @@ public
      !--- full stochastic solve and gives the true Teq, but drops PAH /
      !--- stochastic-heating features.  More accurate than the B&W mixture mean.
      logical            :: dust_single_teq  = .false.
-     !--- multiple stellar source components (Stage 6).  When par%nsource > 1,
+     !--- multiple stellar source components.  When par%nsource > 1,
      !--- each component i has its own spectrum (Planck src_tstar(i) or file
      !--- src_spectrum(i)), luminosity src_lum(i) [erg/s], geometry
      !--- src_geometry(i) ('point'|'uniform'|'gaussian'|'exponential') and
@@ -329,7 +329,7 @@ public
      real(kind=wp)      :: allsky_x      = 0.0_wp   ! interior observer position (code units)
      real(kind=wp)      :: allsky_y      = 0.0_wp
      real(kind=wp)      :: allsky_z      = 0.0_wp
-     !--- Modified Random Walk (Stage 8) for very optically thick cells; used
+     !--- Modified Random Walk for very optically thick cells; used
      !--- in the Lucy energy passes.  mrw_gamma is the trigger threshold on
      !--- R0*rho*kappa (nearest-wall optical depth); ~2 is typical.
      logical            :: use_mrw       = .false.
@@ -354,8 +354,7 @@ public
      character(len=8) :: grid_type        = 'car'
      logical          :: use_clump_medium = .false.
      logical          :: use_amr_grid     = .false.
-     !--- AMR octree grid (dust only; velocity/temperature deferred).  See
-     !--- AMR_CLUMPS_PLAN.md Part A.  Leaf data are read from a generic AMR
+     !--- AMR octree grid.  Leaf data are read from a generic AMR
      !--- file (FITS/HDF5/text) produced by the Python builders/converters;
      !--- amr_type='ramses' is rejected (convert to 'generic' first).  The
      !--- dust opacity of each leaf follows dust_model: 'global_dgr'
@@ -368,8 +367,8 @@ public
      real(kind=wp)      :: Z_global   = 0.0134_wp
      real(kind=wp)      :: Z_ref      = 0.0134_wp
      real(kind=wp)      :: f_ion_dust = 0.01_wp
-     !--- clumpy-medium parameters (dust only; velocity/temperature deferred).
-     !--- See AMR_CLUMPS_PLAN.md Part B and docs/MoCafe_clump.tex.  A sphere of
+     !--- clumpy-medium parameters (dust only).
+     !--- A sphere of
      !--- radius par%rmax holds N non-overlapping dust clumps of radius
      !--- clump_radius; the inter-clump medium is vacuum (par%rmin carves an
      !--- inner cavity).  Clump count: one of clump_f_cov / clump_f_vol /
@@ -403,7 +402,10 @@ public
      character(len=10)  :: output_normalization = 'luminosity'
      !--- distribution function for external illumination
      character(len=128) :: radiation_angular_PDF_file = ''
-     !--- density file
+     !--- MoCHII: a uniform 3D density cube (FITS/HDF5, NAXIS1/2/3 = nx/ny/nz,
+     !--- values = nH [cm^-3]) read onto the 'car' grid; nx/ny/nz come from the
+     !--- file, the box is par%xmax/ymax/zmax.  reduce_factor downsamples by an
+     !--- integer factor; centering selects the reduction anchor.
      character(len=128) :: density_file  = ''
      integer            :: reduce_factor = 1
      integer            :: centering     = 0
@@ -424,9 +426,10 @@ public
      real(kind=wp) :: dxim  = nan64
      real(kind=wp) :: dyim  = nan64
      !--- MoCHII: ionizing frequency band (nu >= 13.6 eV) and gas leaf state.
-     !--- Stage G0: fixed neutral fractions, no equilibrium feedback; the band
-     !--- transports source packets and tallies J_nu per leaf, from which the
-     !--- photoionization rates Gamma_i and photoheating H_i follow.
+     !--- With gas_niter = 0 the neutral fractions are fixed (no equilibrium
+     !--- feedback); the band transports source packets and tallies J_nu per
+     !--- leaf, from which the photoionization rates Gamma_i and photoheating
+     !--- H_i follow.
      logical            :: use_ion_band = .false.
      integer            :: nnu_ion      = 16          ! frequency bins
      real(kind=wp)      :: eion_min     = 13.598_wp   ! band lower edge [eV]
@@ -444,6 +447,12 @@ public
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
+     !--- align ionizing bin edges to the ionization thresholds (H I, He I,
+     !--- He II, and the active metal photoionization thresholds) so no bin
+     !--- straddles a threshold, removing the He/metal edge discretization
+     !--- error (the 32-bin log grid overcounts He-ionizing photons by ~18%).
+     !--- Default ON (physically correct); set .false. for the legacy log grid.
+     logical            :: ion_align_edges = .true.
      !--- further registry elements (default 0 = off; pass GAS-PHASE
      !--- values — Si and especially Ca are strongly depleted onto
      !--- grains, Cl is nearly undepleted; typical Orion gas-phase:
@@ -530,14 +539,14 @@ public
      !--- hot-cell bias where n_HI and free electrons coexist).  Off by
      !--- default -> no change to the SH95 recombination H lines.
      logical            :: h_coll_effects = .false.
-     !--- G0 gas-state initialization (overridden by AMR file columns where
+     !--- gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
      real(kind=wp)      :: xHI_init     = 1.0_wp
      real(kind=wp)      :: xHeI_init    = 1.0_wp
      real(kind=wp)      :: xHeII_init   = 0.0_wp
      real(kind=wp)      :: He_abund     = 0.1_wp
      !--- add dust absorption into the ionizing band (dusty Stromgren
-     !--- competition, PLAN section 7 item 2).  The leaf grey rhokap is
+     !--- competition).  The leaf grey rhokap is
      !--- scaled per bin by (1-albedo) C_ext(E)/C_ext(lambda_ref) read
      !--- from the kext table ion_dust_kext (must cover the EUV, e.g.
      !--- kext_albedo_WD_MW_3.1_60_D03).  EUV dust scattering deferred.
@@ -565,13 +574,13 @@ public
      !--- model with an explicit 'PAH' channel (astrodust).
      logical            :: sed_pah_live = .false.
      !--- PAH share of the reference extinction and the PAH survival in
-     !--- ionized gas (laursen09_live: PLAN section 7 item 3 option).
+     !--- ionized gas (laursen09_live option).
      real(kind=wp)      :: f_pah        = 0.0_wp
      real(kind=wp)      :: f_ion_pah    = 0.0_wp
-     !--- Stage G1: ionization equilibrium + opacity feedback iteration.
-     !--- gas_niter = 0 keeps the G0 single-pass behavior (no solve).
+     !--- ionization equilibrium + opacity feedback iteration.
+     !--- gas_niter = 0 keeps the single-pass behavior (no solve).
      !--- Convergence: max |delta x_HII| < gas_tol.  te_fixed [K] is the
-     !--- fixed electron temperature until the G2 thermal balance.
+     !--- fixed electron temperature used when solve_te is off.
      !--- ion_relax < 1 under-relaxes x between iterations (sharp I-fronts).
      integer            :: gas_niter    = 0
      real(kind=wp)      :: gas_tol      = 1.0e-3_wp
@@ -582,20 +591,20 @@ public
      !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
      !--- ratio per stage, Cloudy c23.01 DereRatio).
      character(len=16)  :: ci_model     = 'voronov'
-     !--- Stage G2: thermal balance.  solve_te replaces the fixed-Te solve
+     !--- thermal balance.  solve_te replaces the fixed-Te solve
      !--- with heating = cooling bisection in [te_min, te_max]; convergence
-     !--- additionally requires max |delta Te|/Te < gas_tol_te.  Tier-1
-     !--- cooling coefficient files are read from atomic_dir.
+     !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling
+     !--- coefficient files are read from atomic_dir.
      logical            :: solve_te     = .false.
      real(kind=wp)      :: te_min       = 1.0e3_wp
      real(kind=wp)      :: te_max       = 5.0e4_wp
      real(kind=wp)      :: gas_tol_te   = 1.0e-3_wp
      character(len=256) :: atomic_dir   = 'data/atomic'
-     !--- Stage G2b: trace-metal registry.  An element is active when its
+     !--- trace-metal registry.  An element is active when its
      !--- abundance n(X)/n(H) > 0; defaults are the MOCASSIN HII20/HII40
-     !--- benchmark abundances.  use_metals enables the cascade + Tier-1
-     !--- metal cooling inside the thermal balance.
-     !--- Stage G4: solution-driven I-front re-refinement.  At iteration
+     !--- benchmark abundances.  use_metals enables the cascade + metal
+     !--- cooling inside the thermal balance.
+     !--- solution-driven I-front re-refinement.  At iteration
      !--- refine_iter the octree is rebuilt: level refine_lmax where
      !--- refine_eps < x_HI < 1-refine_eps or a face-neighbor x_HI jump
      !--- exceeds refine_dx; refine_lbase elsewhere.  State maps by
@@ -606,7 +615,7 @@ public
      integer            :: refine_lmax  = 7
      real(kind=wp)      :: refine_eps   = 1.0e-2_wp
      real(kind=wp)      :: refine_dx    = 0.2_wp
-     !--- Stage G3: explicit diffuse ionizing field.  Ground-recombination
+     !--- explicit diffuse ionizing field.  Ground-recombination
      !--- packets are emitted from every leaf and transported; forces
      !--- case A rates (case B double-counts the on-the-spot absorption).
      logical            :: diffuse_field = .false.
@@ -619,7 +628,7 @@ public
      real(kind=wp)      :: abund_O      = 3.3e-4_wp
      real(kind=wp)      :: abund_Ne     = 5.0e-5_wp
      real(kind=wp)      :: abund_S      = 9.0e-6_wp
-     !--- G5: argon, magnesium, iron (not in the MOCASSIN benchmark set;
+     !--- argon, magnesium, iron (not in the MOCASSIN benchmark set;
      !--- default off; Mg/Fe are strongly depleted onto grains — use
      !--- gas-phase values, e.g. Mg ~ 3e-6, Fe ~ 3e-7 in HII regions).
      real(kind=wp)      :: abund_Ar     = 0.0_wp

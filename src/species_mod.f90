@@ -1,8 +1,8 @@
 module species_mod
 !---------------------------------------------------------------------------
-! MoCHII: trace-metal species registry + element ionization cascade (G2b).
+! MoCHII: trace-metal species registry + element ionization cascade.
 !
-! Design rule (docs/PLAN.md section 8): adding an ion is a data operation.
+! Design rule: adding an ion is a data operation.
 ! Each registered element is described by data/atomic/element_<el>.txt
 ! (produced by tools/fitting/make_element_data.py): VFKY96 photoionization
 ! parameters, Voronov collisional ionization, Badnell RR + DR of the
@@ -16,13 +16,13 @@ module species_mod
 ! Metal Gamma_i per leaf are bin sums over the ionizing-band J tally with
 ! the element cross sections (computed once per iteration, all leaves).
 !
-! Tier-1 line cooling: each (element, stage) with a coefficient file
-! data/atomic/cooling_tier1_<el>_<i>.txt contributes
+! Line cooling: each (element, stage) with a coefficient file
+! data/atomic/cooling_<el>_<i>.txt contributes
 ! n_e n_stage Lambda(T) to the thermal balance (metal_cooling).
 !---------------------------------------------------------------------------
   use define
   use photo_xsec, only : sigma_vfky96
-  use cooling_mod, only : tier1_fit_type, tier1_load, tier1_eval
+  use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval
   use recomb_mod,  only : ci_dere_ratio
   implicit none
   private
@@ -32,7 +32,7 @@ module species_mod
   public :: species_opacity_add, species_ne, metal_heating
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached
-  public :: n_elements, elem_name, elem_nstage, elem_abund
+  public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
 
   integer, parameter :: MAX_EL = 11, MAX_ST = 6
 
@@ -65,9 +65,9 @@ module species_mod
      real(kind=wp) :: cxi(6,MAX_ST)    = 0.0_wp
      integer       :: cxr_form(MAX_ST) = 0
      real(kind=wp) :: cxr(6,MAX_ST)    = 0.0_wp
-     !--- Tier-1 cooling fits per stage (loaded when the file exists)
+     !--- cooling fits per stage (loaded when the file exists)
      logical :: has_cool(MAX_ST) = .false.
-     type(tier1_fit_type) :: cool(MAX_ST)
+     type(cooling_fit_type) :: cool(MAX_ST)
   end type element_type
 
   integer :: n_elements = 0
@@ -101,6 +101,10 @@ contains
     elem_nstage = elems(ie)%nstage;  end function elem_nstage
   real(kind=wp) function elem_abund(ie);  integer, intent(in) :: ie
     elem_abund = elems(ie)%abund;  end function elem_abund
+  !--- photoionization threshold [eV] of transition it (stage it -> it+1),
+  !--- it = 1..elem_nstage(ie)-1.  Exposed for the threshold-aligned band.
+  real(kind=wp) function elem_eth(ie, it);  integer, intent(in) :: ie, it
+    elem_eth = elems(ie)%eth(it);  end function elem_eth
 
   !=========================================================================
   subroutine species_setup(nleaf)
@@ -127,13 +131,13 @@ contains
        call read_element(trim(par%atomic_dir)//'/element_'// &
                          trim(names(k))//'.txt', elems(ie))
        elems(ie)%abund = abunds(k)
-       !--- Tier-1 cooling fits for each stage where a file exists.
+       !--- cooling fits for each stage where a file exists.
        do i = 1, elems(ie)%nstage
           write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)// &
-             '/cooling_tier1_', trim(names(k)), '_', i, '.txt'
+             '/cooling_', trim(names(k)), '_', i, '.txt'
           inquire(file=trim(fname), exist=exists)
           if (exists) then
-             call tier1_load(trim(fname), elems(ie)%cool(i))
+             call cooling_load(trim(fname), elems(ie)%cool(i))
              elems(ie)%has_cool(i) = .true.
           end if
        end do
@@ -149,7 +153,7 @@ contains
   end subroutine species_setup
 
   !=========================================================================
-  !--- G4: resize the Gamma blocks after octree re-refinement.
+  !--- resize the Gamma blocks after octree re-refinement.
   subroutine species_resize(nleaf)
     implicit none
     integer, intent(in) :: nleaf
@@ -454,7 +458,7 @@ contains
   !=========================================================================
   ! H-impact fine-structure cooling [erg s^-1 cm^-3]: [C II] 158 um and
   ! [O I] 63 um excited by NEUTRAL HYDROGEN collisions — the dominant
-  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the Tier-1 fits are
+  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the cooling fits are
   ! electron-impact only).  Two-level, low-density limit:
   !   Lambda = n_ion n_HI (g_u/g_l) q_ul^H e^{-dE/kT} dE
   ! with q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005)
@@ -594,7 +598,7 @@ contains
        nel = elems(ie)%abund*nH
        do i = 1, elems(ie)%nstage
           if (elems(ie)%has_cool(i)) &
-             cool = cool + ne*nel*frac(i)*tier1_eval(elems(ie)%cool(i), T)
+             cool = cool + ne*nel*frac(i)*cooling_eval(elems(ie)%cool(i), T)
        end do
     end do
   end function metal_cooling

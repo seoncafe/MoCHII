@@ -1,15 +1,15 @@
 module gas_state_mod
 !---------------------------------------------------------------------------
-! MoCHII: persistent gas leaf state (new module, Stage G0).
+! MoCHII: persistent gas leaf state.
 !
-! MoCafe reads nH/xHI from the AMR file, uses them for the dust-density
-! step, and deallocates them.  MoCHII persists them as shared-memory leaf
-! arrays and adds the He ionization fractions and, later (G2), T_e/n_e.
+! nH/xHI are read from the AMR file and used for the dust-density step;
+! MoCHII persists them as shared-memory leaf arrays and adds the He
+! ionization fractions and T_e/n_e.
 !
-! Stage G0: the state is INITIALIZED (from the file columns where present,
-! else from par%xHI_init etc.) and never updated — no equilibrium solve,
-! no opacity feedback.  gas_state_setup is called from grid_create_amr
-! before the transient read arrays are deallocated.
+! The state is INITIALIZED (from the file columns where present,
+! else from par%xHI_init etc.); when gas_niter = 0 it is never updated —
+! no equilibrium solve, no opacity feedback.  gas_state_setup is called
+! from grid_create_amr before the transient read arrays are deallocated.
 !---------------------------------------------------------------------------
   use define
   use memory_mod, only : create_shared_mem
@@ -86,7 +86,7 @@ contains
   end subroutine gas_state_setup
 
   !=========================================================================
-  ! Recreate the state on a re-refined tree (G4): fresh shared windows
+  ! Recreate the state on a re-refined tree: fresh shared windows
   ! (the old ones are leaked until finalize), filled from position-mapped
   ! local arrays.  Collective; h_rank 0 writes.
   !=========================================================================

@@ -1,7 +1,6 @@
 module dust_temp_mod
 !---------------------------------------------------------------------------
-! MoCHII: equilibrium dust temperature and IR emission consuming Heat_dust
-! (PLAN section 7 item 1, first consumer).
+! MoCHII: equilibrium dust temperature and IR emission consuming Heat_dust.
 !
 ! The transported band (par%eion_min may be lowered into the FUV, e.g.
 ! 6 eV — gas cross sections vanish below their thresholds automatically,

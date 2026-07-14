@@ -1,8 +1,8 @@
 module amr_refine_mod
 !---------------------------------------------------------------------------
-! MoCHII: solution-driven octree re-refinement (Stage G4).
+! MoCHII: solution-driven octree re-refinement.
 !
-! The I-front is the one place needing resolution (docs/PLAN.md section 4).
+! The I-front is the one place needing resolution.
 ! amr_refine_front rebuilds the octree from the CURRENT solution:
 !   - an old leaf is flagged as front when eps < x_HI < 1-eps
 !     (par%refine_eps) or a face neighbor differs by more than

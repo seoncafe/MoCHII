@@ -1,6 +1,6 @@
 module photo_xsec
 !---------------------------------------------------------------------------
-! MoCHII: photoionization cross sections (new module, Stage G0).
+! MoCHII: photoionization cross sections.
 !
 ! Analytic single-shell fits from Verner, Ferland, Korista & Yakovlev 1996,
 ! ApJ 465, 487 (VFKY96), Eqs. (1)-(4).  Parameters are the PH2 table of the
@@ -12,10 +12,10 @@ module photo_xsec
 !                y_w=2.039, y_0=0.4434, y_1=2.136
 ! Thresholds from the PH1 table (13.60, 54.42, 24.59 eV); define.f90 carries
 ! them as eth_HI/eth_HeI/eth_HeII.  sigma_0 is in Mb; results returned in
-! cm^2.  The same fit form serves every metal ion later (registry, G5).
+! cm^2.  The same fit form serves every metal ion (registry).
 !
 ! Cross-checked against EXHALE cross_sec.f90 and its comparison script
-! docs/compare_photoion_cross_sections.py (the G0 gate).
+! docs/compare_photoion_cross_sections.py.
 !---------------------------------------------------------------------------
   use define, only : wp, eth_HI, eth_HeI, eth_HeII
   implicit none

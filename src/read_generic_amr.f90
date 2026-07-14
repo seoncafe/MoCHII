@@ -16,7 +16,7 @@ module read_generic_amr_mod
 !   ndust        dust pseudo-number density [cm^-3]
 !
 ! Any T / vx / vy / vz columns in the file are IGNORED (velocity and
-! temperature are out of scope; see AMR_CLUMPS_PLAN.md Part A).  RAMSES /
+! temperature are out of scope).  RAMSES /
 ! Illustris snapshots are converted to this generic format by the Python
 ! converters, not read here.  Reads on every rank (identical read-only data);
 ! amr_build_tree then shares the octree across a node via MPI-3 shared memory.

@@ -1,16 +1,12 @@
 program main
 !---------------------------------------------------------------------------
-! MoCHII — MOnte Carlo for H II regions (Stage G0 driver).
+! MoCHII — MOnte Carlo for H II regions (driver).
 !
-! G0 scope (docs/PLAN.md section 5): ionizing frequency bins + Verner+96
-! cross sections + Gamma/H rate integrals from the J tally, NO feedback.
 ! Each source packet is transported by the analytic edge walk (the packet's
-! zero-variance direct contribution to J_nu in every leaf it crosses);
-! there is no ionizing-band scattering at this stage, so that walk is the
-! complete tally.  Gate: Gamma(r) vs the analytic point-source attenuation.
-!
-! Trimmed from MoCafe_v2.00/src/main.f90 (dust SED / Lucy / imaging return
-! with later stages).
+! zero-variance direct contribution to J_nu in every leaf it crosses); when
+! there is no ionizing-band scattering that walk is the complete tally.
+! The rate integrals Gamma/H then follow from the J tally, feeding the
+! ionization equilibrium and thermal balance.
 !---------------------------------------------------------------------------
   use define
   use setup_mod
@@ -26,7 +22,8 @@ program main
   use ion_balance_mod, only : gas_equilibrium_update
   use thermal_mod,     only : gas_thermal_update
   use cooling_mod,     only : cooling_setup
-  use species_mod,     only : species_setup, species_gamma_compute
+  use species_mod,     only : species_setup, species_gamma_compute, &
+                              n_elements, elem_nstage, elem_abund, elem_eth
   use diffuse_mod,     only : diffuse_build, gen_diffuse_photon, &
                               diffuse_nphot, diffuse_lum
   use memory_mod,      only : destroy_shared_mem_all
@@ -40,6 +37,10 @@ program main
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol
   logical             :: converged, use_vol
   integer             :: ierr, iter, niter
+  !--- active metal photoionization thresholds gathered for the
+  !--- threshold-aligned band (par%ion_align_edges).
+  real(kind=wp), allocatable :: metal_eth(:)
+  integer             :: nmetal, ie, it
 
   call MPI_INIT(ierr)
   call time_stamp(dtime)
@@ -48,16 +49,38 @@ program main
   call read_input()
   call setup_procedure()
   call grid_create_amr(grid)
-  call ion_setup()
-  !--- species BEFORE opacity: with par%ion_metal_abs the opacity fill
+  !--- species BEFORE ion_setup: with par%ion_align_edges the band setup
+  !--- queries the active metal photoionization thresholds.  species_setup
+  !--- does not depend on the band (that use is inside the per-leaf loops).
+  !--- species also BEFORE opacity: with par%ion_metal_abs the opacity fill
   !--- consumes the registry stage fractions.
   if (par%use_metals) call species_setup(amr_grid%nleaf)
+  !--- gather active metal photoionization thresholds for the aligned band.
+  nmetal = 0
+  if (par%use_metals) then
+     do ie = 1, n_elements
+        if (elem_abund(ie) > 0.0_wp) nmetal = nmetal + max(0, elem_nstage(ie)-1)
+     end do
+  end if
+  allocate(metal_eth(max(nmetal,1)));  metal_eth = 0.0_wp
+  if (nmetal > 0) then
+     nmetal = 0
+     do ie = 1, n_elements
+        if (elem_abund(ie) <= 0.0_wp) cycle
+        do it = 1, elem_nstage(ie) - 1
+           nmetal = nmetal + 1
+           metal_eth(nmetal) = elem_eth(ie, it)
+        end do
+     end do
+  end if
+  call ion_setup(metal_eth, nmetal)
+  deallocate(metal_eth)
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
   if (par%solve_te) call cooling_setup()
 
-  !--- G1 iteration: transport -> rates -> equilibrium -> opacity feedback,
-  !--- until max |delta x_HII| < par%gas_tol.  gas_niter = 0 = G0 single
+  !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
+  !--- until max |delta x_HII| < par%gas_tol.  gas_niter = 0 = single
   !--- pass (no equilibrium solve, fixed state).  The stellar tally is
   !--- recomputed from zero each iteration (opacity changed).
   niter = max(par%gas_niter, 1)
@@ -81,7 +104,7 @@ program main
               ' photons  @ ', dtime/60.0_wp, ' mins'
         endif
      end do
-     !--- G3: diffuse ground-recombination packets from the current state.
+     !--- diffuse ground-recombination packets from the current state.
      if (par%diffuse_field) then
         call diffuse_build(ion_Ltot/real(par%nphotons, wp))
         if (mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
@@ -95,7 +118,7 @@ program main
      call jtally_ion_reduce()
      call gas_rates_compute()
      if (par%use_metals) call species_gamma_compute()
-     if (par%gas_niter < 1) exit          ! G0: rates only, no solve
+     if (par%gas_niter < 1) exit          ! rates only, no solve
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
@@ -124,7 +147,7 @@ program main
            ',  vol = ', dx_vol
      end if
      call gas_opacity_fill()
-     !--- G4: solution-driven I-front re-refinement (one event).
+     !--- solution-driven I-front re-refinement (one event).
      if (par%refine_front .and. iter == par%refine_iter) then
         block
           use amr_refine_mod, only : amr_refine_front

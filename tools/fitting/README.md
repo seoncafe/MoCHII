@@ -10,7 +10,7 @@ at runtime.
 | Script | Product | Role |
 |---|---|---|
 | `chianti_cooling.py` | (library) | direct CHIANTI ASCII reader (.elvlc/.wgfa/.scups), Burgess-Tully descaling, cooling builders; copied from EXHALE |
-| `fit_cooling_tier1.py` | `data/atomic/cooling_tier1_<ion>.txt` | Tier-1 cooling fits Lambda(T) = T^-1/2 sum A_i exp(-T_i/T), 1e3-1e5 K, ground-term Boltzmann population, low-density limit; for the G2 thermal loop |
+| `fit_cooling.py` | `data/atomic/cooling_<ion>.txt` | Tier-1 cooling fits Lambda(T) = T^-1/2 sum A_i exp(-T_i/T), 1e3-1e5 K, ground-term Boltzmann population, low-density limit; for the G2 thermal loop |
 | `fit_nlevel_tier2.py` | `data/atomic/nlevel_<ion>.txt` | Tier-2 n-level data: level energies/weights, A-values, Upsilon(T) as Chebyshev fits in Burgess-Tully scaled space; for output-time diagnostics |
 | `verify_nlevel_pyneb.py` | (report) | end-to-end check: reads the fitted files, solves statistical equilibrium as the Fortran will, compares diagnostic ratios against PyNeb |
 

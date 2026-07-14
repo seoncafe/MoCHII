@@ -1,8 +1,8 @@
 module nlevel_mod
 !---------------------------------------------------------------------------
-! MoCHII: generic n-level atom solver (Tier 2, output-time diagnostics).
+! MoCHII: generic n-level atom solver (output-time diagnostics).
 !
-! Reads data/atomic/nlevel_<el>_<stage>.txt (fit_nlevel_tier2.py):
+! Reads data/atomic/nlevel_<el>_<stage>.txt (fit_nlevel.py):
 !   NLEV  index  g  E[cm^-1]
 !   NRAD  l u A_ul
 !   NUPS  l u type C dE[Ry] st_lo st_hi logf ncheb c_0..c_{n-1} maxerr
@@ -19,8 +19,7 @@ module nlevel_mod
 ! balance) + radiative A; closure sum(n_i) = 1 (Gaussian elimination).
 ! Line emissivity: j_ul = n_u A_ul dE_ul [erg/s per ion].
 !
-! Evaluated per leaf only at output time on the converged state
-! (docs/PLAN.md section 8, Tier 2).
+! Evaluated per leaf only at output time on the converged state.
 !---------------------------------------------------------------------------
   use define
   implicit none

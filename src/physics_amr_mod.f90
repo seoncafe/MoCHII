@@ -3,10 +3,8 @@ module physics_amr_mod
 !---------------------------------------------------------------------------
 ! Dust physics for the AMR grid (dust-only port of LaRT physics_amr_mod.f90).
 !
-! Only the metallicity->dust relation (Laursen+09) is kept; the CIE neutral
-! fraction (T->xHI) and the Case-B Lyman-alpha emissivity are deferred with
-! temperature (AMR_CLUMPS_PLAN.md Part A / Section 6).  For dust_model =
-! 'laursen09' MoCafe therefore requires an explicit xHI column in the file.
+! Only the metallicity->dust relation (Laursen+09) is kept.  For dust_model =
+! 'laursen09' an explicit xHI column in the file is required.
 !---------------------------------------------------------------------------
   use define, only: wp
   implicit none

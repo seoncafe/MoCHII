@@ -1,6 +1,6 @@
 module cooling_mod
 !---------------------------------------------------------------------------
-! MoCHII: gas cooling for the G2 thermal balance.
+! MoCHII: gas cooling for the thermal balance.
 !
 ! Components (all per unit volume, erg cm^-3 s^-1, assembled in
 ! cooling_total):
@@ -9,21 +9,21 @@ module cooling_mod
 !     recommendation; DR negligible at HII-region temperatures);
 !   - free-free: Lambda_ff = 1.42554e-27 sqrt(T) Z^2 n_ion n_e gbar(T,Z),
 !     with the thermally averaged Gaunt factor gbar(T,Z) obtained at setup
-!     by integrating the ported MOCASSIN getGauntFF (Hummer 1988) over
+!     by integrating the MOCASSIN getGauntFF (Hummer 1988) over
 !     u = h nu / kT with weight e^-u, tabulated on a log-T grid;
 !   - collisional-ionization cooling: rate x ionization potential;
-!   - line cooling from the Tier-1 fits (tools/fitting products):
+!   - line cooling from the cooling fits (tools/fitting products):
 !     Lambda(T) = T^-1/2 sum A_i exp(-T_i/T) per (n_e n_ion), loaded from
-!     data/atomic/cooling_tier1_<ion>.txt (par%atomic_dir).  Stage G2a
-!     loads H I only; the metal set enters with the registry (G2b/c).
+!     data/atomic/cooling_<ion>.txt (par%atomic_dir).  H I is loaded here;
+!     the metal set enters with the registry.
 !---------------------------------------------------------------------------
   use define
   use recomb_mod
   implicit none
   private
 
-  public :: cooling_setup, cooling_total, tier1_eval
-  public :: tier1_fit_type, tier1_load, cool_HI_fit
+  public :: cooling_setup, cooling_total, cooling_eval
+  public :: cooling_fit_type, cooling_load, cool_HI_fit
 
   interface
      subroutine getGauntFF(z, log10Te, xlf, g, iflag)
@@ -35,12 +35,12 @@ module cooling_mod
      end subroutine getGauntFF
   end interface
 
-  type tier1_fit_type
+  type cooling_fit_type
      integer :: n = 0
      real(kind=wp), allocatable :: A(:), Ti(:)
-  end type tier1_fit_type
+  end type cooling_fit_type
 
-  type(tier1_fit_type) :: cool_HI_fit
+  type(cooling_fit_type) :: cool_HI_fit
 
   !--- thermally averaged free-free Gaunt factor gbar(T) for Z=1 and Z=2,
   !--- tabulated on a log-T grid at setup.
@@ -56,9 +56,9 @@ contains
     character(len=256) :: fname
     integer :: i
 
-    !--- Tier-1 H I line cooling (Ly-alpha dominated).
-    fname = trim(par%atomic_dir)//'/cooling_tier1_h_1.txt'
-    call tier1_load(trim(fname), cool_HI_fit)
+    !--- H I line cooling (Ly-alpha dominated).
+    fname = trim(par%atomic_dir)//'/cooling_h_1.txt'
+    call cooling_load(trim(fname), cool_HI_fit)
 
     !--- gbar_ff(T, Z) tables over log T = 2..6.
     do i = 1, NGT
@@ -68,20 +68,20 @@ contains
     end do
 
     if (mpar%p_rank == 0) then
-       write(*,'(2a)')      ' COOL: Tier-1 H I fit loaded from ', trim(fname)
+       write(*,'(2a)')      ' COOL: H I cooling fit loaded from ', trim(fname)
        write(*,'(a,f7.4)')  ' COOL: gbar_ff(1e4 K, Z=1) = ', gbar_ff(1.0e4_wp, 1)
     end if
   end subroutine cooling_setup
 
   !=========================================================================
-  ! Read a Tier-1 coefficient file: '#' comments, then nterm, then rows
+  ! Read a cooling coefficient file: '#' comments, then nterm, then rows
   ! (A_i [erg cm^3 s^-1 K^1/2], T_i [K]).
   !=========================================================================
-  subroutine tier1_load(fname, fit)
+  subroutine cooling_load(fname, fit)
     use mpi
     implicit none
-    character(len=*),     intent(in)  :: fname
-    type(tier1_fit_type), intent(out) :: fit
+    character(len=*),       intent(in)  :: fname
+    type(cooling_fit_type), intent(out) :: fit
     character(len=256) :: line
     integer :: unit, ios, i, ierr
 
@@ -101,19 +101,19 @@ contains
        read(unit,*) fit%A(i), fit%Ti(i)
     end do
     close(unit)
-  end subroutine tier1_load
+  end subroutine cooling_load
 
   !=========================================================================
-  elemental real(kind=wp) function tier1_eval(fit, T) result(lam)
-    type(tier1_fit_type), intent(in) :: fit
-    real(kind=wp),        intent(in) :: T
+  elemental real(kind=wp) function cooling_eval(fit, T) result(lam)
+    type(cooling_fit_type), intent(in) :: fit
+    real(kind=wp),          intent(in) :: T
     integer :: i
     lam = 0.0_wp
     do i = 1, fit%n
        lam = lam + fit%A(i)*exp(-fit%Ti(i)/T)
     end do
     lam = lam/sqrt(T)
-  end function tier1_eval
+  end function cooling_eval
 
   !=========================================================================
   ! Hui & Gnedin (1997) recombination cooling [erg cm^3 s^-1].
@@ -220,7 +220,7 @@ contains
 
   !=========================================================================
   ! Total H/He cooling per unit volume [erg cm^-3 s^-1] at temperature T.
-  ! Metal line cooling is added by the registry hook (G2b/c).
+  ! Metal line cooling is added by the registry hook.
   !=========================================================================
   real(kind=wp) function cooling_total(T, nH, ne, xHI, xHeI, xHeII) result(cool)
     implicit none
@@ -253,8 +253,8 @@ contains
     cool = cool + ne*( nHI*ci_HI(T)*eth_HI + nHeI*ci_HeI(T)*eth_HeI &
            + nHeII_n*ci_HeII(T)*eth_HeII )*ev2erg
 
-    !--- H I collisional-excitation line cooling (Tier-1 fit)
-    cool = cool + ne*nHI*tier1_eval(cool_HI_fit, T)
+    !--- H I collisional-excitation line cooling (cooling fit)
+    cool = cool + ne*nHI*cooling_eval(cool_HI_fit, T)
   end function cooling_total
 
 end module cooling_mod

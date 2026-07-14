@@ -1,12 +1,10 @@
 module setup_mod
 !---------------------------------------------------------------------------
-! MoCHII: trimmed driver setup (from MoCafe_v2.00/src/setup.f90, G0 slim).
+! MoCHII: driver setup.
 !
 ! read_input: namelist /parameters/ par + MPI communicators + validation of
 ! the AMR + ionizing-band options.  setup_procedure: RNG seed + the AMR
-! raytrace procedure pointers.  The dust SED / scattering / peel-off /
-! observer bindings return with later stages (G1+); G0 transports only
-! ionizing packets through the analytic edge walk.
+! raytrace procedure pointers.
 !---------------------------------------------------------------------------
 contains
   !+++++++++++++++++++++++++++++++++++++++++++
@@ -60,11 +58,30 @@ contains
         'ERROR: MoCHII requires par%grid_type = ''amr'' or ''car''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  !--- par%density_file: a uniform 3D density cube (FITS/HDF5) for the 'car'
+  !--- grid; nx/ny/nz come from the file, so it is an alternative to both the
+  !--- namelist nx/ny/nz and the amr leaf-list.
+  if (len_trim(par%density_file) > 0 .and. trim(par%grid_type) /= 'car') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%density_file (a 3D density cube) requires par%grid_type = ''car''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (len_trim(par%density_file) > 0 .and. len_trim(par%amr_file) > 0) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: set either par%amr_file (leaf list) or par%density_file (cube), not both.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
   if (len_trim(par%amr_file) == 0) then
      if (trim(par%grid_type) == 'amr') then
         if (mpar%p_rank == 0) write(*,'(a)') &
            'ERROR: grid_type=''amr'' requires par%amr_file (refinement structure).'
         call MPI_FINALIZE(ierr);  stop
+     else if (len_trim(par%density_file) > 0) then
+        if (par%xmax <= 0.0_wp) then
+           if (mpar%p_rank == 0) write(*,'(a)') &
+              'ERROR: grid_type=''car'' with par%density_file needs par%xmax > 0.'
+           call MPI_FINALIZE(ierr);  stop
+        end if
      else if (par%nx < 2 .or. par%xmax <= 0.0_wp) then
         if (mpar%p_rank == 0) write(*,'(a)') &
            'ERROR: grid_type=''car'' without par%amr_file needs par%nx>=2 and par%xmax>0.'
@@ -116,10 +133,10 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
-  !--- ionizing band (G0: the only transport mode).
+  !--- ionizing band (the ionizing transport mode).
   if (.not. par%use_ion_band) then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: Stage G0 requires par%use_ion_band = .true.'
+        'ERROR: MoCHII requires par%use_ion_band = .true.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (par%eion_max <= par%eion_min .or. par%nnu_ion < 1) then
@@ -140,7 +157,7 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
-  !--- G3: the explicit diffuse field requires case A (case B would
+  !--- the explicit diffuse field requires case A (case B would
   !--- double-count the on-the-spot absorption of ground recombinations).
   if (par%diffuse_field .and. trim(par%case_ab) /= 'A') then
      if (mpar%p_rank == 0) write(*,'(a)') &
@@ -173,7 +190,7 @@ contains
 
   if (mpar%p_rank == 0) then
      write(*,'(a)')     ''
-     write(*,'(3a)')    '+++++ MoCHII (G0): ',trim(model_infile),' +++++'
+     write(*,'(3a)')    '+++++ MoCHII: ',trim(model_infile),' +++++'
      write(*,'(2a)')    ' >>> START @ ', get_date_time()
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
   endif
@@ -187,8 +204,7 @@ contains
   implicit none
   !--- Initialize Random Number Generator
   call init_random_seed(par%iseed)
-  !--- AMR raytrace bindings (used by later stages; G0 calls the ionizing
-  !--- edge walk directly).
+  !--- AMR raytrace bindings (the ionizing edge walk is called directly).
   raytrace_to_tau  => raytrace_to_tau_amr
   raytrace_to_edge => raytrace_to_edge_amr
   end subroutine setup_procedure

@@ -1,6 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/cellinfo_mod.f90 (2026-07-11)
 module cellinfo_mod
-!--- Grid-agnostic cell accessors (MoCafe v2.00) so the dust-emission stages
+!--- Grid-agnostic cell accessors so the dust-emission stages
 !--- (J_lambda tally, dust emission, B&W, MRW, all-sky) treat the Cartesian
 !--- grid and the AMR octree the same way.  A "cell" is addressed by a linear
 !--- id: for 'car' it is (k-1)*nx*ny + (j-1)*nx + i over the regular grid; for

@@ -1,18 +1,16 @@
 ! MoCHII: copied from MoCafe_v2.00/src/grid_mod_amr.f90 (2026-07-11)
 module grid_mod_amr
 !---------------------------------------------------------------------------
-! AMR grid setup for MoCafe (dust-only, par%grid_type = 'amr').
+! AMR grid setup (dust-only, par%grid_type = 'amr').
 !
 ! Reads a generic AMR file (FITS/HDF5/text) of leaf cells, builds the octree
 ! (octree_mod), computes the grey dust opacity of each leaf according to par%dust_model,
 ! and normalizes it to the system target par%taumax (radial pole) or
 ! par%tauhomo (volume average).  A small vestigial Cartesian box grid is then
 ! built (grid_create) only so the observer/output code runs unchanged --
-! the transport uses amr_grid, not grid%rhokap.  Dust-only slim of LaRT's
-! grid_mod_amr.f90 (no frequency grid, emissivity, velocity, or Voigt); see
-! AMR_CLUMPS_PLAN.md Part A.
+! the transport uses amr_grid, not grid%rhokap.
 !
-! The box is recentred on the origin (MoCafe convention: box centered at 0).
+! The box is recentred on the origin (box centered at 0).
 !---------------------------------------------------------------------------
   use grid_mod
   use octree_mod
@@ -28,6 +26,7 @@ contains
   !=========================================================================
   subroutine grid_create_amr(grid)
   use define
+  use read_mod, only : get_dimension, read_3D
   use mpi
   implicit none
   type(grid_type), intent(inout) :: grid
@@ -62,12 +61,27 @@ contains
      half  = 0.5_wp * boxlen
      par%xmax = half;  par%ymax = half;  par%zmax = half
   else
-     !--- MoCHII: build a single-level Cartesian ('car') grid from the
-     !--- namelist (par%nx/ny/nz, par%xmax/ymax/zmax), no file.  The car
+     !--- MoCHII: build a single-level Cartesian ('car') grid.  With
+     !--- par%density_file set, nx/ny/nz and the per-leaf nH come from a 3D
+     !--- density cube (FITS/HDF5, NAXIS1/2/3 = nx/ny/nz, values = nH [cm^-3]);
+     !--- otherwise nx/ny/nz are from the namelist and nH is uniform (set by
+     !--- the density model below).  The box is par%xmax/ymax/zmax; the car
      !--- traversal uses one cell size, so the cells must be cubic.
      block
        real(wp) :: dcx, dcy, dcz
-       integer  :: ix, iy, iz
+       integer  :: ix, iy, iz, dstat
+       real(wp), allocatable :: cube(:,:,:)
+       if (len_trim(par%density_file) > 0) then
+          dstat = 0
+          call get_dimension(trim(par%density_file), par%nx, par%ny, par%nz, &
+                             dstat, reduce_factor=par%reduce_factor)
+          if (dstat /= 0) then
+             if (mpar%p_rank == 0) write(*,'(3a)') &
+                'ERROR: cannot read cube dimensions from par%density_file (', &
+                trim(par%density_file), ').'
+             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          end if
+       end if
        dcx = 2.0_wp*par%xmax/real(par%nx, wp)
        dcy = 2.0_wp*par%ymax/real(par%ny, wp)
        dcz = 2.0_wp*par%zmax/real(par%nz, wp)
@@ -92,6 +106,25 @@ contains
              end do
           end do
        end do
+       if (len_trim(par%density_file) > 0) then
+          allocate(cube(par%nx, par%ny, par%nz))
+          call read_3D(trim(par%density_file), cube, &
+                       reduce_factor=par%reduce_factor, centering=par%centering)
+          il = 0
+          do iz = 0, par%nz-1
+             do iy = 0, par%ny-1
+                do ix = 0, par%nx-1
+                   il = il + 1                        ! same raster order (x fastest)
+                   nH(il) = cube(ix+1, iy+1, iz+1)
+                end do
+             end do
+          end do
+          deallocate(cube)
+          if (mpar%p_rank == 0) write(*,'(3a,3(i0,a),es10.3,a,es10.3)') &
+             ' GRID: nH from density cube ', trim(par%density_file), &
+             ' [', par%nx, 'x', par%ny, 'x', par%nz, '], nH min/max = ', &
+             minval(nH), ' /', maxval(nH)
+       end if
      end block
   end if
   have_Z     = allocated(Zarr)
@@ -103,7 +136,7 @@ contains
   !--- (par%nH_const) and/or a spherical sphere/shell cut (par%rmax/rmin) let
   !--- a sharp geometry be resolved by the octree while the density stays
   !--- uniform.  Applied on the leaf centers before the grid is built.
-  if (par%nH_const >= 0.0_wp) nH = par%nH_const
+  if (par%nH_const >= 0.0_wp .and. len_trim(par%density_file) == 0) nH = par%nH_const
   if (par%rmax > 0.0_wp .or. par%rmin > 0.0_wp) then
      do il = 1, nleaf
         rho = sqrt(xleaf(il)**2 + yleaf(il)**2 + zleaf(il)**2)
@@ -124,7 +157,7 @@ contains
 
   !--- build the octree + neighbor table (shared memory), or — for
   !--- grid_type='car' — the raster-ordered Cartesian grid with DDA
-  !--- traversal (no tree, no neighbor table; PLAN section 4).
+  !--- traversal (no tree, no neighbor table).
   if (trim(par%grid_type) == 'car') then
      if (len_trim(par%amr_file) > 0) then
         !--- file 'car' grid: a single-level octree-style leaf list, permuted
@@ -200,10 +233,10 @@ contains
   if (mpar%h_rank == 0) then
      do il = 1, nleaf
         select case (trim(par%dust_model))
-        case ('none')   ! MoCHII: gas-only run (G0 gate); no dust opacity
+        case ('none')   ! MoCHII: gas-only run; no dust opacity
            rho = 0.0_wp
         case ('laursen09_live')
-           !--- MoCHII PLAN section 7 item 3: dust tied to the COMPUTED
+           !--- MoCHII: dust tied to the COMPUTED
            !--- ionization state; initial value from the initial state
            !--- (gas_state_setup ran above), refreshed each iteration in
            !--- gas_opacity_fill (with the PAH survival split there).

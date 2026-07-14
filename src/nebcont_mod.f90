@@ -1,7 +1,7 @@
 module nebcont_mod
 !---------------------------------------------------------------------------
 ! MoCHII: nebular continuum emission (port of MOCASSIN emission_mod::fb_ff
-! + twoPhoton/HeI2photSub; Stage after G3).
+! + twoPhoton/HeI2photSub).
 !
 ! Components, per (n_e n_ion), in units of 1e-40 erg cm^3 s^-1 Hz^-1:
 !  - BELOW each species' first ionization edge: the tabulated continuum
@@ -10,9 +10,8 @@ module nebcont_mod
 !    log gamma between edge pairs, exactly as MOCASSIN fb_ff).
 !    VERIFIED (2026-07-12, tools check vs a hydrogenic Kramers Milne sum):
 !    the tables are free-bound PLUS free-free combined — do not add ff
-!    again inside the table range.  MOCASSIN inheritance; the
-!    Ercolano & Storey (2006) machine-readable swap remains a drop-in at
-!    this interface (docs/PLAN.md item 3).
+!    again inside the table range.  The Ercolano & Storey (2006)
+!    machine-readable swap remains a drop-in at this interface.
 !  - ABOVE the table range: Milne-relation free-bound from the ground
 !    photoionization cross sections (photo_xsec VFKY96) + free-free with
 !    the Hummer getGauntFF Gaunt factor (Z=1 for H II/He II, Z=2 for

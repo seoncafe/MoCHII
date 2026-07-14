@@ -1,19 +1,18 @@
 module recomb_mod
 !---------------------------------------------------------------------------
-! MoCHII: recombination and collisional-ionization rate coefficients (G1).
+! MoCHII: recombination and collisional-ionization rate coefficients.
 !
 ! Recombination — Hui & Gnedin (1997, MNRAS 292, 27) analytic fits, case A
 ! and case B, for H II, He II, He III, as functions of T [K]; accuracy
 ! better than ~0.7% over 1-1e9 K.  He II dielectronic recombination is
-! negligible at HII-region temperatures and is deferred to G2, where the
-! fitting pipeline supplies Badnell (2006) RR + DR coefficients for the
-! metal cascade anyway (docs/PLAN.md section 2.3).  At T = 1e4 K:
+! negligible at HII-region temperatures; the fitting pipeline supplies
+! Badnell (2006) RR + DR coefficients for the metal cascade anyway.
+! At T = 1e4 K:
 ! alpha_B(H II) = 2.594e-13 cm^3 s^-1 (canonical 2.59e-13).
 !
 ! Collisional ionization — Voronov (1997, ADNDT 65, 1) fits for H I, He I,
 ! He II:  k(T) = A (1 + P sqrt(U)) U^K exp(-U) / (X + U),  U = dE/T_eV.
-! Negligible next to photoionization at ~1e4 K but kept in the balance
-! (docs/PLAN.md section 2.5); G2 reuses them.
+! Negligible next to photoionization at ~1e4 K but kept in the balance.
 !---------------------------------------------------------------------------
   use define, only : wp, kboltz_cgs, ev2erg, par
   implicit none

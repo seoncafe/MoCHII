@@ -1,6 +1,6 @@
 module thermal_mod
 !---------------------------------------------------------------------------
-! MoCHII: thermal balance — solve T_e with the ionization state (Stage G2).
+! MoCHII: thermal balance — solve T_e with the ionization state.
 !
 ! Per leaf, find T_e such that photoheating balances cooling:
 !     H(T) = n_HI H_HI + n_HeI H_HeI + n_HeII H_HeII     (rate integrals,
@@ -13,7 +13,7 @@ module thermal_mod
 ! to 1e-4 relative).
 !
 ! gas_thermal_update replaces gas_equilibrium_update when par%solve_te:
-! it writes x, n_e AND T_e (under-relaxation on x as in G1) and returns
+! it writes x, n_e AND T_e (under-relaxation on x) and returns
 ! max |delta x_HII| and max |delta T_e|/T_e.
 !---------------------------------------------------------------------------
   use define
@@ -48,7 +48,7 @@ contains
     heat = nH*( xHI*heat_HI(il) &
            + par%He_abund*(xHeI*heat_HeI(il) + xHeII*heat_HeII(il)) )
     net = heat - cooling_total(T, nH, ne, xHI, xHeI, xHeII)
-    !--- trace-metal line cooling (registry, G2b/c)
+    !--- trace-metal line cooling (registry)
     if (par%use_metals) then
        block
          use species_mod, only : metal_cooling, metal_heating
@@ -81,7 +81,7 @@ contains
          real(kind=wp) :: g0, xpe, eps, beta, dscale, Tpe
          !--- H-impact [C II]/[O I] fine-structure cooling: the PDR-zone
          !--- coolant that balances the photoelectric heating (electron
-         !--- Tier-1 cooling alone lets the zone run away to ~10^4 K).
+         !--- cooling alone lets the zone run away to ~10^4 K).
          if (par%use_metals) &
             net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, &
                                         nH*(1.0_wp - xHI))
@@ -178,7 +178,7 @@ contains
        !--- final consistent state at te.
        call net_rate(il, te, caseA, xHI, xHeI, xHeII, ne, net_mid)
 
-       !--- under-relaxation on x (as in G1); te taken directly.
+       !--- under-relaxation on x; te taken directly.
        xHI_new(il)   = (1.0_wp - w)*gas_xHI(il)   + w*xHI
        xHeI_new(il)  = (1.0_wp - w)*gas_xHeI(il)  + w*xHeI
        xHeII_new(il) = (1.0_wp - w)*gas_xHeII(il) + w*xHeII
@@ -186,7 +186,7 @@ contains
        ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
                     + par%He_abund*(xHeII_new(il) + 2.0_wp*xHeIII))
        !--- metal electrons in the WRITTEN state too (the solve already
-       !--- had them in its closure; the state n_e drives the Tier-2
+       !--- had them in its closure; the state n_e drives the n-level
        !--- excitation and the outputs — in the PDR zone it IS the
        !--- metal contribution, n_e ~ A_C n_H).
        if (par%metal_ne .and. par%use_metals) then

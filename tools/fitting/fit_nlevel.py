@@ -1,4 +1,4 @@
-"""Tier-2 n-level atom data for the MoCHII generic n-level solver.
+"""n-level atom data for the MoCHII generic n-level solver.
 
 For each registry ion, extracts the lowest NLEV levels and produces one
 data/atomic/nlevel_<ion>.txt file containing
@@ -26,7 +26,7 @@ Fit error is measured on the descaled Upsilon(T) against the direct
 CHIANTI spline evaluation (chianti_cooling.upsilon).
 
 Writes:  ../../data/atomic/nlevel_<elem>_<stage>.txt
-Run:     python3 fit_nlevel_tier2.py
+Run:     python3 fit_nlevel.py
 """
 
 import os
@@ -212,10 +212,10 @@ def build_ion(name, elem, stage, nlev, suffix=""):
 
     path = os.path.join(OUTDIR, f"nlevel_{elem}_{stage}{suffix}.txt")
     with open(path, "w") as fh:
-        fh.write(f"# MoCHII Tier-2 n-level atom data: {SPEC_LABEL[name]}"
+        fh.write(f"# MoCHII n-level atom data: {SPEC_LABEL[name]}"
                  f" ({elem}_{stage}), lowest {nlev} levels\n")
         fh.write(f"# source: CHIANTI v{CHIANTI_VERSION} .elvlc/.wgfa/.scups"
-                 " (tools/fitting/fit_nlevel_tier2.py)\n")
+                 " (tools/fitting/fit_nlevel.py)\n")
         fh.write("# levels: index  g  E[cm^-1] (observed preferred)\n")
         fh.write("# rad: l u A[s^-1] (duplicate rows summed)\n")
         fh.write("# ups: l u type C dE[Ry] st_lo st_hi logf ncheb"
@@ -223,7 +223,7 @@ def build_ion(name, elem, stage, nlev, suffix=""):
         fh.write("#   logf=1: the series stores log10 of the scaled Upsilon"
                  " (apply 10^y before descaling)\n")
         fh.write("#   Upsilon(T) = Burgess-Tully descaled Chebyshev series;"
-                 " see fit_nlevel_tier2.py header for the evaluation recipe\n")
+                 " see fit_nlevel.py header for the evaluation recipe\n")
         fh.write(f"# fit range: {TMIN:.1e} - {TMAX:.1e} K;"
                  f" worst transition fit error: {worst*100:.2f}%\n")
         fh.write(f"# generated on {DATE}\n")

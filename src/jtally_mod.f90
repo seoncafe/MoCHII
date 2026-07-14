@@ -1,6 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/jtally_mod.f90 (2026-07-11)
 module jtally_mod
-!--- Mean-intensity tally J_lambda(cell) for MoCafe v2.00 (Stage 2).
+!--- Mean-intensity tally J_lambda(cell).
 !--- Lucy (1999) pathlength estimator: every actual photon path segment
 !--- contributes wgt*dl to its (wavelength-bin, cell) slot; the mean
 !--- intensity follows as J_lambda = E_packet * Sum(wgt*dl) / (4 pi V dlam).
@@ -16,7 +16,7 @@ module jtally_mod
 !--- actual walked segments in raytrace_to_tau_car (unbiased).
 !---
 !--- The tally array is private to each MPI rank and MPI_REDUCEd once at the
-!--- end of the run.  Stage 2 scope: Cartesian grid, SED mode only.
+!--- end of the run.  SED-mode scope: Cartesian grid.
   use define
   implicit none
   public
@@ -31,7 +31,7 @@ module jtally_mod
 
   !--- MoCHII: ionizing-band J tally (nnu_ion, nleaf) alongside the SED tally.
   !--- Same Lucy pathlength estimator; filled by raytrace_ion_to_edge_amr
-  !--- (analytic first flight; G0 has no scattered ionizing flights).
+  !--- (analytic first flight; no scattered ionizing flights without dust).
   logical :: jt_ion_on = .false.
   real(kind=wp), pointer :: jt_ion(:,:) => null()
   integer :: jt_ion_nleaf = 0
@@ -97,7 +97,7 @@ contains
   end subroutine jtally_ion_setup
 
   !---------------------------------------------------------------
-  !--- MoCHII G4: resize after octree re-refinement.
+  !--- MoCHII: resize after octree re-refinement.
   subroutine jtally_ion_resize(nleaf)
   implicit none
   integer, intent(in) :: nleaf

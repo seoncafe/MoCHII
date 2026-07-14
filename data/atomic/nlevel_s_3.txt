@@ -1,10 +1,10 @@
-# MoCHII Tier-2 n-level atom data: [S III] (s_3), lowest 6 levels
-# source: CHIANTI v11.0.2 .elvlc/.wgfa/.scups (tools/fitting/fit_nlevel_tier2.py)
+# MoCHII n-level atom data: [S III] (s_3), lowest 6 levels
+# source: CHIANTI v11.0.2 .elvlc/.wgfa/.scups (tools/fitting/fit_nlevel.py)
 # levels: index  g  E[cm^-1] (observed preferred)
 # rad: l u A[s^-1] (duplicate rows summed)
 # ups: l u type C dE[Ry] st_lo st_hi logf ncheb c_0..c_{n-1} maxerr
 #   logf=1: the series stores log10 of the scaled Upsilon (apply 10^y before descaling)
-#   Upsilon(T) = Burgess-Tully descaled Chebyshev series; see fit_nlevel_tier2.py header for the evaluation recipe
+#   Upsilon(T) = Burgess-Tully descaled Chebyshev series; see fit_nlevel.py header for the evaluation recipe
 # fit range: 1.0e+03 - 1.0e+05 K; worst transition fit error: 0.29%
 # generated on 2026-07-11
 NLEV 6

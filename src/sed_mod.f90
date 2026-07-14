@@ -1,6 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/sed_mod.f90 (2026-07-11)
 module sed_mod
-!--- Multi-wavelength (SED) infrastructure for MoCafe v2.00 (Stage 1).
+!--- Multi-wavelength (SED) infrastructure.
 !--- Provides: a log-spaced wavelength grid; wavelength-dependent dust
 !--- properties C_ext(lambda), albedo(lambda), g(lambda) read from an
 !--- extinction table (e.g. SEDust calc_kext_astrodust.x output); and a

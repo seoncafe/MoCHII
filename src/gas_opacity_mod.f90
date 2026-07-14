@@ -1,6 +1,6 @@
 module gas_opacity_mod
 !---------------------------------------------------------------------------
-! MoCHII: ionizing-band absorption coefficients (new module, Stage G0).
+! MoCHII: ionizing-band absorption coefficients.
 !
 ! kap_ion(inu, leaf) is the absorption coefficient per CODE LENGTH in
 ! ionizing bin inu:
@@ -9,10 +9,11 @@ module gas_opacity_mod
 !         * distance2cm   (+ grey dust rhokap when par%ion_add_dust)
 ! with y_He = par%He_abund = n_He/n_H.  The grey s_ext rescale of the dust
 ! SED band does NOT apply here: opacity varies with both leaf and bin, so
-! the band carries the full (nnu, nleaf) array (docs/PLAN.md section 2.1).
+! the band carries the full (nnu, nleaf) array.
 !
-! Stage G0 fills the array once from the fixed gas state; the G1 iteration
-! will refill it from the updated ion fractions between transport passes.
+! With gas_niter = 0 the array is filled once from the fixed gas state; the
+! iteration refills it from the updated ion fractions between transport
+! passes.
 !---------------------------------------------------------------------------
   use define
   use octree_mod,    only : amr_grid
@@ -183,8 +184,8 @@ contains
 
   !=========================================================================
   ! (Re)fill kap_ion from the current gas state.  Called at setup and after
-  ! every G1 equilibrium update (opacity feedback: the stellar tally must be
-  ! recomputed each iteration — docs/PLAN.md section 2.7).
+  ! every equilibrium update (opacity feedback: the stellar tally must be
+  ! recomputed each iteration).
   !=========================================================================
   subroutine gas_opacity_fill()
     use mpi
@@ -195,7 +196,7 @@ contains
     real(kind=wp) :: sHI, sHeI, sHeII, kap
 
     if (mpar%h_rank == 0) then
-       !--- PLAN section 7 item 3: dust density tied to the COMPUTED
+       !--- dust density tied to the COMPUTED
        !--- ionization state, refreshed every iteration; the PAH share
        !--- f_pah carries its own ionized-gas survival f_ion_pah
        !--- (default 0 = PAHs destroyed in ionized gas).

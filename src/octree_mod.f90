@@ -1,19 +1,16 @@
 ! MoCHII: copied from MoCafe_v2.00/src/octree_mod.f90 (2026-07-11)
 module octree_mod
 !---------------------------------------------------------------------------
-! AMR octree for MoCafe (dust-only), ported from LaRT_v2.00/octree_mod.f90.
+! AMR octree (dust-only).
 !
 ! Tree storage is a flat array of cells (internal + leaf), 1-indexed.
 ! Root = cell 1.  Octant ordering: child index = 1 + ix + 2*iy + 4*iz with
 ! ix=1 if x >= cell_center_x else 0 (similarly iy, iz).  Tree-structure and
 ! the dust opacity of each leaf are MPI-3 shared memory (one copy per node).
 !
-! This is the dust-only slim of the LaRT octree: the Lyman-alpha physical-cell
-! data (HI line opacity, Doppler width, Voigt parameter, velocity field) and
-! the frequency/spectral handling are stripped.  Each leaf carries a single
-! grey dust opacity rhokap(il) (extinction per unit code length).  The octree
-! geometry (build, neighbor table, leaf finder, ray traversal incl. the
-! pole-gap fix) is preserved verbatim.  See AMR_CLUMPS_PLAN.md Part A.
+! Each leaf carries a single grey dust opacity rhokap(il) (extinction per
+! unit code length).  The octree geometry (build, neighbor table, leaf
+! finder, ray traversal incl. the pole-gap fix) is preserved.
 !---------------------------------------------------------------------------
   use define
   use memory_mod

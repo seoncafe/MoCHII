@@ -1,11 +1,11 @@
 module gas_rates_mod
 !---------------------------------------------------------------------------
-! MoCHII: photoionization and photoheating rate integrals (new, Stage G0).
+! MoCHII: photoionization and photoheating rate integrals.
 !
 ! From the reduced ionizing-band tally jt_ion(inu, il) = Sum(Lpacket*wgt*dl)
 ! [erg/s * code length], the mean intensity per leaf is
 !     J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2)  [erg/s/cm^2/Hz/sr]
-! and the rate integrals follow as bin sums (docs/PLAN.md section 2.4):
+! and the rate integrals follow as bin sums:
 !     Gamma_i = Sum_nu 4 pi J_nu sigma_i(E) dnu / (h nu)          [s^-1]
 !     H_i     = Sum_nu 4 pi J_nu sigma_i(E) dnu (1 - E_th,i/E)    [erg/s]
 ! both per particle of species i (i = HI, HeI, HeII).
@@ -29,8 +29,8 @@ module gas_rates_mod
   real(kind=wp), allocatable :: gamma_HI(:), gamma_HeI(:), gamma_HeII(:)
   real(kind=wp), allocatable :: heat_HI(:),  heat_HeI(:),  heat_HeII(:)
   !--- EUV grain heating [erg s^-1 cm^-3]: the ionizing-band part of the
-  !--- grain heating integral that the dust SED band misses (PLAN section
-  !--- 7 item 1); consumed by the SEDust stage later.
+  !--- grain heating integral that the dust SED band misses;
+  !--- consumed by the SEDust stage later.
   real(kind=wp), allocatable :: heat_dust(:)
   !--- local FUV field in Habing units, G0 = int_{FUV} 4 pi J_nu dnu
   !--- / 1.6e-3 erg/s/cm^2 (nonzero only with par%add_fuv); drives the
@@ -60,7 +60,7 @@ contains
        if (size(gamma_HI) /= nleaf) &
           deallocate(gamma_HI, gamma_HeI, gamma_HeII, &
                      heat_HI, heat_HeI, heat_HeII, heat_dust, &
-                     g0_fuv)                                    ! G4 re-refinement
+                     g0_fuv)                                    ! re-refinement
     end if
     if (.not. allocated(gamma_HI)) &
        allocate(gamma_HI(nleaf), gamma_HeI(nleaf), gamma_HeII(nleaf), &
@@ -174,7 +174,7 @@ contains
     call io_put_keyword(file,'EXTNAME','J_nu','J(nu,leaf) [erg/s/cm^2/Hz/sr]',status)
     deallocate(jnu)
 
-    !--- G1 ionization structure (fixed initialization when gas_niter = 0).
+    !--- ionization structure (fixed initialization when gas_niter = 0).
     block
       use gas_state_mod, only : gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_Te
       real(kind=wp), allocatable :: tmp(:)
@@ -212,7 +212,7 @@ contains
     call io_put_keyword(file,'EXTNAME','LeafXYZ','leaf center x,y,z (code units)',status)
     deallocate(leafxyz)
 
-    !--- G2b: converged metal stage fractions.
+    !--- converged metal stage fractions.
     if (par%use_metals) then
        block
          use species_mod, only : species_write

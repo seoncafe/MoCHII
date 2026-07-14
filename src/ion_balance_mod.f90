@@ -1,6 +1,6 @@
 module ion_balance_mod
 !---------------------------------------------------------------------------
-! MoCHII: H/He photoionization equilibrium at fixed T_e (Stage G1).
+! MoCHII: H/He photoionization equilibrium at fixed T_e.
 !
 ! Per leaf, given the rate integrals Gamma_i from the ionizing-band J tally
 ! and T_e = par%te_fixed, solve
@@ -8,12 +8,12 @@ module ion_balance_mod
 !     n_HeI (Gamma_HeI + n_e C_HeI)  = alpha_[AB](He II)  n_e n_HeII
 !     n_HeII(Gamma_HeII+ n_e C_HeII) = alpha_[AB](He III) n_e n_HeIII
 ! with the closure  n_e = nH [ x_HII + y_He (x_HeII + 2 x_HeIII) ]
-! by damped fixed-point iteration on n_e (docs/PLAN.md section 2.5).
-! Case A/B via par%case_ab ('B' = on-the-spot, the G1 default).
+! by damped fixed-point iteration on n_e.
+! Case A/B via par%case_ab ('B' = on-the-spot, the default).
 !
 ! The converged fractions are written to the shared gas-state arrays with
 ! under-relaxation par%ion_relax (1 = none; < 1 damps oscillation at sharp
-! I-fronts, the known failure mode flagged in docs/PLAN.md section 3).
+! I-fronts, a known failure mode).
 ! Only the node-local rank 0 runs the solve (the inputs are ALLREDUCEd
 ! tallies, so every node's rank 0 is identical); it writes the shared
 ! arrays directly and broadcasts max|delta x_HII| to the other node ranks,
@@ -32,7 +32,7 @@ contains
 
   !=========================================================================
   ! Single-cell H/He equilibrium at temperature T: damped fixed point on
-  ! n_e (docs/PLAN.md section 2.5).  x* are in/out (start = current state).
+  ! n_e.  x* are in/out (start = current state).
   ! Shared by gas_equilibrium_update (fixed Te) and thermal_mod (Te solve).
   !=========================================================================
   ! With par%metal_ne and the optional leaf index il, electrons from the

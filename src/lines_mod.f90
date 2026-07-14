@@ -1,8 +1,8 @@
 module lines_mod
 !---------------------------------------------------------------------------
-! MoCHII: collisional line luminosities on the converged state (Tier 2).
+! MoCHII: collisional line luminosities on the converged state.
 !
-! For every registry (element, stage) with a Tier-2 file
+! For every registry (element, stage) with an n-level file
 ! data/atomic/nlevel_<el>_<stage>.txt, solve the n-level atom per leaf at
 ! the converged (T_e, n_e), multiply by the cascade stage density, and
 ! integrate over the grid:  L_line = sum_leaf j_line n_ion V  [erg/s].
@@ -113,7 +113,7 @@ contains
          'case '//trim(par%case_ab)//', bilinear (log T, log ne) interpolation'
       write(unit,'(a)') '# (SH95 H I/He II lines use case '// &
          trim(par%case_ab)//'; He I Porter lines are case B)'
-      write(unit,'(a)') '# metals: Tier-2 n-level solve per leaf'
+      write(unit,'(a)') '# metals: n-level solve per leaf'
       write(unit,'(a,es14.6,a)') '# L(Hbeta) = ', LHb, ' erg/s'
       write(unit,'(a)') '# elem stage  lambda[A]      L[erg/s]     L/L(Hbeta)'
       do kk = 1, nlh
@@ -334,7 +334,7 @@ contains
        end do
     end do
     close(unit)
-    write(*,'(2a)') ' LINE: Tier-2 line luminosities written to: ', trim(outname)
+    write(*,'(2a)') ' LINE: line luminosities written to: ', trim(outname)
     if (do_emis) then
        call io_close(efile, status)
        write(*,'(2a)') ' LINE: leaf emissivities + state written to: ', &

@@ -1,8 +1,7 @@
 ! MoCHII: copied from MoCafe_v2.00/src/raytrace_amr.f90 (2026-07-11)
 module raytrace_amr_mod
 !---------------------------------------------------------------------------
-! AMR octree raytrace for MoCafe (dust-only), ported from
-! LaRT_v2.00/raytrace_amr.f90 with all Lyman-alpha handling stripped.
+! AMR octree raytrace (dust-only).
 !
 !   Positions and path lengths are in CODE UNITS; amr_grid%rhokap(il) is the
 !   grey dust opacity per code unit, so tau = rhokap*ds is dimensionless.
@@ -11,8 +10,8 @@ module raytrace_amr_mod
 !
 ! Bound to the raytrace_to_tau / raytrace_to_edge procedure pointers for
 ! grid_type='amr'; scattering and peeling-off are SHARED with the Cartesian
-! dust path (dust scattering is leaf-independent).  See AMR_CLUMPS_PLAN.md
-! Part A.  Boundary handling honors par%xy_periodic / xy_symmetry /
+! dust path (dust scattering is leaf-independent).  Boundary handling honors
+! par%xy_periodic / xy_symmetry /
 ! xyz_symmetry (no frequency shift for grey dust); a space-filling octree has
 ! no refinement gaps, so amr_next_leaf alone suffices for the transport walk.
 !---------------------------------------------------------------------------
@@ -191,17 +190,17 @@ contains
   end subroutine raytrace_to_edge_amr
 
   !=========================================================================
-  ! MoCHII: ionizing-band analytic edge walk (Stage G0).  Walks the packet
+  ! MoCHII: ionizing-band analytic edge walk.  Walks the packet
   ! from its birth point to the domain edge, accumulating the exact
   ! expectation of the pathlength tally in each leaf,
   !     jt_ion(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
   ! with kap = kap_ion(inu, il) (per code length; gas + optional dust).
-  ! G0 has no ionizing-band scattering, so this zero-variance direct
+  ! With no ionizing-band scattering, this zero-variance direct
   ! component is the complete tally; the packet needs no interaction
   ! sampling.  No periodic/symmetric boundaries in the ionizing band.
   !=========================================================================
   !=========================================================================
-  ! MoCHII dust stage: full ionizing-band transport of one packet.
+  ! MoCHII: full ionizing-band transport of one packet.
   ! (1) analytic zero-variance direct tally to the edge (always);
   ! (2) when par%ion_dust_scatter: forced first interaction along the ray
   !     (weight w1 = 1 - e^-tau_edge), albedo weight at each interaction

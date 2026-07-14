@@ -1,12 +1,11 @@
 module diffuse_mod
 !---------------------------------------------------------------------------
-! MoCHII: explicit diffuse ionizing field (Stage G3).
+! MoCHII: explicit diffuse ionizing field.
 !
-! Case B (G1/G2) absorbs ground-level recombination photons on the spot.
-! G3 replaces that: the equilibrium runs with CASE A rates and every
-! recombination to the ground level emits an ionizing packet, transported
-! exactly like a stellar packet (docs/PLAN.md section 2.8 — structurally
-! the dust re-emission of lucy_mod).  Three continua:
+! Case B absorbs ground-level recombination photons on the spot.
+! The explicit field replaces that: the equilibrium runs with CASE A rates
+! and every recombination to the ground level emits an ionizing packet,
+! transported exactly like a stellar packet.  Three continua:
 !     H II  + e -> H I(1s)   : E >= 13.598 eV
 !     He II + e -> He I(1^1S): E >= 24.587 eV
 !     He III+ e -> He II(1s) : E >= 54.416 eV

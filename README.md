@@ -13,10 +13,11 @@ infrared dust/PAH spectrum.
 
 ## Features
 
-- **Radiation field**: log-spaced ionizing bins (13.6–100 eV, extendable
-  into the FUV down to ~6 eV as a separate band segment), Planck or
-  tabulated source spectra, an analytic zero-variance estimator for the
-  direct field, explicit diffuse recombination packets (case A) or
+- **Radiation field**: ionizing bins (13.6–100 eV) with edges aligned on
+  the H/He and metal ionization thresholds by default (no bin straddles an
+  edge), extendable into the FUV down to ~6 eV as a separate band segment;
+  Planck or tabulated source spectra, an analytic zero-variance estimator
+  for the direct field, explicit diffuse recombination packets (case A) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
   in the band.
 - **Gas physics**: H/He photoionization equilibrium and thermal balance;
@@ -43,7 +44,9 @@ infrared dust/PAH spectrum.
 - **Grids**: adaptive octree read from a generic AMR file (RAMSES /
   Illustris-TNG converters available), with optional solution-driven
   re-refinement at the ionization front; or a uniform Cartesian grid
-  (raster storage, integer-arithmetic traversal, no tree in memory).
+  (raster storage, integer-arithmetic traversal, no tree in memory) built
+  from the namelist, from a leaf list, or from a 3D density cube
+  (`density_file`, FITS/HDF5) read directly onto the grid.
 - **Parallelism and I/O**: MPI with MPI-3 shared memory (one grid copy per
   node); HDF5 or FITS output through a format-agnostic interface; Python
   readers and a 2D map maker under `tools/python/`.
@@ -71,4 +74,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-13 12:32 KST
+Last updated: 2026-07-14 12:45 KST

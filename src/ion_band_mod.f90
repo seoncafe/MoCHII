@@ -1,10 +1,10 @@
 module ion_band_mod
 !---------------------------------------------------------------------------
-! MoCHII: ionizing frequency band + ionizing-photon generation (new, G0).
+! MoCHII: ionizing frequency band + ionizing-photon generation.
 !
 ! The band covers photon energies [par%eion_min, par%eion_max] eV with
 ! par%nnu_ion log-spaced bins (10-20 bins reach percent-level rate
-! integrals; docs/PLAN.md section 2.1).  The SED grid covers dust
+! integrals).  The SED grid covers dust
 ! wavelengths and is untouched; the ionizing band carries its own grids,
 ! source sampling, opacity, and J tally.
 !
@@ -36,13 +36,18 @@ module ion_band_mod
 contains
 
   !=========================================================================
-  subroutine ion_setup()
+  subroutine ion_setup(metal_eth, nmetal)
     use mpi
     implicit none
+    !--- metal_eth(1:nmetal): active metal photoionization thresholds [eV],
+    !--- gathered by the caller from the species registry.  Only consulted
+    !--- when par%ion_align_edges is on; absent for the H/He-only path.
+    real(kind=wp), intent(in), optional :: metal_eth(:)
+    integer,       intent(in), optional :: nmetal
     integer, parameter :: NSUB = 32
-    real(kind=wp), allocatable :: eedge(:)
+    real(kind=wp), allocatable :: eedge(:), meth(:)
     real(kind=wp) :: lo, hi, e1, e2, es, fsum, lion
-    integer :: nnu, nfuv, i, k, ierr
+    integer :: nnu, nfuv, i, k, ierr, nmet
 
     !--- FUV extension: nnu_fuv extra log bins on [efuv_min, eion_min]
     !--- BELOW the nnu_ion ionizing bins (par%nnu_ion becomes the total
@@ -68,9 +73,23 @@ contains
                      *real(i-1,wp)/real(nfuv,wp))
        end do
     end if
-    do i = nfuv+1, nnu+1                ! ionizing segment [eion_min, eion_max]
-       eedge(i) = exp(lo + (hi - lo)*real(i-1-nfuv,wp)/real(nnu-nfuv,wp))
-    end do
+    if (par%ion_align_edges) then
+       !--- ionizing segment [eion_min, eion_max]: bin edges pinned to the
+       !--- ionization thresholds so no bin straddles one.
+       nmet = 0
+       if (present(nmetal))   nmet = nmetal
+       if (nmet > 0 .and. present(metal_eth)) then
+          allocate(meth(nmet));  meth = metal_eth(1:nmet)
+       else
+          allocate(meth(1));  meth = 0.0_wp;  nmet = 0
+       end if
+       call build_aligned_edges(eedge, nfuv, nnu, meth, nmet)
+       deallocate(meth)
+    else
+       do i = nfuv+1, nnu+1             ! ionizing segment [eion_min, eion_max]
+          eedge(i) = exp(lo + (hi - lo)*real(i-1-nfuv,wp)/real(nnu-nfuv,wp))
+       end do
+    end if
     do i = 1, nnu
        ion_e(i)   = sqrt(eedge(i)*eedge(i+1))          ! geometric bin center
        ion_de(i)  = eedge(i+1) - eedge(i)
@@ -133,6 +152,194 @@ contains
     end if
     deallocate(eedge)
   end subroutine ion_setup
+
+  !=========================================================================
+  ! Threshold-aligned ionizing bin edges.  Fills eedge(nfuv+1 .. nnu+1)
+  ! (the ionizing segment [eion_min, eion_max]) so that every ionization
+  ! threshold strictly inside the band falls ON a bin edge.  The ionizing
+  ! segment carries nion = nnu - nfuv bins, split among the sub-segments
+  ! between consecutive thresholds; each sub-segment is log-uniform.
+  !=========================================================================
+  subroutine build_aligned_edges(eedge, nfuv, nnu, metal_eth, nmetal)
+    use mpi
+    implicit none
+    real(kind=wp), intent(inout) :: eedge(:)
+    integer,       intent(in)    :: nfuv, nnu, nmetal
+    real(kind=wp), intent(in)    :: metal_eth(:)
+    real(kind=wp) :: cand(256), thr(256), points(256), w(64)
+    real(kind=wp) :: tmp, lo, hi, wsum, frac
+    integer :: ncand, nthr, nseg, nion, i, j, ipt, ib, r
+    integer :: nb(64), off, best, ierr, ntot, itmp, ndrop
+    integer :: cpri(256), tpri(256)
+    logical :: dup
+    real(kind=wp), parameter :: MERGE_TOL = 0.01_wp   ! |ln(T2/T1)| merge
+
+    lo = par%eion_min;  hi = par%eion_max
+    nion = nnu - nfuv
+
+    !--- 1) collect candidate thresholds STRICTLY inside (eion_min, eion_max):
+    !---    H I / He I / He II plus the active metal photoionization edges
+    !---    (gathered by the caller from the species registry).  H/He carry
+    !---    priority 1 so that a near-coincident metal edge does not displace
+    !---    them in the merge (e.g. C II 24.383 vs He I 24.587 within 1%).
+    ncand = 0
+    call add_cand(cand, cpri, ncand, eth_HI,   1, lo, hi)
+    call add_cand(cand, cpri, ncand, eth_HeI,  1, lo, hi)
+    call add_cand(cand, cpri, ncand, eth_HeII, 1, lo, hi)
+    do i = 1, nmetal
+       if (metal_eth(i) > 0.0_wp) &
+          call add_cand(cand, cpri, ncand, metal_eth(i), 0, lo, hi)
+    end do
+
+    !--- 2) sort ascending (insertion sort; ncand is small; carry priority)
+    do i = 2, ncand
+       tmp = cand(i);  itmp = cpri(i);  j = i - 1
+       do while (j >= 1)
+          if (cand(j) <= tmp) exit
+          cand(j+1) = cand(j);  cpri(j+1) = cpri(j);  j = j - 1
+       end do
+       cand(j+1) = tmp;  cpri(j+1) = itmp
+    end do
+
+    !--- 2b) merge near-coincident thresholds.  Within a merged cluster keep
+    !---    the higher-priority member (H/He over metal); ties keep the first.
+    nthr = 0
+    do i = 1, ncand
+       dup = .false.
+       if (nthr >= 1) then
+          if (abs(log(cand(i)/thr(nthr))) < MERGE_TOL) dup = .true.
+       end if
+       if (dup) then
+          if (cpri(i) > tpri(nthr)) then     ! promote H/He onto the edge
+             thr(nthr)  = cand(i)
+             tpri(nthr) = cpri(i)
+          end if
+       else
+          nthr = nthr + 1
+          thr(nthr)  = cand(i)
+          tpri(nthr) = cpri(i)
+       end if
+    end do
+
+    !--- 2c) graceful degradation: if the thresholds outnumber the ionizing
+    !---    bins (nseg = nthr+1 > nion), drop the lowest-priority (metal)
+    !---    thresholds - keeping H/He always - until they fit, removing the
+    !---    most redundant metal first (smallest log-gap to a neighbor; the
+    !---    band edges lo/hi are the outer neighbors).  So the aligned band is
+    !---    safe at any nnu_ion: it resolves the big He edges plus as many
+    !---    metal edges as the bins allow.
+    ndrop = 0
+    do while (nthr + 1 > nion)
+       best = 0;  frac = 1.0e30_wp
+       do i = 1, nthr
+          if (tpri(i) /= 0) cycle            ! never drop H/He (priority 1)
+          if (i == 1) then;  tmp = log(thr(i)/lo)
+          else;              tmp = log(thr(i)/thr(i-1));  end if
+          if (i == nthr) then;  tmp = min(tmp, log(hi/thr(i)))
+          else;                 tmp = min(tmp, log(thr(i+1)/thr(i)));  end if
+          if (tmp < frac) then;  frac = tmp;  best = i;  end if
+       end do
+       if (best == 0) exit                   ! only H/He remain - cannot reduce
+       do i = best, nthr-1
+          thr(i) = thr(i+1);  tpri(i) = tpri(i+1)
+       end do
+       nthr = nthr - 1;  ndrop = ndrop + 1
+    end do
+    if (ndrop > 0 .and. mpar%p_rank == 0) write(*,'(a,i0,a,i0,a)') &
+       ' ION: align_edges: nnu_ion=', nion, ' too small for all edges; dropped ', &
+       ndrop, ' metal threshold(s) (H/He kept; raise nnu_ion to align all).'
+
+    !--- 3) split points: eion_min, interior thresholds, eion_max
+    points(1) = lo
+    do i = 1, nthr
+       points(i+1) = thr(i)
+    end do
+    points(nthr+2) = hi
+    nseg = nthr + 1
+
+    !--- 5) need at least one bin per sub-segment.  After degradation this
+    !---    only trips for an absurd nnu_ion below the H/He edge count.
+    if (nion < nseg) then
+       if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a,i0,a)') &
+          'ERROR: ion_align_edges: nnu_ion=', nion, ' cannot fit ', nthr, &
+          ' H/He thresholds; raise nnu_ion to >= ', nseg, '.'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+
+    !--- 4) distribute nion bins over the nseg sub-segments by log width,
+    !---    largest-remainder (Hamilton) with a floor of 1 per sub-segment.
+    wsum = 0.0_wp
+    do j = 1, nseg
+       w(j) = log(points(j+1)) - log(points(j))
+       wsum = wsum + w(j)
+    end do
+    ntot = 0
+    do j = 1, nseg
+       nb(j) = max(1, int(real(nion,wp)*w(j)/wsum))   ! floor(ideal), >= 1
+       ntot  = ntot + nb(j)
+    end do
+    r = nion - ntot
+    do while (r > 0)                 ! hand out by largest fractional remainder
+       best = 1;  frac = -1.0_wp
+       do j = 1, nseg
+          tmp = real(nion,wp)*w(j)/wsum - real(nb(j),wp)
+          if (tmp > frac) then
+             frac = tmp;  best = j
+          end if
+       end do
+       nb(best) = nb(best) + 1;  r = r - 1
+    end do
+    do while (r < 0)                 ! too many (floor-of-1 excess): remove
+       best = 0;  frac = -1.0e30_wp
+       do j = 1, nseg
+          if (nb(j) <= 1) cycle
+          tmp = real(nb(j),wp) - real(nion,wp)*w(j)/wsum   ! excess over ideal
+          if (tmp > frac) then
+             frac = tmp;  best = j
+          end if
+       end do
+       if (best == 0) exit           ! cannot reduce further (all at 1)
+       nb(best) = nb(best) - 1;  r = r + 1
+    end do
+
+    !--- 6) fill eedge inside each sub-segment (log-uniform); sub-segment
+    !---    boundaries are the split points = thresholds.
+    off = nfuv + 1                   ! eedge index of points(1) = eion_min
+    eedge(off) = points(1)
+    ipt = off
+    do j = 1, nseg
+       do ib = 1, nb(j)
+          ipt = ipt + 1
+          eedge(ipt) = exp(log(points(j)) + (log(points(j+1)) - log(points(j))) &
+                       *real(ib,wp)/real(nb(j),wp))
+       end do
+    end do
+
+    !--- 7) rank-0 log
+    if (mpar%p_rank == 0) then
+       write(*,'(a,i0,a,i0,a)') ' ION: align_edges on: ', nthr, &
+          ' interior thresholds, ', nseg, ' sub-segments (bins each:'
+       write(*,'(a,20(1x,i0))') '      ', (nb(j), j=1,nseg)
+    end if
+  end subroutine build_aligned_edges
+
+  !=========================================================================
+  ! Append E (with priority pri) to the candidate list if strictly inside
+  ! (lo, hi).  Priority resolves near-coincident merges (H/He = 1 > metal 0).
+  !=========================================================================
+  subroutine add_cand(cand, cpri, ncand, E, pri, lo, hi)
+    implicit none
+    real(kind=wp), intent(inout) :: cand(:)
+    integer,       intent(inout) :: cpri(:)
+    integer,       intent(inout) :: ncand
+    real(kind=wp), intent(in)    :: E, lo, hi
+    integer,       intent(in)    :: pri
+    if (E > lo .and. E < hi) then
+       ncand = ncand + 1
+       cand(ncand) = E
+       cpri(ncand) = pri
+    end if
+  end subroutine add_cand
 
   !=========================================================================
   ! Planck B_nu at photon energy E [eV] and temperature T [K], arbitrary

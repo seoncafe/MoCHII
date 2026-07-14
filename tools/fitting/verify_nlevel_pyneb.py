@@ -1,4 +1,4 @@
-"""End-to-end verification of the Tier-2 n-level data files against PyNeb.
+"""End-to-end verification of the n-level data files against PyNeb.
 
 Reads data/atomic/nlevel_<ion>.txt (the fitted product, NOT the CHIANTI
 database), solves the n-level statistical equilibrium exactly as the future

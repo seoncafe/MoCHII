@@ -1,7 +1,7 @@
 ! MoCHII: copied from MoCafe_v2.00/src/random_mt.f90 (2026-07-11)
 module random
 !-----
-!--- Random Number Generator Module for MoCafe/LaRT
+!--- Random Number Generator Module
 !--- Use Mersenne Twister (MT) random generator
 !
 ! Author: Kwang-Il Seon
