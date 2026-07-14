@@ -35,8 +35,10 @@ infrared dust/PAH spectrum.
   equilibrium dust temperatures, and stochastic dust/PAH emission spectra
   via the SEDust library (astrodust, DL07, Zubko grain models).
 - **Imaging**: peel-off images of the direct and dust-scattered EUV/FUV
-  field toward arbitrary observers, and dust-band emissivities for infrared
-  maps.
+  field toward arbitrary observers (optionally the unattenuated direct image
+  too, so its ratio to the direct image is the line-of-sight optical depth),
+  bin-resolved image cubes with a self-describing band grid, and dust-band
+  emissivities for infrared maps.
 - **PDR zone (optional)**: FUV photoionization of low-threshold metals
   beyond the ionization front, metal electrons in the charge balance,
   metal photoheating, and grain photoelectric heating (Bakes & Tielens
@@ -49,7 +51,9 @@ infrared dust/PAH spectrum.
   (`density_file`, FITS/HDF5) read directly onto the grid.
 - **Parallelism and I/O**: MPI with MPI-3 shared memory (one grid copy per
   node); HDF5 or FITS output through a format-agnostic interface; Python
-  readers and a 2D map maker under `tools/python/`.
+  readers, a 2D map maker, and slice/cutout viewers for the grid and the
+  outputs under `tools/python/`, plus an AMR octree grid builder
+  (`tools/python/AMR_grid/`).
 
 MoCHII shares its transport engine with the author's dust radiative-transfer
 code [MoCafe](https://github.com/seoncafe/MoCafe) and is validated against
@@ -74,4 +78,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-14 18:12 KST
+Last updated: 2026-07-14 18:16 KST
