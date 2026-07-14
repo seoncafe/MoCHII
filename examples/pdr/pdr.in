@@ -1,0 +1,58 @@
+&parameters
+ ! Photodissociation region (PDR): the neutral gas just beyond the
+ ! ionization front.  The FUV band (added under the ionizing band) drives
+ ! grain photoelectric heating, while metal electrons and metal-line cooling
+ ! ([C II] 158um, [O I] 63um, and the fine-structure lines) set the
+ ! temperature there.  The grid is a refined octree sphere read from a file.
+ ! Note: this run is slower than the gas-only examples because the metal
+ ! electron fixed point is solved inside the temperature bisection.
+ par%no_photons    = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'amr_sphere_L5_nH100.fits.gz'
+ par%dust_model    = 'global_dgr'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%add_fuv       = .true.         ! FUV band under the ionizing band
+ par%efuv_min      = 6.0            ! lower FUV edge [eV]
+ par%nnu_fuv       = 16
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.178e38       ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.0
+ par%xHeII_init    = 1.0
+
+ par%gas_niter     = 15
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%gas_tol_te    = 1.0e-2
+ par%case_ab       = 'B'
+
+ par%solve_te      = .true.
+ par%te_min        = 100.0          ! low floor for the neutral gas [K]
+ par%te_max        = 3.0e4
+ par%use_metals    = .true.
+ par%atomic_dir    = '../../data/atomic'
+ par%abund_C       = 2.2e-4
+ par%abund_O       = 3.3e-4
+ par%abund_Mg      = 3.0e-6
+ par%abund_Fe      = 3.0e-7
+ par%ion_metal_abs = .true.         ! metal photoionization opacity in the band
+
+ par%ion_add_dust    = .true.
+ par%ion_dust_scatter = .true.
+ par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%cext_dust       = 4.868e-22
+ par%DGR             = 1.0
+
+ par%metal_ne      = .true.         ! metal electrons in the ionization balance
+ par%metal_heat    = .true.         ! metal photoheating in the thermal balance
+ par%grain_pe      = .true.         ! grain photoelectric heating (BT94)
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'pdr.h5'
+/

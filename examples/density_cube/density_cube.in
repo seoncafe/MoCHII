@@ -1,0 +1,33 @@
+&parameters
+ ! 3D density cube (FITS) read directly onto the grid: a clumpy hydrogen
+ ! density field is loaded from a file onto a 'car' Cartesian grid, one value
+ ! per cell.  The grid dimensions come from the cube, so nx/ny/nz are not set
+ ! here; only the box size and distance unit are given.  Build the cube first
+ ! with make_cube.py (writes clumpy.fits).
+ par%no_photons    = 1.5e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%density_file  = 'clumpy.fits.gz'  ! 48^3 float64 nH cube; sets nx/ny/nz
+ par%xmax = 4.0
+ par%ymax = 4.0
+ par%zmax = 4.0
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+
+ par%gas_niter     = 30
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%case_ab       = 'B'
+ par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'density_cube.h5'
+/

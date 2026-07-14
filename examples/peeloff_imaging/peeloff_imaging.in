@@ -1,0 +1,63 @@
+&parameters
+ ! Peel-off imaging: after the ionization and thermal balance converge, an
+ ! extra transport pass projects the emerging light onto an image plane
+ ! toward an observer.  Direct (stellar + diffuse) and dust-scattered light
+ ! are peeled in both the ionizing and FUV bands.  A uniform dusty sphere is
+ ! built from the namelist on a 'car' Cartesian grid.
+ ! Setting par%ion_peel produces the <name>_image output.
+ par%no_photons    = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%nx = 48
+ par%ny = 48
+ par%nz = 48
+ par%xmax = 4.0
+ par%ymax = 4.0
+ par%zmax = 4.0
+ par%nH_const      = 100.0          ! cm^-3 inside the sphere
+ par%rmax          = 3.8            ! sphere radius (pc); nH = 0 outside
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%add_fuv       = .true.         ! FUV band under the ionizing band
+ par%efuv_min      = 6.0            ! lower FUV edge [eV]
+ par%nnu_fuv       = 16
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.178e38       ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.0
+ par%xHeII_init    = 1.0
+
+ par%gas_niter     = 20
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 1.0e-2
+ par%gas_tol_te    = 2.0e-2
+ par%case_ab       = 'B'
+
+ par%solve_te      = .true.
+ par%te_min        = 3.0e3
+ par%te_max        = 3.0e4
+ par%use_metals    = .true.
+ par%atomic_dir    = '../../data/atomic'
+ par%abund_Mg      = 3.0e-6
+ par%abund_Fe      = 3.0e-7
+ par%ion_metal_abs = .true.
+
+ par%dust_model      = 'global_dgr'
+ par%ion_add_dust    = .true.
+ par%ion_dust_scatter = .true.
+ par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%cext_dust       = 4.868e-22
+ par%DGR             = 1.0
+
+ par%ion_peel      = .true.         ! peel-off imaging toward the observer
+ par%nxim          = 101
+ par%nyim          = 101
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'peeloff_imaging.h5'
+/

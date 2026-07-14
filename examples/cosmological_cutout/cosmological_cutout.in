@@ -1,0 +1,49 @@
+&parameters
+ ! Cosmological density cutout: an Illustris-TNG gas density field ionized
+ ! by a single source placed at the density peak.  Dense clumps cast sharp
+ ! neutral shadows while the diffuse circumgalactic medium is highly ionized.
+ ! The octree is re-refined on the evolving ionization front, so the front
+ ! and the clump skins are resolved without refining the whole box.
+ par%no_photons    = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'tng_uniform.fits.gz'
+ par%distance_unit = 'kpc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.178e42       ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0
+ par%xHeI_init     = 0.1
+ par%xHeII_init    = 0.9
+
+ par%gas_niter     = 25
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 1.0e-2
+ par%gas_tol_te    = 2.0e-2
+ par%case_ab       = 'B'
+
+ par%solve_te      = .true.
+ par%te_min        = 3.0e3
+ par%te_max        = 3.0e4
+ par%use_metals    = .true.
+ par%atomic_dir    = '../../data/atomic'
+
+ par%refine_front  = .true.         ! re-refine the octree on the front
+ par%refine_iter   = 8              ! iteration at which to re-refine
+ par%refine_lbase  = 5              ! base octree level
+ par%refine_lmax   = 6              ! finest level at the front
+ par%refine_eps    = 1.0e-2
+ par%refine_dx     = 0.2
+
+ par%source_geometry = 'point'
+ par%xs_point      = -4.6875        ! source at the density peak [kpc]
+ par%ys_point      = -15.9375
+ par%zs_point      = 4.6875
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'cosmological_cutout.h5'
+/

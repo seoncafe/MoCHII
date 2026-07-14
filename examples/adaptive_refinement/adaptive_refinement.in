@@ -1,0 +1,41 @@
+&parameters
+ ! Solution-driven octree re-refinement: a Stromgren sphere is started on a
+ ! coarse octree and re-refined at the ionization front once the front has
+ ! settled.  The re-refined run reproduces a uniformly fine grid to within a
+ ! few thousandths of the ionized radius, at a fraction of the leaf count,
+ ! because resolution is spent only where the front is.  The initial coarse
+ ! octree is read from a file.
+ par%no_photons    = 1.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'amr_L5.fits.gz'
+ par%dust_model    = 'none'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.0
+ par%xHeII_init    = 1.0
+
+ par%gas_niter     = 12
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 2.0e-3
+ par%case_ab       = 'B'
+ par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+
+ par%refine_front  = .true.         ! re-refine the octree on the front
+ par%refine_iter   = 1              ! re-refine once the front is established,
+                                    ! then converge on the finer grid
+ par%refine_lbase  = 5              ! base octree level
+ par%refine_lmax   = 7              ! finest level at the front
+ par%refine_eps    = 1.0e-2
+ par%refine_dx     = 0.2
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'adaptive_refinement.h5'
+/
