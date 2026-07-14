@@ -83,15 +83,16 @@ contains
   !--- MoCHII: ionizing-band tally setup/reduce.  The conversion to J_nu and
   !--- the rate integrals live in gas_rates_mod (they need the gas state).
   subroutine jtally_ion_setup(nleaf)
-  use memory_mod, only : create_mem
+  use memory_mod,   only : create_mem
+  use ion_band_mod, only : nnu_band
   implicit none
   integer, intent(in) :: nleaf
   real(kind=wp) :: mem_gb
   jt_ion_nleaf = nleaf
-  mem_gb = real(par%nnu_ion,wp)*nleaf*8.0_wp/1024.0_wp**3
+  mem_gb = real(nnu_band,wp)*nleaf*8.0_wp/1024.0_wp**3
   if (mpar%p_rank == 0) write(*,'(a,i0,a,f8.3,a)') &
      ' ION: J tally: ', nleaf, ' leaves, ', mem_gb, ' GB per MPI rank'
-  call create_mem(jt_ion, [par%nnu_ion, nleaf])
+  call create_mem(jt_ion, [nnu_band, nleaf])
   jt_ion(:,:) = 0.0_wp
   jt_ion_on   = .true.
   end subroutine jtally_ion_setup

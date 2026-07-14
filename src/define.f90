@@ -431,7 +431,7 @@ public
      !--- leaf, from which the photoionization rates Gamma_i and photoheating
      !--- H_i follow.
      logical            :: use_ion_band = .false.
-     integer            :: nnu_ion      = 16          ! frequency bins
+     integer            :: nnu_ion      = 16          ! ionizing frequency bins (immutable; total incl. FUV is ion_band nnu_band)
      real(kind=wp)      :: eion_min     = 13.598_wp   ! band lower edge [eV]
      real(kind=wp)      :: eion_max     = 100.0_wp    ! band upper edge [eV]
      !--- source spectrum in the band: 2-column file (E[eV], L_E[arb]) or,

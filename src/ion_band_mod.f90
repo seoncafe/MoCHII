@@ -2,11 +2,12 @@ module ion_band_mod
 !---------------------------------------------------------------------------
 ! MoCHII: ionizing frequency band + ionizing-photon generation.
 !
-! The band covers photon energies [par%eion_min, par%eion_max] eV with
-! par%nnu_ion log-spaced bins (10-20 bins reach percent-level rate
-! integrals).  The SED grid covers dust
-! wavelengths and is untouched; the ionizing band carries its own grids,
-! source sampling, opacity, and J tally.
+! The ionizing band covers photon energies [par%eion_min, par%eion_max] eV
+! with par%nnu_ion log-spaced bins (par%nnu_ion is the immutable ionizing
+! count; 10-20 bins reach percent-level rate integrals).  With par%add_fuv
+! extra FUV bins are prepended and nnu_band is the total consumed
+! downstream.  The SED grid covers dust wavelengths and is untouched; the
+! ionizing band carries its own grids, source sampling, opacity, and J tally.
 !
 ! Source spectrum in the band: par%ion_spectrum (2-column file: E [eV],
 ! L_E [arb per eV]) or, when empty, a Planck function B_nu(par%tstar).
@@ -21,6 +22,7 @@ module ion_band_mod
 
   public :: ion_setup, gen_ion_photon
   public :: ion_e, ion_de, ion_nu, ion_dnu, ion_lum, ion_Ltot
+  public :: nnu_band, nfuv_band
 
   real(kind=wp), allocatable :: ion_e(:)     ! bin center [eV]
   real(kind=wp), allocatable :: ion_de(:)    ! bin width  [eV]
@@ -32,6 +34,13 @@ module ion_band_mod
   !--- ([eion_min, eion_max]) plus, with par%add_fuv, the FUV part of the
   !--- same source spectrum.
   real(kind=wp), protected :: ion_Ltot = 0.0_wp
+
+  !--- total number of band bins consumed downstream: nnu_band = the
+  !--- ionizing bins (par%nnu_ion) plus, with par%add_fuv, nfuv_band FUV
+  !--- bins prepended at the low-energy end.  par%nnu_ion stays the input
+  !--- ionizing bin count (immutable); every band array and loop uses nnu_band.
+  integer, protected :: nnu_band  = 0   ! total band bins (ionizing + FUV)
+  integer, protected :: nfuv_band = 0   ! FUV bins at the low-energy end
 
 contains
 
@@ -50,8 +59,9 @@ contains
     integer :: nnu, nfuv, i, k, ierr, nmet
 
     !--- FUV extension: nnu_fuv extra log bins on [efuv_min, eion_min]
-    !--- BELOW the nnu_ion ionizing bins (par%nnu_ion becomes the total
-    !--- bin count consumed by every band array).
+    !--- BELOW the par%nnu_ion ionizing bins.  par%nnu_ion stays the
+    !--- immutable ionizing count; nnu_band = par%nnu_ion + nfuv is the
+    !--- total bin count consumed by every band array.
     nfuv = 0
     if (par%add_fuv) then
        if (par%efuv_min >= par%eion_min) then
@@ -60,9 +70,10 @@ contains
           call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
        end if
        nfuv = par%nnu_fuv
-       par%nnu_ion = par%nnu_ion + nfuv
     end if
-    nnu = par%nnu_ion
+    nnu = par%nnu_ion + nfuv     ! total band bins (par%nnu_ion is the immutable ionizing count)
+    nnu_band  = nnu
+    nfuv_band = nfuv
     allocate(eedge(nnu+1), ion_e(nnu), ion_de(nnu), ion_nu(nnu), &
              ion_dnu(nnu), ion_lum(nnu), ion_cdf(nnu))
 
@@ -442,8 +453,8 @@ contains
     photon%kz = cost
 
     u = rand_number()
-    photon%inu = par%nnu_ion
-    do i = 1, par%nnu_ion
+    photon%inu = nnu_band
+    do i = 1, nnu_band
        if (u <= ion_cdf(i)) then
           photon%inu = i
           exit

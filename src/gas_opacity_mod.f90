@@ -19,7 +19,7 @@ module gas_opacity_mod
   use octree_mod,    only : amr_grid
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_nleaf
   use photo_xsec,    only : sigma_HI, sigma_HeI, sigma_HeII
-  use ion_band_mod,  only : ion_e
+  use ion_band_mod,  only : ion_e, nnu_band
   use memory_mod,    only : create_shared_mem
   implicit none
   private
@@ -53,10 +53,10 @@ contains
     use mpi
     implicit none
     if (par%ion_add_dust) call ion_dust_read()
-    call create_shared_mem(kap_ion, [par%nnu_ion, gas_nleaf])
+    call create_shared_mem(kap_ion, [nnu_band, gas_nleaf])
     call gas_opacity_fill()
     if (mpar%p_rank == 0) write(*,'(a,i4,a,i12,a)') &
-       ' ION: opacity array kap_ion(', par%nnu_ion, ' bins, ', gas_nleaf, ' leaves) filled'
+       ' ION: opacity array kap_ion(', nnu_band, ' bins, ', gas_nleaf, ' leaves) filled'
   end subroutine gas_opacity_setup
 
   !=========================================================================
@@ -69,8 +69,8 @@ contains
     integer :: unit, ios, n, i, b, ierr
 
     if (allocated(ion_dust_sabs)) return
-    allocate(ion_dust_sabs(par%nnu_ion), ion_dust_ssca(par%nnu_ion), &
-             ion_dust_g(par%nnu_ion))
+    allocate(ion_dust_sabs(nnu_band), ion_dust_ssca(nnu_band), &
+             ion_dust_g(nnu_band))
     open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
     if (ios /= 0) then
        if (mpar%p_rank == 0) write(*,'(2a)') &
@@ -103,7 +103,7 @@ contains
     !--- an out-of-order seam, so a simple reversal is not enough).
     call sort4(lam, alb, gcos, cext, n)
     cref = interp_log(lam, cext, n, par%lambda_ref)
-    do b = 1, par%nnu_ion
+    do b = 1, nnu_band
        lb = 1.23984_wp/ion_e_of(b)          ! um
        ion_dust_sabs(b) = (1.0_wp - interp_lin(lam, alb, n, lb)) &
                           * interp_log(lam, cext, n, lb) / cref
@@ -115,11 +115,11 @@ contains
        write(*,'(2a)')       ' ION: dust kext table = ', trim(par%ion_dust_kext)
        write(*,'(a,es11.4)') ' ION: C_ext/H at lambda_ref     = ', cref
        write(*,'(a,2f8.3)')  ' ION: sabs at band edges        = ', &
-          ion_dust_sabs(1), ion_dust_sabs(par%nnu_ion)
+          ion_dust_sabs(1), ion_dust_sabs(nnu_band)
        if (par%ion_dust_scatter) write(*,'(a,2f8.3,a,2f7.3)') &
           ' ION: ssca at band edges        = ', &
-          ion_dust_ssca(1), ion_dust_ssca(par%nnu_ion), &
-          ',  g = ', ion_dust_g(1), ion_dust_g(par%nnu_ion)
+          ion_dust_ssca(1), ion_dust_ssca(nnu_band), &
+          ',  g = ', ion_dust_g(1), ion_dust_g(nnu_band)
     end if
     deallocate(lam, alb, cext, gcos)
   end subroutine ion_dust_read
@@ -212,7 +212,7 @@ contains
             end do
           end block
        end if
-       do inu = 1, par%nnu_ion
+       do inu = 1, nnu_band
           sHI   = sigma_HI(ion_e(inu))
           sHeI  = sigma_HeI(ion_e(inu))
           sHeII = sigma_HeII(ion_e(inu))
@@ -233,7 +233,7 @@ contains
        !--- metal photoionization absorption (the only GAS opacity in the
        !--- FUV bins; negligible next to H/He above 13.6 eV).
        if (par%use_metals .and. par%ion_metal_abs .and. n_elements > 0) &
-          call species_opacity_add(kap_ion, par%nnu_ion, gas_nleaf)
+          call species_opacity_add(kap_ion, nnu_band, gas_nleaf)
     end if
     call MPI_BARRIER(mpar%hostcomm, ierr)
   end subroutine gas_opacity_fill

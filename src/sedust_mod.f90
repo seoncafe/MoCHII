@@ -110,7 +110,7 @@ contains
     use mpi
     use octree_mod, only : amr_grid, leaf_half
     use jtally_mod,      only : jt_ion
-    use ion_band_mod,    only : ion_e, ion_dnu
+    use ion_band_mod,    only : ion_e, ion_dnu, nnu_band
     use utility,         only : get_base_name, is_finite
     use gas_state_mod,   only : gas_xHI
     implicit none
@@ -124,7 +124,7 @@ contains
     integer :: il, ic, k, b, unit, ierr, ndone, nmine, nband, ib
 
     allocate(Ltot(nl_sed), Jsed(nl_sed), lamI(nl_sed), pdf(nl_sed))
-    allocate(lam_b(par%nnu_ion), Jlam_b(par%nnu_ion))
+    allocate(lam_b(nnu_band), Jlam_b(nnu_band))
     Ltot = 0.0_wp
     !--- dust-band leaf emissivities (par%dust_emis_bands, um).
     nband = count(is_finite(par%dust_emis_bands))
@@ -134,7 +134,7 @@ contains
        allocate(em_band(nband, amr_grid%nleaf))
        em_band = 0.0_wp
     end if
-    do b = 1, par%nnu_ion
+    do b = 1, nnu_band
        lam_b(b) = 1.23984_wp/ion_e(b)          ! um (descending in b)
     end do
     dlam1 = lam_sed(2) - lam_sed(1)
@@ -153,7 +153,7 @@ contains
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        Labs = heat_dust(il)*vol
        !--- J_lambda [SI, W/m^2/sr/m] of this leaf on the band bins.
-       do b = 1, par%nnu_ion
+       do b = 1, nnu_band
           !--- J_nu = jt/(4 pi V_code d_cm^2 dnu); J_lambda = J_nu c/lambda^2
           Jlam_b(b) = jt_ion(b,il)/(fourpi*(vol/par%distance2cm**3) &
                       *par%distance2cm**2*ion_dnu(b)) &
@@ -164,7 +164,7 @@ contains
        !--- deposit the below-grid EUV energy into the first bin.
        Jsed = 0.0_wp
        extra = 0.0_wp
-       do b = 1, par%nnu_ion
+       do b = 1, nnu_band
           if (lam_b(b) < lam_sed(1)) then
              !--- energy flux of this bin [SI]: J_lambda dlambda with
              !--- dlambda = lambda^2 dnu / c
@@ -174,7 +174,7 @@ contains
        end do
        do k = 1, nl_sed
           if (lam_sed(k) > lam_b(1)) exit                    ! beyond band max
-          if (lam_sed(k) < lam_b(par%nnu_ion)) cycle         ! below band min handled above
+          if (lam_sed(k) < lam_b(nnu_band)) cycle         ! below band min handled above
           Jsed(k) = interp_band(lam_b, Jlam_b, lam_sed(k))
        end do
        Jsed(1) = Jsed(1) + extra/(dlam1*1.0e-6_wp)

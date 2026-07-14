@@ -77,6 +77,7 @@ OBJS	= \
 	read_generic_amr.o \
 	sed_mod.o \
 	cellinfo_mod.o \
+	ion_band_mod.o \
 	jtally_mod.o \
 	photo_xsec.o \
 	recomb_mod.o \
@@ -84,7 +85,6 @@ OBJS	= \
 	gaunt_vh14_mod.o \
 	cooling_mod.o \
 	gas_state_mod.o \
-	ion_band_mod.o \
 	species_mod.o \
 	gas_opacity_mod.o \
 	raytrace_amr.o \

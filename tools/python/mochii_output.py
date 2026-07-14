@@ -32,7 +32,11 @@ Command line:
 """
 
 import os
+import sys
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from leaf_field import leaf_slice, leaf_slice_nn, plot_slice, leaf_box_mask
 
 HC_ERG_A = 1.9864458571489287e-08     # h*c [erg Angstrom]
 
@@ -89,10 +93,101 @@ def read_spectrum(fname):
     return np.loadtxt(fname, unpack=True)
 
 
+def _section_names(fname):
+    """List the section / EXTNAME names of a MoCHII file without loading the
+    array data (a cheap way to tell an emissivity file from a rates file)."""
+    if fname.endswith((".h5", ".hdf5")):
+        import h5py
+        with h5py.File(fname, "r") as f:
+            return list(f.keys())
+    from astropy.io import fits
+    with fits.open(fname) as hdul:
+        return [h.header.get("EXTNAME", "") for h in hdul]
+
+
+# ---------------------------------------------------------------------------
+# planar slices / cutouts over the leaf cells (shared by the file readers)
+# ---------------------------------------------------------------------------
+class _LeafSliceable:
+    """Slice and cutout helpers over the cubic leaf cells.
+
+    A subclass must set ``self.xyz`` (3, nleaf; code units) and ``self.fields``
+    (name -> 1D leaf array), and may set ``self.size`` (the full cell width;
+    None when unknown, which makes the slice fall back to a nearest-leaf
+    lookup).  A slice is the cell value AT a plane (from leaf_field.leaf_slice),
+    distinct from the line-of-sight projection maps.
+    """
+
+    # usetex-safe color-bar labels for the common scalar fields
+    _CBAR = {
+        "T_e":    r"$T_e$ [K]",
+        "n_e":    r"$n_e$ [cm$^{-3}$]",
+        "n_H":    r"$n_H$ [cm$^{-3}$]",
+        "x_HI":   r"$x_{\rm HI}$",
+        "T_dust": r"$T_{\rm dust}$ [K]",
+    }
+
+    @property
+    def _half(self):
+        """Leaf half-size array (0.5 * full width), or None when unknown."""
+        size = getattr(self, "size", None)
+        if size is None:
+            return None
+        return 0.5 * np.asarray(size, float).ravel()
+
+    def _cbar_label(self, name):
+        return self._CBAR.get(name, name.replace("_", r"\_"))
+
+    def slice_field(self, name, axis="z", coord=0.0, npix=512, bounds=None):
+        """True planar slice of a scalar leaf field: the cell value at the plane.
+
+        Returns (img, extent).  When leaf half-sizes are available the exact
+        containing-cell slice (leaf_slice) is used; otherwise a nearest-leaf
+        slice (leaf_slice_nn) is used and a one-time note is printed.  Pass
+        ``bounds`` = (umin, umax, vmin, vmax) with a ``coord`` inside the box
+        to render a cutout.
+        """
+        value = np.asarray(self.fields[name], float)
+        if value.ndim != 1:
+            raise ValueError(f"'{name}' is not a scalar leaf field")
+        half = self._half
+        if half is not None:
+            return leaf_slice(self.xyz[0], self.xyz[1], self.xyz[2], half,
+                              value, axis=axis, coord=coord, bounds=bounds,
+                              npix=npix)
+        if not getattr(self, "_nn_noted", False):
+            print("note: leaf half-sizes are absent; using a nearest-leaf "
+                  "slice (leaf_slice_nn)")
+            self._nn_noted = True
+        return leaf_slice_nn(self.xyz[0], self.xyz[1], self.xyz[2], value,
+                             axis=axis, coord=coord, bounds=bounds, npix=npix)
+
+    def plot_field_slice(self, name, axis="z", coord=0.0, npix=512,
+                         bounds=None, log=False, ax=None, cmap="inferno"):
+        """Slice a scalar leaf field and draw it; returns (fig, ax)."""
+        img, extent = self.slice_field(name, axis=axis, coord=coord,
+                                       npix=npix, bounds=bounds)
+        title = f"{name} slice {axis}={coord:g}".replace("_", r"\_")
+        return plot_slice(img, extent, ax=ax, log=log, cmap=cmap,
+                          cbar_label=self._cbar_label(name), title=title,
+                          axis=axis)
+
+    def cutout_mask(self, box):
+        """Boolean leaf mask, True where a leaf overlaps the axis-aligned box
+        (xmin, xmax, ymin, ymax, zmin, zmax).
+
+        A cutout FOR PLOTTING is obtained instead by passing ``bounds`` to
+        slice_field / plot_field_slice with a ``coord`` inside the box.
+        """
+        half = self._half
+        h = half if half is not None else 0.0
+        return leaf_box_mask(self.xyz[0], self.xyz[1], self.xyz[2], h, box)
+
+
 # ---------------------------------------------------------------------------
 # the emissivity file
 # ---------------------------------------------------------------------------
-class EmisData:
+class EmisData(_LeafSliceable):
     """Leaf emissivities + state from '<base>_emis.h5' (par%emis_output)."""
 
     def __init__(self, fname):
@@ -325,6 +420,89 @@ class EmisData:
         title = lbl + f" ({weight}-weighted)"
         return self._show(img, ext, title, lbl, log, ax)
 
+    # -- planar slices (value at a plane, not a projection) -----------------
+    def slice_line(self, block, wl, axis="z", coord=0.0, npix=512,
+                   bounds=None):
+        """True planar slice of one line's leaf emissivity [erg/s/cm^3].
+
+        value = the leaf emissivity of the line nearest ``wl`` [A] in
+        ``block`` ('o_3', 'h', ...); returns (img, extent).  The emissivity
+        file always carries leaf sizes, so the exact containing-cell slice is
+        used.
+        """
+        k = self.find_line(block, wl)
+        value = self.emis[block][k]
+        return leaf_slice(self.xyz[0], self.xyz[1], self.xyz[2], self._half,
+                          value, axis=axis, coord=coord, bounds=bounds,
+                          npix=npix)
+
+    def plot_line_slice(self, block, wl, axis="z", coord=0.0, npix=512,
+                        bounds=None, log=True, ax=None, cmap="inferno"):
+        """Slice one line's emissivity and draw it; returns (fig, ax)."""
+        img, ext = self.slice_line(block, wl, axis=axis, coord=coord,
+                                    npix=npix, bounds=bounds)
+        k = self.find_line(block, wl)
+        title = (block.replace("_", " ") + f" {self.wl[block][k]:.0f}"
+                 + r" \AA{} slice " + f"{axis}={coord:g}")
+        cbar = r"$\epsilon$ [erg s$^{-1}$ cm$^{-3}$]"
+        return plot_slice(img, ext, ax=ax, log=log, cmap=cmap,
+                          cbar_label=cbar, title=title, axis=axis)
+
+
+# ---------------------------------------------------------------------------
+# the rates / state file
+# ---------------------------------------------------------------------------
+class RatesData(_LeafSliceable):
+    """Leaf state + rates from '<base>_rates.h5' (or any section file that
+    carries LeafXYZ plus scalar leaf fields).
+
+    Inherits the slice / cutout helpers of _LeafSliceable.  ``self.size`` is
+    the 'LeafSize' block (full cell width) when the file has one, else None --
+    in which case the slice falls back to a nearest-leaf lookup.
+    """
+
+    # sections that are not scalar leaf fields
+    _SKIP = ("LeafXYZ", "LeafSize", "E_bin", "dE_bin")
+
+    def __init__(self, fname):
+        sec = read_sections(fname)
+        self.fname = fname
+
+        xyz = sec["LeafXYZ"]["data"]
+        if xyz.shape[0] != 3:
+            xyz = xyz.T
+        self.xyz = np.asarray(xyz, dtype=float)      # (3, nleaf), code units
+        self.nleaf = self.xyz.shape[1]
+        self.dist_cm = float(sec["LeafXYZ"]["attrs"].get("DIST_CM", 1.0))
+
+        if "LeafSize" in sec and sec["LeafSize"]["data"] is not None:
+            self.size = np.asarray(sec["LeafSize"]["data"], float).ravel()
+        else:
+            self.size = None
+
+        self.fields = {}      # name -> 1D leaf field
+        for name, s in sec.items():
+            if name in self._SKIP or name.startswith("NNU_"):
+                continue
+            data = s["data"]
+            if data is None:
+                continue
+            arr = np.asarray(data, float)
+            if arr.ndim == 1 and arr.size == self.nleaf:
+                self.fields[name] = arr
+            # 2D blocks (J_nu, x_<el>_stages) are not scalar fields -> skipped
+
+    def info(self):
+        """Print a summary (nice in a notebook)."""
+        has = "yes" if self.size is not None else "no"
+        print(f"{self.fname}: {self.nleaf} leaves, LeafSize present: {has}")
+        print("fields:", ", ".join(sorted(self.fields)))
+
+    def __repr__(self):
+        return (f"RatesData('{self.fname}', nleaf={self.nleaf}, "
+                f"leafsize={self.size is not None}, "
+                f"fields={len(self.fields)})")
+
 
 # ---------------------------------------------------------------------------
 # command line: quick-look maps
@@ -335,26 +513,42 @@ def _main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    ap = argparse.ArgumentParser(description="MoCHII emissivity maps")
-    ap.add_argument("emisfile", help="<base>_emis.h5 (par%%emis_output)")
+    ap = argparse.ArgumentParser(
+        description="MoCHII quick-look maps (projection) and slices")
+    ap.add_argument("infile", help="<base>_emis.h5 or <base>_rates.h5")
     ap.add_argument("--line", nargs=2, metavar=("BLOCK", "WL"),
-                    help="line map: block ('o_3', 'h', ...) + wavelength [A]")
+                    help="projected line map: block ('o_3', 'h', ...) + "
+                         "wavelength [A] (emis file)")
     ap.add_argument("--unit", default="flux", choices=["flux", "intensity"],
                     help="line map unit: flux [erg/s/cm^2] or intensity "
                          "[erg/s/cm^2/sr] (default flux)")
     ap.add_argument("--photons", action="store_true",
                     help="photon units instead of erg (divide by hc/lambda)")
-    ap.add_argument("--field", help="field map: T_e, n_e, x_HI, ...")
+    ap.add_argument("--field", help="projected field map: T_e, n_e, x_HI, ...")
     ap.add_argument("--weight", default="EM",
                     help="field-map weight: EM, ne, nH, V (default EM)")
+    ap.add_argument("--slice", metavar="FIELD",
+                    help="planar slice of a scalar leaf field "
+                         "(T_e, n_e, x_HI, ...) at --axis = --coord")
+    ap.add_argument("--coord", type=float, default=0.0,
+                    help="plane position along --axis [code units] "
+                         "(default 0)")
     ap.add_argument("--axis", default="z", choices=["x", "y", "z"])
     ap.add_argument("--npix", type=int, default=256)
     ap.add_argument("--log", action="store_true", help="log10 color scale")
     ap.add_argument("--out", default=None, help="output PNG")
     args = ap.parse_args()
 
-    d = EmisData(args.emisfile)
-    if args.line:
+    is_emis = any(n.startswith("emis_") for n in _section_names(args.infile))
+
+    if args.slice:
+        d = EmisData(args.infile) if is_emis else RatesData(args.infile)
+        fig, ax = d.plot_field_slice(args.slice, axis=args.axis,
+                                     coord=args.coord, npix=args.npix,
+                                     log=args.log)
+        base = f"slice_{args.slice}_{args.axis}{args.coord:g}"
+    elif args.line:
+        d = EmisData(args.infile)
         block, wl = args.line[0], float(args.line[1])
         fig, ax = d.plot_line(block, wl, axis=args.axis, npix=args.npix,
                               unit=args.unit, photons=args.photons,
@@ -362,14 +556,17 @@ def _main():
         k = d.find_line(block, wl)
         base = f"map_{block}_{int(round(d.wl[block][k]))}"
     elif args.field:
+        d = EmisData(args.infile)
         fig, ax = d.plot_field(args.field, axis=args.axis, npix=args.npix,
                                weight=args.weight, log=args.log)
         base = f"map_{args.field}_{args.weight}"
     else:
+        d = EmisData(args.infile) if is_emis else RatesData(args.infile)
         d.info()
-        print("stored lines:")
-        for b, w in d.line_list():
-            print(f"  {b:8s} {w:12.2f} A")
+        if is_emis:
+            print("stored lines:")
+            for b, w in d.line_list():
+                print(f"  {b:8s} {w:12.2f} A")
         return
 
     fig.tight_layout()

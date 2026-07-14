@@ -25,6 +25,7 @@ module ion_peel_mod
 ! (small next to the leaf arrays).
 !---------------------------------------------------------------------------
   use define
+  use ion_band_mod, only : nnu_band
   use utility, only : is_finite
   implicit none
   private
@@ -34,6 +35,10 @@ module ion_peel_mod
 
   !--- (nxim, nyim, channel, nobs); channel 1 = ionizing, 2 = FUV
   real(kind=wp), allocatable :: img_dir(:,:,:,:), img_sca(:,:,:,:)
+  !--- unattenuated direct image (MoCafe direc0): the direct source seen
+  !--- with no path extinction (e^-tau omitted), so direc0/direct = e^+tau
+  !--- is the line-of-sight optical depth.  Allocated only with par%save_direc0.
+  real(kind=wp), allocatable :: img_dir0(:,:,:,:)
   integer :: nchan = 1
 
 contains
@@ -177,7 +182,7 @@ contains
     !--- channel axis: band-integrated (1 or 2 channels) or, with
     !--- par%peel_bins, one image per band bin.
     if (par%peel_bins) then
-       nchan = par%nnu_ion
+       nchan = nnu_band
     else
        nchan = merge(2, 1, par%add_fuv)
     end if
@@ -185,6 +190,10 @@ contains
              img_sca(par%nxim, par%nyim, nchan, par%nobs))
     img_dir = 0.0_wp
     img_sca = 0.0_wp
+    if (par%save_direc0) then
+       allocate(img_dir0(par%nxim, par%nyim, nchan, par%nobs))
+       img_dir0 = 0.0_wp
+    end if
 
     if (mpar%p_rank == 0) then
        write(*,'(a,i3,a,i5,a,i5,a)') ' PEEL: ', par%nobs, &
@@ -241,9 +250,13 @@ contains
             + observer(k)%nyim/2.0_wp) + 1
        if (ix < 1 .or. ix > observer(k)%nxim .or. &
            iy < 1 .or. iy > observer(k)%nyim) cycle
+       contrib = photon%Lpacket*photon%wgt/(fourpi*r2)   ! geometric only
+       !--- unattenuated direct (direc0): tau-independent, always added.
+       if (par%save_direc0) &
+          img_dir0(ix, iy, ch, k) = img_dir0(ix, iy, ch, k) + contrib
        call raytrace_ion_tau_only_amr(pobs, tau)
        if (tau > 500.0_wp) cycle      ! e^-tau = 0 to any precision
-       contrib = photon%Lpacket*photon%wgt/(fourpi*r2)*exp(-tau)
+       contrib = contrib*exp(-tau)
        img_dir(ix, iy, ch, k) = img_dir(ix, iy, ch, k) + contrib
     end do
   end subroutine ion_peel_direct
@@ -371,6 +384,9 @@ contains
                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, img_sca, size(img_sca), &
                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+    if (par%save_direc0) &
+       call MPI_ALLREDUCE(MPI_IN_PLACE, img_dir0, size(img_dir0), &
+                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
     if (mpar%p_rank /= 0) return
 
     status = 0
@@ -386,8 +402,9 @@ contains
           !--- bin-resolved cubes + the band-integrated channel images
           !--- derived from them.
           block
-            use ion_band_mod, only : ion_e
+            use ion_band_mod, only : ion_e, ion_de
             real(kind=wp), allocatable :: img2(:,:)
+            real(kind=wp) :: bin_wl(nnu_band)
             integer :: b, ich, nch2
             call io_append_image(file, img_dir(:,:,:,k)*fac, status, bitpix=-64)
             write(extname,'(2a)') 'direct_cube', trim(suffix)
@@ -400,11 +417,31 @@ contains
             write(extname,'(2a)') 'scatt_cube', trim(suffix)
             call io_put_keyword(file,'EXTNAME',trim(extname), &
                  'scattered I(x,y,bin) [erg/s/cm^2/sr]',status)
+            if (par%save_direc0) then
+               call io_append_image(file, img_dir0(:,:,:,k)*fac, status, bitpix=-64)
+               write(extname,'(2a)') 'direc0_cube', trim(suffix)
+               call io_put_keyword(file,'EXTNAME',trim(extname), &
+                    'unattenuated direct I(x,y,bin) [erg/s/cm^2/sr]',status)
+            end if
+            !--- band bin grid labelling the third (bin) cube axis; written
+            !--- once (shared by all observers).
+            if (k == 1) then
+               call io_append_image(file, ion_e(1:nnu_band), status, bitpix=-64)
+               call io_put_keyword(file,'EXTNAME','E_bin', &
+                    'band bin center [eV]',status)
+               call io_append_image(file, ion_de(1:nnu_band), status, bitpix=-64)
+               call io_put_keyword(file,'EXTNAME','dE_bin', &
+                    'band bin width [eV]',status)
+               bin_wl = 12398.4198_wp/ion_e(1:nnu_band)
+               call io_append_image(file, bin_wl, status, bitpix=-64)
+               call io_put_keyword(file,'EXTNAME','wl_bin', &
+                    'band bin center [Angstrom]',status)
+            end if
             allocate(img2(par%nxim, par%nyim))
             nch2 = merge(2, 1, par%add_fuv)
             do ich = 1, nch2
                img2 = 0.0_wp
-               do b = 1, par%nnu_ion
+               do b = 1, nnu_band
                   if (ich == 1 .and. ion_e(b) <  par%eion_min) cycle
                   if (ich == 2 .and. ion_e(b) >= par%eion_min) cycle
                   img2 = img2 + img_dir(:,:,b,k)
@@ -414,7 +451,7 @@ contains
                call io_put_keyword(file,'EXTNAME',trim(extname), &
                     'direct surface brightness [erg/s/cm^2/sr]',status)
                img2 = 0.0_wp
-               do b = 1, par%nnu_ion
+               do b = 1, nnu_band
                   if (ich == 1 .and. ion_e(b) <  par%eion_min) cycle
                   if (ich == 2 .and. ion_e(b) >= par%eion_min) cycle
                   img2 = img2 + img_sca(:,:,b,k)
@@ -423,6 +460,18 @@ contains
                write(extname,'(4a)') 'scatt_', trim(chname(ich)), trim(suffix)
                call io_put_keyword(file,'EXTNAME',trim(extname), &
                     'scattered surface brightness [erg/s/cm^2/sr]',status)
+               if (par%save_direc0) then
+                  img2 = 0.0_wp
+                  do b = 1, nnu_band
+                     if (ich == 1 .and. ion_e(b) <  par%eion_min) cycle
+                     if (ich == 2 .and. ion_e(b) >= par%eion_min) cycle
+                     img2 = img2 + img_dir0(:,:,b,k)
+                  end do
+                  call io_append_image(file, img2*fac, status, bitpix=-64)
+                  write(extname,'(4a)') 'direc0_', trim(chname(ich)), trim(suffix)
+                  call io_put_keyword(file,'EXTNAME',trim(extname), &
+                       'unattenuated direct surface brightness [erg/s/cm^2/sr]',status)
+               end if
             end do
             deallocate(img2)
           end block
@@ -442,6 +491,12 @@ contains
              write(extname,'(4a)') 'scatt_', trim(chname(ch)), trim(suffix)
              call io_put_keyword(file,'EXTNAME',trim(extname), &
                   'scattered surface brightness [erg/s/cm^2/sr]',status)
+             if (par%save_direc0) then
+                call io_append_image(file, img_dir0(:,:,ch,k)*fac, status, bitpix=-64)
+                write(extname,'(4a)') 'direc0_', trim(chname(ch)), trim(suffix)
+                call io_put_keyword(file,'EXTNAME',trim(extname), &
+                     'unattenuated direct surface brightness [erg/s/cm^2/sr]',status)
+             end if
           end do
        end if
     end do
@@ -449,6 +504,8 @@ contains
     write(*,'(2a)') ' PEEL: images written to: ', trim(outname)
     write(*,'(a,es12.4,a,es12.4)') ' PEEL: sum(direct) = ', sum(img_dir), &
        ',  sum(scatt) = ', sum(img_sca)
+    if (par%save_direc0) write(*,'(a,es12.4)') &
+       ' PEEL: sum(direc0, unattenuated) = ', sum(img_dir0)
   end subroutine ion_peel_write
 
 end module ion_peel_mod

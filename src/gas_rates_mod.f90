@@ -16,7 +16,7 @@ module gas_rates_mod
   use define
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use jtally_mod,   only : jt_ion
-  use ion_band_mod, only : ion_e, ion_de, ion_nu, ion_dnu
+  use ion_band_mod, only : ion_e, ion_de, ion_nu, ion_dnu, nnu_band
   use photo_xsec,   only : sigma_HI, sigma_HeI, sigma_HeII
   implicit none
   private
@@ -52,8 +52,8 @@ contains
     implicit none
     integer  :: il, inu, nleaf
     real(kind=wp) :: vol, fac, hnu, sHI, sHeI, sHeII, fJ
-    real(kind=wp) :: sig_HI(par%nnu_ion), sig_HeI(par%nnu_ion), &
-                     sig_HeII(par%nnu_ion)
+    real(kind=wp) :: sig_HI(nnu_band), sig_HeI(nnu_band), &
+                     sig_HeII(nnu_band)
 
     nleaf = amr_grid%nleaf
     if (allocated(gamma_HI)) then
@@ -72,7 +72,7 @@ contains
 
     !--- cross sections depend only on the (fixed) band, not on the leaf:
     !--- evaluate once per bin instead of nleaf times (identical values).
-    do inu = 1, par%nnu_ion
+    do inu = 1, nnu_band
        sig_HI(inu)   = sigma_HI(ion_e(inu))
        sig_HeI(inu)  = sigma_HeI(ion_e(inu))
        sig_HeII(inu) = sigma_HeII(ion_e(inu))
@@ -81,7 +81,7 @@ contains
     do il = 1, nleaf
        vol = (2.0_wp * leaf_half(il))**3
        fac = 1.0_wp / (vol * par%distance2cm**2)     ! -> 4 pi J_nu dnu per bin
-       do inu = 1, par%nnu_ion
+       do inu = 1, nnu_band
           fJ  = jt_ion(inu, il) * fac                ! 4 pi J dnu [erg/s/cm^2]
           if (fJ <= 0.0_wp) cycle
           hnu = ion_e(inu) * ev2erg                  ! photon energy [erg]
@@ -116,7 +116,7 @@ contains
     implicit none
     type(io_file_type) :: file
     character(len=192) :: filename
-    real(kind=wp), allocatable :: leafxyz(:,:), jnu(:,:)
+    real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
     integer :: status, il, inu, ic, nleaf
 
     if (mpar%p_rank /= 0) return
@@ -130,6 +130,7 @@ contains
     call io_append_image(file, gamma_HI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HI','H I photoionization rate [s^-1]',status)
     call io_put_keyword(file,'NNU_ION', par%nnu_ion, 'ionizing frequency bins', status)
+    call io_put_keyword(file,'NNU_BAND', nnu_band, 'total band bins (ionizing+FUV)', status)
     call io_put_keyword(file,'EION_MIN',par%eion_min,'band lower edge [eV]',    status)
     call io_put_keyword(file,'EION_MAX',par%eion_max,'band upper edge [eV]',    status)
     call io_put_keyword(file,'TOT_LUM', par%luminosity,'band luminosity [erg/s]',status)
@@ -163,9 +164,9 @@ contains
     end if
 
     !--- J_nu(nnu, nleaf) [erg/s/cm^2/Hz/sr]
-    allocate(jnu(par%nnu_ion, nleaf))
+    allocate(jnu(nnu_band, nleaf))
     do il = 1, nleaf
-       do inu = 1, par%nnu_ion
+       do inu = 1, nnu_band
           jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
                         * ion_dnu(inu) * par%distance2cm**2)
        end do
@@ -211,6 +212,14 @@ contains
     call io_append_image(file, leafxyz, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','LeafXYZ','leaf center x,y,z (code units)',status)
     deallocate(leafxyz)
+
+    allocate(leafsize(nleaf))
+    do il = 1, nleaf
+       leafsize(il) = 2.0_wp * leaf_half(il)
+    end do
+    call io_append_image(file, leafsize, status, bitpix=-64)
+    call io_put_keyword(file,'EXTNAME','LeafSize','leaf full width (code units)',status)
+    deallocate(leafsize)
 
     !--- converged metal stage fractions.
     if (par%use_metals) then

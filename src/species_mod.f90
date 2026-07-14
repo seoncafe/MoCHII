@@ -349,15 +349,15 @@ contains
   subroutine species_gamma_compute()
     use octree_mod, only : amr_grid, leaf_half
     use jtally_mod,   only : jt_ion
-    use ion_band_mod, only : ion_e
+    use ion_band_mod, only : ion_e, nnu_band
     implicit none
     integer :: ie, it, il, inu, ic, nleaf
-    real(kind=wp) :: sig(par%nnu_ion), vol, fac, fJ, fH
+    real(kind=wp) :: sig(nnu_band), vol, fac, fJ, fH
 
     nleaf = amr_grid%nleaf
     do ie = 1, n_elements
        do it = 1, elems(ie)%nstage-1
-          do inu = 1, par%nnu_ion
+          do inu = 1, nnu_band
              sig(inu) = species_sigma(ie, it, ion_e(inu))
           end do
           do il = 1, nleaf
@@ -365,7 +365,7 @@ contains
              fac = 1.0_wp/(vol*par%distance2cm**2)
              fJ  = 0.0_wp
              fH  = 0.0_wp
-             do inu = 1, par%nnu_ion
+             do inu = 1, nnu_band
                 fJ = fJ + jt_ion(inu,il)*sig(inu)/(ion_e(inu)*ev2erg)
                 fH = fH + jt_ion(inu,il)*sig(inu) &
                      *max(1.0_wp - el8(ie,it,1)/ion_e(inu), 0.0_wp)

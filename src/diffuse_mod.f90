@@ -113,7 +113,7 @@ contains
   !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
-    use ion_band_mod, only : ion_e, ion_de, ion_Ltot
+    use ion_band_mod, only : ion_e, ion_de, ion_Ltot, nnu_band
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
@@ -182,10 +182,10 @@ contains
     block
       integer :: nfuv, nion
       nfuv = merge(par%nnu_fuv, 0, par%add_fuv)
-      nion = par%nnu_ion - nfuv
+      nion = par%nnu_ion
       inu  = nfuv + int(real(nion,wp)*log(eph/par%eion_min) &
              / log(par%eion_max/par%eion_min)) + 1
-      photon%inu = min(max(inu, nfuv+1), par%nnu_ion)
+      photon%inu = min(max(inu, nfuv+1), nnu_band)
     end block
 
     photon%wgt     = 1.0_wp
