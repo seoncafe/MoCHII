@@ -16,7 +16,8 @@ contains
   implicit none
 
   character(len=128) :: model_infile, arg
-  integer :: unit, ierr
+  character(len=256) :: exepath
+  integer :: unit, ierr, islash
 
   namelist /parameters/ par
 
@@ -32,6 +33,20 @@ contains
   open(newunit=unit,file=trim(model_infile),status='old')
   read(unit,parameters)
   close(unit)
+
+  !--- Resolve the SEDust directory relative to the executable when the user
+  !--- leaves par%sed_workdir blank, so a fresh checkout runs dust emission from
+  !--- any working directory without editing paths.  argv(0) is the path to
+  !--- MoCHII.x; take its directory and append SEDust/sed.
+  if (len_trim(par%sed_workdir) == 0) then
+     call get_command_argument(0, exepath)
+     islash = index(trim(exepath), '/', back=.true.)
+     if (islash > 0) then
+        par%sed_workdir = exepath(1:islash-1) // '/SEDust/sed'
+     else
+        par%sed_workdir = 'SEDust/sed'
+     end if
+  end if
 
   par%nprint = par%no_print
   if (par%nprint >= par%no_photons) par%nprint = par%no_photons/10

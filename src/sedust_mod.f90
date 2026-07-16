@@ -1,8 +1,8 @@
 module sedust_mod
 !---------------------------------------------------------------------------
-! MoCHII: stochastic dust emission via the SEDust library (adapted from
-! MoCafe_v2.00/src/dustemis_mod.f90; libsedust.a + .mod copied to
-! SEDust_lib/, provenance 2026-07-12).
+! MoCHII: stochastic dust emission via the SEDust dust_lib layer, built from
+! source under SEDust/sed (build_lib.sh); a self-contained copy of the
+! MoCafe v2.00 SEDust tree.  Adapted from MoCafe_v2.00/src/dustemis_mod.f90.
 !
 ! Per leaf, the local mean intensity built from the transported band tally
 ! is handed to SEDust (equilibrium + stochastically heated grains + PAHs;

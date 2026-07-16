@@ -50,5 +50,4 @@
  !--- SEDust stochastic dust SED (output time)
  par%dust_sed       = .true.
  par%dust_model_sed = 'astrodust'
- par%sed_workdir    = '/home/kiseon/MoCafe/new/MoCafe_v2.00/SEDust/sed'
 /

@@ -62,10 +62,23 @@ and PyNeb emissivities.
 
 ## Build and run
 
+The SEDust dust-emission library is self-contained under `SEDust/`. On a
+fresh checkout, build it once before the first `make`:
+
+```
+cd SEDust/sed && ./build_lib.sh   # -> SEDust/sed/lib/libsedust.a
+```
+
+Then, from the repository root:
+
 ```
 make                              # -> MoCHII.x  (MPI Fortran + HDF5)
 mpirun -np 8 ./MoCHII.x input.in
 ```
+
+The SEDust data directory is resolved automatically relative to the
+executable at run time, so dust emission works from any working directory
+without setting `par%sed_workdir`.
 
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
@@ -78,4 +91,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-14 23:40 KST
+Last updated: 2026-07-16 11:04 KST

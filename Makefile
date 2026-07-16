@@ -1,5 +1,4 @@
-# MoCHII Makefile — adapted from MoCafe_v2.00/Makefile (SEDust dropped;
-# G0 module set).  Build:  make            ->  MoCHII.x
+# MoCHII Makefile — adapted from MoCafe_v2.00/Makefile.  Build:  make -> MoCHII.x
 #                          make DEBUG=1    ->  bounds/traceback build
 #************* Choose Compiler *************
 UNAME = $(shell uname)
@@ -26,10 +25,15 @@ endif
 #---------------------------
 SRCDIR  = src
 MAIN    = main
-FLAGS   = -cpp -DMPI -ISEDust_lib
+FLAGS   = -cpp -DMPI
 DEBUG   = 0
 HDF5    = 1
-SEDUST_LIB = SEDust_lib/libsedust.a
+
+# SEDust dust-emission library.  Self-contained under SEDust/; rebuild with
+#   cd SEDust/sed && ./build_lib.sh
+SEDUST_LIBDIR ?= SEDust/sed/lib
+FLAGS      += -I$(SEDUST_LIBDIR)
+SEDUST_LIB  = $(SEDUST_LIBDIR)/libsedust.a
 
 # HDF5 installation prefix (set when HDF5=1).
 HDF5_PREFIX ?= /data/opt/hdf5_intel
