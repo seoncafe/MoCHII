@@ -1,0 +1,43 @@
+&parameters
+ ! G-rescale twin: the SAME two Planck shapes via the shape multi-column file
+ ! (two_temp_spec.txt) with the SAME explicit src_lum = 3e37/1e37.  The 'le'
+ ! rescale run (st_le_rescale.in) must reproduce this to ~0.01%.
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource          = 2
+ par%spectrum_type    = 'shape'
+ par%src_spectrum_file = 'two_temp_spec.txt'
+ par%src_x(1)      = -0.5
+ par%src_lum(1)    =  3.0e37
+ par%src_x(2)      =  0.5
+ par%src_lum(2)    =  1.0e37
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'st_sresc.h5'
+/

@@ -59,6 +59,7 @@ public
   real(kind=wp), parameter :: h_planck_cgs = 6.62607015e-27_wp   ! erg s
   real(kind=wp), parameter :: clight_cgs   = 2.99792458e10_wp    ! cm/s
   real(kind=wp), parameter :: ev2erg       = 1.602176634e-12_wp  ! erg/eV
+  real(kind=wp), parameter :: hc_evAng     = 12398.42_wp         ! eV*Angstrom (h*c)
   real(kind=wp), parameter :: kboltz_cgs   = 1.380649e-16_wp     ! erg/K
   real(kind=wp), parameter :: eth_HI       = 13.598_wp           ! eV, H I ionization threshold
   real(kind=wp), parameter :: eth_HeI      = 24.587_wp           ! eV, He I
@@ -156,7 +157,12 @@ public
      real(kind=wp)       :: no_photons = 1e5
      real(kind=wp)       :: no_print   = 1e7
      integer       :: iseed        = 0
-     real(kind=wp) :: luminosity   = 1.0
+     !--- ionizing-band luminosity [erg/s] of the primary source (a point
+     !--- source, or the informational total with several).  Sentinel -999 =
+     !--- unset: setup maps it to 1.0 for a 'shape'/Planck source (exact legacy)
+     !--- but leaves it unset to DERIVE the luminosity from the integral of a
+     !--- physical-type (par%spectrum_type /= 'shape') source spectrum.
+     real(kind=wp) :: luminosity   = -999.0_wp
      real(kind=wp) :: tauhomo      = -999.0
      real(kind=wp) :: taumax       = -999.0
      real(kind=wp) :: lambda0      = 6563.0_wp
@@ -225,6 +231,24 @@ public
      !--- source spectrum (par%ion_spectrum / par%tstar).
      real(kind=wp)      :: ext_tstar     = -999.0_wp
      character(len=128) :: ext_spectrum  = ''
+     !--- par%spectrum_type sets the COLUMN UNITS of every spectrum file slot
+     !--- (par%ion_spectrum, par%src_spectrum_file, par%ext_spectrum):
+     !---   'shape'   col1 E [eV] ascending, col2.. arbitrary (renormalized);
+     !---   'le'      col1 E [eV],      col2.. L_E or J_E     [.../eV];
+     !---   'lnu'     col1 nu [Hz],     col2.. L_nu or J_nu   [.../Hz];
+     !---   'llam_a'  col1 lambda [A],  col2.. L_lam or J_lam [.../A];
+     !---   'llam_um' col1 lambda [um], col2.. L_lam or J_lam [.../um].
+     !--- Internal file slots carry luminosity densities L, par%ext_spectrum
+     !--- carries intensity densities J.  A physical type is ABSOLUTE: bin
+     !--- luminosities come from the file integral directly (rescaled only when
+     !--- the scale par%luminosity / src_lum(i) / ext_intensity is set), while
+     !--- 'shape' keeps the legacy renormalize-to-scale behavior.
+     character(len=16)  :: spectrum_type = 'shape'
+     !--- par%ext_spectrum may instead name a built-in analytic ISRF preset
+     !--- (FUV-only, needs par%add_fuv; par%spectrum_type does not apply):
+     !--- 'draine' (Draine 1978), 'habing' (Draine shape / 1.71), 'mathis'
+     !--- (Mathis, Mezger & Panagia 1983).  par%ext_scale multiplies a preset.
+     real(kind=wp)      :: ext_scale     = 1.0_wp
      !--- shared memory & master-slave algorithm
      integer       :: num_send_at_once   = 10000
      logical       :: use_shared_memory  = .false.

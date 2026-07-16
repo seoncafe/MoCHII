@@ -11,21 +11,30 @@ module ion_band_mod
 !
 ! Source spectrum in the band is resolved by component.  A single point
 ! source (and the global default) uses par%ion_spectrum (2-column file:
-! E [eV], L_E [arb per eV]) or, when empty, a Planck function B_nu(par%tstar).
+! E [eV], L_E) or, when empty, a Planck function B_nu(par%tstar).
 ! With several internal point sources, par%src_spectrum_file (one multi-column
 ! file: E then one L_E per source) column i or par%src_tstar(i) gives source i
 ! its own spectrum; the external field uses par%ext_spectrum / par%ext_tstar
 ! (see comp_shape / point_shape).
-! Bin luminosities are integrated on a 32-point sub-grid per bin and
-! normalized so that sum(ion_lum) = par%luminosity [erg/s]: par%luminosity
-! is the luminosity OF THE BAND.  Packets sample bins from the luminosity
-! CDF and carry Lpacket = par%luminosity / nphotons.
+!
+! par%spectrum_type fixes the column units of every file slot: 'shape'
+! (arbitrary, renormalized to the scale = legacy) or a PHYSICAL type ('le',
+! 'lnu', 'llam_a', 'llam_um').  A physical file is ABSOLUTE: bin luminosities
+! come from the file integral directly (rescaled only when the scale is set);
+! an unset scale DERIVES the luminosity from the file.  par%ext_spectrum may
+! also name an analytic ISRF preset ('draine'/'habing'/'mathis', FUV-only,
+! absolute, needs add_fuv; see preset_je).
+!
+! Bin luminosities are integrated on a 32-point sub-grid per bin.  'shape'
+! spectra are normalized so the ionizing segment carries the scale
+! (par%luminosity / src_lum(i); external pi*J*A).  Packets sample bins from the
+! luminosity CDF and carry Lpacket = ion_Ltot / nphotons.
 !---------------------------------------------------------------------------
   use define
   implicit none
   private
 
-  public :: ion_setup, gen_ion_photon
+  public :: ion_setup, gen_ion_photon, ion_ext_preset_id
   public :: ion_e, ion_de, ion_nu, ion_dnu, ion_lum, ion_Ltot
   public :: nnu_band, nfuv_band
 
@@ -60,6 +69,9 @@ module ion_band_mod
   integer, protected :: nnu_band  = 0   ! total band bins (ionizing + FUV)
   integer, protected :: nfuv_band = 0   ! FUV bins at the low-energy end
 
+  !--- Habing (1968) FUV energy density in 6-13.6 eV [erg/cm^3]; G0 = 1 unit.
+  real(kind=wp), parameter :: HABING_U_FUV = 5.29e-14_wp
+
 contains
 
   !=========================================================================
@@ -74,9 +86,10 @@ contains
     integer,       intent(in), optional :: nmetal
     integer, parameter :: NSUB = 32
     real(kind=wp), allocatable :: eedge(:), meth(:)
-    real(kind=wp) :: lo, hi, lion
-    real(kind=wp) :: Lnorm, asurf, xr, yr, zr
-    integer :: nnu, nfuv, i, ierr, nmet
+    real(kind=wp) :: lo, hi
+    real(kind=wp) :: Lnorm, Jband, uFUV
+    integer :: nnu, nfuv, i, ierr, nmet, presid
+    logical :: is_abs, derived
 
     !--- FUV extension: nnu_fuv extra log bins on [efuv_min, eion_min]
     !--- BELOW the par%nnu_ion ionizing bins.  par%nnu_ion stays the
@@ -130,58 +143,31 @@ contains
 
     !--- band bin luminosities and sampling CDFs.  Determine the source
     !--- components: par%nsource internal point sources plus one external field
-    !--- when par%ext_intensity>0.  With exactly one component the single fast
-    !--- path is taken (legacy RNG stream); otherwise the multi path splits the
-    !--- packets among the components (each with its own spectrum).
+    !--- (ON when par%ext_intensity>0, an ISRF preset is named, or a physical-
+    !--- type par%ext_spectrum file is given).  With exactly one component the
+    !--- single fast path runs (legacy RNG stream); otherwise the multi path
+    !--- splits the packets among the components (each with its own spectrum).
     ncomp = par%nsource
-    if (par%ext_intensity > 0.0_wp) ncomp = ncomp + 1
+    if (external_on()) ncomp = ncomp + 1
     multi_src = ncomp >= 2
 
+    Lnorm = 0.0_wp;  Jband = 0.0_wp;  uFUV = 0.0_wp;  presid = 0;  derived = .false.
     if (.not. multi_src) then
-       !===================== single-component fast path =====================
-       !--- Bin luminosities from the single component's spectrum (NSUB midpoint
-       !--- sub-grid), resolved by the component type:
-       !---   external-only (nsource=0): ext_spectrum file > ext_tstar Planck >
-       !---     global ion_spectrum file > global tstar Planck;
-       !---   single point source: src_spectrum_file column 1 (if set) > global
-       !---     ion_spectrum file > global tstar Planck.  The legacy scalars rule
-       !---     on this fast path, so src_tstar(1) is NOT consulted here (use
-       !---     par%tstar with a single source; src_tstar drives the multi path).
-       !--- The no-file-no-tstar case aborts inside comp_shape.
        if (par%nsource == 0) then
-          call comp_shape(ion_lum, eedge, nnu, NSUB, par%ext_spectrum, par%ext_tstar)
+          !===================== external-only fast path =====================
+          !--- absolute (preset / physical file) or legacy (shape / Planck)
+          !--- external field; build_ext_bins fills ion_lum with bin
+          !--- luminosities [erg/s] directly and returns the diagnostics.
+          call build_ext_bins(ion_lum, eedge, nnu, nfuv, NSUB, Lnorm, Jband, uFUV, presid)
        else
-          call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false.)
+          !===================== single point source fast path ================
+          !--- src_spectrum_file column 1 (if set) > global ion_spectrum >
+          !--- global tstar Planck.  The legacy scalars rule here, so
+          !--- src_tstar(1) is NOT consulted (use par%tstar with one source).
+          call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false., is_abs)
+          call finalize_source(ion_lum, nnu, nfuv, is_abs, par%luminosity, Lnorm)
+          derived = is_abs .and. (par%luminosity <= 0.0_wp)
        end if
-
-       !--- normalize and build the sampling CDF.  For a point source the
-       !--- ionizing-segment luminosity is par%luminosity.  For an isotropic
-       !--- external field of mean intensity J = par%ext_intensity the entering
-       !--- ionizing-band power through the illuminating surface of area A is
-       !--- L = pi*J*A (the inward-hemisphere integral of J*cos(theta) is pi*J
-       !--- per unit area); this reproduces the interior energy density
-       !--- u = 4*pi*J/c, so an optically thin box tallies interior J = J.
-       !--- With add_fuv the FUV segment of the same spectrum rides on top, so
-       !--- the ionizing photon budget (Q_H) is preserved without manual
-       !--- band-ratio rescaling.
-       Lnorm = par%luminosity
-       if (trim(par%source_geometry) == 'external_rec') then
-          xr = amr_grid%xrange * par%distance2cm
-          yr = amr_grid%yrange * par%distance2cm
-          zr = amr_grid%zrange * par%distance2cm
-          asurf = 2.0_wp*(xr*yr + yr*zr + zr*xr)         ! box surface area [cm^2]
-          Lnorm = pi * par%ext_intensity * asurf
-       else if (trim(par%source_geometry) == 'external_sph') then
-          asurf = fourpi * (par%rmax * par%distance2cm)**2   ! sphere area [cm^2]
-          Lnorm = pi * par%ext_intensity * asurf
-          if (mpar%p_rank == 0 .and. par%rmax > 0.5_wp* &
-              min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)) &
-             write(*,'(a)') ' ION: WARNING: external_sph rmax exceeds the box '// &
-             'half-extent; part of the sphere falls outside the box (those '// &
-             'entering packets are dropped).'
-       end if
-       lion = sum(ion_lum(nfuv+1:nnu))
-       ion_lum  = ion_lum / lion * Lnorm
        ion_Ltot = sum(ion_lum)
        ion_cdf(1) = ion_lum(1)
        do i = 2, nnu
@@ -189,41 +175,7 @@ contains
        end do
        ion_cdf = ion_cdf / ion_cdf(nnu)
 
-       if (mpar%p_rank == 0) then
-          call band_log(nnu, nfuv)
-          if (par%nsource == 0) then
-             !--- external-only: ext_spectrum > ext_tstar > global.
-             if (len_trim(par%ext_spectrum) > 0) then
-                write(*,'(2a)')       ' ION: spectrum file = ', trim(par%ext_spectrum)
-             else if (par%ext_tstar > 0.0_wp) then
-                write(*,'(a,es12.4)') ' ION: Planck spectrum, ext_tstar [K] = ', par%ext_tstar
-             else if (len_trim(par%ion_spectrum) > 0) then
-                write(*,'(2a)')       ' ION: spectrum file = ', trim(par%ion_spectrum)
-             else
-                write(*,'(a,es12.4)') ' ION: Planck spectrum, tstar [K] = ', par%tstar
-             end if
-          else
-             !--- single point source: src_spectrum_file col 1 > global.
-             if (len_trim(par%src_spectrum_file) > 0) then
-                write(*,'(2a)')       ' ION: spectrum = column 1 of ', trim(par%src_spectrum_file)
-             else if (len_trim(par%ion_spectrum) > 0) then
-                write(*,'(2a)')       ' ION: spectrum file = ', trim(par%ion_spectrum)
-             else
-                write(*,'(a,es12.4)') ' ION: Planck spectrum, tstar [K] = ', par%tstar
-             end if
-          end if
-          if (trim(par%source_geometry) /= 'point') then
-             write(*,'(3a)')        ' ION: external field, geometry = ', &
-                trim(par%source_geometry), ' (isotropic)'
-             write(*,'(a,es12.4)')  ' ION: ext_intensity J [erg/s/cm^2/sr] = ', par%ext_intensity
-             write(*,'(a,es12.4)')  ' ION: entering ionizing power [erg/s] = ', Lnorm
-          else
-             write(*,'(a,es12.4)')  ' ION: ionizing luminosity [erg/s] = ', par%luminosity
-          end if
-          if (nfuv > 0) write(*,'(a,es12.4,a,f7.4)') &
-             ' ION: band total with FUV        = ', ion_Ltot, &
-             ',  L_FUV/L_ion = ', (ion_Ltot - Lnorm)/Lnorm
-       end if
+       if (mpar%p_rank == 0) call log_fast_path(nnu, nfuv, Lnorm, Jband, uFUV, presid, derived)
     else
        !======================== multi-component path ========================
        call setup_multi_components(eedge, nnu, nfuv, NSUB)
@@ -232,64 +184,53 @@ contains
   end subroutine ion_setup
 
   !=========================================================================
-  ! Multi-component band setup.  Builds one band-luminosity shape lum_c per
-  ! component (each from its own spectrum, normalized so its ionizing segment
-  ! carries its luminosity), accumulates ion_lum = sum_c lum_c, and forms the
-  ! component-selection CDF (src_cdf, over band totals) plus each component's
-  ! bin CDF (ion_cdf_src).  The single global ion_cdf is kept meaningful too.
+  ! Multi-component band setup.  Builds one bin-luminosity array lum_c per
+  ! component (each from its own spectrum), accumulates ion_lum = sum_c lum_c,
+  ! and forms the component-selection CDF (src_cdf, over band totals) plus each
+  ! component's bin CDF (ion_cdf_src).  Internal point sources are normalized to
+  ! src_lum(i) (physical file with src_lum unset = derived from the file); the
+  ! external field is built by build_ext_bins (absolute preset/physical file or
+  ! legacy shape).  The single global ion_cdf is kept meaningful too.
   !=========================================================================
   subroutine setup_multi_components(eedge, nnu, nfuv, nsub)
-    use octree_mod, only : amr_grid
     implicit none
     real(kind=wp), intent(in) :: eedge(:)
     integer,       intent(in) :: nnu, nfuv, nsub
-    real(kind=wp), allocatable :: lum_c(:), comp_L(:)
-    real(kind=wp) :: lion, xr, yr, zr, asurf, Lc
-    logical :: ext_on
-    integer :: is, ic
+    real(kind=wp), allocatable :: lum_c(:), comp_L(:), src_used(:)
+    logical,       allocatable :: src_derived(:)
+    real(kind=wp) :: Lenter, Jband, uFUV
+    logical :: ext_on, is_abs
+    integer :: is, ic, presid
 
-    ext_on = par%ext_intensity > 0.0_wp
+    ext_on = external_on()
     if (allocated(comp_kind))   deallocate(comp_kind)
     if (allocated(src_cdf))     deallocate(src_cdf)
     if (allocated(ion_cdf_src)) deallocate(ion_cdf_src)
     allocate(comp_kind(ncomp), comp_L(ncomp), src_cdf(ncomp), &
              ion_cdf_src(nnu, ncomp), lum_c(nnu))
+    allocate(src_used(max(par%nsource,1)), src_derived(max(par%nsource,1)))
+    src_used = 0.0_wp;  src_derived = .false.
     ion_lum(:) = 0.0_wp
+    Lenter = 0.0_wp;  Jband = 0.0_wp;  uFUV = 0.0_wp;  presid = 0
 
     ic = 0
     !--- internal point sources: each with its own resolved spectrum.
     do is = 1, par%nsource
        ic = ic + 1
        comp_kind(ic) = is
-       call point_shape(lum_c, eedge, nnu, nsub, is, .true.)
-       lion = sum(lum_c(nfuv+1:nnu))
-       lum_c = lum_c / lion * par%src_lum(is)     ! ionizing segment -> src_lum(is)
+       call point_shape(lum_c, eedge, nnu, nsub, is, .true., is_abs)
+       call finalize_source(lum_c, nnu, nfuv, is_abs, par%src_lum(is), src_used(is))
+       src_derived(is) = is_abs .and. (par%src_lum(is) <= 0.0_wp)
        comp_L(ic) = sum(lum_c)                     ! band total (incl. FUV)
        ion_lum = ion_lum + lum_c
        call fill_cdf(ion_cdf_src(:,ic), lum_c, nnu)
     end do
 
-    !--- external isotropic field: entering ionizing power L = pi*J*A_surface.
+    !--- external isotropic field (absolute preset/physical file or legacy).
     if (ext_on) then
        ic = ic + 1
        comp_kind(ic) = 0
-       if (trim(par%ext_geometry) == 'sph') then
-          asurf = fourpi * (par%rmax * par%distance2cm)**2
-          if (mpar%p_rank == 0 .and. par%rmax > 0.5_wp* &
-              min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)) &
-             write(*,'(a)') ' ION: WARNING: ext_geometry=sph rmax exceeds the box '// &
-             'half-extent; part of the sphere falls outside the box (those '// &
-             'entering packets are dropped).'
-       else
-          xr = amr_grid%xrange * par%distance2cm
-          yr = amr_grid%yrange * par%distance2cm
-          zr = amr_grid%zrange * par%distance2cm
-          asurf = 2.0_wp*(xr*yr + yr*zr + zr*xr)
-       end if
-       Lc = pi * par%ext_intensity * asurf
-       call comp_shape(lum_c, eedge, nnu, nsub, par%ext_spectrum, par%ext_tstar)
-       lion = sum(lum_c(nfuv+1:nnu))
-       lum_c = lum_c / lion * Lc
+       call build_ext_bins(lum_c, eedge, nnu, nfuv, nsub, Lenter, Jband, uFUV, presid)
        comp_L(ic) = sum(lum_c)
        ion_lum = ion_lum + lum_c
        call fill_cdf(ion_cdf_src(:,ic), lum_c, nnu)
@@ -308,20 +249,31 @@ contains
     if (mpar%p_rank == 0) then
        call band_log(nnu, nfuv)
        write(*,'(a,i0,a)') ' ION: ', ncomp, ' source components:'
-       ic = 0
        do is = 1, par%nsource
-          ic = ic + 1
-          write(*,'(a,i0,a,3(1x,f9.4),a,es12.4)') &
-             '   point ', is, ': (x,y,z) =', par%src_x(is), par%src_y(is), &
-             par%src_z(is), '  L_ion =', par%src_lum(is)
+          if (src_derived(is)) then
+             write(*,'(a,i0,a,3(1x,f9.4),a,es12.4)') &
+                '   point ', is, ': (x,y,z) =', par%src_x(is), par%src_y(is), &
+                par%src_z(is), '  L_ion (derived) =', src_used(is)
+          else
+             write(*,'(a,i0,a,3(1x,f9.4),a,es12.4)') &
+                '   point ', is, ': (x,y,z) =', par%src_x(is), par%src_y(is), &
+                par%src_z(is), '  L_ion =', src_used(is)
+          end if
        end do
        if (ext_on) then
-          write(*,'(3a,es12.4,a,es12.4)') '   external (', trim(par%ext_geometry), &
-             '): J =', par%ext_intensity, '  L_enter =', comp_L(ncomp)
+          if (presid > 0) then
+             write(*,'(4a,es12.4)') '   external (', trim(par%ext_geometry), &
+                '): ISRF preset ', trim(par%ext_spectrum), '  L_enter =', Lenter
+             write(*,'(a,es12.4,a,f9.3)') '     u_FUV [erg/cm^3] =', uFUV, &
+                ',  G0 (Habing) =', uFUV/HABING_U_FUV
+          else
+             write(*,'(3a,es12.4,a,es12.4)') '   external (', trim(par%ext_geometry), &
+                '): J =', Jband, '  L_enter =', Lenter
+          end if
        end if
        write(*,'(a,es12.4)') ' ION: band total (all components) [erg/s] = ', ion_Ltot
     end if
-    deallocate(lum_c, comp_L)
+    deallocate(lum_c, comp_L, src_used, src_derived)
   end subroutine setup_multi_components
 
   !=========================================================================
@@ -359,9 +311,12 @@ contains
 
   !=========================================================================
   ! Resolve a component spectrum (file > component tstar > global file >
-  ! global tstar) and fill its band-luminosity shape on the NSUB sub-grid.
+  ! global tstar) and fill its band bin array on the NSUB sub-grid.  is_abs
+  ! is .true. when the source is a PHYSICAL-type file (arr then holds absolute
+  ! bin integrals in the file's density units); .false. for a 'shape' file or
+  ! a Planck function (arr is an arbitrary-unit shape, renormalized later).
   !=========================================================================
-  subroutine comp_shape(arr, eedge, nnu, nsub, specfile, tstar)
+  subroutine comp_shape(arr, eedge, nnu, nsub, specfile, tstar, is_abs)
     use mpi
     implicit none
     real(kind=wp),    intent(out) :: arr(:)
@@ -369,9 +324,12 @@ contains
     integer,          intent(in)  :: nnu, nsub
     character(len=*), intent(in)  :: specfile
     real(kind=wp),    intent(in)  :: tstar
+    logical,          intent(out) :: is_abs
     character(len=256) :: eff_file
+    real(kind=wp), allocatable :: etab(:), ftab(:)
     real(kind=wp) :: eff_T, e1, e2, es, fsum
-    integer :: i, k, ierr
+    integer :: i, k, ierr, ntab
+    is_abs = .false.
     if (len_trim(specfile) > 0) then
        eff_file = specfile;         eff_T = -1.0_wp
     else if (tstar > 0.0_wp) then
@@ -382,7 +340,16 @@ contains
        eff_file = '';               eff_T = par%tstar
     end if
     if (len_trim(eff_file) > 0) then
-       call bin_lum_from_file(eff_file, eedge, nnu, nsub, arr)
+       if (spec_is_physical()) then
+          !--- physical-type file: convert to (E [eV] ascending, X_E per eV)
+          !--- and bin -> arr = absolute bin integrals (density units).
+          call read_phys_table(eff_file, 1, 1, etab, ftab, ntab)
+          call bin_interp(etab, ftab, ntab, eedge, nnu, nsub, arr)
+          deallocate(etab, ftab)
+          is_abs = .true.
+       else
+          call bin_lum_from_file(eff_file, eedge, nnu, nsub, arr)
+       end if
     else
        if (eff_T <= 0.0_wp) then     ! no file and no positive temperature anywhere
           if (mpar%p_rank == 0) write(*,'(a)') &
@@ -404,32 +371,222 @@ contains
   end subroutine comp_shape
 
   !=========================================================================
-  ! Resolve an internal point source spectrum and fill its band-luminosity
-  ! shape.  Priority: par%src_spectrum_file column is (if set) > src_tstar(is)
-  ! Planck (only when use_src_tstar) > global par%ion_spectrum file > global
-  ! par%tstar Planck.  The single-component fast path passes use_src_tstar =
-  ! .false. (a lone source uses par%tstar, not src_tstar - legacy scalars rule);
-  ! the multi-component path passes .true.
+  ! Resolve an internal point source spectrum and fill its band bin array.
+  ! Priority: par%src_spectrum_file column is (if set) > src_tstar(is) Planck
+  ! (only when use_src_tstar) > global par%ion_spectrum file > global par%tstar
+  ! Planck.  The single-component fast path passes use_src_tstar = .false. (a
+  ! lone source uses par%tstar, not src_tstar - legacy scalars rule); the multi-
+  ! component path passes .true.  is_abs marks a physical-type (absolute) file.
   !=========================================================================
-  subroutine point_shape(arr, eedge, nnu, nsub, is, use_src_tstar)
+  subroutine point_shape(arr, eedge, nnu, nsub, is, use_src_tstar, is_abs)
     implicit none
     real(kind=wp), intent(out) :: arr(:)
     real(kind=wp), intent(in)  :: eedge(:)
     integer,       intent(in)  :: nnu, nsub, is
     logical,       intent(in)  :: use_src_tstar
+    logical,       intent(out) :: is_abs
+    real(kind=wp), allocatable :: etab(:), ftab(:)
     real(kind=wp) :: tst
+    integer :: ntab
+    is_abs = .false.
     if (len_trim(par%src_spectrum_file) > 0) then
-       call bin_lum_from_multicol(par%src_spectrum_file, is, par%nsource, &
-                                  eedge, nnu, nsub, arr)
+       if (spec_is_physical()) then
+          call read_phys_table(par%src_spectrum_file, is, par%nsource, etab, ftab, ntab)
+          call bin_interp(etab, ftab, ntab, eedge, nnu, nsub, arr)
+          deallocate(etab, ftab)
+          is_abs = .true.
+       else
+          call bin_lum_from_multicol(par%src_spectrum_file, is, par%nsource, &
+                                     eedge, nnu, nsub, arr)
+       end if
     else
        if (use_src_tstar) then
           tst = par%src_tstar(is)
        else
           tst = -1.0_wp                 ! global fallback only (fast path)
        end if
-       call comp_shape(arr, eedge, nnu, nsub, '', tst)
+       call comp_shape(arr, eedge, nnu, nsub, '', tst, is_abs)
     end if
   end subroutine point_shape
+
+  !=========================================================================
+  ! .true. when par%spectrum_type is a physical (absolute) type.
+  !=========================================================================
+  logical function spec_is_physical()
+    select case (trim(par%spectrum_type))
+    case ('le', 'lnu', 'llam_a', 'llam_um')
+       spec_is_physical = .true.
+    case default
+       spec_is_physical = .false.
+    end select
+  end function spec_is_physical
+
+  !=========================================================================
+  ! The external field is ON when par%ext_intensity>0, an ISRF preset is named
+  ! in par%ext_spectrum, or par%ext_spectrum is a physical-type file (absolute
+  ! J), so a preset / absolute field needs no ext_intensity.
+  !=========================================================================
+  logical function external_on()
+    external_on = (par%ext_intensity > 0.0_wp) .or. &
+                  (ion_ext_preset_id(par%ext_spectrum) > 0) .or. &
+                  (spec_is_physical() .and. len_trim(par%ext_spectrum) > 0)
+  end function external_on
+
+  !=========================================================================
+  ! ISRF preset id for a par%ext_spectrum value (case-insensitive on the
+  ! trimmed string): 1 = draine, 2 = habing, 3 = mathis; 0 = a file path.
+  ! (Public so setup can validate the composable-external conditions.)
+  !=========================================================================
+  integer function ion_ext_preset_id(name)
+    implicit none
+    character(len=*), intent(in) :: name
+    character(len=32) :: s
+    integer :: i, c
+    s = adjustl(name)
+    do i = 1, len_trim(s)
+       c = iachar(s(i:i))
+       if (c >= iachar('A') .and. c <= iachar('Z')) s(i:i) = achar(c + 32)
+    end do
+    select case (trim(s))
+    case ('draine');  ion_ext_preset_id = 1
+    case ('habing');  ion_ext_preset_id = 2
+    case ('mathis');  ion_ext_preset_id = 3
+    case default;     ion_ext_preset_id = 0
+    end select
+  end function ion_ext_preset_id
+
+  !=========================================================================
+  ! Normalize a source bin array to its scale.  For a 'shape'/Planck source
+  ! (is_abs=.false.) the ionizing segment is rescaled to the scale (legacy).
+  ! For a physical-type source (is_abs=.true.) the bins are absolute: an unset
+  ! scale (<=0) is DERIVED (bins kept, Lused = ionizing-segment integral), a
+  ! set scale rescales the ionizing segment to it.  Lused = the resulting
+  ! ionizing-band luminosity.
+  !=========================================================================
+  subroutine finalize_source(arr, nnu, nfuv, is_abs, scale, Lused)
+    use mpi
+    implicit none
+    real(kind=wp), intent(inout) :: arr(:)
+    integer,       intent(in)    :: nnu, nfuv
+    logical,       intent(in)    :: is_abs
+    real(kind=wp), intent(in)    :: scale
+    real(kind=wp), intent(out)   :: Lused
+    real(kind=wp) :: lion, ltot
+    integer :: ierr
+    lion = sum(arr(nfuv+1:nnu))
+    if (is_abs) then
+       if (scale > 0.0_wp) then          ! rescale the ionizing segment to scale
+          if (lion <= 0.0_wp) then
+             if (mpar%p_rank == 0) write(*,'(a)') &
+                'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
+                'to an ionizing luminosity (the spectrum is FUV-only).'
+             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          end if
+          if (mpar%p_rank == 0) write(*,'(a,es12.4,a,es12.4)') &
+             ' ION: NOTE: physical source rescaled from file integral', lion, &
+             ' to', scale
+          arr = arr / lion * scale
+          Lused = scale
+       else                              ! derive: keep the absolute file bins
+          if (lion > 0.0_wp) then
+             Lused = lion
+          else
+             ltot = sum(arr)             ! FUV-only source: keep the FUV bins
+             if (ltot <= 0.0_wp) then
+                if (mpar%p_rank == 0) write(*,'(a)') &
+                   'ERROR: the source spectrum has no luminosity inside the band.'
+                call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             end if
+             Lused = 0.0_wp
+          end if
+       end if
+    else                                 ! legacy shape: renormalize to scale
+       if (lion <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: the source spectrum has no luminosity inside the ionizing band.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       arr = arr / lion * scale
+       Lused = scale
+    end if
+  end subroutine finalize_source
+
+  !=========================================================================
+  ! Build the external field's bin LUMINOSITIES [erg/s] into arr.  Three
+  ! spectrum kinds: an ISRF preset (analytic J_E), a physical-type file
+  ! (absolute J_E), or a legacy 'shape'/Planck spectrum.  For the absolute
+  ! kinds each bin gets L_b = pi*A_surface*J_b (the interior mean intensity of
+  ! an isotropic field entering an area A is J_b); if par%ext_intensity is also
+  ! set the field is rescaled so the band-integrated interior J equals it.  For
+  ! the legacy kind the ionizing shape is renormalized and scaled by
+  ! pi*ext_intensity*A (the original behavior).  Returns Lenter (ionizing-
+  ! segment power), Jband (band-integrated interior J), uFUV (FUV energy
+  ! density (4pi/c) int_FUV J dE), and presid (>0 = preset).
+  !=========================================================================
+  subroutine build_ext_bins(arr, eedge, nnu, nfuv, nsub, Lenter, Jband, uFUV, presid)
+    use mpi
+    use octree_mod, only : amr_grid
+    implicit none
+    real(kind=wp), intent(out) :: arr(:)
+    real(kind=wp), intent(in)  :: eedge(:)
+    integer,       intent(in)  :: nnu, nfuv, nsub
+    real(kind=wp), intent(out) :: Lenter, Jband, uFUV
+    integer,       intent(out) :: presid
+    real(kind=wp), allocatable :: etab(:), ftab(:)
+    real(kind=wp) :: asurf, xr, yr, zr, Jtot, dummyT
+    logical :: is_abs, dum
+    integer :: ntab, ierr
+
+    !--- illuminated surface area [cm^2].
+    if (trim(par%ext_geometry) == 'sph') then
+       asurf = fourpi * (par%rmax * par%distance2cm)**2
+       if (mpar%p_rank == 0 .and. par%rmax > 0.5_wp* &
+           min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)) &
+          write(*,'(a)') ' ION: WARNING: ext_geometry=sph rmax exceeds the box '// &
+          'half-extent; part of the sphere falls outside the box (those '// &
+          'entering packets are dropped).'
+    else
+       xr = amr_grid%xrange * par%distance2cm
+       yr = amr_grid%yrange * par%distance2cm
+       zr = amr_grid%zrange * par%distance2cm
+       asurf = 2.0_wp*(xr*yr + yr*zr + zr*xr)
+    end if
+
+    presid = ion_ext_preset_id(par%ext_spectrum)
+    if (presid > 0) then
+       call bin_preset(presid, par%ext_scale, eedge, nnu, nsub, arr)   ! J bins
+       is_abs = .true.
+    else if (spec_is_physical() .and. len_trim(par%ext_spectrum) > 0) then
+       call read_phys_table(par%ext_spectrum, 1, 1, etab, ftab, ntab)
+       call bin_interp(etab, ftab, ntab, eedge, nnu, nsub, arr)        ! J bins
+       deallocate(etab, ftab)
+       is_abs = .true.
+    else
+       dummyT = par%ext_tstar
+       call comp_shape(arr, eedge, nnu, nsub, par%ext_spectrum, dummyT, dum)
+       is_abs = .false.
+    end if
+
+    if (is_abs) then
+       Jtot = sum(arr)                            ! band-integrated interior J
+       if (Jtot <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: the external spectrum has no luminosity inside the band.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       if (par%ext_intensity > 0.0_wp) arr = arr * (par%ext_intensity / Jtot)  ! rescale to J
+       arr = pi * asurf * arr                     ! J bins -> bin luminosities
+    else
+       call finalize_source(arr, nnu, nfuv, .false., 1.0_wp, dummyT)   ! ionizing shape -> 1
+       arr = arr * (pi * par%ext_intensity * asurf)
+    end if
+
+    !--- diagnostics from the final bin luminosities (interior J_b = L_b/(pi A)).
+    Jband  = sum(arr) / (pi * asurf)
+    uFUV   = 0.0_wp
+    if (nfuv > 0) uFUV = fourpi / clight_cgs * sum(arr(1:nfuv)) / (pi * asurf)
+    Lenter = sum(arr(nfuv+1:nnu))
+  end subroutine build_ext_bins
 
   !=========================================================================
   ! Threshold-aligned ionizing bin edges.  Fills eedge(nfuv+1 .. nnu+1)
@@ -782,6 +939,317 @@ contains
     end do
     deallocate(etab, ftab, row)
   end subroutine bin_lum_from_multicol
+
+  !=========================================================================
+  ! Integrate a tabulated (E [eV] ascending, X_E per eV) spectrum onto the band
+  ! bins on the NSUB midpoint sub-grid (linear interpolation, zero outside the
+  ! table).  arr(i) = int_bin X_E dE.  Same quadrature as bin_lum_from_file, so
+  ! a physical file bins exactly like a shape file (only the table units differ).
+  !=========================================================================
+  subroutine bin_interp(etab, ftab, ntab, eedge, nnu, nsub, arr)
+    implicit none
+    real(kind=wp), intent(in)  :: etab(:), ftab(:), eedge(:)
+    integer,       intent(in)  :: ntab, nnu, nsub
+    real(kind=wp), intent(out) :: arr(:)
+    real(kind=wp) :: e1, e2, es, fsum, ei, fi
+    integer :: i, k, j
+    do i = 1, nnu
+       e1 = eedge(i);  e2 = eedge(i+1)
+       fsum = 0.0_wp
+       do k = 1, nsub
+          es = e1 + (e2 - e1)*(real(k,wp) - 0.5_wp)/real(nsub,wp)
+          fi = 0.0_wp
+          if (es >= etab(1) .and. es <= etab(ntab)) then
+             do j = 1, ntab-1
+                if (es <= etab(j+1)) then
+                   ei = (es - etab(j)) / (etab(j+1) - etab(j))
+                   fi = ftab(j)*(1.0_wp - ei) + ftab(j+1)*ei
+                   exit
+                end if
+             end do
+          end if
+          fsum = fsum + fi
+       end do
+       arr(i) = fsum * (e2 - e1)/real(nsub,wp)
+    end do
+  end subroutine bin_interp
+
+  !=========================================================================
+  ! Read a physical-type spectrum file and return its icol-th value column as
+  ! (E [eV] ascending, X_E per eV), converted from par%spectrum_type:
+  !   'le'      col1 E [eV],      X_E = value
+  !   'lnu'     col1 nu [Hz],     E = h*nu/e, X_E = X_nu*e/h
+  !   'llam_a'  col1 lambda [A],  E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV A])
+  !   'llam_um' col1 lambda [um], E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV um])
+  ! ncol = number of value columns (1 for a 2-column file; nsource for the
+  ! multi-column source file).  Aborts when a row has fewer than ncol+1 columns;
+  ! a rank-0 note (once, icol=1) records extra columns.  Wavelength tables are
+  ! E-descending after conversion, so the result is sorted ascending in E.
+  !=========================================================================
+  subroutine read_phys_table(fname, icol, ncol, etab, ftab, ntab)
+    use mpi
+    implicit none
+    character(len=*), intent(in) :: fname
+    integer,          intent(in) :: icol, ncol
+    real(kind=wp), allocatable, intent(out) :: etab(:), ftab(:)
+    integer,          intent(out) :: ntab
+    real(kind=wp), allocatable :: row(:)
+    character(len=2048) :: line
+    real(kind=wp) :: c1, cv, ee, xe, extra, tmp, hc
+    integer :: unit, ios, ios2, i, j, ierr
+    logical :: has_extra
+
+    ntab = 0
+    open(newunit=unit, file=trim(fname), status='old', iostat=ios)
+    if (ios /= 0) then
+       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+    do
+       read(unit,'(a)',iostat=ios) line
+       if (ios /= 0) exit
+       line = adjustl(line)
+       if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
+       ntab = ntab + 1
+    end do
+    allocate(etab(ntab), ftab(ntab), row(ncol+1))
+    rewind(unit)
+    has_extra = .false.
+    i = 0
+    do
+       read(unit,'(a)',iostat=ios) line
+       if (ios /= 0) exit
+       line = adjustl(line)
+       if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
+       i = i + 1
+       read(line,*,iostat=ios2) row(1:ncol+1)
+       if (ios2 /= 0) then
+          if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
+             'ERROR: ', trim(fname), ' needs 1 + ', ncol, &
+             ' columns for spectrum_type /= shape; it has too few.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       if (i == 1) then
+          read(line,*,iostat=ios2) row(1:ncol+1), extra
+          if (ios2 == 0) has_extra = .true.
+       end if
+       c1 = row(1);  cv = row(1+icol)
+       select case (trim(par%spectrum_type))
+       case ('le')
+          ee = c1
+          xe = cv
+       case ('lnu')
+          ee = h_planck_cgs * c1 / ev2erg
+          xe = cv * ev2erg / h_planck_cgs
+       case ('llam_a')
+          hc = hc_evAng                     ! eV * Angstrom
+          ee = hc / c1
+          xe = cv * hc / (ee*ee)
+       case ('llam_um')
+          hc = hc_evAng * 1.0e-4_wp         ! eV * micron
+          ee = hc / c1
+          xe = cv * hc / (ee*ee)
+       case default
+          ee = c1;  xe = cv                 ! unreachable (physical types only)
+       end select
+       etab(i) = ee;  ftab(i) = xe
+    end do
+    close(unit)
+    if (has_extra .and. icol == 1 .and. mpar%p_rank == 0) &
+       write(*,'(3a,i0,a)') ' ION: NOTE: ', trim(fname), &
+       ' has more than ', ncol, ' value column(s); using the first as needed.'
+
+    !--- sort ascending in E (wavelength tables arrive descending).
+    do i = 2, ntab
+       do j = i, 2, -1
+          if (etab(j-1) <= etab(j)) exit
+          tmp = etab(j-1);  etab(j-1) = etab(j);  etab(j) = tmp
+          tmp = ftab(j-1);  ftab(j-1) = ftab(j);  ftab(j) = tmp
+       end do
+    end do
+    deallocate(row)
+  end subroutine read_phys_table
+
+  !=========================================================================
+  ! Integrate an analytic ISRF preset J_E [erg/s/cm^2/sr/eV] onto the band bins
+  ! on the NSUB midpoint sub-grid, times the dimensionless par%ext_scale.
+  ! arr(i) = ext_scale * int_bin J_E dE  [erg/s/cm^2/sr].
+  !=========================================================================
+  subroutine bin_preset(id, scale, eedge, nnu, nsub, arr)
+    implicit none
+    integer,       intent(in)  :: id, nnu, nsub
+    real(kind=wp), intent(in)  :: scale, eedge(:)
+    real(kind=wp), intent(out) :: arr(:)
+    real(kind=wp) :: e1, e2, es, fsum
+    integer :: i, k
+    do i = 1, nnu
+       e1 = eedge(i);  e2 = eedge(i+1)
+       fsum = 0.0_wp
+       do k = 1, nsub
+          es = e1 + (e2 - e1)*(real(k,wp) - 0.5_wp)/real(nsub,wp)
+          fsum = fsum + preset_je(es, id)
+       end do
+       arr(i) = fsum * (e2 - e1)/real(nsub,wp) * scale
+    end do
+  end subroutine bin_preset
+
+  !=========================================================================
+  ! ISRF preset mean-intensity density J_E [erg/s/cm^2/sr/eV] at photon energy
+  ! E [eV] (before par%ext_scale).  id: 1 = Draine (1978), 2 = Habing (Draine
+  ! shape / 1.71), 3 = Mathis, Mezger & Panagia (1983).  Zero outside the FUV.
+  !=========================================================================
+  real(kind=wp) function preset_je(E, id) result(Je)
+    implicit none
+    real(kind=wp), intent(in) :: E
+    integer,       intent(in) :: id
+    select case (id)
+    case (1);  Je = draine_je(E)
+    case (2);  Je = draine_je(E) / 1.71_wp
+    case (3);  Je = mathis_je(E)
+    case default;  Je = 0.0_wp
+    end select
+  end function preset_je
+
+  !=========================================================================
+  ! Draine (1978) FUV interstellar field, J_E [erg/s/cm^2/sr/eV] on 5-13.6 eV
+  ! (zero outside).  The polynomial is the energy-weighted photon fit
+  ! F_ph(E) = E*N(E) = 1.658e6 E^2 - 2.152e5 E^3 + 6.919e3 E^4, so the energy
+  ! mean intensity is J_E = ev2erg*F_ph.  This reproduces the canonical FUV
+  ! energy density u = (4pi/c) int_{6}^{13.6} J_E dE = 8.94e-14 erg/cm^3
+  ! (G0 = 1.69 in Habing units).
+  !=========================================================================
+  real(kind=wp) function draine_je(E) result(Je)
+    implicit none
+    real(kind=wp), intent(in) :: E
+    real(kind=wp) :: Fph
+    if (E < 5.0_wp .or. E > 13.6_wp) then
+       Je = 0.0_wp
+    else
+       Fph = 1.658e6_wp*E**2 - 2.152e5_wp*E**3 + 6.919e3_wp*E**4
+       Je  = ev2erg * Fph
+    end if
+  end function draine_je
+
+  !=========================================================================
+  ! Mathis, Mezger & Panagia (1983) ISRF, J_E [erg/s/cm^2/sr/eV].  The
+  ! mean-intensity shape J_lambda is evaluated in SI [W m^-2 m^-1 sr^-1] with
+  ! the coefficients as in SEDust radfield.f90 (mathis_jl_si), then converted:
+  ! J_E = J_lambda(SI) * 10 * (hc [cm eV]) / E^2, where the 10 folds
+  ! W m^-2 m^-1 -> erg s^-1 cm^-2 cm^-1 and hc/E^2 = |dlambda/dE|.
+  !=========================================================================
+  real(kind=wp) function mathis_je(E) result(Je)
+    implicit none
+    real(kind=wp), intent(in) :: E
+    real(kind=wp) :: lam_um
+    lam_um = hc_evAng * 1.0e-4_wp / E                  ! 1.239842 / E  [um]
+    Je = mathis_jl_si(lam_um) * (hc_evAng * 1.0e-7_wp) / (E*E)
+  end function mathis_je
+
+  !=========================================================================
+  ! Mathis, Mezger & Panagia (1983) mean intensity J_lambda in SI
+  ! [W m^-2 m^-1 sr^-1] as a function of lambda [um]; coefficients as in
+  ! SEDust radfield.f90 (UV piecewise power laws + three diluted blackbodies,
+  ! Draine-corrected 4000 K dilution).  CMB is omitted (negligible in the band).
+  !=========================================================================
+  real(kind=wp) function mathis_jl_si(lam_um) result(Jl)
+    implicit none
+    real(kind=wp), intent(in) :: lam_um
+    if (lam_um < 0.0912_wp) then
+       Jl = 0.0_wp
+    else if (lam_um < 0.110_wp) then
+       Jl = 3069.0_wp * lam_um**3.4172_wp
+    else if (lam_um < 0.134_wp) then
+       Jl = 1.627_wp
+    else if (lam_um < 0.250_wp) then
+       Jl = 0.0566_wp * lam_um**(-1.6678_wp)
+    else
+       Jl = 1.0e-14_wp  * bbody_si(7500.0_wp, lam_um) &
+          + 1.65e-13_wp * bbody_si(4000.0_wp, lam_um) &
+          + 4.0e-13_wp  * bbody_si(3000.0_wp, lam_um)
+    end if
+  end function mathis_jl_si
+
+  !=========================================================================
+  ! Planck spectral radiance B_lambda(T) in SI [W m^-2 m^-1 sr^-1], lambda [um];
+  ! constants as in SEDust radfield.f90 (bbody).
+  !=========================================================================
+  real(kind=wp) function bbody_si(T, lam_um) result(B)
+    implicit none
+    real(kind=wp), intent(in) :: T, lam_um
+    real(kind=wp), parameter :: c_si  = 2.99792458e8_wp
+    real(kind=wp), parameter :: h_si  = 6.62606957e-34_wp
+    real(kind=wp), parameter :: kB_si = 1.3806488e-23_wp
+    real(kind=wp), parameter :: hc2   = 2.0_wp*h_si*c_si**2
+    real(kind=wp), parameter :: hckB  = h_si*c_si/kB_si
+    real(kind=wp) :: lam_m, x
+    if (T <= 0.0_wp .or. lam_um <= 0.0_wp) then
+       B = 0.0_wp;  return
+    end if
+    lam_m = lam_um * 1.0e-6_wp
+    x = hckB / (T*lam_m)
+    if (x >= 700.0_wp) then
+       B = 0.0_wp
+    else
+       B = hc2 / lam_m**5 / (exp(x) - 1.0_wp)
+    end if
+  end function bbody_si
+
+  !=========================================================================
+  ! rank-0 log for the single-component fast path (point source or external-
+  ! only field), including the derived-luminosity and preset diagnostics.
+  !=========================================================================
+  subroutine log_fast_path(nnu, nfuv, Lion, Jband, uFUV, presid, derived)
+    implicit none
+    integer,       intent(in) :: nnu, nfuv, presid
+    real(kind=wp), intent(in) :: Lion, Jband, uFUV
+    logical,       intent(in) :: derived
+    call band_log(nnu, nfuv)
+    if (par%nsource == 0) then
+       !--- external-only field.
+       if (presid > 0) then
+          write(*,'(3a,es12.4)') ' ION: external ISRF preset = ', &
+             trim(par%ext_spectrum), ',  ext_scale =', par%ext_scale
+       else if (len_trim(par%ext_spectrum) > 0) then
+          write(*,'(4a)') ' ION: external spectrum file = ', trim(par%ext_spectrum), &
+             ',  type = ', trim(par%spectrum_type)
+       else if (par%ext_tstar > 0.0_wp) then
+          write(*,'(a,es12.4)') ' ION: external Planck, ext_tstar [K] = ', par%ext_tstar
+       else if (len_trim(par%ion_spectrum) > 0) then
+          write(*,'(4a)') ' ION: spectrum file = ', trim(par%ion_spectrum), &
+             ',  type = ', trim(par%spectrum_type)
+       else
+          write(*,'(a,es12.4)') ' ION: Planck spectrum, tstar [K] = ', par%tstar
+       end if
+       write(*,'(3a)') ' ION: external field, geometry = ', &
+          trim(par%ext_geometry), ' (isotropic)'
+       if (par%ext_intensity > 0.0_wp) &
+          write(*,'(a,es12.4)') ' ION: ext_intensity J [erg/s/cm^2/sr] = ', par%ext_intensity
+       write(*,'(a,es12.4)') ' ION: entering ionizing power [erg/s]   = ', Lion
+       write(*,'(a,es12.4)') ' ION: band-integrated J [erg/s/cm^2/sr] = ', Jband
+       if (presid > 0 .or. uFUV > 0.0_wp) &
+          write(*,'(a,es12.4,a,f9.3)') ' ION: u_FUV [erg/cm^3] =', uFUV, &
+             ',  G0 (Habing) =', uFUV/HABING_U_FUV
+    else
+       !--- single point source.
+       if (len_trim(par%src_spectrum_file) > 0) then
+          write(*,'(4a)') ' ION: spectrum = column 1 of ', trim(par%src_spectrum_file), &
+             ',  type = ', trim(par%spectrum_type)
+       else if (len_trim(par%ion_spectrum) > 0) then
+          write(*,'(4a)') ' ION: spectrum file = ', trim(par%ion_spectrum), &
+             ',  type = ', trim(par%spectrum_type)
+       else
+          write(*,'(a,es12.4)') ' ION: Planck spectrum, tstar [K] = ', par%tstar
+       end if
+       if (derived) then
+          write(*,'(a,es12.4)') ' ION: derived ionizing luminosity [erg/s] = ', Lion
+       else
+          write(*,'(a,es12.4)') ' ION: ionizing luminosity [erg/s] = ', Lion
+       end if
+    end if
+    if (nfuv > 0 .and. Lion > 0.0_wp) write(*,'(a,es12.4,a,f7.4)') &
+       ' ION: band total with FUV        = ', ion_Ltot, &
+       ',  L_FUV/L_ion = ', (ion_Ltot - Lion)/Lion
+  end subroutine log_fast_path
 
   !=========================================================================
   ! Ionizing source packet.  With a single source component the legacy fast

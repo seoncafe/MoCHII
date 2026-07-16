@@ -1,0 +1,44 @@
+&parameters
+ ! G-presets: external-only habing ISRF, ext_scale=1, add_fuv (FUV-only
+ ! field).  The interior FUV energy density u_FUV = (4pi/c)<J_FUV> must match the
+ ! analytic Draine integral (~8.9e-14 erg/cm^3); the ionizing bins carry ZERO.
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+
+ par%add_fuv       = .true.
+ par%efuv_min      = 6.0
+ par%nnu_fuv       = 16
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource       = 0
+ par%ext_spectrum  = 'habing'
+ par%ext_scale     = 1.0
+ par%ext_geometry  = 'rec'
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'st_habing.h5'
+/

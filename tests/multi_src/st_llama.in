@@ -1,0 +1,41 @@
+&parameters
+ ! G-llam-conversion: same two spectra as st_le.in, written as L_lambda vs
+ ! lambda [Angstrom] (spectrum_type='llam_a').  Must match the 'le' run to
+ ! <0.5% per bin (only the interpolation grid differs).
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource          = 2
+ par%spectrum_type    = 'llam_a'
+ par%src_spectrum_file = 'llama_2src.txt'
+ par%src_x(1)      = -0.5
+ par%src_x(2)      =  0.5
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'st_llama.h5'
+/

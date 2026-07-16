@@ -12,6 +12,7 @@ contains
   use define
   use utility
   use iofile_mod, only : io_file_extension
+  use ion_band_mod, only : ion_ext_preset_id
   use mpi
   implicit none
 
@@ -137,7 +138,35 @@ contains
   !--- the external-ONLY shorthand (forces nsource=0, external on).
   block
     integer :: is, nset
-    logical :: ext_on
+    logical :: ext_on, is_phys, ext_is_preset, ext_is_physfile, src_is_absolute
+
+    !--- par%spectrum_type sets the column units of every spectrum file slot.
+    select case (trim(par%spectrum_type))
+    case ('shape', 'le', 'lnu', 'llam_a', 'llam_um')
+       is_phys = trim(par%spectrum_type) /= 'shape'
+    case default
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: par%spectrum_type must be ''shape'' (default), ''le'', ''lnu'', '// &
+          '''llam_a'', or ''llam_um''.'
+       call MPI_FINALIZE(ierr);  stop
+    end select
+
+    !--- the ISRF presets (draine/habing/mathis) are external-only; an internal
+    !--- file slot naming one is almost certainly a mistake.
+    if (ion_ext_preset_id(par%ion_spectrum) > 0 .or. &
+        ion_ext_preset_id(par%src_spectrum_file) > 0) then
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: ISRF preset names (draine/habing/mathis) are valid only for '// &
+          'par%ext_spectrum, not for an internal source file slot.'
+       call MPI_FINALIZE(ierr);  stop
+    endif
+    ext_is_preset   = ion_ext_preset_id(par%ext_spectrum) > 0
+    ext_is_physfile = (.not. ext_is_preset) .and. len_trim(par%ext_spectrum) > 0 .and. is_phys
+    !--- the primary internal source is ABSOLUTE when a physical-type spectrum
+    !--- file feeds it (its own src_spectrum_file or the global ion_spectrum).
+    src_is_absolute = is_phys .and. (len_trim(par%src_spectrum_file) > 0 .or. &
+                                     len_trim(par%ion_spectrum) > 0)
+
     if (trim(par%source_geometry) == 'external' .or. &
         trim(par%source_geometry) == 'external_rec' .or. &
         trim(par%source_geometry) == 'external_sph') then
@@ -147,10 +176,10 @@ contains
        else
           par%ext_geometry = 'rec'
        end if
-       if (par%ext_intensity <= 0.0_wp) then
+       if (par%ext_intensity <= 0.0_wp .and. .not. (ext_is_preset .or. ext_is_physfile)) then
           if (mpar%p_rank == 0) write(*,'(a)') &
              'ERROR: external source_geometry requires par%ext_intensity > 0 '// &
-             '(mean intensity J [erg/s/cm^2/sr]).'
+             '(mean intensity J), an ISRF preset, or a physical-type ext_spectrum.'
           call MPI_FINALIZE(ierr);  stop
        endif
        par%nsource = 0
@@ -163,7 +192,29 @@ contains
        call MPI_FINALIZE(ierr);  stop
     endif
 
-    ext_on = par%ext_intensity > 0.0_wp
+    !--- external field ON: mean intensity, an ISRF preset, or a physical-type
+    !--- ext_spectrum file (the last two are absolute and need no ext_intensity).
+    ext_on = (par%ext_intensity > 0.0_wp) .or. ext_is_preset .or. ext_is_physfile
+
+    !--- ISRF presets are analytic and FUV-only: require add_fuv, a positive
+    !--- scale, and note that ext_intensity (if set) overrides ext_scale.
+    if (ext_is_preset) then
+       if (par%ext_scale <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: par%ext_scale must be > 0 for an ISRF preset.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       if (.not. par%add_fuv) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: the ISRF presets are FUV-only; set par%add_fuv (with '// &
+             'par%efuv_min < 13.6) so the FUV bins carry the field.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       if (par%ext_intensity > 0.0_wp .and. par%ext_scale /= 1.0_wp &
+           .and. mpar%p_rank == 0) write(*,'(a)') &
+          'NOTE: par%ext_intensity rescales the preset to a target band J; '// &
+          'par%ext_scale is then ignored.'
+    endif
     !--- external geometry validation (only when the external field is on).
     if (ext_on) then
        if (trim(par%ext_geometry) /= 'rec' .and. trim(par%ext_geometry) /= 'sph') then
@@ -178,6 +229,17 @@ contains
        endif
     endif
 
+    !--- luminosity sentinel (default -999 = unset).  A 'shape'/Planck primary
+    !--- source maps it to 1.0 (exact legacy); a physical-type (absolute) source
+    !--- leaves it unset so its luminosity is DERIVED from the file integral.
+    if (par%luminosity < -900.0_wp) then
+       if (par%nsource >= 1 .and. src_is_absolute) then
+          continue                          ! leave unset -> derive in ion_band
+       else
+          par%luminosity = 1.0_wp
+       endif
+    endif
+
     !--- internal point sources.
     if (par%nsource < 0 .or. par%nsource > MAX_SRC) then
        if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
@@ -188,7 +250,7 @@ contains
        if (.not. ext_on) then
           if (mpar%p_rank == 0) write(*,'(a)') &
              'ERROR: no source: set par%nsource >= 1 or the external field '// &
-             '(par%ext_intensity > 0).'
+             '(par%ext_intensity > 0, an ISRF preset, or a physical ext_spectrum).'
           call MPI_FINALIZE(ierr);  stop
        endif
     else if (par%nsource == 1) then
@@ -208,9 +270,11 @@ contains
           call MPI_FINALIZE(ierr);  stop
        endif
     else
-       !--- multiple point sources.  src_lum: all set (keep) or all unset
-       !--- (equal split of par%luminosity, MoCafe convention); a partial set
-       !--- is an error.
+       !--- multiple point sources.  src_lum: all set (keep) or all unset.  For
+       !--- a 'shape' spectrum an unset set is the equal split of par%luminosity
+       !--- (MoCafe convention); for a physical-type (absolute) source file an
+       !--- unset set is DERIVED per column (src_lum left as the -999 sentinel).
+       !--- A partial set is an error.
        nset = 0
        do is = 1, par%nsource
           if (par%src_lum(is) > 0.0_wp) nset = nset + 1
@@ -221,15 +285,18 @@ contains
           endif
        end do
        if (nset == 0) then
-          do is = 1, par%nsource
-             par%src_lum(is) = par%luminosity / real(par%nsource, wp)
-          end do
+          if (.not. src_is_absolute) then
+             do is = 1, par%nsource
+                par%src_lum(is) = par%luminosity / real(par%nsource, wp)
+             end do
+          endif
        else if (nset /= par%nsource) then
           if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: set par%src_lum for ALL sources or for NONE (equal split).'
+             'ERROR: set par%src_lum for ALL sources or for NONE '// &
+             '(equal split, or derived for a physical-type source file).'
           call MPI_FINALIZE(ierr);  stop
        endif
-       par%luminosity = sum(par%src_lum(1:par%nsource))    ! informational total
+       if (nset == par%nsource) par%luminosity = sum(par%src_lum(1:par%nsource))  ! informational total
     endif
 
     !--- route the external-only run (no point source) through the legacy
