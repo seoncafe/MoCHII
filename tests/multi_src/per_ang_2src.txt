@@ -1,4 +1,4 @@
-# spectrum_type=llam_a  col1 lambda [A]  col2 L_lam(3e4)  col3 L_lam(5e4) [erg/s/A]
+# spectrum_type=per_ang  col1 lambda [A]  col2 L_lam(3e4)  col3 L_lam(5e4) [erg/s/A]
 1.12712909e+02 6.96532982e+22 8.27773460e+28
 1.15537794e+02 1.74182083e+23 1.36536180e+29
 1.18362679e+02 4.15716695e+23 2.19251570e+29

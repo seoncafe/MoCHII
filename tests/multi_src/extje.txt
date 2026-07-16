@@ -1,4 +1,4 @@
-# spectrum_type=le (external)  col1 E [eV]  col2 J_E [erg/s/cm^2/sr/eV]; ionizing int = 1e-5
+# spectrum_type=per_ev (external)  col1 E [eV]  col2 J_E [erg/s/cm^2/sr/eV]; ionizing int = 1e-5
 1.00000000e+01 1.53545920e-06
 1.00602786e+01 1.53474385e-06
 1.01209205e+01 1.53388639e-06

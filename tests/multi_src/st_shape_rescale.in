@@ -1,7 +1,7 @@
 &parameters
  ! G-rescale twin: the SAME two Planck shapes via the shape multi-column file
- ! (two_temp_spec.txt) with the SAME explicit src_lum = 3e37/1e37.  The 'le'
- ! rescale run (st_le_rescale.in) must reproduce this to ~0.01%.
+ ! (two_temp_spec.txt) with the SAME explicit src_lum = 3e37/1e37.  The 'per_ev'
+ ! rescale run (st_per_ev_rescale.in) must reproduce this to ~0.01%.
 
  par%no_photons    = 2.0e7
  par%no_print      = 2.0e7

@@ -1,4 +1,4 @@
-# spectrum_type=le  col1 E [eV]  col2 L_E(3e4)  col3 L_E(5e4) [erg/s/eV]; ionizing int = 1e37 each
+# spectrum_type=per_ev  col1 E [eV]  col2 L_E(3e4)  col3 L_E(5e4) [erg/s/eV]; ionizing int = 1e37 each
 1.00000000e+01 3.44966265e+36 8.48698133e+35
 1.00602786e+01 3.42978363e+36 8.50846182e+35
 1.01209205e+01 3.40956960e+36 8.52939959e+35

@@ -234,15 +234,19 @@ public
      !--- par%spectrum_type sets the COLUMN UNITS of every spectrum file slot
      !--- (par%ion_spectrum, par%src_spectrum_file, par%ext_spectrum):
      !---   'shape'   col1 E [eV] ascending, col2.. arbitrary (renormalized);
-     !---   'le'      col1 E [eV],      col2.. L_E or J_E     [.../eV];
-     !---   'lnu'     col1 nu [Hz],     col2.. L_nu or J_nu   [.../Hz];
-     !---   'llam_a'  col1 lambda [A],  col2.. L_lam or J_lam [.../A];
-     !---   'llam_um' col1 lambda [um], col2.. L_lam or J_lam [.../um].
+     !---   'per_ev'  col1 E [eV],      col2.. L_E or J_E     [.../eV];
+     !---   'per_hz'  col1 nu [Hz],     col2.. L_nu or J_nu   [.../Hz];
+     !---   'per_ang' col1 lambda [A],  col2.. L_lam or J_lam [.../A];
+     !---   'per_um'  col1 lambda [um], col2.. L_lam or J_lam [.../um].
      !--- Internal file slots carry luminosity densities L, par%ext_spectrum
      !--- carries intensity densities J.  A physical type is ABSOLUTE: bin
      !--- luminosities come from the file integral directly (rescaled only when
      !--- the scale par%luminosity / src_lum(i) / ext_intensity is set), while
      !--- 'shape' keeps the legacy renormalize-to-scale behavior.
+     !--- 'shape' = an arbitrary-scaled per-eV density on an E [eV] grid; for a
+     !--- shape tabulated in wavelength or frequency, use the matching per_* type
+     !--- and set the scale parameter (the file is then rescaled to it), so the
+     !--- E^2 Jacobian is applied by the type conversion.
      character(len=16)  :: spectrum_type = 'shape'
      !--- par%ext_spectrum may instead name a built-in analytic ISRF preset
      !--- (FUV-only, needs par%add_fuv; par%spectrum_type does not apply):

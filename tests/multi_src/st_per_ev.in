@@ -1,6 +1,7 @@
 &parameters
- ! G-llam-conversion: same two spectra as st_le.in, written as L_lambda vs
- ! lambda [micron] (spectrum_type='llam_um').  Must match the 'le' run <0.5%/bin.
+ ! G-per_ev-equivalence: two internal point sources, spectrum_type='per_ev'
+ ! (absolute L_E table), NO src_lum -> src_lum DERIVED = each column's ionizing
+ ! integral (~1e37).  Must reproduce twotemp_file (shape, src_lum=1e37) per bin.
 
  par%no_photons    = 2.0e7
  par%no_print      = 2.0e7
@@ -30,11 +31,11 @@
  par%gas_niter     = 0
 
  par%nsource          = 2
- par%spectrum_type    = 'llam_um'
- par%src_spectrum_file = 'llamum_2src.txt'
+ par%spectrum_type    = 'per_ev'
+ par%src_spectrum_file = 'per_ev_2src.txt'
  par%src_x(1)      = -0.5
  par%src_x(2)      =  0.5
 
  par%file_format   = 'hdf5'
- par%out_file      = 'st_llamum.h5'
+ par%out_file      = 'st_per_ev.h5'
 /

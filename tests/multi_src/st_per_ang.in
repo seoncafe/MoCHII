@@ -1,7 +1,7 @@
 &parameters
- ! G-rescale: the 'le' file WITH explicit src_lum = 3e37/1e37 -> each column's
- ! ionizing segment is RESCALED to that value (rank-0 NOTE with both numbers).
- ! Must match the 'shape' twin (st_shape_rescale.in) with the same values.
+ ! G-per_ang-conversion: same two spectra as st_per_ev.in, written as L_lambda
+ ! vs lambda [Angstrom] (spectrum_type='per_ang').  Must match the 'per_ev' run
+ ! to <0.5% per bin (only the interpolation grid differs).
 
  par%no_photons    = 2.0e7
  par%no_print      = 2.0e7
@@ -31,13 +31,11 @@
  par%gas_niter     = 0
 
  par%nsource          = 2
- par%spectrum_type    = 'le'
- par%src_spectrum_file = 'le_2src.txt'
+ par%spectrum_type    = 'per_ang'
+ par%src_spectrum_file = 'per_ang_2src.txt'
  par%src_x(1)      = -0.5
- par%src_lum(1)    =  3.0e37
  par%src_x(2)      =  0.5
- par%src_lum(2)    =  1.0e37
 
  par%file_format   = 'hdf5'
- par%out_file      = 'st_lresc.h5'
+ par%out_file      = 'st_per_ang.h5'
 /

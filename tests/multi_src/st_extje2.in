@@ -31,7 +31,7 @@
  par%gas_niter     = 0
 
  par%nsource       = 0
- par%spectrum_type = 'le'
+ par%spectrum_type = 'per_ev'
  par%ext_spectrum  = 'extje.txt'
  par%ext_geometry  = 'rec'
  par%ext_intensity = 2.0e-5

@@ -6,12 +6,12 @@ All runs are on the optically thin uniform box (car 32^3, xmax=2 pc,
 nH_const=1e-4, gas_niter=0), band-integrating J_nu with the code's own cgs
 eV->Hz factor.  Gates:
 
-  G-le-equivalence   spectrum_type='le' (absolute L_E), NO src_lum -> src_lum
+  G-per_ev-equiv     spectrum_type='per_ev' (absolute L_E), NO src_lum -> src_lum
                      DERIVED ~1e37; volume-summed J_nu(bin) reproduces
                      twotemp_file (shape, src_lum=1e37) per populated bin.
-  G-llam-conversion  the SAME spectra as L_lambda vs Angstrom / micron match
-                     the 'le' run to <0.5% per bin (grid difference only).
-  G-rescale          'le' file WITH explicit src_lum = 3e37/1e37 reproduces the
+  G-lambda-conv      the SAME spectra as L_lambda vs Angstrom / micron match
+                     the 'per_ev' run to <0.5% per bin (grid difference only).
+  G-rescale          'per_ev' file WITH explicit src_lum = 3e37/1e37 reproduces the
                      'shape' twin with the same values; the rescale NOTE is
                      logged.
   G-ext-je           external absolute J_E file (band int 1e-5): interior <J> ~
@@ -141,8 +141,8 @@ def grep(logfile, pattern):
 
 # ---------------------------------------------------------------- gates
 def g_le_equivalence():
-    print("\n=== G-le-equivalence (spectrum_type='le' derive vs shape) ===")
-    fle = os.path.join(HERE, "st_le_rates.h5")
+    print("\n=== G-per_ev-equiv (spectrum_type='per_ev' derive vs shape) ===")
+    fle = os.path.join(HERE, "st_per_ev_rates.h5")
     ftt = os.path.join(HERE, "twotemp_file_rates.h5")
     if not (os.path.exists(fle) and os.path.exists(ftt)):
         print("  rates missing"); return False
@@ -155,9 +155,9 @@ def g_le_equivalence():
     print(f"  populated ionizing bins       = {npop} of {nion}")
     print(f"  median |le - shape| / shape   = {med*100:.3f}%")
     print(f"  max    per-bin rel diff       = {mx*100:.3f}%")
-    print(f"  band-integrated ratio le/tt   = {tot:.5f}")
+    print(f"  band-integrated ratio pe/tt   = {tot:.5f}")
     print(f"  per-bin ratio scatter (shape) = {shape_scatter*100:.4f}%")
-    dl = grep(os.path.join(HERE, "st_le.log"), r"L_ion \(derived\)")
+    dl = grep(os.path.join(HERE, "st_per_ev.log"), r"L_ion \(derived\)")
     for ln in dl:
         print("  log:", ln.strip())
     derived = [float(x) for ln in dl for x in re.findall(r"[-+]?\d\.\d+E[-+]\d+", ln)]
@@ -168,17 +168,17 @@ def g_le_equivalence():
     return ok
 
 
-def g_llam(tag, testfile):
-    print(f"\n=== G-llam-conversion ({tag} vs le) ===")
+def g_lambda_conv(tag, testfile):
+    print(f"\n=== G-lambda-conv ({tag} vs per_ev) ===")
     ft = os.path.join(HERE, testfile)
-    fle = os.path.join(HERE, "st_le_rates.h5")
+    fle = os.path.join(HERE, "st_per_ev_rates.h5")
     if not (os.path.exists(ft) and os.path.exists(fle)):
         print("  rates missing"); return False
     jt, eb, _, _ = load(ft)
     jle, _, _, _ = load(fle)
     med, mx, tot, npop, nion = compare_bins(vol_spectrum(jt), vol_spectrum(jle), eb)
     print(f"  populated ionizing bins       = {npop} of {nion}")
-    print(f"  median |{tag} - le| / le      = {med*100:.3f}%")
+    print(f"  median |{tag} - per_ev| / per_ev = {med*100:.3f}%")
     print(f"  max    per-bin rel diff       = {mx*100:.3f}%")
     print(f"  band-integrated ratio         = {tot:.5f}")
     ok = (mx < 0.5e-2) and (abs(tot-1.0) < 5e-3)
@@ -187,8 +187,8 @@ def g_llam(tag, testfile):
 
 
 def g_rescale():
-    print("\n=== G-rescale ('le'+explicit src_lum vs 'shape'+same) ===")
-    fl = os.path.join(HERE, "st_lresc_rates.h5")
+    print("\n=== G-rescale ('per_ev'+explicit src_lum vs 'shape'+same) ===")
+    fl = os.path.join(HERE, "st_per_ev_resc_rates.h5")
     fs = os.path.join(HERE, "st_sresc_rates.h5")
     if not (os.path.exists(fl) and os.path.exists(fs)):
         print("  rates missing"); return False
@@ -196,10 +196,10 @@ def g_rescale():
     js, _, _, _ = load(fs)
     med, mx, tot, npop, nion = compare_bins(vol_spectrum(jl), vol_spectrum(js), eb)
     print(f"  populated ionizing bins       = {npop} of {nion}")
-    print(f"  median |le - shape| / shape   = {med*100:.4f}%")
+    print(f"  median |per_ev - shape| / shape = {med*100:.4f}%")
     print(f"  max    per-bin rel diff       = {mx*100:.4f}%")
     print(f"  band-integrated ratio         = {tot:.6f}")
-    note = grep(os.path.join(HERE, "st_le_rescale.log"),
+    note = grep(os.path.join(HERE, "st_per_ev_rescale.log"),
                 r"rescaled from file integral")
     for ln in note:
         print("  log:", ln.strip())
@@ -277,8 +277,8 @@ def g_presets():
 def main():
     passed = True
     passed &= g_le_equivalence()
-    passed &= g_llam("llam_a", "st_llama_rates.h5")
-    passed &= g_llam("llam_um", "st_llamum_rates.h5")
+    passed &= g_lambda_conv("per_ang", "st_per_ang_rates.h5")
+    passed &= g_lambda_conv("per_um", "st_per_um_rates.h5")
     passed &= g_rescale()
     passed &= g_ext_je()
     passed &= g_presets()

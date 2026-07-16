@@ -142,12 +142,12 @@ contains
 
     !--- par%spectrum_type sets the column units of every spectrum file slot.
     select case (trim(par%spectrum_type))
-    case ('shape', 'le', 'lnu', 'llam_a', 'llam_um')
+    case ('shape', 'per_ev', 'per_hz', 'per_ang', 'per_um')
        is_phys = trim(par%spectrum_type) /= 'shape'
     case default
        if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%spectrum_type must be ''shape'' (default), ''le'', ''lnu'', '// &
-          '''llam_a'', or ''llam_um''.'
+          'ERROR: par%spectrum_type must be ''shape'' (default), ''per_ev'', ''per_hz'', '// &
+          '''per_ang'', or ''per_um''.'
        call MPI_FINALIZE(ierr);  stop
     end select
 

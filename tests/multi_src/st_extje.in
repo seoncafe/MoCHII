@@ -1,5 +1,5 @@
 &parameters
- ! G-ext-je: external-only isotropic field, spectrum_type='le', an absolute J_E
+ ! G-ext-je: external-only isotropic field, spectrum_type='per_ev', an absolute J_E
  ! file (extje.txt) whose ionizing-band integral J = 1e-5.  With no ext_intensity
  ! the interior band-integrated <J> = the file integral -> <J>/1e-5 ~ 0.998.
 
@@ -31,7 +31,7 @@
  par%gas_niter     = 0
 
  par%nsource       = 0
- par%spectrum_type = 'le'
+ par%spectrum_type = 'per_ev'
  par%ext_spectrum  = 'extje.txt'
  par%ext_geometry  = 'rec'
 

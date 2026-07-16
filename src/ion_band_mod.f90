@@ -18,8 +18,8 @@ module ion_band_mod
 ! (see comp_shape / point_shape).
 !
 ! par%spectrum_type fixes the column units of every file slot: 'shape'
-! (arbitrary, renormalized to the scale = legacy) or a PHYSICAL type ('le',
-! 'lnu', 'llam_a', 'llam_um').  A physical file is ABSOLUTE: bin luminosities
+! (arbitrary, renormalized to the scale = legacy) or a PHYSICAL type ('per_ev',
+! 'per_hz', 'per_ang', 'per_um').  A physical file is ABSOLUTE: bin luminosities
 ! come from the file integral directly (rescaled only when the scale is set);
 ! an unset scale DERIVES the luminosity from the file.  par%ext_spectrum may
 ! also name an analytic ISRF preset ('draine'/'habing'/'mathis', FUV-only,
@@ -414,7 +414,7 @@ contains
   !=========================================================================
   logical function spec_is_physical()
     select case (trim(par%spectrum_type))
-    case ('le', 'lnu', 'llam_a', 'llam_um')
+    case ('per_ev', 'per_hz', 'per_ang', 'per_um')
        spec_is_physical = .true.
     case default
        spec_is_physical = .false.
@@ -977,10 +977,10 @@ contains
   !=========================================================================
   ! Read a physical-type spectrum file and return its icol-th value column as
   ! (E [eV] ascending, X_E per eV), converted from par%spectrum_type:
-  !   'le'      col1 E [eV],      X_E = value
-  !   'lnu'     col1 nu [Hz],     E = h*nu/e, X_E = X_nu*e/h
-  !   'llam_a'  col1 lambda [A],  E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV A])
-  !   'llam_um' col1 lambda [um], E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV um])
+  !   'per_ev'  col1 E [eV],      X_E = value
+  !   'per_hz'  col1 nu [Hz],     E = h*nu/e, X_E = X_nu*e/h
+  !   'per_ang' col1 lambda [A],  E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV A])
+  !   'per_um'  col1 lambda [um], E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV um])
   ! ncol = number of value columns (1 for a 2-column file; nsource for the
   ! multi-column source file).  Aborts when a row has fewer than ncol+1 columns;
   ! a rank-0 note (once, icol=1) records extra columns.  Wavelength tables are
@@ -1035,17 +1035,17 @@ contains
        end if
        c1 = row(1);  cv = row(1+icol)
        select case (trim(par%spectrum_type))
-       case ('le')
+       case ('per_ev')
           ee = c1
           xe = cv
-       case ('lnu')
+       case ('per_hz')
           ee = h_planck_cgs * c1 / ev2erg
           xe = cv * ev2erg / h_planck_cgs
-       case ('llam_a')
+       case ('per_ang')
           hc = hc_evAng                     ! eV * Angstrom
           ee = hc / c1
           xe = cv * hc / (ee*ee)
-       case ('llam_um')
+       case ('per_um')
           hc = hc_evAng * 1.0e-4_wp         ! eV * micron
           ee = hc / c1
           xe = cv * hc / (ee*ee)
@@ -1246,7 +1246,7 @@ contains
           write(*,'(a,es12.4)') ' ION: ionizing luminosity [erg/s] = ', Lion
        end if
     end if
-    if (nfuv > 0 .and. Lion > 0.0_wp) write(*,'(a,es12.4,a,f7.4)') &
+    if (nfuv > 0 .and. Lion > 0.0_wp) write(*,'(a,es12.4,a,es10.3)') &
        ' ION: band total with FUV        = ', ion_Ltot, &
        ',  L_FUV/L_ion = ', (ion_Ltot - Lion)/Lion
   end subroutine log_fast_path
