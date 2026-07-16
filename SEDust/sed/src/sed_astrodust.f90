@@ -480,7 +480,7 @@ contains
       integer, optional, intent(out) :: status
 
       integer  :: i, ja, jw, jt
-      real(wp) :: a_um, t, da, qabs1, Q_neu, Q_ion, ksi
+      real(wp) :: a_um, t, da, qabs1, Q_neu, Q_ion
       real(wp), allocatable :: fion(:), lna(:)
       logical  :: rok
       ! Draine's size grid: A(KA) = 1e-8*10^(0.55+(KA-1)*0.05) cm,
@@ -701,7 +701,7 @@ contains
       real(wp),         intent(out) :: Jout(:)            ! (NLAM)
 
       integer  :: ir, ii, loc1, loc2, iguard, n_guard_resolve
-      integer  :: n_stoch, n_equil_eeq, n_equil_prev, n_equil_fail
+      integer  :: n_stoch, n_equil_eeq, n_equil_fail
       real(wp) :: Teq, EEQ, del, Tmin_n, Tmax_n, a_cm_qm
       real(wp), allocatable :: spec(:), P(:), lnP(:)
       real(wp), allocatable :: T(:), H(:), kappB(:)
@@ -1350,7 +1350,8 @@ contains
       ! Same algorithm as build_kappB() but using Cabs_pah → kappB_pah_first.
       integer,  parameter :: NW_INT = 1001
       real(wp) :: w(NW_INT), lnw(NW_INT)
-      real(wp) :: Cross(NW_INT), B(NW_INT)
+      real(wp) :: Cross(NW_INT)
+      real(wp), allocatable :: Bt(:,:)
       real(wp) :: lnlam(NLAM), w1, w2, dlnw
       integer  :: jt, ja, iw
 
@@ -1364,18 +1365,25 @@ contains
          lnw(iw) = log(w(iw))
       end do
 
+      ! The Planck factor depends only on (T, w): evaluate it once instead of
+      ! once for every size.
+      allocate(Bt(NW_INT, NT))
+      do jt = 1, NT
+         do iw = 1, NW_INT
+            Bt(iw, jt) = bbody(T_first(jt), w(iw))
+         end do
+      end do
+
       kappB_pah_first = 0.0_wp
       do ja = 1, NA
          do iw = 1, NW_INT
             call interp(lnlam, Cabs_pah(:, ja), lnw(iw), Cross(iw))
          end do
          do jt = 1, NT
-            do iw = 1, NW_INT
-               B(iw) = bbody(T_first(jt), w(iw))
-            end do
-            kappB_pah_first(jt, ja) = sum(Cross * B * w) * dlnw
+            kappB_pah_first(jt, ja) = sum(Cross * Bt(:, jt) * w) * dlnw
          end do
       end do
+      deallocate(Bt)
    end subroutine build_kappB_pah
 
 
@@ -1449,7 +1457,8 @@ contains
       ! setup_kappB1's algorithm.
       integer,  parameter :: NW_INT = 1001
       real(wp) :: w(NW_INT), lnw(NW_INT)
-      real(wp) :: Cross(NW_INT), B(NW_INT)
+      real(wp) :: Cross(NW_INT)
+      real(wp), allocatable :: Bt(:,:)
       real(wp) :: lnlam(NLAM), w1, w2, dlnw
       integer  :: jt, ja, iw
 
@@ -1464,18 +1473,25 @@ contains
          lnw(iw) = log(w(iw))
       end do
 
+      ! The Planck factor depends only on (T, w): evaluate it once instead of
+      ! once for every size.
+      allocate(Bt(NW_INT, NT))
+      do jt = 1, NT
+         do iw = 1, NW_INT
+            Bt(iw, jt) = bbody(T_first(jt), w(iw))
+         end do
+      end do
+
       kappB_first = 0.0_wp
       do ja = 1, NA
          do iw = 1, NW_INT
             call interp(lnlam, Cabs(:, ja), lnw(iw), Cross(iw))
          end do
          do jt = 1, NT
-            do iw = 1, NW_INT
-               B(iw) = bbody(T_first(jt), w(iw))
-            end do
-            kappB_first(jt, ja) = sum(Cross * B * w) * dlnw
+            kappB_first(jt, ja) = sum(Cross * Bt(:, jt) * w) * dlnw
          end do
       end do
+      deallocate(Bt)
    end subroutine build_kappB
 
 
