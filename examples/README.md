@@ -21,3 +21,5 @@ file keep that file in their own directory.
 | `adaptive_refinement` | Solution-driven octree re-refinement of the ionization front, resolving the front on a coarse base grid. |
 | `peeloff_imaging` | Peel-off imaging: direct and dust-scattered light in the ionizing and FUV bands projected onto an image plane toward an observer. |
 | `density_cube` | A 3D FITS density cube read directly onto a Cartesian grid (`make_cube.py` builds a clumpy cube). |
+| `external_field` | A cloud in an isotropic external ionizing field (`par%ext_intensity`, no internal star): the field ionizes a skin around a neutral core, and the peel-off image shows the core in silhouette against the background (`direc0/direct` = the line-of-sight `e^tau` map). |
+| `multiple_sources` | Two stars of different temperature and luminosity in one uniform medium (`par%nsource=2`, `src_lum`/`src_tstar`): overlapping H II regions of different size, with an He III core and a larger He II zone around the hotter star; `make_two_spectra.py` writes the tabulated multi-column spectrum alternative (`par%src_spectrum_file`). |
