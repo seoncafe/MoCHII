@@ -1,0 +1,39 @@
+&parameters
+ ! G-compat: a single internal point source at the origin (nsource unset = 1).
+ ! This must reproduce the pre-refactor binary bit-for-bit (the single-component
+ ! fast path is the legacy code path).
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%source_geometry = 'point'
+ par%luminosity      = 1.0e37
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'onep.h5'
+/

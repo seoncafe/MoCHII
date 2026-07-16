@@ -1,0 +1,39 @@
+&parameters
+ ! Negative check: nsource=1 (fast path) but two_temp_spec.txt has 2 data
+ ! columns -> bin_lum_from_multicol must use column 1 and print a single rank-0
+ ! NOTE that extra columns beyond nsource were ignored.
+
+ par%no_photons    = 1.0e5
+ par%no_print      = 1.0e5
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 16
+ par%ny            = 16
+ par%nz            = 16
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 16
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+
+ par%gas_niter     = 0
+
+ par%nsource           = 1
+ par%src_spectrum_file = 'two_temp_spec.txt'
+ par%src_lum(1)    =  1.0e37
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'note_extracols.h5'
+/

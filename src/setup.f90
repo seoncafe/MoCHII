@@ -127,6 +127,122 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
+  !--- Source model.  The ionizing band is fed by any number of internal point
+  !--- sources (par%nsource, positions src_x/y/z, luminosities src_lum) plus,
+  !--- INDEPENDENTLY, an isotropic external field (ON when par%ext_intensity>0,
+  !--- entry geometry par%ext_geometry = 'rec'|'sph').  Packets split among all
+  !--- components in proportion to their band luminosity, each with its own
+  !--- spectrum.  par%source_geometry is a LEGACY ALIAS: 'point' (default) leaves
+  !--- the composable form untouched; 'external'|'external_rec'|'external_sph' is
+  !--- the external-ONLY shorthand (forces nsource=0, external on).
+  block
+    integer :: is, nset
+    logical :: ext_on
+    if (trim(par%source_geometry) == 'external' .or. &
+        trim(par%source_geometry) == 'external_rec' .or. &
+        trim(par%source_geometry) == 'external_sph') then
+       !--- legacy external-only alias: map onto ext_geometry + nsource=0.
+       if (trim(par%source_geometry) == 'external_sph') then
+          par%ext_geometry = 'sph'
+       else
+          par%ext_geometry = 'rec'
+       end if
+       if (par%ext_intensity <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: external source_geometry requires par%ext_intensity > 0 '// &
+             '(mean intensity J [erg/s/cm^2/sr]).'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       par%nsource = 0
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'NOTE: source_geometry=''external*'' is the external-only shorthand; '// &
+          'the composable form is par%ext_intensity/par%ext_geometry + par%nsource.'
+    else if (trim(par%source_geometry) /= 'point') then
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: par%source_geometry must be ''point'', ''external_rec'', or ''external_sph''.'
+       call MPI_FINALIZE(ierr);  stop
+    endif
+
+    ext_on = par%ext_intensity > 0.0_wp
+    !--- external geometry validation (only when the external field is on).
+    if (ext_on) then
+       if (trim(par%ext_geometry) /= 'rec' .and. trim(par%ext_geometry) /= 'sph') then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: par%ext_geometry must be ''rec'' or ''sph''.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       if (trim(par%ext_geometry) == 'sph' .and. par%rmax <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: ext_geometry=''sph'' requires par%rmax > 0.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+    endif
+
+    !--- internal point sources.
+    if (par%nsource < 0 .or. par%nsource > MAX_SRC) then
+       if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
+          'ERROR: par%nsource must be in [0, ', MAX_SRC, '].'
+       call MPI_FINALIZE(ierr);  stop
+    endif
+    if (par%nsource == 0) then
+       if (.not. ext_on) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: no source: set par%nsource >= 1 or the external field '// &
+             '(par%ext_intensity > 0).'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+    else if (par%nsource == 1) then
+       !--- single point source: normalize the legacy scalars into the arrays
+       !--- (only read on the multi-component path; the single-component fast
+       !--- path uses the legacy scalars directly, so nothing changes there).
+       if (par%src_lum(1) <= 0.0_wp) then
+          par%src_x(1) = par%xs_point
+          par%src_y(1) = par%ys_point
+          par%src_z(1) = par%zs_point
+          par%src_lum(1)      = par%luminosity
+          par%src_geometry(1) = 'point'
+       endif
+       if (trim(par%src_geometry(1)) /= 'point') then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: the ionizing band supports only src_geometry = ''point''.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+    else
+       !--- multiple point sources.  src_lum: all set (keep) or all unset
+       !--- (equal split of par%luminosity, MoCafe convention); a partial set
+       !--- is an error.
+       nset = 0
+       do is = 1, par%nsource
+          if (par%src_lum(is) > 0.0_wp) nset = nset + 1
+          if (trim(par%src_geometry(is)) /= 'point') then
+             if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
+                'ERROR: src_geometry(', is, ') must be ''point'' in the ionizing band.'
+             call MPI_FINALIZE(ierr);  stop
+          endif
+       end do
+       if (nset == 0) then
+          do is = 1, par%nsource
+             par%src_lum(is) = par%luminosity / real(par%nsource, wp)
+          end do
+       else if (nset /= par%nsource) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: set par%src_lum for ALL sources or for NONE (equal split).'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       par%luminosity = sum(par%src_lum(1:par%nsource))    ! informational total
+    endif
+
+    !--- route the external-only run (no point source) through the legacy
+    !--- external fast path by encoding the geometry in source_geometry.
+    if (par%nsource == 0) par%source_geometry = 'external_'//trim(par%ext_geometry)
+
+    !--- src_spectrum_file feeds the internal point sources only; it has no
+    !--- effect on an external-only run (nsource=0).
+    if (len_trim(par%src_spectrum_file) > 0 .and. par%nsource == 0 &
+        .and. mpar%p_rank == 0) write(*,'(a)') &
+       'NOTE: par%src_spectrum_file is ignored on an external-only run (nsource=0).'
+  end block
+
   !--- general parameter sanity (fail fast rather than run on nonsense).
   if (par%no_photons < 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
@@ -165,9 +281,12 @@ contains
         'ERROR: need par%eion_max > par%eion_min and par%nnu_ion >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (len_trim(par%ion_spectrum) == 0 .and. par%tstar <= 0.0_wp) then
+  if (len_trim(par%ion_spectrum) == 0 .and. par%tstar <= 0.0_wp .and. &
+      len_trim(par%src_spectrum_file) == 0 .and. &
+      len_trim(par%ext_spectrum) == 0 .and. par%ext_tstar <= 0.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: use_ion_band requires par%tstar > 0 or par%ion_spectrum.'
+        'ERROR: use_ion_band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
+        'par%src_spectrum_file, par%ext_spectrum, or par%ext_tstar > 0.'
      call MPI_FINALIZE(ierr);  stop
   endif
 

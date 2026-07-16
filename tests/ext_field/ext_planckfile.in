@@ -1,0 +1,44 @@
+&parameters
+ ! G-ext-spectrum (fast-path bug fix): external-only run via the COMPOSABLE form
+ ! (nsource=0 + par%ext_intensity/par%ext_geometry), spectrum from a file
+ ! par%ext_spectrum = ext_spec_4e4.txt (tabulated 4e4 K Planck).  par%tstar is a
+ ! DECOY set to 2e4 K: the pre-fix fast path wrongly used the global spectrum, so
+ ! it would produce a 2e4 K shape.  The fix resolves ext_spectrum > ext_tstar >
+ ! global, so this run must match ext_tstar.in (which uses ext_tstar = 4e4 K).
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 2.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource       = 0
+ par%ext_intensity = 1.0e-5
+ par%ext_geometry  = 'rec'
+ par%ext_spectrum  = 'ext_spec_4e4.txt'
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'ext_planckfile.h5'
+/

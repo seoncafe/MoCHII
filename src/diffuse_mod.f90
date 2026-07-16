@@ -192,6 +192,7 @@ contains
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
     photon%nscatt  = 0
     photon%inside  = .true.
+    photon%from_external = .false.      ! diffuse packets peel isotropically
     photon%icell_amr = il
   end subroutine gen_diffuse_photon
 

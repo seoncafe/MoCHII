@@ -1,0 +1,43 @@
+&parameters
+ ! G-ext-spectrum twin: identical external-only run, but the 4e4 K spectrum comes
+ ! from par%ext_tstar (Planck) instead of a file.  par%tstar is the same 2e4 K
+ ! decoy that must be ignored (ext_tstar > global).  Must match ext_planckfile.in
+ ! to interpolation level, proving both ext_spectrum AND ext_tstar are honored on
+ ! the single-component fast path.
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 2.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource       = 0
+ par%ext_intensity = 1.0e-5
+ par%ext_geometry  = 'rec'
+ par%ext_tstar     = 4.0e4
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'ext_tstar.h5'
+/

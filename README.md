@@ -20,6 +20,12 @@ infrared dust/PAH spectrum.
   for the direct field, explicit diffuse recombination packets (case A) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
   in the band.
+- **Sources**: any number of internal point sources, each with its own
+  luminosity and spectrum (Planck temperatures or one multi-column
+  spectrum file), plus — independently or in combination — an isotropic
+  external radiation field of given mean intensity entering through the
+  box faces or a bounding sphere (cosine-weighted entry), so a cloud
+  embedded in an interstellar radiation field is modeled directly.
 - **Gas physics**: H/He photoionization equilibrium and thermal balance;
   metals (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) as trace species with Verner et al.
   (1996) cross sections, Badnell radiative + dielectronic recombination,
@@ -91,4 +97,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-16 13:54 KST
+Last updated: 2026-07-16 18:00 KST

@@ -120,6 +120,13 @@ public
      !--- energy (J_lambda) tally so stellar and dust-emission photons with
      !--- different packet energies combine correctly (1.0 in mono mode).
      real(kind=wp) :: Lpacket = 1.0_wp
+     !--- MoCHII: entry-surface inward normal and origin flag, used ONLY by
+     !--- the direct peel of external-field packets.  A Lambert-emitted
+     !--- external packet peels a direct contribution weighted by
+     !--- max(k_obs . snx, 0)/pi (cos of the observer direction against the
+     !--- inward normal), not the isotropic 1/(4 pi) of a point/diffuse source.
+     real(kind=wp) :: snx = 0.0_wp, sny = 0.0_wp, snz = 1.0_wp
+     logical       :: from_external = .false.
      ! Stokes parameters
      real(kind=wp) :: I,Q,U,V
   end type photon_type
@@ -205,6 +212,19 @@ public
      real(kind=wp) :: xs_point = 0.0_wp
      real(kind=wp) :: ys_point = 0.0_wp
      real(kind=wp) :: zs_point = 0.0_wp
+     !--- band-integrated mean intensity J [erg s^-1 cm^-2 sr^-1] of the
+     !--- isotropic external radiation field.  The external field is ON when
+     !--- ext_intensity > 0 and COMPOSES with the internal point sources
+     !--- (par%nsource); the entering ionizing-band power is pi*J*A_surface.
+     real(kind=wp) :: ext_intensity = -1.0_wp
+     !--- external-field entry geometry: 'rec' = through the box faces,
+     !--- 'sph' = through a bounding sphere of radius par%rmax (needs rmax>0).
+     character(len=8)   :: ext_geometry  = 'rec'
+     !--- external-field spectrum: a 2-column file (E[eV], L_E) if nonblank,
+     !--- else a Planck function at ext_tstar (K) if > 0, else the global
+     !--- source spectrum (par%ion_spectrum / par%tstar).
+     real(kind=wp)      :: ext_tstar     = -999.0_wp
+     character(len=128) :: ext_spectrum  = ''
      !--- shared memory & master-slave algorithm
      integer       :: num_send_at_once   = 10000
      logical       :: use_shared_memory  = .false.
@@ -294,17 +314,29 @@ public
      !--- full stochastic solve and gives the true Teq, but drops PAH /
      !--- stochastic-heating features.  More accurate than the B&W mixture mean.
      logical            :: dust_single_teq  = .false.
-     !--- multiple stellar source components.  When par%nsource > 1,
-     !--- each component i has its own spectrum (Planck src_tstar(i) or file
-     !--- src_spectrum(i)), luminosity src_lum(i) [erg/s], geometry
-     !--- src_geometry(i) ('point'|'uniform'|'gaussian'|'exponential') and
-     !--- geometry parameters (src_x/y/z for 'point', src_zscale/src_rscale
-     !--- for disks).  Sources are sampled in proportion to src_lum; the total
-     !--- luminosity par%luminosity is set to sum(src_lum).
+     !--- multiple internal point sources feeding the ionizing band.  Each
+     !--- source i has its own luminosity src_lum(i) [erg/s] and position
+     !--- src_x/y/z(i); packets split among the sources (and the external field)
+     !--- in proportion to band luminosity, the total par%luminosity is set to
+     !--- sum(src_lum).  Its ionizing-band spectrum is resolved as:
+     !---   par%src_spectrum_file column i (if set) > src_tstar(i) Planck >
+     !---   global par%ion_spectrum file > global par%tstar Planck.
+     !--- src_tstar is consulted on the multi-component path; with a single
+     !--- source use par%tstar (the legacy scalars rule on the fast path).
+     !--- src_geometry / src_spectrum(i) / the disk-geometry parameters below are
+     !--- the dust/SED source-population scaffold and are NOT consulted by the
+     !--- ionizing band.
      integer            :: nsource                 = 1
      character(len=16)  :: src_geometry(MAX_SRC)   = 'point'
      real(kind=wp)      :: src_tstar(MAX_SRC)      = -999.0_wp
      character(len=128) :: src_spectrum(MAX_SRC)   = ''
+     !--- one multi-column ionizing-band spectrum file for ALL internal point
+     !--- sources: first column E [eV] (ascending), then one L_E column per
+     !--- source (arbitrary units; source i's ionizing segment is independently
+     !--- normalized to src_lum(i)).  When nonblank it takes priority over
+     !--- src_tstar / the global spectrum.  More data columns than nsource: the
+     !--- first nsource are used (rank-0 note).  Fewer: the run aborts.
+     character(len=128) :: src_spectrum_file       = ''
      real(kind=wp)      :: src_lum(MAX_SRC)        = -999.0_wp
      real(kind=wp)      :: src_x(MAX_SRC)          = 0.0_wp
      real(kind=wp)      :: src_y(MAX_SRC)          = 0.0_wp

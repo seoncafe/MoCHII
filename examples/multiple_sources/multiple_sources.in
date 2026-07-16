@@ -1,0 +1,63 @@
+&parameters
+ ! Two stars of different temperature and luminosity in one uniform medium.
+ ! par%nsource = 2 point sources share the ionizing band; each carries its own
+ ! luminosity src_lum(i) and blackbody temperature src_tstar(i).  The result is
+ ! two overlapping H II regions of different size and hardness: the hotter,
+ ! brighter star (source 1) carves the larger sphere and, with more >24.6 eV
+ ! photons, a larger He+ (x_HeII) zone than the cooler star (source 2).
+ !
+ ! Luminosity tuning: at nH = 30 cm^-3 the Stromgren radius is
+ !   R_S = (3 Q_H / (4 pi alpha_B nH^2))^(1/3),
+ ! so full O-star band luminosities (~1e38 erg/s) would give R_S ~ 5-6 pc and
+ ! fill (merge across) the 6 pc box.  The luminosities below are scaled down
+ ! (R_S ~ L^(1/3)) to keep both spheres inside the box with a neutral gap
+ ! between them: source 1 (5e4 K, 2e36 erg/s) -> R_S ~ 1.3 pc, source 2
+ ! (3.5e4 K, 6e35 erg/s) -> R_S ~ 0.9 pc, centers 2.4 pc apart, so x_HI along
+ ! the x axis has two distinct minima.
+ par%no_photons    = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%nx = 48
+ par%ny = 48
+ par%nz = 48
+ par%xmax = 3.0
+ par%ymax = 3.0
+ par%zmax = 3.0
+ par%nH_const      = 30.0           ! cm^-3, uniform box (no rmax cut)
+ par%distance_unit = 'pc'
+ par%dust_model    = 'none'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! global fallback shape; unused since src_tstar is set
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+
+ !--- two internal point sources with distinct temperature and luminosity
+ par%nsource       = 2
+ par%src_x(1)      = -1.2
+ par%src_y(1)      =  0.0
+ par%src_z(1)      =  0.0
+ par%src_lum(1)    =  2.0e36        ! ionizing-band luminosity [erg/s]
+ par%src_tstar(1)  =  5.0e4         ! hotter, brighter star [K]
+ par%src_x(2)      =  1.2
+ par%src_y(2)      =  0.0
+ par%src_z(2)      =  0.0
+ par%src_lum(2)    =  6.0e35
+ par%src_tstar(2)  =  3.5e4         ! cooler, fainter star [K]
+
+ !--- Alternatively, tabulate each source spectrum in a multi-column file
+ !--- (col i = source i); this REPLACES src_tstar.  Run make_two_spectra.py to
+ !--- build two_spectra.txt (col2 = 5e4 K Planck, col3 = 3.5e4 K Planck):
+ !  par%src_spectrum_file = 'two_spectra.txt'
+
+ par%gas_niter     = 40
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%case_ab       = 'B'
+ par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'multiple_sources.h5'
+/

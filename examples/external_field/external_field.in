@@ -1,0 +1,72 @@
+&parameters
+ ! A cloud bathed in an isotropic external ionizing field.  Instead of an
+ ! internal star (par%nsource = 0), an isotropic background of mean intensity
+ ! par%ext_intensity enters the box faces (par%ext_geometry = 'rec') and eats
+ ! into the cloud from OUTSIDE, leaving an ionized skin and a neutral core.
+ ! The field spectral shape is a par%tstar = 4e4 K blackbody (resolved as
+ ! ext_spectrum file > ext_tstar > global tstar; here the global tstar is used).
+ !
+ ! Physics of the skin depth: an isotropic field of band-integrated mean
+ ! intensity J delivers a one-sided surface flux pi*J, so the entering ionizing
+ ! power is pi*J*A_surface (photon rate striking the convex cloud:
+ ! pi*J/<hnu> * 4*pi*R^2 ~ 4.1e44 /s here).  The field keeps a skin ionized by
+ ! photon balance against recombination; in plane-parallel terms
+ !   d_skin ~ (pi*J / <hnu>) / (alpha_B * nH^2)  ~ 0.7 pc at these values.
+ ! Density tuning: at nH = 1 cm^-3 the full-sphere recombination demand
+ ! alpha_B*nH^2*V ~ 1.9e44 /s sits BELOW the photon supply, so the whole cloud
+ ! ionizes (verified: x_HI ~ 0.03 everywhere).  nH = 1.7 cm^-3 raises the
+ ! demand to ~5.4e44 /s (supply/demand ~ 0.75), which parks the front near
+ ! r ~ 1.1 pc -- an ionized skin ~0.7 pc thick (~8 cells) around a neutral
+ ! core at ~60% of the cloud radius.
+ !
+ ! Peel-off (par%ion_peel) projects the cloud toward the default +z observer:
+ ! the neutral core appears in silhouette against the background field.  With
+ ! par%save_direc0 the unattenuated direct image direc0 is also written, so
+ ! direc0/direct = exp(+tau) is the line-of-sight optical-depth map of the core.
+ par%no_photons    = 8.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%nx = 48
+ par%ny = 48
+ par%nz = 48
+ par%xmax = 2.0
+ par%ymax = 2.0
+ par%zmax = 2.0
+ par%nH_const      = 1.7            ! cm^-3 inside the cloud (see the tuning note)
+ par%rmax          = 1.8            ! cloud radius (pc); nH = 0 outside
+ par%distance_unit = 'pc'
+ par%dust_model    = 'none'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! spectral shape of the external field [K]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3         ! start ionized; the front recombines inward
+
+ !--- external isotropic field only (no internal star)
+ par%nsource       = 0
+ par%ext_intensity = 1.0e-5         ! band-integrated mean intensity J [erg/s/cm^2/sr]
+ par%ext_geometry  = 'rec'          ! field enters the box faces
+
+ !--- To ADD an embedded star so the cloud is ionized from inside AND out, set
+ !--- an internal point source (its ionizing-band luminosity is par%luminosity)
+ !--- at the box center; the external field stays on and the two combine:
+ !  par%nsource    = 1
+ !  par%luminosity = 3.0e37
+
+ par%gas_niter     = 40
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 7.0e-3         ! just above the MC noise floor at 8e6 photons
+ par%case_ab       = 'B'
+ par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+
+ !--- peel-off imaging toward the default +z observer; direc0 gives exp(+tau)
+ par%ion_peel      = .true.
+ par%save_direc0   = .true.
+ par%nxim          = 129
+ par%nyim          = 129
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'external_field.h5'
+/

@@ -227,7 +227,7 @@ contains
     implicit none
     type(photon_type), intent(in) :: photon
     type(photon_type) :: pobs
-    real(kind=wp) :: r2, r, vdet(3), tau, contrib
+    real(kind=wp) :: r2, r, vdet(3), tau, contrib, cos_obs
     integer :: ix, iy, i, k, ch
 
     ch = peel_channel(photon%inu)
@@ -250,7 +250,17 @@ contains
             + observer(k)%nyim/2.0_wp) + 1
        if (ix < 1 .or. ix > observer(k)%nxim .or. &
            iy < 1 .or. iy > observer(k)%nyim) cycle
-       contrib = photon%Lpacket*photon%wgt/(fourpi*r2)   ! geometric only
+       !--- geometric weight of the direct peel.  A point/diffuse source is
+       !--- isotropic (1/(4 pi)); a Lambert-emitted external packet peels
+       !--- max(k_obs . n_in, 0)/pi about its entry-surface inward normal, so
+       !--- the observer-side surface (k_obs . n_in <= 0) contributes nothing.
+       if (photon%from_external) then
+          cos_obs = pobs%kx*photon%snx + pobs%ky*photon%sny + pobs%kz*photon%snz
+          if (cos_obs <= 0.0_wp) cycle
+          contrib = photon%Lpacket*photon%wgt*cos_obs/(pi*r2)
+       else
+          contrib = photon%Lpacket*photon%wgt/(fourpi*r2)   ! geometric only
+       end if
        !--- unattenuated direct (direc0): tau-independent, always added.
        if (par%save_direc0) &
           img_dir0(ix, iy, ch, k) = img_dir0(ix, iy, ch, k) + contrib

@@ -1,0 +1,52 @@
+&parameters
+ ! MoCHII external-field peel gate (attenuation morphology).  Same isotropic
+ ! external field as peel_ext_thin, but nH_const = 0.03 so the central chord
+ ! (full box, L = 2*zmax = 4 pc) has tau ~ 2 in the lowest ionizing bin.
+ ! With save_direc0 + peel_bins the unattenuated direc0 image still integrates
+ ! to J * A_proj / d^2 (tau-independent), and the central-pixel bin-by-bin
+ ! ratio direct_cube/direc0_cube = exp(-nH*sigma_HI(E)*L) recovers the chord
+ ! optical depth spectrum.
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 0.03
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource       = 0
+ par%ext_intensity = 1.0e-5
+ par%ext_geometry  = 'rec'
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'peel_ext_tau.h5'
+
+ !--- peel-off imaging: one default observer (+z, far); bin-resolved cubes
+ !--- and the unattenuated direc0 twin.
+ par%ion_peel      = .true.
+ par%peel_bins     = .true.
+ par%save_direc0   = .true.
+ par%nxim          = 201
+ par%nyim          = 201
+/

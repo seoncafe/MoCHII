@@ -1,0 +1,51 @@
+&parameters
+ ! MoCHII external-field peel gate (optically thin analytic case).  An
+ ! isotropic external field of mean intensity J = ext_intensity enters an
+ ! optically thin uniform box (tau_ion ~ 7e-3, xHI = 1, He = 0, no dust).
+ ! The direct peel of a Lambert-emitted external packet toward the +z
+ ! observer weights the isotropic entering flux by max(k_obs . n_in, 0)/pi,
+ ! so only the far (-z) face illuminates the observer.  The unattenuated
+ ! image-integrated direct flux equals the background J filling the box's
+ ! projected solid angle:  F = J * A_proj / d^2, A_proj = (2*xmax)*(2*ymax).
+ ! Attenuation lowers the tau-walked image by ~exp(-tau) (~0.3-1%).
+
+ par%no_photons    = 2.0e7
+ par%no_print      = 2.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 1.0e-4
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+
+ par%xHI_init      = 1.0
+ par%He_abund      = 0.0
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 0
+
+ par%nsource       = 0
+ par%ext_intensity = 1.0e-5
+ par%ext_geometry  = 'rec'
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'peel_ext_thin.h5'
+
+ !--- peel-off imaging: one default observer (+z, far)
+ par%ion_peel      = .true.
+ par%nxim          = 201
+ par%nyim          = 201
+/
