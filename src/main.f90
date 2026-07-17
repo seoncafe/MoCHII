@@ -17,6 +17,7 @@ program main
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion
   use raytrace_amr_mod,only : transport_ion_packet
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
+                              secion_apply, &
                               run_converged, run_iters, run_final_dx, &
                               run_final_dte
   use ion_balance_mod, only : gas_equilibrium_update
@@ -118,6 +119,7 @@ program main
      call jtally_ion_reduce()
      call gas_rates_compute()
      if (par%use_metals) call species_gamma_compute()
+     if (par%use_sec_ion) call secion_apply()
      if (par%gas_niter < 1) exit          ! rates only, no solve
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
@@ -217,6 +219,7 @@ program main
        call jtally_ion_reduce()
        call gas_rates_compute()
        if (par%use_metals) call species_gamma_compute()
+       if (par%use_sec_ion) call secion_apply()
      end block
   end if
 

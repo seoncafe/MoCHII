@@ -21,7 +21,8 @@ module ion_balance_mod
 !---------------------------------------------------------------------------
   use define
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_nleaf
-  use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII
+  use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
+                            sec_dgamma_HI, sec_dgamma_HeI
   use recomb_mod
   implicit none
   private
@@ -139,7 +140,8 @@ contains
        end if
 
        xHI = gas_xHI(il);  xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il)
-       call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
+       call solve_ion_cell(gamma_HI(il) + sec_dgamma_HI(il), &
+                           gamma_HeI(il) + sec_dgamma_HeI(il), gamma_HeII(il), &
                            nH, T, caseA, xHI, xHeI, xHeII, ne, il)
 
        !--- under-relaxation toward the solved state.

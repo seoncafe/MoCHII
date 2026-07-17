@@ -22,13 +22,13 @@ module species_mod
 !---------------------------------------------------------------------------
   use define
   use photo_xsec, only : sigma_vfky96
-  use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval
+  use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval, gbar_ff
   use recomb_mod,  only : ci_dere_ratio
   implicit none
   private
 
   public :: species_setup, species_gamma_compute, species_fractions
-  public :: metal_cooling, species_write, species_resize
+  public :: metal_cooling, metal_freefree, species_write, species_resize
   public :: species_opacity_add, species_ne, metal_heating
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached
@@ -602,6 +602,32 @@ contains
        end do
     end do
   end function metal_cooling
+
+  !=========================================================================
+  ! Metal free-free (thermal bremsstrahlung) cooling per unit volume
+  ! [erg cm^-3 s^-1] at trial T (par%metal_freefree): the trace completion
+  ! of the H II + He II/III free-free term.  A metal ion in stage j
+  ! (j = 1 neutral, j = 2 = X+, ...) has net charge Z_ion = j - 1 and
+  ! contributes n_ion Z_ion^2 gbar_ff(T, Z_ion); only j >= 2 radiate.
+  ! Same prefactor 1.42554e-27 sqrt(T) n_e as the H/He free-free.
+  !=========================================================================
+  real(kind=wp) function metal_freefree(il, T, nH, ne, nHI, nHII) result(cool_ff)
+    implicit none
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
+    real(kind=wp) :: frac(MAX_ST), s
+    integer :: ie, j, zion
+
+    s = 0.0_wp
+    do ie = 1, n_elements
+       call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+       do j = 2, elems(ie)%nstage
+          zion = j - 1
+          s = s + elems(ie)%abund*frac(j)*real(zion*zion,wp)*gbar_ff(T, zion)
+       end do
+    end do
+    cool_ff = 1.42554e-27_wp*sqrt(T)*ne*nH*s
+  end function metal_freefree
 
   !=========================================================================
   ! Converged stage fractions of every element -> output file blocks.

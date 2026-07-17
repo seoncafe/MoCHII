@@ -554,6 +554,19 @@ public
      !--- getGauntFF — the PLAN item-3 swap; off by default so the
      !--- recorded gates reproduce.
      logical            :: gaunt_vh14   = .false.
+     !--- secondary ionization of H I / He I by fast photoelectrons
+     !--- (Shull & van Steenberg 1985): a photoelectron with kinetic
+     !--- energy E0 = h nu - E_th above E_sec_ion = 40 eV deposits only
+     !--- f_heat(x) of its excess as heat and drives f_ion(x) E0/E_th
+     !--- secondary H I / He I ionizations (x = ionized fraction of the
+     !--- H+He nuclei); below 40 eV it thermalizes fully.  Off by default.
+     logical            :: use_sec_ion  = .false.
+     !--- metal free-free cooling in the thermal balance, weighted by the
+     !--- net ion charge Z_ion = ionization stage - 1 (a stage-j metal ion
+     !--- contributes n_ion Z_ion^2 gbar_ff(T,Z_ion), j >= 2): the trace
+     !--- completion of the H II + He II/III free-free term.  On by default
+     !--- (a physically correct completion; the effect is trace).
+     logical            :: metal_freefree = .true.
      !--- peel-off imaging of the band: after convergence, one extra
      !--- transport pass peels direct (stellar + diffuse) and
      !--- dust-scattered contributions toward the observers

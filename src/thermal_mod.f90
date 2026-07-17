@@ -20,7 +20,8 @@ module thermal_mod
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                             gas_Te, gas_nleaf
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
-                            heat_HI, heat_HeI, heat_HeII
+                            sec_dgamma_HI, sec_dgamma_HeI, &
+                            sec_heat_HI, sec_heat_HeI, sec_heat_HeII
   use ion_balance_mod, only : solve_ion_cell
   use cooling_mod,     only : cooling_total
   implicit none
@@ -43,16 +44,20 @@ contains
     real(kind=wp) :: nH, heat
 
     nH = gas_nH(il)
-    call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
+    call solve_ion_cell(gamma_HI(il) + sec_dgamma_HI(il), &
+                        gamma_HeI(il) + sec_dgamma_HeI(il), gamma_HeII(il), &
                         nH, T, caseA, xHI, xHeI, xHeII, ne, il)
-    heat = nH*( xHI*heat_HI(il) &
-           + par%He_abund*(xHeI*heat_HeI(il) + xHeII*heat_HeII(il)) )
+    heat = nH*( xHI*sec_heat_HI(il) &
+           + par%He_abund*(xHeI*sec_heat_HeI(il) + xHeII*sec_heat_HeII(il)) )
     net = heat - cooling_total(T, nH, ne, xHI, xHeI, xHeII)
     !--- trace-metal line cooling (registry)
     if (par%use_metals) then
        block
-         use species_mod, only : metal_cooling, metal_heating
+         use species_mod, only : metal_cooling, metal_heating, metal_freefree
          net = net - metal_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+         !--- metal free-free cooling, net-charge weighted (par%metal_freefree)
+         if (par%metal_freefree) &
+            net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
          !--- PDR: metal photoheating (par%metal_heat)
          if (par%metal_heat) &
             net = net + metal_heating(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))

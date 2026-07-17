@@ -400,6 +400,8 @@ contains
      write(*,'(3a)')    '+++++ MoCHII: ',trim(model_infile),' +++++'
      write(*,'(2a)')    ' >>> START @ ', get_date_time()
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
+     write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
+     write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
   endif
   end subroutine read_input
 

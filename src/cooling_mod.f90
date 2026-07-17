@@ -24,6 +24,7 @@ module cooling_mod
 
   public :: cooling_setup, cooling_total, cooling_eval
   public :: cooling_fit_type, cooling_load, cool_HI_fit
+  public :: gbar_ff
 
   interface
      subroutine getGauntFF(z, log10Te, xlf, g, iflag)
@@ -42,10 +43,11 @@ module cooling_mod
 
   type(cooling_fit_type) :: cool_HI_fit
 
-  !--- thermally averaged free-free Gaunt factor gbar(T) for Z=1 and Z=2,
-  !--- tabulated on a log-T grid at setup.
-  integer, parameter :: NGT = 41
-  real(kind=wp) :: gff_logT(NGT), gff_z1(NGT), gff_z2(NGT)
+  !--- thermally averaged free-free Gaunt factor gbar(T,Z) for net ion
+  !--- charge Z = 1..4 (max metal net charge is 4: the largest registry
+  !--- element has 5 stages), tabulated on a log-T grid at setup.
+  integer, parameter :: NGT = 41, NGZ = 4
+  real(kind=wp) :: gff_logT(NGT), gff_z(NGT, NGZ)
 
 contains
 
@@ -54,17 +56,18 @@ contains
     use mpi
     implicit none
     character(len=256) :: fname
-    integer :: i
+    integer :: i, iz
 
     !--- H I line cooling (Ly-alpha dominated).
     fname = trim(par%atomic_dir)//'/cooling_h_1.txt'
     call cooling_load(trim(fname), cool_HI_fit)
 
-    !--- gbar_ff(T, Z) tables over log T = 2..6.
+    !--- gbar_ff(T, Z) tables over log T = 2..6, for net charge Z = 1..4.
     do i = 1, NGT
        gff_logT(i) = 2.0_wp + 4.0_wp*real(i-1,wp)/real(NGT-1,wp)
-       gff_z1(i) = gaunt_ff_mean(10.0_wp**gff_logT(i), 1.0_wp)
-       gff_z2(i) = gaunt_ff_mean(10.0_wp**gff_logT(i), 2.0_wp)
+       do iz = 1, NGZ
+          gff_z(i,iz) = gaunt_ff_mean(10.0_wp**gff_logT(i), real(iz,wp))
+       end do
     end do
 
     if (mpar%p_rank == 0) then
@@ -207,15 +210,12 @@ contains
     real(kind=wp), intent(in) :: T
     integer,       intent(in) :: Z
     real(kind=wp) :: lt, w
-    integer :: i
+    integer :: i, iz
+    iz = max(1, min(Z, NGZ))
     lt = min(max(log10(T), gff_logT(1)), gff_logT(NGT))
     i  = min(int((lt - gff_logT(1))/(gff_logT(2) - gff_logT(1))) + 1, NGT-1)
     w  = (lt - gff_logT(i))/(gff_logT(i+1) - gff_logT(i))
-    if (Z == 2) then
-       gm = gff_z2(i)*(1.0_wp - w) + gff_z2(i+1)*w
-    else
-       gm = gff_z1(i)*(1.0_wp - w) + gff_z1(i+1)*w
-    end if
+    gm = gff_z(i,iz)*(1.0_wp - w) + gff_z(i+1,iz)*w
   end function gbar_ff
 
   !=========================================================================

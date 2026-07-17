@@ -25,9 +25,31 @@ module gas_rates_mod
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
   public :: heat_dust, g0_fuv
   public :: run_converged, run_iters, run_final_dx, run_final_dte
+  public :: secion_apply
+  public :: sec_dgamma_HI, sec_dgamma_HeI
+  public :: sec_heat_HI, sec_heat_HeI, sec_heat_HeII
 
   real(kind=wp), allocatable :: gamma_HI(:), gamma_HeI(:), gamma_HeII(:)
   real(kind=wp), allocatable :: heat_HI(:),  heat_HeI(:),  heat_HeII(:)
+
+  !--- secondary ionization by fast photoelectrons (par%use_sec_ion;
+  !--- Shull & van Steenberg 1985).  Only H I, He I and He II are treated
+  !--- as absorbers (the ionizing-band gas absorbers); metals are trace
+  !--- and are ignored as absorbers here, a deliberate approximation.
+  !--- x-INDEPENDENT per-atom band integrals filled in gas_rates_compute
+  !--- when the switch is on: the hard-part (E0 > 40 eV) excess-energy
+  !--- heating, and the secondary-ionization potentials from each absorber.
+  real(kind=wp), parameter :: E_SEC_ION = 40.0_wp
+  real(kind=wp), allocatable :: heat_hard_HI(:), heat_hard_HeI(:), heat_hard_HeII(:)
+  real(kind=wp), allocatable :: si_HI_HI(:),  si_HI_HeI(:),  si_HI_HeII(:)
+  real(kind=wp), allocatable :: si_HeI_HI(:), si_HeI_HeI(:), si_HeI_HeII(:)
+  !--- x-DEPENDENT effective rates filled by secion_apply, or set to the
+  !--- trivial (switch-off) values at the end of every gas_rates_compute so
+  !--- the call sites can use them unconditionally: additive secondary
+  !--- ionization rate [s^-1/atom] for the balance, and effective heating
+  !--- [erg/s/atom] replacing heat_* in the thermal sum.
+  real(kind=wp), allocatable :: sec_dgamma_HI(:), sec_dgamma_HeI(:)
+  real(kind=wp), allocatable :: sec_heat_HI(:), sec_heat_HeI(:), sec_heat_HeII(:)
   !--- EUV grain heating [erg s^-1 cm^-3]: the ionizing-band part of the
   !--- grain heating integral that the dust SED band misses;
   !--- consumed by the SEDust stage later.
@@ -60,15 +82,28 @@ contains
        if (size(gamma_HI) /= nleaf) &
           deallocate(gamma_HI, gamma_HeI, gamma_HeII, &
                      heat_HI, heat_HeI, heat_HeII, heat_dust, &
-                     g0_fuv)                                    ! re-refinement
+                     g0_fuv, &
+                     heat_hard_HI, heat_hard_HeI, heat_hard_HeII, &
+                     si_HI_HI, si_HI_HeI, si_HI_HeII, &
+                     si_HeI_HI, si_HeI_HeI, si_HeI_HeII, &
+                     sec_dgamma_HI, sec_dgamma_HeI, &
+                     sec_heat_HI, sec_heat_HeI, sec_heat_HeII)     ! re-refinement
     end if
     if (.not. allocated(gamma_HI)) &
        allocate(gamma_HI(nleaf), gamma_HeI(nleaf), gamma_HeII(nleaf), &
                 heat_HI(nleaf),  heat_HeI(nleaf),  heat_HeII(nleaf), &
-                heat_dust(nleaf), g0_fuv(nleaf))
+                heat_dust(nleaf), g0_fuv(nleaf), &
+                heat_hard_HI(nleaf), heat_hard_HeI(nleaf), heat_hard_HeII(nleaf), &
+                si_HI_HI(nleaf), si_HI_HeI(nleaf), si_HI_HeII(nleaf), &
+                si_HeI_HI(nleaf), si_HeI_HeI(nleaf), si_HeI_HeII(nleaf), &
+                sec_dgamma_HI(nleaf), sec_dgamma_HeI(nleaf), &
+                sec_heat_HI(nleaf), sec_heat_HeI(nleaf), sec_heat_HeII(nleaf))
     gamma_HI = 0.0_wp;  gamma_HeI = 0.0_wp;  gamma_HeII = 0.0_wp
     heat_HI  = 0.0_wp;  heat_HeI  = 0.0_wp;  heat_HeII  = 0.0_wp
     heat_dust = 0.0_wp; g0_fuv = 0.0_wp
+    heat_hard_HI = 0.0_wp;  heat_hard_HeI = 0.0_wp;  heat_hard_HeII = 0.0_wp
+    si_HI_HI  = 0.0_wp;  si_HI_HeI  = 0.0_wp;  si_HI_HeII  = 0.0_wp
+    si_HeI_HI = 0.0_wp;  si_HeI_HeI = 0.0_wp;  si_HeI_HeII = 0.0_wp
 
     !--- cross sections depend only on the (fixed) band, not on the leaf:
     !--- evaluate once per bin instead of nleaf times (identical values).
@@ -94,6 +129,37 @@ contains
           heat_HI(il)   = heat_HI(il)   + fJ*sHI  *(1.0_wp - eth_HI  /ion_e(inu))
           heat_HeI(il)  = heat_HeI(il)  + fJ*sHeI *(1.0_wp - eth_HeI /ion_e(inu))
           heat_HeII(il) = heat_HeII(il) + fJ*sHeII*(1.0_wp - eth_HeII/ion_e(inu))
+          !--- secondary-ionization band integrals (par%use_sec_ion): the
+          !--- hard part (photoelectron energy E0 = h nu - E_th > 40 eV) of
+          !--- the excess-energy heating, and the secondary H I / He I
+          !--- ionization potentials from each absorber (h nu / E_th,sec
+          !--- ionizations of the secondary species).  x-independent.
+          if (par%use_sec_ion) then
+             if (ion_e(inu) > eth_HI + E_SEC_ION) then
+                heat_hard_HI(il) = heat_hard_HI(il) &
+                   + fJ*sHI*(1.0_wp - eth_HI/ion_e(inu))
+                si_HI_HI(il)  = si_HI_HI(il)  &
+                   + (fJ*sHI/hnu)*(ion_e(inu) - eth_HI)/eth_HI
+                si_HeI_HI(il) = si_HeI_HI(il) &
+                   + (fJ*sHI/hnu)*(ion_e(inu) - eth_HI)/eth_HeI
+             end if
+             if (ion_e(inu) > eth_HeI + E_SEC_ION) then
+                heat_hard_HeI(il) = heat_hard_HeI(il) &
+                   + fJ*sHeI*(1.0_wp - eth_HeI/ion_e(inu))
+                si_HI_HeI(il)  = si_HI_HeI(il)  &
+                   + (fJ*sHeI/hnu)*(ion_e(inu) - eth_HeI)/eth_HI
+                si_HeI_HeI(il) = si_HeI_HeI(il) &
+                   + (fJ*sHeI/hnu)*(ion_e(inu) - eth_HeI)/eth_HeI
+             end if
+             if (ion_e(inu) > eth_HeII + E_SEC_ION) then
+                heat_hard_HeII(il) = heat_hard_HeII(il) &
+                   + fJ*sHeII*(1.0_wp - eth_HeII/ion_e(inu))
+                si_HI_HeII(il)  = si_HI_HeII(il)  &
+                   + (fJ*sHeII/hnu)*(ion_e(inu) - eth_HeII)/eth_HI
+                si_HeI_HeII(il) = si_HeI_HeII(il) &
+                   + (fJ*sHeII/hnu)*(ion_e(inu) - eth_HeII)/eth_HeI
+             end if
+          end if
           !--- EUV grain heating: 4 pi J dnu x kappa_abs,dust [per cm].
           if (par%ion_add_dust) then
              block
@@ -107,7 +173,74 @@ contains
              g0_fuv(il) = g0_fuv(il) + fJ/1.6e-3_wp
        end do
     end do
+
+    !--- trivial (switch-off) values so the ion/thermal call sites can use
+    !--- these unconditionally; secion_apply overwrites them when the
+    !--- switch is on.  With use_sec_ion off, sec_dgamma_* = 0 and
+    !--- sec_heat_* = heat_* exactly, so the balance is unchanged.
+    sec_dgamma_HI = 0.0_wp;  sec_dgamma_HeI = 0.0_wp
+    sec_heat_HI = heat_HI;  sec_heat_HeI = heat_HeI;  sec_heat_HeII = heat_HeII
   end subroutine gas_rates_compute
+
+  !=========================================================================
+  ! Shull & van Steenberg (1985, ApJ 298, 268) high-energy partition of a
+  ! fast photoelectron's excess energy; x = ionized fraction of the H+He
+  ! nuclei.  f_heat is the heat fraction, f_ion_HI / f_ion_HeI the
+  ! fractions driving secondary H I / He I ionization.  (The SvS85 Ly-alpha
+  ! excitation channel is assumed to escape as line radiation and is not
+  ! put into any rate.)
+  elemental real(kind=wp) function f_heat(x) result(f)
+    real(kind=wp), intent(in) :: x
+    f = 0.9971_wp*(1.0_wp - (1.0_wp - x**0.2663_wp)**1.3163_wp)
+  end function f_heat
+
+  elemental real(kind=wp) function f_ion_HI(x) result(f)
+    real(kind=wp), intent(in) :: x
+    f = 0.3908_wp*(1.0_wp - x**0.4092_wp)**1.7592_wp
+  end function f_ion_HI
+
+  elemental real(kind=wp) function f_ion_HeI(x) result(f)
+    real(kind=wp), intent(in) :: x
+    f = 0.0554_wp*(1.0_wp - x**0.4614_wp)**1.6660_wp
+  end function f_ion_HeI
+
+  !=========================================================================
+  ! Apply the x-dependent SvS85 partition on the CURRENT (lagged) gas state
+  ! (par%use_sec_ion; called from main.f90 after gas_rates_compute).  The
+  ! secondary-ionization rate for the balance and the effective (reduced)
+  ! photoheating for the thermal sum are built from the x-independent band
+  ! integrals filled in gas_rates_compute.
+  !=========================================================================
+  subroutine secion_apply()
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII
+    implicit none
+    integer :: il, nleaf
+    real(kind=wp) :: nH, yHe, xHI, xHeI, xHeII, x, fh, fiHI, fiHeI
+    real(kind=wp) :: nHI, nHeI, nHeII, R_secHI, R_secHeI
+
+    nleaf = amr_grid%nleaf
+    yHe = par%He_abund
+    do il = 1, nleaf
+       nH   = gas_nH(il)
+       xHI  = gas_xHI(il);  xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il)
+       !--- x = (n_HII + n_HeII + n_HeIII) / (n_H + n_He), clamped to [0,1].
+       x = min(max(((1.0_wp - xHI) + yHe*(1.0_wp - xHeI))/(1.0_wp + yHe), &
+                   0.0_wp), 1.0_wp)
+       fh   = f_heat(x);  fiHI = f_ion_HI(x);  fiHeI = f_ion_HeI(x)
+       nHI  = nH*xHI;  nHeI = nH*yHe*xHeI;  nHeII = nH*yHe*xHeII
+       R_secHI  = fiHI *(nHI*si_HI_HI(il)  + nHeI*si_HI_HeI(il)  &
+                         + nHeII*si_HI_HeII(il))
+       R_secHeI = fiHeI*(nHI*si_HeI_HI(il) + nHeI*si_HeI_HeI(il) &
+                         + nHeII*si_HeI_HeII(il))
+       !--- per-atom; x -> 1 gives f_ion -> 0 so these -> 0 (the max() is
+       !--- only a divide-by-zero guard for a fully depleted cell).
+       sec_dgamma_HI(il)  = R_secHI  / max(nHI,  1.0e-99_wp)
+       sec_dgamma_HeI(il) = R_secHeI / max(nHeI, 1.0e-99_wp)
+       sec_heat_HI(il)   = heat_HI(il)   - (1.0_wp - fh)*heat_hard_HI(il)
+       sec_heat_HeI(il)  = heat_HeI(il)  - (1.0_wp - fh)*heat_hard_HeI(il)
+       sec_heat_HeII(il) = heat_HeII(il) - (1.0_wp - fh)*heat_hard_HeII(il)
+    end do
+  end subroutine secion_apply
 
   !=========================================================================
   subroutine gas_rates_write()
