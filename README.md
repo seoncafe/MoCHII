@@ -32,6 +32,10 @@ infrared dust/PAH spectrum.
   Voronov (1997) collisional ionization, and charge exchange; all atomic
   rates are fitted offline from CHIANTI and evaluated as closed forms at
   run time.  Adding an ion is a data operation, not a code operation.
+  Optional Shull & van Steenberg (1985) secondary ionization by fast
+  photoelectrons (`use_sec_ion`, for hard fields and partially neutral gas),
+  and net-charge-weighted metal free-free cooling (`metal_freefree`, on by
+  default).
 - **Diagnostics**: collisional line luminosities from n-level statistical
   equilibrium, Storey & Hummer (1995) H I recombination lines, the nebular
   continuum (free–bound, free–free, two-photon), and leaf-by-leaf line
