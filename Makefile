@@ -69,6 +69,7 @@ $(SRCDIR)/%.o: $(SRCDIR)/%.f90
 OBJS	= \
 	define.o \
 	random_mt.o \
+	qmc_mod.o \
 	utility.o \
 	memory_mod_mpi.o \
 	mathlib.o \

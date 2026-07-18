@@ -1,0 +1,50 @@
+&parameters
+ ! V1(d): diffuse-field Stromgren, ALIGNED grid (default), random launch.
+ ! random launch.  Task-0's binary-search bin mapping must reproduce the old
+ ! closed-form log-grid formula bin for bin -> HEAD vs NEW bit-identical.
+ ! H+He sphere with an interior ionization front (neutral shell where the
+ ! diffuse recombination photons act).
+
+ par%no_photons    = 1.5e6
+ par%no_print      = 1.5e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 32
+ par%ny            = 32
+ par%nz            = 32
+ par%xmax          = 2.0
+ par%ymax          = 2.0
+ par%zmax          = 2.0
+ par%nH_const      = 200.0
+ par%rmax          = 1.9
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 16
+ par%ion_align_edges = .true.
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+ par%luminosity    = 5.0e37
+
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.0
+ par%xHeII_init    = 1.0
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ par%gas_niter     = 20
+ par%gas_tol       = 3.0e-3
+ par%te_fixed      = 1.0e4
+ par%ion_relax     = 1.0
+ par%case_ab       = 'A'
+ par%diffuse_field = .true.
+ par%conv_crit     = 'vol'
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'tests/qmc/v1/v1d_diff_aligned.h5'
+/

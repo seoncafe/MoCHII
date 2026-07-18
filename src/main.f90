@@ -12,7 +12,10 @@ program main
   use setup_mod
   use grid_mod_amr
   use octree_mod,      only : amr_grid
-  use ion_band_mod,    only : ion_setup, gen_ion_photon, ion_Ltot
+  use ion_band_mod,    only : ion_setup, gen_ion_photon, gen_ion_photon_qmc, &
+                              ion_Ltot, ion_qmc_ndim
+  use qmc_mod,         only : qmc_uniforms, qmc_uniforms_stream, &
+                              QMC_MAXDIM, QMC_STREAM_DIFFUSE
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion
   use raytrace_amr_mod,only : transport_ion_packet
@@ -26,7 +29,7 @@ program main
   use species_mod,     only : species_setup, species_gamma_compute, &
                               n_elements, elem_nstage, elem_abund, elem_eth
   use diffuse_mod,     only : diffuse_build, gen_diffuse_photon, &
-                              diffuse_nphot, diffuse_lum
+                              gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum
   use memory_mod,      only : destroy_shared_mem_all
   use utility
   use mpi
@@ -36,8 +39,9 @@ program main
   type(photon_type)   :: photon
   integer(kind=int64) :: ip, n_done, n_step
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol
-  logical             :: converged, use_vol
-  integer             :: ierr, iter, niter
+  real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
+  logical             :: converged, use_vol, use_sobol
+  integer             :: ierr, iter, niter, nd_qmc
   !--- active metal photoionization thresholds gathered for the
   !--- threshold-aligned band (par%ion_align_edges).
   real(kind=wp), allocatable :: metal_eth(:)
@@ -86,6 +90,13 @@ program main
   !--- recomputed from zero each iteration (opacity changed).
   niter = max(par%gas_niter, 1)
   n_step = max(1_int64, int(par%nprint,int64)/mpar%nproc)
+  !--- quasi-random launch (single point source): the scrambled Sobol point is
+  !--- indexed by the GLOBAL photon number ip-1 (0-based), so the launch set is
+  !--- independent of the MPI task count and fixed across iterations.
+  use_sobol = trim(par%launch_sequence) == 'sobol'
+  !--- stellar launch dimension for this configuration (3 for a single point
+  !--- source, 7 for the fixed superset layout); the diffuse launch uses 9.
+  nd_qmc = ion_qmc_ndim()
   converged = .false.
   max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
@@ -96,7 +107,12 @@ program main
         dtime/60.0_wp, ' mins'
      n_done = 0
      do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
-        call gen_ion_photon(photon)
+        if (use_sobol) then
+           call qmc_uniforms(ip-1_int64, u_launch(1:nd_qmc))
+           call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc))
+        else
+           call gen_ion_photon(photon)
+        end if
         call transport_ion_packet(photon)
         n_done = n_done + 1
         if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
@@ -111,8 +127,16 @@ program main
         if (mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
            '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
            diffuse_nphot, ' packets'
+        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
+        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
+        !--- varies per iteration, and a Sobol prefix of any length is balanced.
         do ip = mpar%p_rank+1, diffuse_nphot, mpar%nproc
-           call gen_diffuse_photon(photon)
+           if (use_sobol) then
+              call qmc_uniforms_stream(ip-1_int64, u_launch(1:9), QMC_STREAM_DIFFUSE)
+              call gen_diffuse_photon_qmc(photon, u_launch(1:9))
+           else
+              call gen_diffuse_photon(photon)
+           end if
            call transport_ion_packet(photon)
         end do
      end if
@@ -203,14 +227,24 @@ program main
        if (mpar%p_rank == 0) write(6,'(a,f8.3,a)') &
           '---> imaging pass (peel-off)...  @ ', dtime/60.0_wp, ' mins'
        do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
-          call gen_ion_photon(photon)
+          if (use_sobol) then
+             call qmc_uniforms(ip-1_int64, u_launch(1:nd_qmc))
+             call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc))
+          else
+             call gen_ion_photon(photon)
+          end if
           call ion_peel_direct(photon)
           call transport_ion_packet(photon)
        end do
        if (par%diffuse_field) then
           call diffuse_build(ion_Ltot/real(par%nphotons, wp))
           do ip = mpar%p_rank+1, diffuse_nphot, mpar%nproc
-             call gen_diffuse_photon(photon)
+             if (use_sobol) then
+                call qmc_uniforms_stream(ip-1_int64, u_launch(1:9), QMC_STREAM_DIFFUSE)
+                call gen_diffuse_photon_qmc(photon, u_launch(1:9))
+             else
+                call gen_diffuse_photon(photon)
+             end if
              call ion_peel_direct(photon)
              call transport_ion_packet(photon)
           end do

@@ -34,8 +34,9 @@ module ion_band_mod
   implicit none
   private
 
-  public :: ion_setup, gen_ion_photon, ion_ext_preset_id
+  public :: ion_setup, gen_ion_photon, gen_ion_photon_qmc, ion_ext_preset_id
   public :: ion_e, ion_de, ion_nu, ion_dnu, ion_lum, ion_Ltot
+  public :: ion_eedge, ion_bin_of, ion_qmc_ndim
   public :: nnu_band, nfuv_band
 
   real(kind=wp), allocatable :: ion_e(:)     ! bin center [eV]
@@ -44,6 +45,11 @@ module ion_band_mod
   real(kind=wp), allocatable :: ion_dnu(:)   ! bin width  [Hz]
   real(kind=wp), allocatable :: ion_lum(:)   ! total bin luminosity (sum over components) [erg/s]
   real(kind=wp), allocatable :: ion_cdf(:)   ! sampling CDF over bins (single-component fast path)
+  !--- band bin EDGES [eV], size nnu_band+1, ascending.  The single source of
+  !--- truth for mapping a photon energy to a bin: filled at ion_setup for BOTH
+  !--- the aligned and the legacy-log grids (ion_bin_of does a binary search of
+  !--- it).  Ascending because energies increase with bin index.
+  real(kind=wp), allocatable, protected :: ion_eedge(:)
 
   !--- Source-component model.  The band is fed by par%nsource internal point
   !--- sources plus, independently, one external field (ON when
@@ -180,8 +186,51 @@ contains
        !======================== multi-component path ========================
        call setup_multi_components(eedge, nnu, nfuv, NSUB)
     end if
+    !--- keep the full band edge array (both grid types) as the one source of
+    !--- truth for the energy -> bin mapping (ion_bin_of).
+    if (allocated(ion_eedge)) deallocate(ion_eedge)
+    allocate(ion_eedge(nnu+1))
+    ion_eedge = eedge
     deallocate(eedge)
   end subroutine ion_setup
+
+  !=========================================================================
+  ! Bin index for a photon energy eph [eV]: the bin whose edges bracket eph
+  ! (ion_eedge(i) <= eph < ion_eedge(i+1)), so an energy exactly on a threshold
+  ! edge falls in the bin ABOVE that edge.  Binary search of ion_eedge, then
+  ! clamped to the ionizing bins [nfuv_band+1, nnu_band].  Used for the diffuse
+  ! recombination photons (all ionizing) on BOTH the aligned and the log grid.
+  !=========================================================================
+  integer function ion_bin_of(eph)
+    implicit none
+    real(kind=wp), intent(in) :: eph
+    integer :: lo, hi, mid
+    lo = 1;  hi = nnu_band
+    do while (lo < hi)
+       mid = (lo + hi + 1)/2
+       if (ion_eedge(mid) <= eph) then
+          lo = mid
+       else
+          hi = mid - 1
+       end if
+    end do
+    ion_bin_of = min(max(lo, nfuv_band+1), nnu_band)
+  end function ion_bin_of
+
+  !=========================================================================
+  ! Number of quasi-random launch dimensions consumed by the current source
+  ! configuration: 3 for a single internal point source (the stage-1 layout
+  ! u = (frequency, mu, phi)); 7 for the fixed superset layout used by every
+  ! other configuration (single external, multiple points, mixed).
+  !=========================================================================
+  integer function ion_qmc_ndim()
+    implicit none
+    if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
+       ion_qmc_ndim = 3
+    else
+       ion_qmc_ndim = 7
+    end if
+  end function ion_qmc_ndim
 
   !=========================================================================
   ! Multi-component band setup.  Builds one bin-luminosity array lum_c per
@@ -1324,6 +1373,94 @@ contains
   end subroutine gen_ion_photon
 
   !=========================================================================
+  ! Quasi-random ionizing launch.  The launch uniforms carry FIXED dimension
+  ! semantics so every packet consumes the same coordinate meaning
+  ! (docs/QUASI_RANDOM_LAUNCH.md).  Two layouts:
+  !
+  !  * SINGLE internal point source (stage-1, 3 dims) - preserved bit-for-bit:
+  !      u(1) -> frequency bin (ion_cdf inverse);  u(2) -> mu = 2u-1;
+  !      u(3) -> phi = 2 pi u.
+  !  * SUPERSET (7 dims) - every other configuration (single external,
+  !      multiple points, mixed):
+  !      u(1) source component (src_cdf; unused with one component);
+  !      u(2) frequency bin (the component's CDF);
+  !      u(3) polar / incidence angle;   u(4) azimuth;
+  !      u(5) rectangular entry face / sphere entry-point cos;
+  !      u(6) first surface coordinate / sphere entry-point azimuth;
+  !      u(7) second surface coordinate (rectangular only).
+  !
+  ! The emission expressions (isotropic point, Lambert external rec/sph, entry-
+  ! surface pick, nudges, from_external/snx..snz flags) mirror the legacy
+  ! gen_ion_photon path EXACTLY; only the uniforms are supplied instead of drawn.
+  ! No Mersenne Twister draw is consumed, so the launch set is indexed by the
+  ! global photon number and is independent of the MPI task count.
+  !=========================================================================
+  subroutine gen_ion_photon_qmc(photon, u)
+    use octree_mod, only : amr_find_leaf
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: u(:)
+    integer :: i, ic, ik
+
+    if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
+       !--- single point source: stage-1 layout (u1 = frequency).
+       call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
+                           u(2), u(3))
+       photon%inu = bin_from_cdf(ion_cdf, u(1))
+    else if (.not. multi_src) then
+       !--- single external component (nsource=0): superset angle/surface dims,
+       !--- frequency from the global CDF (u2).  d1 (component) is unused.
+       if (trim(par%source_geometry) == 'external_sph') then
+          call emit_external_sph_qmc(photon, u(3), u(4), u(5), u(6))
+       else
+          call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
+       end if
+       photon%inu = bin_from_cdf(ion_cdf, u(2))
+    else
+       !--- multi-component: pick a component (u1), emit from it, draw its bin.
+       ic = ncomp
+       do i = 1, ncomp
+          if (u(1) <= src_cdf(i)) then
+             ic = i;  exit
+          end if
+       end do
+       ik = comp_kind(ic)
+       if (ik >= 1) then
+          call emit_point_qmc(photon, par%src_x(ik), par%src_y(ik), &
+                              par%src_z(ik), u(3), u(4))
+       else if (trim(par%ext_geometry) == 'sph') then
+          call emit_external_sph_qmc(photon, u(3), u(4), u(5), u(6))
+       else
+          call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
+       end if
+       photon%inu = bin_from_cdf(ion_cdf_src(:,ic), u(2))
+    end if
+
+    photon%wgt     = 1.0_wp
+    photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
+    photon%nscatt  = 0
+    photon%inside  = .true.
+    photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)
+  end subroutine gen_ion_photon_qmc
+
+  !=========================================================================
+  ! Frequency bin from a monotone CDF and a launch uniform uf: the smallest bin
+  ! i with uf <= cdf(i).  Same linear inverse as gen_ion_photon.
+  !=========================================================================
+  integer function bin_from_cdf(cdf, uf) result(inu)
+    implicit none
+    real(kind=wp), intent(in) :: cdf(:)
+    real(kind=wp), intent(in) :: uf
+    integer :: i
+    inu = nnu_band
+    do i = 1, nnu_band
+       if (uf <= cdf(i)) then
+          inu = i;  exit
+       end if
+    end do
+  end function bin_from_cdf
+
+  !=========================================================================
   ! Emit an internal point source at (xs,ys,zs) with an isotropic 4pi
   ! direction.
   !=========================================================================
@@ -1461,6 +1598,146 @@ contains
     photon%y = photon%y - nudge*rhy
     photon%z = photon%z - nudge*rhz
   end subroutine emit_external_sph
+
+  !=========================================================================
+  ! Quasi-random emit helpers.  Each mirrors its legacy counterpart EXACTLY
+  ! (same expressions, frames, nudges, from_external/snx..snz flags) with the
+  ! Mersenne Twister draws replaced by the supplied launch uniforms.  The
+  ! legacy routines are left untouched.
+  !=========================================================================
+
+  !--- isotropic internal point source at (xs,ys,zs): mu = 2 u_mu - 1,
+  !--- phi = 2 pi u_phi (matches emit_point).
+  subroutine emit_point_qmc(photon, xs, ys, zs, u_mu, u_phi)
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: xs, ys, zs, u_mu, u_phi
+    real(kind=wp) :: cost, sint, phi
+    photon%from_external = .false.
+    photon%x = xs
+    photon%y = ys
+    photon%z = zs
+    cost = 2.0_wp*u_mu - 1.0_wp
+    sint = sqrt(1.0_wp - cost*cost)
+    phi  = twopi*u_phi
+    photon%kx = sint*cos(phi)
+    photon%ky = sint*sin(phi)
+    photon%kz = cost
+  end subroutine emit_point_qmc
+
+  !--- isotropic external field entering the box faces (matches
+  !--- emit_external_rec): u_face -> area-weighted entry face, u_mu -> Lambert
+  !--- incidence mu = sqrt(u_mu), u_phi -> incidence azimuth, u_c1/u_c2 -> the
+  !--- two in-face coordinates (in the same positions rand_number() appeared).
+  subroutine emit_external_rec_qmc(photon, u_mu, u_phi, u_face, u_c1, u_c2)
+    use octree_mod, only : amr_grid
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: u_mu, u_phi, u_face, u_c1, u_c2
+    real(kind=wp) :: mu, sinm, phi, cphi, sphi, nudge, span
+    real(kind=wp) :: farea(6), fcum(6), fpick
+    integer :: i, iface
+    span  = min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)
+    nudge = 1.0e-6_wp * span
+    farea(1) = amr_grid%yrange*amr_grid%zrange     ! +x face
+    farea(2) = farea(1)                            ! -x face
+    farea(3) = amr_grid%zrange*amr_grid%xrange     ! +y face
+    farea(4) = farea(3)                            ! -y face
+    farea(5) = amr_grid%xrange*amr_grid%yrange     ! +z face
+    farea(6) = farea(5)                            ! -z face
+    fcum(1) = farea(1)
+    do i = 2, 6
+       fcum(i) = fcum(i-1) + farea(i)
+    end do
+    fpick = u_face*fcum(6)
+    iface = 6
+    do i = 1, 6
+       if (fpick <= fcum(i)) then
+          iface = i;  exit
+       end if
+    end do
+    mu   = sqrt(u_mu)                       ! cos(angle from inward normal)
+    sinm = sqrt(1.0_wp - mu*mu)
+    phi  = twopi*u_phi
+    cphi = cos(phi);  sphi = sin(phi)
+    photon%from_external = .true.
+    select case (iface)
+    case (1)   ! +x face, inward normal (-1,0,0)
+       photon%x = amr_grid%xmax - nudge
+       photon%y = amr_grid%ymin + amr_grid%yrange*u_c1
+       photon%z = amr_grid%zmin + amr_grid%zrange*u_c2
+       photon%kx = -mu;  photon%ky = sinm*cphi;  photon%kz = sinm*sphi
+       photon%snx = -1.0_wp;  photon%sny = 0.0_wp;  photon%snz = 0.0_wp
+    case (2)   ! -x face, inward normal (+1,0,0)
+       photon%x = amr_grid%xmin + nudge
+       photon%y = amr_grid%ymin + amr_grid%yrange*u_c1
+       photon%z = amr_grid%zmin + amr_grid%zrange*u_c2
+       photon%kx =  mu;  photon%ky = sinm*cphi;  photon%kz = sinm*sphi
+       photon%snx =  1.0_wp;  photon%sny = 0.0_wp;  photon%snz = 0.0_wp
+    case (3)   ! +y face, inward normal (0,-1,0)
+       photon%x = amr_grid%xmin + amr_grid%xrange*u_c1
+       photon%y = amr_grid%ymax - nudge
+       photon%z = amr_grid%zmin + amr_grid%zrange*u_c2
+       photon%kx = sinm*cphi;  photon%ky = -mu;  photon%kz = sinm*sphi
+       photon%snx = 0.0_wp;  photon%sny = -1.0_wp;  photon%snz = 0.0_wp
+    case (4)   ! -y face, inward normal (0,+1,0)
+       photon%x = amr_grid%xmin + amr_grid%xrange*u_c1
+       photon%y = amr_grid%ymin + nudge
+       photon%z = amr_grid%zmin + amr_grid%zrange*u_c2
+       photon%kx = sinm*cphi;  photon%ky =  mu;  photon%kz = sinm*sphi
+       photon%snx = 0.0_wp;  photon%sny =  1.0_wp;  photon%snz = 0.0_wp
+    case (5)   ! +z face, inward normal (0,0,-1)
+       photon%x = amr_grid%xmin + amr_grid%xrange*u_c1
+       photon%y = amr_grid%ymin + amr_grid%yrange*u_c2
+       photon%z = amr_grid%zmax - nudge
+       photon%kx = sinm*cphi;  photon%ky = sinm*sphi;  photon%kz = -mu
+       photon%snx = 0.0_wp;  photon%sny = 0.0_wp;  photon%snz = -1.0_wp
+    case (6)   ! -z face, inward normal (0,0,+1)
+       photon%x = amr_grid%xmin + amr_grid%xrange*u_c1
+       photon%y = amr_grid%ymin + amr_grid%yrange*u_c2
+       photon%z = amr_grid%zmin + nudge
+       photon%kx = sinm*cphi;  photon%ky = sinm*sphi;  photon%kz =  mu
+       photon%snx = 0.0_wp;  photon%sny = 0.0_wp;  photon%snz =  1.0_wp
+    end select
+  end subroutine emit_external_rec_qmc
+
+  !--- isotropic external field entering a bounding sphere (matches
+  !--- emit_external_sph): u_cost/u_saz -> uniform entry point on the sphere,
+  !--- u_mu -> Lambert incidence mu = sqrt(u_mu), u_phi -> incidence azimuth.
+  subroutine emit_external_sph_qmc(photon, u_mu, u_phi, u_cost, u_saz)
+    use octree_mod, only : amr_grid
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: u_mu, u_phi, u_cost, u_saz
+    real(kind=wp) :: cost, sint, phi, mu, sinm, cphi, sphi, nudge
+    real(kind=wp) :: xc, yc, zc, rhx, rhy, rhz
+    real(kind=wp) :: tx, ty, tz, bx, by, bz
+    xc = 0.5_wp*(amr_grid%xmin + amr_grid%xmax)
+    yc = 0.5_wp*(amr_grid%ymin + amr_grid%ymax)
+    zc = 0.5_wp*(amr_grid%zmin + amr_grid%zmax)
+    cost = 2.0_wp*u_cost - 1.0_wp           ! uniform point on the unit sphere
+    sint = sqrt(1.0_wp - cost*cost)
+    phi  = twopi*u_saz
+    rhx = sint*cos(phi);  rhy = sint*sin(phi);  rhz = cost   ! outward radial
+    photon%x = xc + par%rmax*rhx
+    photon%y = yc + par%rmax*rhy
+    photon%z = zc + par%rmax*rhz
+    !--- orthonormal frame (t,b) perpendicular to the inward normal -rhat.
+    call ortho_frame(-rhx, -rhy, -rhz, tx, ty, tz, bx, by, bz)
+    mu   = sqrt(u_mu)
+    sinm = sqrt(1.0_wp - mu*mu)
+    phi  = twopi*u_phi
+    cphi = cos(phi);  sphi = sin(phi)
+    photon%kx = -mu*rhx + sinm*(cphi*tx + sphi*bx)
+    photon%ky = -mu*rhy + sinm*(cphi*ty + sphi*by)
+    photon%kz = -mu*rhz + sinm*(cphi*tz + sphi*bz)
+    photon%from_external = .true.
+    photon%snx = -rhx;  photon%sny = -rhy;  photon%snz = -rhz   ! inward normal
+    nudge = 1.0e-6_wp * min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)
+    photon%x = photon%x - nudge*rhx      ! nudge strictly inside the sphere
+    photon%y = photon%y - nudge*rhy
+    photon%z = photon%z - nudge*rhz
+  end subroutine emit_external_sph_qmc
 
   !=========================================================================
   ! Orthonormal frame: given a unit vector n = (nx,ny,nz), return two unit

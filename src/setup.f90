@@ -308,6 +308,19 @@ contains
     if (len_trim(par%src_spectrum_file) > 0 .and. par%nsource == 0 &
         .and. mpar%p_rank == 0) write(*,'(a)') &
        'NOTE: par%src_spectrum_file is ignored on an external-only run (nsource=0).'
+
+    !--- launch sequence: 'random' (Mersenne Twister) or 'sobol' (Owen-
+    !--- scrambled quasi-random launch).  'sobol' now covers every source
+    !--- configuration - single point, single external (rec/sph), multiple
+    !--- points, and mixed point+external - through the fixed superset launch
+    !--- dimension layout; the diffuse packets ride a second decorrelated Sobol
+    !--- stream; the dust-scattering / SED draws keep the Mersenne Twister.
+    if (trim(par%launch_sequence) /= 'random' .and. &
+        trim(par%launch_sequence) /= 'sobol') then
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: par%launch_sequence must be ''random'' (default) or ''sobol''.'
+       call MPI_FINALIZE(ierr);  stop
+    endif
   end block
 
   !--- general parameter sanity (fail fast rather than run on nonsense).
@@ -402,6 +415,9 @@ contains
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
+     write(*,'(2a)')    'Photon launch sequence    : ', trim(par%launch_sequence)
+     if (trim(par%launch_sequence) == 'sobol') &
+        write(*,'(a,i14)') 'QMC scramble seed         : ', par%qmc_seed
   endif
   end subroutine read_input
 
@@ -409,10 +425,13 @@ contains
   subroutine setup_procedure
   use define
   use random, only : init_random_seed
+  use qmc_mod, only : qmc_setup
   use raytrace_amr_mod
   implicit none
   !--- Initialize Random Number Generator
   call init_random_seed(par%iseed)
+  !--- Quasi-random launch generator (used only when launch_sequence='sobol').
+  call qmc_setup(par%qmc_seed)
   !--- AMR raytrace bindings (the ionizing edge walk is called directly).
   raytrace_to_tau  => raytrace_to_tau_amr
   raytrace_to_edge => raytrace_to_edge_amr

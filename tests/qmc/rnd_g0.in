@@ -1,0 +1,27 @@
+&parameters
+ par%no_photons    = 1048576
+ par%no_print      = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g0_gamma/amr_sphere_L5.fits'
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 16
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 1.0e5
+ par%luminosity    = 1.0e38
+
+ par%xHI_init      = 0.1
+ par%xHeI_init     = 1.0
+ par%xHeII_init    = 0.0
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/qmc/v1_new.h5'
+/

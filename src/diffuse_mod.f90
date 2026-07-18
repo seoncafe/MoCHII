@@ -27,7 +27,8 @@ module diffuse_mod
   implicit none
   private
 
-  public :: diffuse_build, gen_diffuse_photon, diffuse_nphot, diffuse_lum
+  public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
+            diffuse_nphot, diffuse_lum
 
   real(kind=wp), allocatable :: dif_cdf(:)      ! leaf CDF (total energy)
   real(kind=wp), allocatable :: dif_ch(:,:)     ! (4, nleaf) channel luminosities
@@ -113,11 +114,11 @@ contains
   !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
-    use ion_band_mod, only : ion_e, ion_de, ion_Ltot, nnu_band
+    use ion_band_mod, only : ion_Ltot, ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
-    integer :: lo, hi, mid, il, ic, ch, inu
+    integer :: lo, hi, mid, il, ic, ch
 
     !--- leaf from the CDF (binary search)
     u = rand_number()
@@ -176,17 +177,12 @@ contains
        end if
     end if
 
-    !--- bin index (log-uniform IONIZING segment: recombination photons
-    !--- all carry eph >= the channel threshold > eion_min, so with the
-    !--- FUV extension the first par%nnu_fuv bins are simply offset).
-    block
-      integer :: nfuv, nion
-      nfuv = merge(par%nnu_fuv, 0, par%add_fuv)
-      nion = par%nnu_ion
-      inu  = nfuv + int(real(nion,wp)*log(eph/par%eion_min) &
-             / log(par%eion_max/par%eion_min)) + 1
-      photon%inu = min(max(inu, nfuv+1), nnu_band)
-    end block
+    !--- bin index by binary search of the band edges (the one source of truth
+    !--- for BOTH the aligned and the legacy-log grid; recombination photons all
+    !--- carry eph >= the channel threshold > eion_min, so they land in the
+    !--- ionizing segment).  The old closed-form log formula assumed a pure
+    !--- log grid and mis-binned under par%ion_align_edges.
+    photon%inu = ion_bin_of(eph)
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
@@ -195,5 +191,91 @@ contains
     photon%from_external = .false.      ! diffuse packets peel isotropically
     photon%icell_amr = il
   end subroutine gen_diffuse_photon
+
+  !=========================================================================
+  ! Quasi-random diffuse launch.  Nine launch uniforms with FIXED dimension
+  ! semantics (docs/QUASI_RANDOM_LAUNCH.md), from the diffuse scramble stream:
+  !   u(1)   emitting leaf (dif_cdf inverse);
+  !   u(2-4) uniform position within the leaf;
+  !   u(5)   mu = 2u-1;                 u(6) phi = 2 pi u;
+  !   u(7)   emission channel (dif_ch inverse over the 4 channels);
+  !   u(8)   first energy variate: channels 1-3 the Exp(1) via -log(u);
+  !          channel 4 the He I decay-branch pick;
+  !   u(9)   second energy variate: the He I two-photon flat energy (else unused).
+  ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
+  !=========================================================================
+  subroutine gen_diffuse_photon_qmc(photon, u)
+    use ion_band_mod, only : ion_Ltot, ion_bin_of
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: u(:)
+    real(kind=wp) :: uu, cost, sint, phi, half, eph, kT_eV, w(4), ub
+    integer :: lo, hi, mid, il, ch
+
+    !--- leaf from the CDF (binary search)
+    uu = u(1)
+    lo = 1;  hi = gas_nleaf
+    do while (lo < hi)
+       mid = (lo + hi)/2
+       if (dif_cdf(mid) < uu) then
+          lo = mid + 1
+       else
+          hi = mid
+       end if
+    end do
+    il = lo
+    half = leaf_half(il)
+
+    !--- uniform position within the leaf
+    photon%x = leaf_cx(il) + (2.0_wp*u(2) - 1.0_wp)*half
+    photon%y = leaf_cy(il) + (2.0_wp*u(3) - 1.0_wp)*half
+    photon%z = leaf_cz(il) + (2.0_wp*u(4) - 1.0_wp)*half
+
+    cost = 2.0_wp*u(5) - 1.0_wp
+    sint = sqrt(1.0_wp - cost*cost)
+    phi  = twopi*u(6)
+    photon%kx = sint*cos(phi)
+    photon%ky = sint*sin(phi)
+    photon%kz = cost
+
+    !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1);
+    !--- the He I excited channel (4) samples its decay branch by energy
+    !--- luminosity (fixed line energies; the two-photon branch flat energy).
+    w = dif_ch(:,il)
+    uu = u(7)*sum(w)
+    if (uu <= w(1)) then
+       ch = 1;  eph = eth_HI
+    else if (uu <= w(1) + w(2)) then
+       ch = 2;  eph = eth_HeI
+    else if (uu <= w(1) + w(2) + w(3)) then
+       ch = 3;  eph = eth_HeII
+    else
+       ch = 4
+    end if
+    if (ch <= 3) then
+       kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
+       eph = eph + kT_eV*(-log(max(u(8), tinest)))
+       eph = min(eph, par%eion_max*0.999_wp)
+    else
+       ub = u(8)*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
+                 + HEI_F1S*HEI_P2PH*HEI_E1S )
+       if (ub <= HEI_F3S*HEI_E3S) then
+          eph = HEI_E3S
+       else if (ub <= HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P) then
+          eph = HEI_E1P
+       else
+          eph = eth_HI + u(9)*(HEI_E2PH - eth_HI)
+       end if
+    end if
+
+    photon%inu = ion_bin_of(eph)
+
+    photon%wgt     = 1.0_wp
+    photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
+    photon%nscatt  = 0
+    photon%inside  = .true.
+    photon%from_external = .false.      ! diffuse packets peel isotropically
+    photon%icell_amr = il
+  end subroutine gen_diffuse_photon_qmc
 
 end module diffuse_mod

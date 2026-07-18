@@ -157,6 +157,13 @@ public
      real(kind=wp)       :: no_photons = 1e5
      real(kind=wp)       :: no_print   = 1e7
      integer       :: iseed        = 0
+     !--- photon launch sequence: 'random' (default, Mersenne Twister) or
+     !--- 'sobol' (Owen-scrambled Sobol quasi-random launch of a single
+     !--- internal point source; frequency/cos theta/phi only, transport and
+     !--- diffuse/scattering draws stay on the Mersenne Twister).  qmc_seed
+     !--- selects the scramble; a different seed is an independent replicate.
+     character(len=16) :: launch_sequence = 'random'
+     integer           :: qmc_seed        = 12345
      !--- ionizing-band luminosity [erg/s] of the primary source (a point
      !--- source, or the informational total with several).  Sentinel -999 =
      !--- unset: setup maps it to 1.0 for a 'shape'/Planck source (exact legacy)
