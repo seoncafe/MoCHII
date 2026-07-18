@@ -15,7 +15,7 @@ program main
   use ion_band_mod,    only : ion_setup, gen_ion_photon, gen_ion_photon_qmc, &
                               ion_Ltot, ion_qmc_ndim
   use qmc_mod,         only : qmc_uniforms, qmc_uniforms_stream, &
-                              QMC_MAXDIM, QMC_STREAM_DIFFUSE
+                              QMC_MAXDIM, QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion
   use raytrace_amr_mod,only : transport_ion_packet
@@ -113,6 +113,8 @@ program main
         else
            call gen_ion_photon(photon)
         end if
+        photon%id      = ip
+        photon%istream = QMC_STREAM_STELLAR
         call transport_ion_packet(photon)
         n_done = n_done + 1
         if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
@@ -137,6 +139,8 @@ program main
            else
               call gen_diffuse_photon(photon)
            end if
+           photon%id      = ip
+           photon%istream = QMC_STREAM_DIFFUSE
            call transport_ion_packet(photon)
         end do
      end if
@@ -233,6 +237,8 @@ program main
           else
              call gen_ion_photon(photon)
           end if
+          photon%id      = ip
+          photon%istream = QMC_STREAM_STELLAR
           call ion_peel_direct(photon)
           call transport_ion_packet(photon)
        end do
@@ -245,6 +251,8 @@ program main
              else
                 call gen_diffuse_photon(photon)
              end if
+             photon%id      = ip
+             photon%istream = QMC_STREAM_DIFFUSE
              call ion_peel_direct(photon)
              call transport_ion_packet(photon)
           end do

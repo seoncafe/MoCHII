@@ -128,6 +128,21 @@ public
      !--- inward normal), not the isotropic 1/(4 pi) of a point/diffuse source.
      real(kind=wp) :: snx = 0.0_wp, sny = 0.0_wp, snz = 1.0_wp
      logical       :: from_external = .false.
+     !--- MoCHII: the packet's own label, set at emission in main.f90.
+     !--- id is the GLOBAL launch index (counting from 1) within its stream,
+     !--- and istream says which loop emitted it, using the same numbering as
+     !--- qmc_mod (QMC_STREAM_STELLAR = 1, QMC_STREAM_DIFFUSE = 2), so the
+     !--- pair (id, istream) is a unique packet label: the stellar and diffuse
+     !--- loops each run their own counter and would otherwise collide.
+     !--- Nothing in the transport reads them yet.  They exist so that a
+     !--- routine deep in a packet history can identify its own photon without
+     !--- threading the loop index through every call signature -- the
+     !--- prerequisite for reserving quasi-random dimensions for scattering
+     !--- orders, and for a counter-based generator keyed by (id, istream),
+     !--- which would make a scattering run reproducible across MPI task
+     !--- counts (today only the launch is task-count independent).
+     integer(kind=int64) :: id      = 0
+     integer             :: istream = 0
      ! Stokes parameters
      real(kind=wp) :: I,Q,U,V
   end type photon_type
