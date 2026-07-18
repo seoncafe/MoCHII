@@ -19,7 +19,11 @@ infrared dust/PAH spectrum.
   Planck or tabulated source spectra, an analytic zero-variance estimator
   for the direct field, explicit diffuse recombination packets (case A) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
-  in the band.
+  in the band.  Optional quasi-random launch (`launch_sequence='sobol'`,
+  Owen-scrambled Sobol) for the stellar and diffuse packets — the
+  launch set is independent of the MPI task count and the direct-field
+  error scales as 1/N (effective photon gains of 29–222x measured on the
+  analytic gate); see `docs/MoCHII_QMC.pdf`.
 - **Sources**: any number of internal point sources, each with its own
   luminosity and spectrum (Planck temperatures or one multi-column
   spectrum file), plus — independently or in combination — an isotropic
@@ -101,4 +105,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-17 15:32 KST
+Last updated: 2026-07-18 17:20 KST
