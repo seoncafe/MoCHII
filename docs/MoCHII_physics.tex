@@ -766,12 +766,17 @@ $(10^4\,{\rm K}, 10^4\,{\rm cm^{-3}})$
 $= \alpha^{\rm eff}_{4686}(3.57{\times}10^{-13})\,h\nu$, and
 $1640/4686 = 6.56$ there.
 
-He\,\textsc{i} recombination lines use the same interpolator (a third
+He\,\textsc{i} lines use the same interpolator (a third
 table in \code{sh95\_mod}) but a different source: the Porter et al.\
 (2012, 2013) case-B emissivities, parsed by \code{make\_hei\_lines.py}
 from Cloudy c23.01's \code{he1\_case\_b.dat} (copied into
-\code{data/atomic}) onto a $21 \times 14$ $(T, n_e)$ grid.  Eight
-H\,\textsc{ii}-region diagnostics are exported
+\code{data/atomic}) onto a $21 \times 14$ $(T, n_e)$ grid.  Unlike the
+H\,\textsc{i} and He\,\textsc{ii} tables, these are case-B
+collisional-radiative TOTALS, not pure recombination cascades: the
+tabulated $4\pi j/(n_e n_{\rm He^+})$ is density-dependent (the 10830~\AA\
+coefficient rises 6.6x from $n_e = 10$ to $10^4$~cm$^{-3}$ at $10^4$~K)
+because it already includes collisional excitation out of the 2$^3$S
+metastable.  Eight H\,\textsc{ii}-region diagnostics are exported
 (3889, 4026, 4471, 5876, 6678, 7065, 7281, 10830~\AA, air), weighted in
 the line table by $n_e n_{\rm HeII}$ (He$^+$ recombining).  Emergent
 ratios are physical: $5876/4471 = 2.88$, $6678/4471 = 0.82$,

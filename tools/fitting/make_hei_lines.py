@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""He I case-B recombination line emissivities (Porter et al. 2012, 2013).
+"""He I case-B collisional-radiative line emissivities (Porter et al. 2012, 2013).
+
+These are full case-B collisional-radiative totals, not pure recombination
+cascades: the tabulated 4 pi j / (n_e n_He+) is density-dependent because it
+already includes collisional excitation out of the 2^3S metastable (the 10830
+coefficient rises 6.6x from n_e=10 to n_e=1e4 cm^-3 at 1e4 K).
 
 Parse Cloudy c23.01's data/he1_case_b.dat (the Porter grid: log10 of
 4 pi j / (n_e n_He+) [erg cm^3 s^-1] on a 21-T x 14-n_e grid) and write the
@@ -68,8 +73,8 @@ def main():
             j += 1
 
     with open(OUT, "w") as fh:
-        fh.write("# He I case-B recombination line emissivities "
-                 "4 pi j / (n_e n_He+) [erg cm^3 s^-1]\n")
+        fh.write("# He I case-B collisional-radiative line emissivities "
+                 "4 pi j / (n_e n_He+) [erg cm^3 s^-1] (density-dependent)\n")
         fh.write("# Porter et al. (2012 ApJL 756 L14; 2013 erratum), from "
                  "Cloudy c23.01 data/he1_case_b.dat; parsed by "
                  "tools/fitting/make_hei_lines.py\n")

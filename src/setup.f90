@@ -106,6 +106,13 @@ contains
            'ERROR: grid_type=''car'' without par%amr_file needs par%xmax>0 and '// &
            'par%nx>=2 (par%nx>=1 allowed with par%xy_periodic).'
         call MPI_FINALIZE(ierr);  stop
+     else if (par%ny < 1 .or. par%nz < 1 .or. &
+              par%ymax <= 0.0_wp .or. par%zmax <= 0.0_wp) then
+        !--- the remaining namelist-built dimensions must be positive.
+        if (mpar%p_rank == 0) write(*,'(a)') &
+           'ERROR: grid_type=''car'' without par%amr_file needs par%ny>=1, '// &
+           'par%nz>=1, par%ymax>0, and par%zmax>0.'
+        call MPI_FINALIZE(ierr);  stop
      end if
   endif
   if (trim(par%grid_type) == 'car' .and. par%refine_front) then
@@ -208,6 +215,56 @@ contains
            (trim(par%slab_bot_mode) /= 'beam' .and. trim(par%slab_bot_mode) /= 'isotropic')) then
           if (mpar%p_rank == 0) write(*,'(a)') &
              'ERROR: par%slab_top_mode / slab_bot_mode must be ''beam'' or ''isotropic''.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       block
+         logical :: ltop, lbot
+         ltop = trim(par%slab_faces) == 'top'    .or. trim(par%slab_faces) == 'both'
+         lbot = trim(par%slab_faces) == 'bottom' .or. trim(par%slab_faces) == 'both'
+         !--- a beam incidence angle theta -> 90 deg gives mu = cos theta -> 0,
+         !--- so kz -> 0 and the packet would wrap the periodic x/y faces without
+         !--- ever reaching a z-face.  Require 0 <= theta < 90 on each lit beam face.
+         if (ltop .and. trim(par%slab_top_mode) == 'beam' .and. &
+             (par%slab_top_theta < 0.0_wp .or. par%slab_top_theta >= 90.0_wp)) then
+            if (mpar%p_rank == 0) write(*,'(a)') &
+               'ERROR: par%slab_top_theta must be in [0, 90) degrees for a beam.'
+            call MPI_FINALIZE(ierr);  stop
+         endif
+         if (lbot .and. trim(par%slab_bot_mode) == 'beam' .and. &
+             (par%slab_bot_theta < 0.0_wp .or. par%slab_bot_theta >= 90.0_wp)) then
+            if (mpar%p_rank == 0) write(*,'(a)') &
+               'ERROR: par%slab_bot_theta must be in [0, 90) degrees for a beam.'
+            call MPI_FINALIZE(ierr);  stop
+         endif
+         !--- each lit face must carry a positive source strength on its own (a
+         !--- negative one could hide behind a positive one in the sum and push
+         !--- slab_ptop outside [0, 1]).
+         if (ltop .and. par%slab_top_source <= 0.0_wp) then
+            if (mpar%p_rank == 0) write(*,'(a)') &
+               'ERROR: par%slab_top_source must be > 0 on the lit top face.'
+            call MPI_FINALIZE(ierr);  stop
+         endif
+         if (lbot .and. par%slab_bot_source <= 0.0_wp) then
+            if (mpar%p_rank == 0) write(*,'(a)') &
+               'ERROR: par%slab_bot_source must be > 0 on the lit bottom face.'
+            call MPI_FINALIZE(ierr);  stop
+         endif
+       end block
+       if (par%slab_nmu < 1) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: par%slab_nmu must be >= 1.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       !--- slab illumination is its own single source; composing it with
+       !--- internal point sources or an external field is not yet supported.
+       !--- nsource defaults to 1, so only nsource > 1 (or an external field)
+       !--- signals an explicit extra-source request; nsource <= 1 is silently
+       !--- overridden by the slab below.
+       if (par%nsource > 1 .or. par%ext_intensity > 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: source_geometry=''slab'' cannot be combined with internal '// &
+             'point sources (par%nsource > 1) or an external field '// &
+             '(par%ext_intensity > 0); slab+other-source composition is not yet supported.'
           call MPI_FINALIZE(ierr);  stop
        endif
        par%nsource = 0

@@ -1,4 +1,4 @@
-# He I case-B recombination line emissivities 4 pi j / (n_e n_He+) [erg cm^3 s^-1]
+# He I case-B collisional-radiative line emissivities 4 pi j / (n_e n_He+) [erg cm^3 s^-1] (density-dependent)
 # Porter et al. (2012 ApJL 756 L14; 2013 erratum), from Cloudy c23.01 data/he1_case_b.dat; parsed by tools/fitting/make_hei_lines.py
 # air wavelengths (Cloudy convention); grid: NT temperatures [K], ND densities [cm^-3]; then LINE label nu nl lambda[A], NT x ND values (T rows, n_e columns)
 GRID 21 14

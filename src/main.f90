@@ -20,7 +20,7 @@ program main
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion, &
                               slab_tally_setup, slab_tally_reduce, &
                               slab_write_Imu, slab_tally_on, slab_Iesc
-  use raytrace_amr_mod,only : transport_ion_packet
+  use raytrace_amr_mod,only : transport_ion_packet, slab_walk_report
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
                               secion_apply, &
                               run_converged, run_iters, run_final_dx, &
@@ -84,8 +84,14 @@ program main
   deallocate(metal_eth)
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
-  if (trim(par%source_geometry) == 'slab') &
-     call slab_tally_setup(par%slab_nmu, ion_Ltot)
+  if (trim(par%source_geometry) == 'slab') then
+     block
+       logical :: ltop, lbot
+       ltop = trim(par%slab_faces) == 'top'    .or. trim(par%slab_faces) == 'both'
+       lbot = trim(par%slab_faces) == 'bottom' .or. trim(par%slab_faces) == 'both'
+       call slab_tally_setup(par%slab_nmu, ion_Ltot, [ltop, lbot])
+     end block
+  end if
   if (par%solve_te) call cooling_setup()
 
   !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
@@ -281,6 +287,7 @@ program main
   end if
   call gas_rates_write()
   if (slab_tally_on) then
+     call slab_walk_report()
      call slab_tally_reduce()
      block
        use utility, only : get_base_name

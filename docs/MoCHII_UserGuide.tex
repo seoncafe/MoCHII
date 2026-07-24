@@ -539,7 +539,8 @@ block & source & lines & weighting, when present \\
 \code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{case\_ab}) &
   1640, 3204, 4543, 4686, 5413, 10126 & only where an He\,\textsc{iii}
   zone exists; $n_e\,n_{\rm HeIII}$ \\
-\code{emis\_hei} & Porter et al.\ (2012/2013) He\,\textsc{i}, case B &
+\code{emis\_hei} & Porter et al.\ (2012/2013) He\,\textsc{i}, case-B
+  collisional-radiative (density-dependent) &
   3889, 4026, 4471, 5876, 6678, 7065, 7281, 10830 & where He\,\textsc{ii}
   is present; $n_e\,n_{\rm HeII}$ \\
 \code{emis\_hc} & 25-level H\,\textsc{i} collisional solve &
@@ -548,7 +549,9 @@ block & source & lines & weighting, when present \\
 \bottomrule
 \end{longtable}
 \endgroup
-\noindent\small The He\,\textsc{i} Porter table is case B only; under case A
+\noindent\small The He\,\textsc{i} Porter table is a case-B
+collisional-radiative total (density-dependent; it already includes
+collisional excitation from the 2$^3$S metastable), case B only; under case A
 a note is printed and the H\,\textsc{i}/He\,\textsc{ii} tables switch to
 case A while He\,\textsc{i} stays case B.\normalsize
 

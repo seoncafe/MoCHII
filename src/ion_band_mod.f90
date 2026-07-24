@@ -1278,7 +1278,16 @@ contains
     real(kind=wp), intent(in) :: Lion, Jband, uFUV
     logical,       intent(in) :: derived
     call band_log(nnu, nfuv)
-    if (par%nsource == 0) then
+    if (trim(par%source_geometry) == 'slab') then
+       !--- plane-parallel slab: slab_setup already logged the faces, F_z, and
+       !--- L_slab; here we only report the spectrum shape.
+       if (len_trim(par%ion_spectrum) > 0) then
+          write(*,'(4a)') ' ION: spectrum file = ', trim(par%ion_spectrum), &
+             ',  type = ', trim(par%spectrum_type)
+       else
+          write(*,'(a,es12.4)') ' ION: Planck spectrum, tstar [K] = ', par%tstar
+       end if
+    else if (par%nsource == 0) then
        !--- external-only field.
        if (presid > 0) then
           write(*,'(3a,es12.4)') ' ION: external ISRF preset = ', &
@@ -1722,7 +1731,10 @@ contains
     end if
 
     if (slab_mode(f) == 1) then
-       mu = sqrt(rand_number())               ! isotropic: Lambert incidence
+       !--- Lambert incidence; floor mu away from 0 so kz is never exactly 0
+       !--- (a grazing ray would wrap the periodic x/y faces without escaping
+       !--- in z).  This removes only a measure-zero direction.
+       mu = max(sqrt(rand_number()), 1.0e-6_wp)
        ph = twopi*rand_number()
     else
        mu = slab_mu(f)                         ! beam: fixed incidence
@@ -1762,7 +1774,7 @@ contains
        photon%z = amr_grid%zmin + nudge
     end if
     if (slab_mode(f) == 1) then
-       mu = sqrt(u_mu);  ph = twopi*u_phi
+       mu = max(sqrt(u_mu), 1.0e-6_wp);  ph = twopi*u_phi   ! floored (see emit_slab)
     else
        mu = slab_mu(f);  ph = slab_phi(f)
     end if

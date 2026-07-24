@@ -167,8 +167,11 @@ contains
        end block
     end if
 
-    !--- He I recombination lines (Porter case B; emitted by He+ recombining,
-    !--- so the luminosities weight n_e n_HeII).
+    !--- He I lines (Porter case-B collisional-radiative emissivities: the
+    !--- table already includes collisional excitation out of the 2^3S
+    !--- metastable, so it is density-dependent, not a pure recombination
+    !--- cascade; luminosities weight n_e n_HeII, He+ setting the triplet
+    !--- reservoir through recombination).
     if (sh95_nlines(ion=3) > 0) then
        block
          real(kind=wp) :: LHe1(12), wlhe1(12)

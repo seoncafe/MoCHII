@@ -26,10 +26,39 @@ module raytrace_amr_mod
   public :: raytrace_ion_to_edge_amr
   public :: raytrace_ion_tau_only_amr
   public :: transport_ion_packet
+  public :: slab_walk_report
 
   real(wp), parameter :: tau_huge = 745.2_wp  ! exp(-tau_huge) ~ 0 in double
 
+  !--- Safety net for the xy-periodic slab walks.  A near-grazing ray (kz -> 0)
+  !--- through a nearly transparent medium can wrap the x/y faces indefinitely
+  !--- without ever reaching a z-face or accumulating tau.  The source-side
+  !--- guards (beam theta strictly < 90 deg; isotropic mu floored away from 0)
+  !--- prevent kz = 0 exactly, so any legitimate walk terminates; MAX_WALK_STEPS
+  !--- caps the residual pathology far above any physical traversal length (a
+  !--- normal slab crosses O(nz/mu) cells).  A capped packet is terminated
+  !--- safely and counted in slab_walk_kills (rank-local, reported once).
+  integer, parameter :: MAX_WALK_STEPS = 20000000
+  integer :: slab_walk_kills = 0
+
 contains
+
+  !=========================================================================
+  ! Reduce and report the near-grazing max-step guard hits once.  Prints
+  ! nothing when the guard never fired (the normal case).
+  !=========================================================================
+  subroutine slab_walk_report()
+    use define
+    use mpi
+    implicit none
+    integer :: ierr, total
+    call MPI_ALLREDUCE(slab_walk_kills, total, 1, MPI_INTEGER, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
+    if (mpar%p_rank == 0 .and. total > 0) write(*,'(a,i0,a)') &
+       ' WARNING: ', total, ' packet(s) hit the slab max-step guard '// &
+       '(near-grazing ray in the periodic slab) and were terminated early.'
+    slab_walk_kills = 0
+  end subroutine slab_walk_report
 
   !=========================================================================
   subroutine raytrace_to_tau_amr(photon, grid, tau_in)
@@ -198,7 +227,9 @@ contains
   ! with kap = kap_ion(inu, il) (per code length; gas + optional dust).
   ! With no ionizing-band scattering, this zero-variance direct
   ! component is the complete tally; the packet needs no interaction
-  ! sampling.  No periodic/symmetric boundaries in the ionizing band.
+  ! sampling.  For the plane-parallel slab boundary condition (PP1) the walk
+  ! wraps the x/y faces xy-periodically (slab_wrap_xy on the octree, index
+  ! modulo on the car/DDA path); z faces remain open escapes.
   !=========================================================================
   !=========================================================================
   ! MoCHII: full ionizing-band transport of one packet.
@@ -317,7 +348,7 @@ contains
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
 
-    integer  :: il, il_new, icell, iface, inu
+    integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz
     real(wp) :: tau, t_exit, d_step, kap, wl
     logical  :: do_tally
@@ -343,7 +374,12 @@ contains
     end if
 
     tau = 0.0_wp
+    nstep = 0
     do while (photon%inside)
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       kap = kap_ion(inu, il)
@@ -387,7 +423,7 @@ contains
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
 
-    integer  :: il, il_new, icell, iface, inu
+    integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz, t_exit, kap
     real(wp) :: tau, expo, expo_out, wl
 
@@ -410,7 +446,12 @@ contains
       if (il <= 0) return
     end if
 
+    nstep = 0
     do
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       kap = kap_ion(inu, il)
@@ -494,7 +535,7 @@ contains
     implicit none
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
-    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz, nstep
     real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau
     real(wp) :: wl, expo, expo_out
     logical  :: ok
@@ -507,7 +548,12 @@ contains
     expo = 1.0_wp;  tau = 0.0_wp;  t_cur = 0.0_wp
     if (present(tau_edge_out)) tau_edge_out = 0.0_wp
 
+    nstep = 0
     do
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
@@ -550,7 +596,7 @@ contains
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
-    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz, nstep
     real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau, wl, d_step
     logical  :: ok, do_tally
 
@@ -562,7 +608,12 @@ contains
     wl = photon%wgt*photon%Lpacket
     tau = 0.0_wp;  t_cur = 0.0_wp
 
+    nstep = 0
     do
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
@@ -630,7 +681,7 @@ contains
     implicit none
     type(photon_type), intent(in)  :: photon0
     real(wp),          intent(out) :: tau_out
-    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz
+    integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz, nstep
     real(wp) :: tmax(3), tdel(3), t_cur, seg, tau
     logical  :: ok
 
@@ -639,7 +690,12 @@ contains
     nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
     inu = photon0%inu
     tau = 0.0_wp;  t_cur = 0.0_wp
+    nstep = 0
     do
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
@@ -675,7 +731,7 @@ contains
     type(photon_type), intent(in)  :: photon0
     real(wp),          intent(out) :: tau_out
 
-    integer  :: il, il_new, icell, iface, inu
+    integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz, t_exit, tau
 
     if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
@@ -696,7 +752,12 @@ contains
       end if
     end if
 
+    nstep = 0
     do
+      nstep = nstep + 1
+      if (nstep > MAX_WALK_STEPS) then
+        slab_walk_kills = slab_walk_kills + 1;  exit
+      end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       tau = tau + kap_ion(inu, il)*t_exit

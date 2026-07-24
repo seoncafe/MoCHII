@@ -46,19 +46,27 @@ module jtally_mod
   integer :: slab_nmu      = 0
   real(kind=wp), allocatable :: slab_Iesc(:,:)     ! (nmu, 2)
   real(kind=wp) :: slab_Lin = 0.0_wp
+  !--- which z-faces are illuminated (top = +z, bottom = -z).  The
+  !--- reflection/transmission split of the escaping luminosity is only
+  !--- defined when EXACTLY ONE face is lit (escape at the lit face = reflected,
+  !--- at the opposite face = transmitted).
+  logical :: slab_lit_top = .false., slab_lit_bot = .false.
 
 contains
 
   !---------------------------------------------------------------
   ! Allocate the slab boundary tally (nmu uniform mu-bins in (0,1]).
-  subroutine slab_tally_setup(nmu, Lin)
+  ! lit = [top, bottom] illuminated flags (drives the refl/tran labelling).
+  subroutine slab_tally_setup(nmu, Lin, lit)
   implicit none
   integer,       intent(in) :: nmu
   real(kind=wp), intent(in) :: Lin
+  logical,       intent(in) :: lit(2)
   if (allocated(slab_Iesc)) deallocate(slab_Iesc)
   slab_nmu = nmu
   allocate(slab_Iesc(nmu, 2));  slab_Iesc = 0.0_wp
   slab_Lin = Lin
+  slab_lit_top = lit(1);  slab_lit_bot = lit(2)
   slab_tally_on = .true.
   end subroutine slab_tally_setup
 
@@ -96,21 +104,41 @@ contains
   use octree_mod, only : amr_grid
   implicit none
   character(len=*), intent(in) :: fname
-  real(kind=wp) :: azface, dmu, mu, Ltop, Lbot, Labs
-  integer :: ib, u
+  real(kind=wp) :: azface, dmu, mu, Lesc_top, Lesc_bot, Labs, Lrefl, Ltran
+  integer :: ib, u, nlit
   if (.not. slab_tally_on) return
-  azface = (amr_grid%xrange*par%distance2cm)*(amr_grid%yrange*par%distance2cm)
-  dmu    = 1.0_wp/real(slab_nmu, wp)
-  Ltop   = sum(slab_Iesc(:,1))       ! escaping the top   (+z, reflected side)
-  Lbot   = sum(slab_Iesc(:,2))       ! escaping the bottom (-z, transmitted)
-  Labs   = slab_Lin - Ltop - Lbot
+  azface   = (amr_grid%xrange*par%distance2cm)*(amr_grid%yrange*par%distance2cm)
+  dmu      = 1.0_wp/real(slab_nmu, wp)
+  !--- always-valid base quantities: the raw luminosity escaping each z-face.
+  Lesc_top = sum(slab_Iesc(:,1))      ! escaping the top    (+z)
+  Lesc_bot = sum(slab_Iesc(:,2))      ! escaping the bottom (-z)
+  Labs     = slab_Lin - Lesc_top - Lesc_bot
+  nlit     = merge(1,0,slab_lit_top) + merge(1,0,slab_lit_bot)
+
   open(newunit=u, file=trim(fname), status='replace', action='write')
   write(u,'(a)')        '# MoCHII plane-parallel slab: emergent intensity I(mu) at the z-boundaries.'
-  write(u,'(a,es14.6)') '# L_in       [erg/s] = ', slab_Lin
-  write(u,'(a,es14.6,a,f8.5)') '# L_top(refl)[erg/s] = ', Ltop, '   fraction = ', Ltop/slab_Lin
-  write(u,'(a,es14.6,a,f8.5)') '# L_bot(tran)[erg/s] = ', Lbot, '   fraction = ', Lbot/slab_Lin
-  write(u,'(a,es14.6,a,f8.5)') '# L_absorbed [erg/s] = ', Labs, '   fraction = ', Labs/slab_Lin
-  write(u,'(a,es14.6)') '# A_zface    [cm^2]  = ', azface
+  write(u,'(a,es14.6)') '# L_in           [erg/s] = ', slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_escape_top   [erg/s] = ', Lesc_top, '   fraction = ', Lesc_top/slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_escape_bottom[erg/s] = ', Lesc_bot, '   fraction = ', Lesc_bot/slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_absorbed     [erg/s] = ', Labs,     '   fraction = ', Labs/slab_Lin
+
+  !--- reflection/transmission split is only meaningful with a single lit face.
+  if (nlit == 1) then
+     if (slab_lit_top) then
+        write(u,'(a)') '# illuminated face = top: escape at top = reflected, at bottom = transmitted.'
+        Lrefl = Lesc_top;  Ltran = Lesc_bot
+     else
+        write(u,'(a)') '# illuminated face = bottom: escape at bottom = reflected, at top = transmitted.'
+        Lrefl = Lesc_bot;  Ltran = Lesc_top
+     end if
+     write(u,'(a,es14.6,a,f8.5)') '# L_reflected    [erg/s] = ', Lrefl, '   fraction = ', Lrefl/slab_Lin
+     write(u,'(a,es14.6,a,f8.5)') '# L_transmitted  [erg/s] = ', Ltran, '   fraction = ', Ltran/slab_Lin
+  else
+     write(u,'(a)') '# both (or neither) faces illuminated: the top and bottom escape each mix'
+     write(u,'(a)') '# reflection and transmission and are not separable without an incident-face tag.'
+  end if
+
+  write(u,'(a,es14.6)') '# A_zface        [cm^2]  = ', azface
   write(u,'(a)')        '#   mu        I_top[erg/s/cm^2/sr]   I_bot[erg/s/cm^2/sr]'
   do ib = 1, slab_nmu
      mu = (real(ib,wp) - 0.5_wp)*dmu
