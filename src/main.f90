@@ -17,7 +17,9 @@ program main
   use qmc_mod,         only : qmc_uniforms, qmc_uniforms_stream, &
                               QMC_MAXDIM, QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill
-  use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion
+  use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion, &
+                              slab_tally_setup, slab_tally_reduce, &
+                              slab_write_Imu, slab_tally_on, slab_Iesc
   use raytrace_amr_mod,only : transport_ion_packet
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
                               secion_apply, &
@@ -82,6 +84,8 @@ program main
   deallocate(metal_eth)
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
+  if (trim(par%source_geometry) == 'slab') &
+     call slab_tally_setup(par%slab_nmu, ion_Ltot)
   if (par%solve_te) call cooling_setup()
 
   !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
@@ -101,6 +105,7 @@ program main
   max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
      jt_ion(:,:) = 0.0_wp
+     if (slab_tally_on) slab_Iesc(:,:) = 0.0_wp    ! keep the last iteration's escaping field
      call time_stamp(dtime)
      if (mpar%p_rank == 0) write(6,'(a,i4,a,f8.3,a)') &
         '---> iteration ', iter, ': ionizing-band transport...  @ ', &
@@ -275,6 +280,16 @@ program main
      end block
   end if
   call gas_rates_write()
+  if (slab_tally_on) then
+     call slab_tally_reduce()
+     block
+       use utility, only : get_base_name
+       if (mpar%p_rank == 0) &
+          call slab_write_Imu(trim(get_base_name(par%out_file))//'_slab_Imu.txt')
+     end block
+     if (mpar%p_rank == 0) write(*,'(2a)') ' ION: slab emergent I(mu) written to: ', &
+        trim(get_base_name(par%out_file))//'_slab_Imu.txt'
+  end if
   if (par%ion_add_dust) then
      block
        use dust_temp_mod, only : dust_ir_write

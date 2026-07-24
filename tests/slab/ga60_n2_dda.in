@@ -1,0 +1,40 @@
+&parameters
+ ! PP3 gate G-a: frozen neutral slab, collimated beam from top, normal (theta=0).
+ ! gas_niter=0 -> rates only, x_HI frozen at 1 -> pure-absorption medium.
+ ! Gamma_HI(z) should be F * exp(-nH*sigma*(zmax-z)/mu).  nnu_ion=1 -> single sigma.
+ ! nx=ny=1 column; cubic cells dcx=2*0.0078125=0.015625 = dcz=2*0.5/64.
+ par%no_photons=4.0e6
+ par%no_print=4.0e6
+ par%iseed=1234
+ par%grid_type='car'
+ par%car_walk='dda'
+ par%nx=2
+ par%ny=2
+ par%nz=64
+ par%xmax=0.015625
+ par%ymax=0.015625
+ par%zmax=0.5
+ par%nH_const=0.1
+ par%rmax=100.0
+ par%dust_model='none'
+ par%distance_unit='pc'
+ par%xy_periodic=.true.
+ par%use_ion_band=.true.
+ par%ion_align_edges=.false.
+ par%nnu_ion=1
+ par%eion_min=13.598
+ par%eion_max=100.0
+ par%tstar=4.0e4
+ par%He_abund=0.0
+ par%xHI_init=1.0
+ par%ion_add_dust=.false.
+ par%gas_niter=0
+ par%te_fixed=1.0e4
+ par%source_geometry='slab'
+ par%slab_faces='top'
+ par%slab_top_mode='beam'
+ par%slab_top_theta=60.0
+ par%slab_top_source=1.0e-5
+ par%file_format='hdf5'
+ par%out_file='ga60_n2_dda.h5'
+/

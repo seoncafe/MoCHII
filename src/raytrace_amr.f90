@@ -16,7 +16,8 @@ module raytrace_amr_mod
 ! no refinement gaps, so amr_next_leaf alone suffices for the transport walk.
 !---------------------------------------------------------------------------
   use octree_mod
-  use jtally_mod, only : jt_on, jt_first, jt_sum, jt_ion
+  use jtally_mod, only : jt_on, jt_first, jt_sum, jt_ion, &
+                         slab_tally_on, slab_bnd_add
   implicit none
   private
 
@@ -290,6 +291,25 @@ contains
   ! Ionizing-band walk to optical depth tau_in (extinction kap_ion);
   ! scattered flights (nscatt > 0) tally jt_ion along their segments.
   !=========================================================================
+  !=========================================================================
+  ! Robust xy-periodic wrap for the octree walk.  A packet that leaves an
+  ! x/y face (amr_next_leaf returned 0) is re-entered at the OPPOSITE face by
+  ! setting the crossed coordinate to that face's EXACT boundary value, not by
+  ! x -/+ xrange: the latter can land a rounding-epsilon outside [min,max], and
+  ! amr_find_leaf then drops the packet (a photon loss that, at nx=1 where every
+  ! lateral crossing wraps, over-attenuates the slab ~10x).  z faces escape.
+  !=========================================================================
+  subroutine slab_wrap_xy(iface, x, y)
+    integer,  intent(in)    :: iface
+    real(wp), intent(inout) :: x, y
+    select case (iface)
+    case (1); x = amr_grid%xmin    ! exited +x -> re-enter at -x
+    case (2); x = amr_grid%xmax    ! exited -x -> re-enter at +x
+    case (3); y = amr_grid%ymin
+    case (4); y = amr_grid%ymax
+    end select
+  end subroutine slab_wrap_xy
+
   subroutine raytrace_ion_to_tau_amr(photon, tau_in)
     use define
     use gas_opacity_mod, only : kap_ion
@@ -341,8 +361,15 @@ contains
       tau = tau + t_exit*kap
       x = x + t_exit*kx;  y = y + t_exit*ky;  z = z + t_exit*kz
       il_new = amr_next_leaf(icell, iface, x, y, z)
+      if (il_new <= 0 .and. par%xy_periodic) then
+        call slab_wrap_xy(iface, x, y)
+        if (iface <= 4) il_new = amr_find_leaf(x, y, z)
+      end if
       if (il_new <= 0) then
         photon%inside = .false.
+        !--- a scattered flight escaping a z-face is the diffuse/reflected
+        !--- boundary contribution (the direct beam is tallied in the edge walk).
+        if (slab_tally_on .and. iface >= 5) call slab_bnd_add(kz, wl)
         exit
       end if
       il = il_new
@@ -401,7 +428,15 @@ contains
       y = y + t_exit * ky
       z = z + t_exit * kz
       il_new = amr_next_leaf(icell, iface, x, y, z)
-      if (il_new <= 0) exit
+      if (il_new <= 0 .and. par%xy_periodic) then
+        call slab_wrap_xy(iface, x, y)
+        if (iface <= 4) il_new = amr_find_leaf(x, y, z)
+      end if
+      if (il_new <= 0) then
+        !--- a z-face escape carries the surviving luminosity to the boundary.
+        if (slab_tally_on .and. iface >= 5) call slab_bnd_add(kz, expo*wl)
+        exit
+      end if
       il = il_new
     end do
     if (present(tau_edge_out)) tau_edge_out = tau
@@ -489,9 +524,21 @@ contains
       t_cur = tmax(a)
       tmax(a) = tmax(a) + tdel(a)
       select case (a)
-      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) exit
-      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) exit
-      case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) exit
+      case (1); ix = ix + stp(1)
+                if (ix < 0 .or. ix >= nx) then
+                  !--- slab: wrap x index (uniform grid: tmax/tdel unchanged).
+                  if (par%xy_periodic) then; ix = modulo(ix, nx); else; exit; end if
+                end if
+      case (2); iy = iy + stp(2)
+                if (iy < 0 .or. iy >= ny) then
+                  if (par%xy_periodic) then; iy = modulo(iy, ny); else; exit; end if
+                end if
+      case (3); iz = iz + stp(3)
+                if (iz < 0 .or. iz >= nz) then
+                  !--- z-face escape: surviving luminosity to the boundary.
+                  if (slab_tally_on) call slab_bnd_add(photon0%kz, expo*wl)
+                  exit
+                end if
       end select
     end do
     if (present(tau_edge_out)) tau_edge_out = tau
@@ -535,14 +582,29 @@ contains
       t_cur = tmax(a)
       tmax(a) = tmax(a) + tdel(a)
       select case (a)
-      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) then
-                   photon%inside = .false.;  exit
+      case (1); ix = ix + stp(1)
+                if (ix < 0 .or. ix >= nx) then
+                  !--- slab: wrap x index (uniform grid: tmax/tdel unchanged).
+                  if (par%xy_periodic) then
+                    ix = modulo(ix, nx)
+                  else
+                    photon%inside = .false.;  exit
+                  end if
                 end if
-      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) then
-                   photon%inside = .false.;  exit
+      case (2); iy = iy + stp(2)
+                if (iy < 0 .or. iy >= ny) then
+                  if (par%xy_periodic) then
+                    iy = modulo(iy, ny)
+                  else
+                    photon%inside = .false.;  exit
+                  end if
                 end if
       case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) then
-                   photon%inside = .false.;  exit
+                   photon%inside = .false.
+                   !--- scattered flight escaping a z-face: diffuse/reflected
+                   !--- boundary contribution (direct beam is in the edge walk).
+                   if (slab_tally_on) call slab_bnd_add(photon%kz, wl)
+                   exit
                 end if
       end select
     end do
@@ -551,6 +613,12 @@ contains
     photon%x = photon%x + t_cur*photon%kx
     photon%y = photon%y + t_cur*photon%ky
     photon%z = photon%z + t_cur*photon%kz
+    !--- the accumulated x/y are un-wrapped; fold them back into the box so
+    !--- they match the wrapped index cell (icell_amr below).
+    if (par%xy_periodic) then
+       photon%x = photon%x - floor((photon%x - amr_grid%xmin)/amr_grid%xrange)*amr_grid%xrange
+       photon%y = photon%y - floor((photon%y - amr_grid%ymin)/amr_grid%yrange)*amr_grid%yrange
+    end if
     if (photon%inside) then
        photon%icell_amr = 1 + ix + nx*(iy + ny*iz)
     end if
@@ -580,8 +648,15 @@ contains
       t_cur = tmax(a)
       tmax(a) = tmax(a) + tdel(a)
       select case (a)
-      case (1); ix = ix + stp(1); if (ix < 0 .or. ix >= nx) exit
-      case (2); iy = iy + stp(2); if (iy < 0 .or. iy >= ny) exit
+      case (1); ix = ix + stp(1)
+                if (ix < 0 .or. ix >= nx) then
+                  !--- slab: wrap x index (uniform grid: tmax/tdel unchanged).
+                  if (par%xy_periodic) then; ix = modulo(ix, nx); else; exit; end if
+                end if
+      case (2); iy = iy + stp(2)
+                if (iy < 0 .or. iy >= ny) then
+                  if (par%xy_periodic) then; iy = modulo(iy, ny); else; exit; end if
+                end if
       case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) exit
       end select
     end do
@@ -630,6 +705,10 @@ contains
       y = y + t_exit*ky
       z = z + t_exit*kz
       il_new = amr_next_leaf(icell, iface, x, y, z)
+      if (il_new <= 0 .and. par%xy_periodic) then
+        call slab_wrap_xy(iface, x, y)
+        if (iface <= 4) il_new = amr_find_leaf(x, y, z)
+      end if
       if (il_new <= 0) exit
       il = il_new
     end do

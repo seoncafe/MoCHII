@@ -63,6 +63,16 @@ infrared dust/PAH spectrum.
   (raster storage, integer-arithmetic traversal, no tree in memory) built
   from the namelist, from a leaf list, or from a 3D density cube
   (`density_file`, FITS/HDF5) read directly onto the grid.
+- **Plane-parallel slab** (`xy_periodic`): a horizontally infinite slab —
+  the medium varies only in z (a 1D column) or is an arbitrary 3D tile
+  repeated periodically in x and y — illuminated through the top and/or
+  bottom face by a collimated beam at a chosen incidence angle or an
+  isotropic field, each face with its own strength
+  (`source_geometry='slab'`).  The incident flux is the sole normalization
+  (results scale with it and are independent of the tile area); the
+  emergent observable is the boundary intensity I(mu) with the
+  reflected/transmitted/absorbed energy budget.  Internal point sources
+  also work under the same periodic boundary.
 - **Parallelism and I/O**: MPI with MPI-3 shared memory (one grid copy per
   node); HDF5 or FITS output through a format-agnostic interface; Python
   readers, a 2D map maker, and slice/cutout viewers for the grid and the
@@ -105,4 +115,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-21 10:36 KST
+Last updated: 2026-07-24 15:53 KST

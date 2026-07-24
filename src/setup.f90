@@ -98,9 +98,13 @@ contains
               'ERROR: grid_type=''car'' with par%density_file needs par%xmax > 0.'
            call MPI_FINALIZE(ierr);  stop
         end if
-     else if (par%nx < 2 .or. par%xmax <= 0.0_wp) then
+     else if (par%xmax <= 0.0_wp .or. &
+              (par%nx < 2 .and. .not. par%xy_periodic)) then
+        !--- nx=1 is allowed only with xy_periodic (a plane-parallel column
+        !--- whose single lateral cell wraps onto itself).
         if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: grid_type=''car'' without par%amr_file needs par%nx>=2 and par%xmax>0.'
+           'ERROR: grid_type=''car'' without par%amr_file needs par%xmax>0 and '// &
+           'par%nx>=2 (par%nx>=1 allowed with par%xy_periodic).'
         call MPI_FINALIZE(ierr);  stop
      end if
   endif
@@ -186,9 +190,30 @@ contains
        if (mpar%p_rank == 0) write(*,'(a)') &
           'NOTE: source_geometry=''external*'' is the external-only shorthand; '// &
           'the composable form is par%ext_intensity/par%ext_geometry + par%nsource.'
+    else if (trim(par%source_geometry) == 'slab') then
+       !--- plane-parallel slab illumination (its own single-component source).
+       if (.not. par%xy_periodic) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: source_geometry=''slab'' needs par%xy_periodic (a slab is '// &
+             'periodic in x and y).'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       if (trim(par%slab_faces) /= 'top' .and. trim(par%slab_faces) /= 'bottom' &
+           .and. trim(par%slab_faces) /= 'both') then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: par%slab_faces must be ''top'', ''bottom'', or ''both''.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       if ((trim(par%slab_top_mode) /= 'beam' .and. trim(par%slab_top_mode) /= 'isotropic') .or. &
+           (trim(par%slab_bot_mode) /= 'beam' .and. trim(par%slab_bot_mode) /= 'isotropic')) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: par%slab_top_mode / slab_bot_mode must be ''beam'' or ''isotropic''.'
+          call MPI_FINALIZE(ierr);  stop
+       endif
+       par%nsource = 0
     else if (trim(par%source_geometry) /= 'point') then
        if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%source_geometry must be ''point'', ''external_rec'', or ''external_sph''.'
+          'ERROR: par%source_geometry must be ''point'', ''slab'', ''external_rec'', or ''external_sph''.'
        call MPI_FINALIZE(ierr);  stop
     endif
 
@@ -246,7 +271,7 @@ contains
           'ERROR: par%nsource must be in [0, ', MAX_SRC, '].'
        call MPI_FINALIZE(ierr);  stop
     endif
-    if (par%nsource == 0) then
+    if (par%nsource == 0 .and. trim(par%source_geometry) /= 'slab') then
        if (.not. ext_on) then
           if (mpar%p_rank == 0) write(*,'(a)') &
              'ERROR: no source: set par%nsource >= 1 or the external field '// &
@@ -301,7 +326,9 @@ contains
 
     !--- route the external-only run (no point source) through the legacy
     !--- external fast path by encoding the geometry in source_geometry.
-    if (par%nsource == 0) par%source_geometry = 'external_'//trim(par%ext_geometry)
+    !--- (the slab is its own geometry and is left untouched.)
+    if (par%nsource == 0 .and. trim(par%source_geometry) /= 'slab') &
+       par%source_geometry = 'external_'//trim(par%ext_geometry)
 
     !--- src_spectrum_file feeds the internal point sources only; it has no
     !--- effect on an external-only run (nsource=0).
@@ -347,6 +374,16 @@ contains
   if (par%ion_peel .and. (par%nxim < 1 .or. par%nyim < 1)) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%ion_peel .and. par%xy_periodic) then
+     !--- the point-observer peel is ill-defined under xy-periodicity (the
+     !--- medium tiles into infinitely many periodic images); the emergent
+     !--- observable of a periodic slab is the boundary I(mu) tally instead.
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%ion_peel is not supported with par%xy_periodic (a periodic '// &
+        'slab has no finite-distance observer; use the boundary I(mu) output '// &
+        'written for source_geometry=''slab'').'
      call MPI_FINALIZE(ierr);  stop
   endif
 

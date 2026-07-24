@@ -36,7 +36,91 @@ module jtally_mod
   real(kind=wp), pointer :: jt_ion(:,:) => null()
   integer :: jt_ion_nleaf = 0
 
+  !--- MoCHII plane-parallel slab: emergent-intensity boundary tally.  A packet
+  !--- that escapes a z-face carries its surviving luminosity into (mu-bin, face)
+  !--- with mu = |kz|; face 1 = top (+z, kz>0), face 2 = bottom (-z, kz<0).
+  !--- slab_Iesc is the rank-local escaping energy [erg/s] per bin (ALLREDUCEd
+  !--- at output).  slab_Labs / slab_Lin track the absorbed / entering totals for
+  !--- the energy budget.
+  logical :: slab_tally_on = .false.
+  integer :: slab_nmu      = 0
+  real(kind=wp), allocatable :: slab_Iesc(:,:)     ! (nmu, 2)
+  real(kind=wp) :: slab_Lin = 0.0_wp
+
 contains
+
+  !---------------------------------------------------------------
+  ! Allocate the slab boundary tally (nmu uniform mu-bins in (0,1]).
+  subroutine slab_tally_setup(nmu, Lin)
+  implicit none
+  integer,       intent(in) :: nmu
+  real(kind=wp), intent(in) :: Lin
+  if (allocated(slab_Iesc)) deallocate(slab_Iesc)
+  slab_nmu = nmu
+  allocate(slab_Iesc(nmu, 2));  slab_Iesc = 0.0_wp
+  slab_Lin = Lin
+  slab_tally_on = .true.
+  end subroutine slab_tally_setup
+
+  !---------------------------------------------------------------
+  ! Add an escaping packet: mu = |kz|, face by sign(kz).  ergs = surviving
+  ! luminosity (expo * wgt * Lpacket).
+  subroutine slab_bnd_add(kz, ergs)
+  implicit none
+  real(kind=wp), intent(in) :: kz, ergs
+  integer :: ib, iface
+  real(kind=wp) :: mu
+  if (.not. slab_tally_on) return
+  mu = abs(kz)
+  ib = min(max(int(mu*slab_nmu) + 1, 1), slab_nmu)
+  iface = merge(1, 2, kz > 0.0_wp)      ! +z escape = top, -z = bottom
+  slab_Iesc(ib, iface) = slab_Iesc(ib, iface) + ergs
+  end subroutine slab_bnd_add
+
+  !---------------------------------------------------------------
+  subroutine slab_tally_reduce()
+  use mpi
+  implicit none
+  integer :: ierr
+  if (.not. slab_tally_on) return
+  call MPI_ALLREDUCE(MPI_IN_PLACE, slab_Iesc, size(slab_Iesc), &
+                     MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+  end subroutine slab_tally_reduce
+
+  !---------------------------------------------------------------
+  ! Write the emergent intensity I(mu) at the two z-boundaries plus the
+  ! reflected/transmitted/absorbed energy budget (all normalized by the
+  ! entering luminosity).  I(mu) [erg/s/cm^2/sr] uses F = 2 pi int I(mu) mu dmu:
+  !   I(mu, face) = Iesc(bin, face) / (A_zface * 2 pi * mu * dmu).
+  subroutine slab_write_Imu(fname)
+  use octree_mod, only : amr_grid
+  implicit none
+  character(len=*), intent(in) :: fname
+  real(kind=wp) :: azface, dmu, mu, Ltop, Lbot, Labs
+  integer :: ib, u
+  if (.not. slab_tally_on) return
+  azface = (amr_grid%xrange*par%distance2cm)*(amr_grid%yrange*par%distance2cm)
+  dmu    = 1.0_wp/real(slab_nmu, wp)
+  Ltop   = sum(slab_Iesc(:,1))       ! escaping the top   (+z, reflected side)
+  Lbot   = sum(slab_Iesc(:,2))       ! escaping the bottom (-z, transmitted)
+  Labs   = slab_Lin - Ltop - Lbot
+  open(newunit=u, file=trim(fname), status='replace', action='write')
+  write(u,'(a)')        '# MoCHII plane-parallel slab: emergent intensity I(mu) at the z-boundaries.'
+  write(u,'(a,es14.6)') '# L_in       [erg/s] = ', slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_top(refl)[erg/s] = ', Ltop, '   fraction = ', Ltop/slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_bot(tran)[erg/s] = ', Lbot, '   fraction = ', Lbot/slab_Lin
+  write(u,'(a,es14.6,a,f8.5)') '# L_absorbed [erg/s] = ', Labs, '   fraction = ', Labs/slab_Lin
+  write(u,'(a,es14.6)') '# A_zface    [cm^2]  = ', azface
+  write(u,'(a)')        '#   mu        I_top[erg/s/cm^2/sr]   I_bot[erg/s/cm^2/sr]'
+  do ib = 1, slab_nmu
+     mu = (real(ib,wp) - 0.5_wp)*dmu
+     write(u,'(f8.5,2es22.8)') mu, &
+        slab_Iesc(ib,1)/(azface*twopi*mu*dmu), &
+        slab_Iesc(ib,2)/(azface*twopi*mu*dmu)
+  end do
+  close(u)
+  end subroutine slab_write_Imu
+
   !---------------------------------------------------------------
   subroutine jtally_setup(grid)
   use sed_mod,      only : sed_nlam

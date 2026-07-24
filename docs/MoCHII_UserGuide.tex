@@ -1,0 +1,828 @@
+%% MoCHII user guide.
+%% Author: Kwang-Il Seon
+%% Written 2026-07-12 for my_memo.cls.
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+
+\title{MoCHII User Guide}
+\author{Kwang-Il Seon}
+\date{\docmoddate}
+\maketitle
+
+\begin{abstract}
+How to build and run MoCHII (MOnte Carlo for H\,\textsc{ii} regions):
+requirements, the complete input-parameter reference, output-file
+formats, worked examples keyed to the regression tests, and the runbook
+for adding an ion.  The physics and validation are documented separately
+in \code{docs/MoCHII\_physics.pdf}; the atomic-data fitting pipeline
+in \code{docs/MoCHII\_fitting.pdf}.
+\end{abstract}
+
+\tableofcontents
+
+%==========================================================================
+\section{Requirements and build}
+\begin{itemize}
+\item Intel oneAPI MPI Fortran (\code{mpiifort}/\code{mpiifx}; GNU
+  \code{mpif90} supported by the Makefile), HDF5 (default prefix
+  \code{/data/opt/hdf5\_intel}; override with
+  \code{make HDF5\_PREFIX=...}), CFITSIO.
+\item The SEDust dust-emission library, self-contained under
+  \code{SEDust/} in this tree.  Build it once with \code{cd SEDust/sed
+  \&\& ./build\_lib.sh} ($\rightarrow$ \code{SEDust/sed/lib/libsedust.a}
+  and its \code{.mod} files, which the Makefile links).  The SEDust
+  \emph{data} directory is read at run time and resolved automatically
+  relative to the executable (Section~\ref{sec:sedust}).
+\item Python 3 with numpy/scipy (h5py, astropy, matplotlib, PyNeb for
+  the test and pipeline scripts).
+\end{itemize}
+Build:
+\begin{verbatim}
+   cd MoCHII
+   (cd SEDust/sed && ./build_lib.sh)   # on a fresh checkout
+   make            # -> MoCHII.x   (always a full clean rebuild)
+   make DEBUG=1    # bounds/traceback build
+\end{verbatim}
+The SEDust library only needs the one-time \code{build\_lib.sh} step;
+afterward \code{make} links the in-tree SEDust library.
+The Makefile intentionally performs a full rebuild every time (the
+MoCafe policy): there is no inter-module dependency tracking, and stale
+\code{.mod} files after editing \code{define.f90} otherwise cause
+runtime namelist errors.
+
+Run:
+\begin{verbatim}
+   mpirun -np 8 ./MoCHII.x input.in
+\end{verbatim}
+MoCHII is MPI-only; the octree and all leaf arrays live in MPI-3 shared
+memory (one copy on each node).
+
+%==========================================================================
+\section{Input parameters}
+All input is one \code{\&parameters} namelist assigning fields of
+\code{par}.  Parameters not listed keep the defaults shown.
+The switches compose: \code{gas\_niter = 0} gives a single rates-only
+pass; \code{gas\_niter > 0} iterates the ionization; \code{solve\_te}
+adds the thermal balance; \code{use\_metals} the trace-metal registry;
+\code{diffuse\_field} the explicit diffuse field (forces case A);
+\code{refine\_front} the I-front re-refinement; \code{ion\_add\_dust}
+the dust coupling.
+
+\subsection{Photons and RNG}
+\begin{center}\small
+\begin{tabular}{llp{7.6cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{no\_photons} & 1e5 & source packets in each iteration \\
+\code{no\_print}   & 1e7 & progress-print stride \\
+\code{iseed}       & 0   & RNG seed (0 = from clock/pid) \\
+\code{launch\_sequence} & 'random' & quasi-random launch: \code{'sobol'} = Owen-scrambled Sobol coordinates for the stellar (and diffuse) packet launch, indexed by the global photon number (MPI-count-independent launch set); transport/scattering stay pseudo-random; prefer \code{nphotons}${}=2^m$.  \code{'random'} is the Mersenne Twister default \\
+\code{qmc\_seed}   & 12345 & scramble key (\code{launch\_sequence='sobol'}); fixed across the gas iterations; change it for independent replicates (their scatter is the RQMC error estimate) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Grid and dust density}
+\label{sec:grid}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{grid\_type} & 'car' & \code{'amr'} (octree) or \code{'car'} (single-level Cartesian, leaf list in raster order; no tree and no geometry arrays in memory --- cell centers and half-widths are computed analytically from the raster index; \code{refine\_front} unavailable).  \code{'uniform'} is accepted as an alias for \code{'car'} \\
+\code{car\_walk}  & 'dda' & car-grid traversal: \code{'dda'} (default) = dedicated incremental Amanatides--Woo walks ($t_{\rm max}$/$t_\Delta$ per axis, comparisons and additions only --- the fastest car walk); \code{'shared'} = the octree walks with integer index arithmetic replacing the neighbor table, a verification mode that is bit-identical to \code{'amr'} \\
+\code{amr\_file}  & ''    & generic AMR leaf file (FITS/HDF5/text): columns x, y, z, level, nH [, metallicity, xHI, ndust].  If empty, a \code{'car'} grid is built from the namelist instead (\code{'amr'} requires the file) \\
+\code{nx, ny, nz} & 1, 1, 11 & \code{'car'}-from-namelist cell counts (cubic cells required: $2\,x_{\max}/n_x = 2\,y_{\max}/n_y = 2\,z_{\max}/n_z$) \\
+\code{xmax, ymax, zmax} & 1, 1, 1 & \code{'car'}-from-namelist box half-extents [\code{distance\_unit}]; box is $[-x_{\max},x_{\max}]$ etc. \\
+\code{nH\_const} & $-1$ & if $\ge 0$, override every leaf's $n_{\rm H}$ with this uniform value [cm$^{-3}$] (both \code{'car'} and \code{'amr'}); $<0$ keeps the file/column density \\
+\code{density\_file} & '' & read the leaf $n_{\rm H}$ from a uniform 3D density cube onto a \code{'car'} grid (FITS 3D image, or the MoCHII HDF5 image format; NAXIS$1/2/3 = n_x/n_y/n_z$, values $n_{\rm H}$ [cm$^{-3}$]).  $n_x/n_y/n_z$ come from the file, the box is \code{xmax/ymax/zmax}; an alternative to \code{amr\_file}.  \code{reduce\_factor}$>1$ downsamples; a \code{rmax/rmin} cut can mask the cube to a sphere \\
+\code{rmax, rmin} & $-999$, 0 & spherical density cut on leaf centers (both grids): $n_{\rm H}=0$ for $r>r_{\max}$ (\code{rmax}$>0$) and for $r<r_{\min}$ (\code{rmin}$>0$; a shell); radii in \code{distance\_unit} \\
+\code{distance\_unit} & 'kpc' & 'kpc'/'pc'/'au'/'' (code units) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{dust\_model} & 'global\_dgr' & leaf grey opacity: \code{'none'}, \code{'global\_dgr'} ($n_{\rm H}c_{\rm ext}{\cdot}$DGR), \code{'from\_file'} (ndust column), \code{'laursen09'} (static xHI column), \code{'laursen09\_live'} (computed $x_{\rm HI}$, refreshed each iteration) \\
+\code{cext\_dust} & 1.6059e-21 & reference extinction per H [cm$^2$] at \code{lambda\_ref} \\
+\code{DGR}, \code{Z\_global}, \code{Z\_ref} & 1e-2, 0.0134, 0.0134 & dust-model scalings \\
+\code{f\_ion\_dust} & 0.01 & laursen09 survival of dust in ionized gas \\
+\code{f\_pah}, \code{f\_ion\_pah} & 0, 0 & PAH share of the reference extinction and its own ionized-gas survival (laursen09\_live) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Ionizing/FUV band and the source}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{use\_ion\_band} & F & must be T (the MoCHII transport) \\
+\code{nnu\_ion} & 16 & ionizing-band bins; gates use 32.  With \code{ion\_align\_edges} on (the default) the bins are log-uniform within each threshold-bounded segment; off, they are a single log grid \\
+\code{eion\_min}, \code{eion\_max} & 13.598, 100 & ionizing band edges [eV] \\
+\code{ion\_align\_edges} & T & pin the ionizing-band bin edges onto the ionization thresholds (H\,\textsc{i} 13.6, He\,\textsc{i} 24.6, He\,\textsc{ii} 54.4~eV plus the active metal edges) so no bin straddles one; segments between thresholds are log-uniform, and if the thresholds outnumber the bins the lowest-priority metal edges are dropped (H/He always kept), so it is safe at any \code{nnu\_ion}.  Removes the $\sim$18\% He-ionizing-photon excess of a coarse log grid crossing the 24.6~eV edge.  Set F for the legacy single log grid \\
+\code{add\_fuv} & F & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and FUV photoionization of low-threshold metals (Mg\,\textsc{i}, C\,\textsc{i}, S\,\textsc{i}, Fe\,\textsc{i}); \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top) \\
+\code{efuv\_min} & 6.0 & FUV lower edge [eV] \\
+\code{nnu\_fuv} & 8 & FUV bins (16 recommended with metals) \\
+\code{tstar} & $-999$ & Planck source temperature [K] \\
+\code{ion\_spectrum} & '' & global spectrum file (column 1 plus one value column); its column units are set by \code{spectrum\_type} (\S\ref{sec:specfmt}) \\
+\code{spectrum\_type} & 'shape' & column units of every spectrum-file slot (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}): \code{'shape'} (arbitrary, normalized to the scale --- legacy) or a physical type \code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'} (absolute); see \S\ref{sec:specfmt} \\
+\code{luminosity} & unset & ionizing BAND luminosity [erg/s] of the (single) source; for a \code{'shape'}/Planck source unset maps to 1.0 (legacy), for a physical-type file unset means DERIVE it from the file integral; with \code{nsource}$\ge 2$ it becomes the sum of \code{src\_lum} (or the equal-split total when those are unset) \\
+\code{xs\_point}, \code{ys\_point}, \code{zs\_point} & 0 & single-source position (code units, recentered box; \code{nsource}=1) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\emph{Multiple internal point sources} (the scalars above are the
+\code{nsource}=1 case):
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{nsource} & 1 & number of internal point sources (0--16); \code{1} keeps the legacy scalars above, $\ge 2$ uses the \code{src\_*} arrays \\
+\code{src\_x}, \code{src\_y}, \code{src\_z} & 0 & positions of sources $1..$\code{nsource} (code units) \\
+\code{src\_lum} & unset & ionizing luminosities [erg/s] of the sources; set all or none (none $=$ equal split of \code{luminosity}); a partial set aborts \\
+\code{src\_tstar} & $-999$ & Planck temperature [K] for each source (multi-source runs only; a single source uses \code{tstar}) \\
+\code{src\_spectrum\_file} & '' & one multi-column spectrum file for all sources: column 1 then one value column for each source (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}); each source is independently normalized so its ionizing segment carries \code{src\_lum}$(i)$ (a physical type with \code{src\_lum} unset is derived from that column); overrides \code{src\_tstar}; too few columns abort, extra columns are ignored with a note \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\emph{External isotropic field} (composes with the internal
+sources; ON when \code{ext\_intensity}$>0$, an ISRF preset is named, or a
+physical-type \code{ext\_spectrum} file is given):
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{ext\_intensity} & $-1$ & band-integrated mean intensity $J$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] of the external field; the field is ON when $>0$ and adds to the internal sources; entering ionizing power $L = \pi J A_{\rm surf}$.  With a physical-type \code{ext\_spectrum} file or an ISRF preset it is optional: unset $=$ the absolute $J$ is DERIVED from the file/preset, set $=$ the field is RESCALED to this band $J$ (a note is printed) \\
+\code{ext\_geometry} & 'rec' & illuminating surface: \code{'rec'} (box faces, face-area-weighted --- correct for a non-cubic box) or \code{'sph'} (bounding sphere of radius \code{rmax} about the box center; needs \code{rmax}$>0$) \\
+\code{ext\_tstar} & $-999$ & external-field Planck temperature [K] \\
+\code{ext\_spectrum} & '' & external-field spectrum: a 2-column file (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}; column 2 is an intensity density $J$) OR a reserved ISRF preset name \code{'draine'}/\code{'habing'}/\code{'mathis'} (FUV-only, absolute, needs \code{add\_fuv}); priority \code{ext\_spectrum} $>$ \code{ext\_tstar} $>$ the global spectrum \\
+\code{ext\_scale} & 1.0 & dimensionless multiplier on an ISRF preset (ignored when \code{ext\_intensity}$>0$, which rescales the preset to a target band $J$) \\
+\code{source\_geometry} & 'point' & legacy external-only shorthand: \code{'external'}, \code{'external\_rec'}, or \code{'external\_sph'} forces \code{nsource}=0 with the external field on (needs \code{ext\_intensity}$>0$); \code{'point'} keeps the composable form; \code{'slab'} is the plane-parallel slab illumination below \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Plane-parallel slab illumination}
+\label{sec:slab}
+With \code{source\_geometry\,=\,'slab'} (which requires \code{xy\_periodic},
+\S\ref{sec:grid}) the box is an \emph{xy-periodic slab}: the medium varies in
+$z$ (uniform in $x,y$ for a true 1D column with \code{nx\,=\,ny\,=\,1}, or an
+arbitrary 3D tile with \code{nx,ny\,$>$\,1} repeated periodically), and light
+enters through the top ($+z$) and/or bottom ($-z$) face.  Each face is either a
+collimated \emph{beam} at incidence angle $\theta$ or an \emph{isotropic}
+(Lambert) field, with its own strength.  The single physical normalization is
+the flux $F_z$ crossing the (horizontal) illuminated face: for a beam
+$F_z=\mu F_n$ ($\mu=\cos\theta$, $F_n$ the flux normal to the beam), for the
+isotropic mode $F_z=\pi I$ ($I$ the specific intensity).  $F_z$ sets the packet
+weight through $L=F_z\,A_{\rm zface}$; every per-volume result is independent
+of the tile area.  Point-observer peel-off is disabled under \code{xy\_periodic}
+(the periodic images have no finite-distance observer); the emergent observable
+is the boundary intensity $I(\mu)$ (\S\ref{sec:slabout}).
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{slab\_faces} & 'top' & which z-face(s) are lit: \code{'top'}, \code{'bottom'}, or \code{'both'} \\
+\code{slab\_top\_mode}, \code{slab\_bot\_mode} & 'beam' & per face: \code{'beam'} (collimated) or \code{'isotropic'} (Lambert) \\
+\code{slab\_top\_theta}, \code{slab\_bot\_theta} & 0 & beam incidence angle from the inward normal [deg]; 0 is normal incidence \\
+\code{slab\_top\_phi}, \code{slab\_bot\_phi} & 0 & beam azimuth [deg] \\
+\code{slab\_top\_source}, \code{slab\_bot\_source} & 0 & per-face source strength (band-integrated): the specific intensity $I$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] for \code{'isotropic'}, or the beam flux $F_n$ [erg\,s$^{-1}$\,cm$^{-2}$] for \code{'beam'} \\
+\code{slab\_nmu} & 20 & number of $\mu$-bins of the emergent $I(\mu)$ output \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent The spectrum is the global one (\code{tstar} / \code{ion\_spectrum}).
+Both z-faces always escape (no reflecting boundary).  \code{launch\_sequence\,=\,'sobol'}
+is supported (both modes).  With dust scattering (\code{ion\_dust\_scatter}) the
+scattered/reflected component is included in the boundary $I(\mu)$.
+
+\subsection{Spectrum-file formats}
+\label{sec:specfmt}
+A single parameter, \code{spectrum\_type} (default \code{'shape'}), fixes
+the column units of \emph{every} spectrum-file slot
+(\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}).
+The type sets the units; the slot sets the meaning: an internal-source
+file gives a luminosity density $L_X$, the external-field file gives an
+intensity density $J_X$.  Column~1 and the value columns are:
+\begin{center}\small
+\begin{tabular}{llll}
+\toprule
+\code{spectrum\_type} & column 1 & internal (cols 2$+$) & external (col 2) \\
+\midrule
+\code{'shape'}   & $E$ [eV] $\uparrow$ & arbitrary per eV (shape of $L_E$) & arbitrary per eV \\
+\code{'per\_ev'} & $E$ [eV]            & $L_E$ [erg\,s$^{-1}$\,eV$^{-1}$]      & $J_E$ \\
+\code{'per\_hz'} & $\nu$ [Hz]          & $L_\nu$ [erg\,s$^{-1}$\,Hz$^{-1}$]    & $J_\nu$ \\
+\code{'per\_ang'}& $\lambda$ [\AA]     & $L_\lambda$ [erg\,s$^{-1}$\,\AA$^{-1}$] & $J_\lambda$ \\
+\code{'per\_um'} & $\lambda$ [$\mu$m]  & $L_\lambda$ [erg\,s$^{-1}$\,$\mu$m$^{-1}$] & $J_\lambda$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent The external intensity density $J_X$ carries the same spectral
+unit as the internal $L_X$ times an extra \,cm$^{-2}$\,sr$^{-1}$ (a mean
+intensity).  All files are plain text with \code{'\#'} comment lines;
+values outside the tabulated range are zero.  \code{src\_spectrum\_file}
+is one multi-column file: column~1 shared by all sources, then one value
+column for each source (extra columns beyond \code{nsource} are ignored
+with a note, too few abort).
+
+\medskip\noindent\textbf{The abscissa is a sample grid, not bin centers.}
+Column~1 lists the points at which the spectral density is \emph{sampled}:
+the file describes a continuous function, defined between the points by
+linear interpolation, and no bin widths are attached to the rows.  MoCHII
+integrates each of its own band bins on a 32-point sub-grid of the bin,
+interpolating the table at every sub-point (zero outside the tabulated
+range), so the file grid and the band grid are independent.  The spacing
+is arbitrary --- nonuniform grids are fine; place points densely where the
+spectrum varies rapidly, since only linear variation is captured between
+adjacent points.  Abscissa values must be distinct (no duplicates); a
+\code{'shape'} file must be ascending in $E$, while the physical types
+accept any row order (the table is sorted internally after the unit
+conversion, so a wavelength table may be given wavelength-ascending).
+
+\medskip\noindent\textbf{Absolute vs.\ shape normalization.}  A physical
+type (\code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'}) is
+\emph{absolute}: the bin luminosities follow the tabulated integral
+directly.  If the matching scale (\code{luminosity} / \code{src\_lum}$(i)$
+/ \code{ext\_intensity}) is unset it is DERIVED from the file --- each
+source from its column's ionizing-segment integral, the external field
+from its band-integrated $J$ --- and reported in the log.  If a scale is
+set, the spectrum is RESCALED to it (a note is printed) and the file then
+acts only as a shape.  With \code{add\_fuv} an absolute spectrum fills the
+FUV bins from the same table, with no separate normalization.
+\code{'shape'} keeps the legacy behavior: the shape is normalized to the
+scale in every case.  A spectrum with no luminosity inside the band
+aborts, as does rescaling a file whose ionizing-segment integral is zero.
+
+\medskip\noindent\textbf{\code{'shape'} is per eV, not variable-agnostic.}
+\code{'shape'} reads its value columns as the shape of the per-eV density
+$L_E$ on the $E$~[eV] grid of column~1.  A table of $F_\lambda$ (or
+$F_\nu$) values re-gridded onto $E$ under \code{'shape'} therefore omits the
+Jacobian and is wrong by a factor $E^{-2}$ (the $\mathrm{d}\lambda/\mathrm{d}E$
+conversion).  To use a wavelength- or frequency-tabulated shape, give it
+with its matching physical type and set the scale explicitly --- the type
+conversion then applies the Jacobian and the scale RESCALES the file to
+your target, so the file acts as a shape with the correct units.  For
+example, a wavelength shape normalized to $10^{49}$ ionizing photons'
+worth of luminosity:
+\begin{center}\small
+\begin{verbatim}
+par%spectrum_type = 'per_ang'
+par%ion_spectrum  = 'wave_shape.txt'
+par%luminosity    = 3.0e38
+\end{verbatim}
+\end{center}
+
+\medskip\noindent A small \code{'per\_ang'} source file for two point
+sources ($\lambda$ ascending; the second source is FUV-faint):
+\begin{center}\small
+\begin{verbatim}
+# lambda[A]   L_lam,1        L_lam,2
+   300.0      7.80e34        3.4e33
+   500.0      6.05e34        1.2e33
+   912.0      4.10e34        0.0
+\end{verbatim}
+\end{center}
+
+\subsection{Initial state and iteration}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
+\code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
+\code{He\_abund} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
+\code{gas\_niter} & 0 & iterations (0 = a single rates-only pass) \\
+\code{gas\_tol} & 1e-3 & convergence tolerance on $x_{\rm HII}$ (measure set by \code{conv\_crit}) \\
+\code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended).  See \S\ref{sec:convergence} \\
+\code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
+\code{case\_ab} & 'B' & case A/B recombination ('A' forced by the diffuse field); also selects the SH95 H\,\textsc{i}/He\,\textsc{ii} line tables (case-A/B) \\
+\code{require\_convergence} & F & if the gas iteration has not converged at \code{gas\_niter}, print a warning; when T, abort before writing output.  The convergence status is recorded in the \code{\_rates} header either way (\code{CONVERGD}, \code{NITERDON}, \code{FINALDX}, \code{FINALDTE}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Convergence of the gas iteration}
+\label{sec:convergence}
+The gas iteration (\code{gas\_niter} sweeps of transport $\rightarrow$ rate
+integrals $\rightarrow$ leaf solve $\rightarrow$ opacity refill) stops when
+the state stops changing between sweeps.  Each sweep compares a \emph{change
+measure} against a tolerance:
+\begin{itemize}\itemsep2pt
+\item ionization only (\code{te\_fixed}, no thermal solve): converged when the
+  $x_{\rm HII}$ change $<$ \code{gas\_tol};
+\item coupled (\code{solve\_te}): converged when the $x_{\rm HII}$ change $<$
+  \code{gas\_tol} \emph{and} the $T_e$ change $<$ \code{gas\_tol\_te}.
+\end{itemize}
+
+\paragraph{Two measures (\code{conv\_crit}).}  Both are computed every sweep;
+\code{conv\_crit} selects which one gates the loop.
+\begin{description}\itemsep2pt
+\item[\code{'cell'}] the cell maxima $\max_{\rm leaf}|\Delta x_{\rm HII}|$ and
+  $\max_{\rm leaf}|\Delta T_e|/T_e$.  Simple, but the ionization-front cells
+  jitter with Monte Carlo noise and never settle, so $\max|\Delta x_{\rm HII}|$
+  \emph{stalls} at the front-cell noise floor ($\sim$2--4$\times10^{-2}$ at
+  $4\times10^7$ packets) and a smaller \code{gas\_tol} is unreachable.  This is
+  the historical default (kept so the recorded gates reproduce).
+\item[\code{'vol'}] the volume-integrated $L_1$ changes
+  \[
+    \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HII}|}{\sum_{\rm leaf} V\,x_{\rm HII}}
+    < \code{gas\_tol}, \qquad
+    \frac{\sum_{\rm leaf} V\,n_e\,|\Delta T_e|}{\sum_{\rm leaf} V\,n_e\,T_e}
+    < \code{gas\_tol\_te}.
+  \]
+  Front jitter occupies little volume (a few thousand front cells against
+  $\sim$$10^5$ ionized ones), so it enters the norm suppressed by that ratio;
+  the $n_e$ weight drops the vacuum and \code{te\_min}-pinned no-heating cells
+  that otherwise dominate $\max|\Delta T_e|$ in FUV/PDR runs.  These measures
+  decay smoothly --- the recommended production setting.
+\end{description}
+
+\paragraph{The Monte Carlo floor.}  Even the volume measures do not reach
+zero: they floor at a Monte Carlo level set by the packet count, scaling as
+$1/\sqrt{N_{\rm packets}}$ ($\sim$3$\times10^{-3}$ in $x$ and
+$\sim$7$\times10^{-3}$ in $T_e$ at $8\times10^6$ packets).  Reaching the floor
+\emph{is} convergence --- iterating further leaves the solution unchanged.  So
+\textbf{set \code{gas\_tol}/\code{gas\_tol\_te} just above the floor for the
+packet count in use}: a tolerance below the floor can never be met and the
+loop runs to \code{gas\_niter} and warns.  Rules of thumb
+(\code{conv\_crit='vol'}): $\sim$$5\times10^{-3}/10^{-2}$ at $\sim$$10^7$
+packets, loosened to $\sim$$10^{-2}/2\times10^{-2}$ at $\sim$$10^6$ (the
+reduced-count \code{examples/} use the looser values for this reason).
+
+\paragraph{When it does not converge.}  Hitting \code{gas\_niter} without
+meeting the test is not fatal: the state is still written and a warning is
+printed on rank~0.  Set \code{require\_convergence = T} to abort before the
+output instead.  Either way the \code{\_rates} header records the outcome in
+\code{CONVERGD} (0/1), \code{NITERDON} (sweeps run), \code{FINALDX}, and
+\code{FINALDTE}.  The derivation and the gate measurements are in
+\code{docs/MoCHII\_physics.pdf}.
+
+\subsection{Thermal balance and metals}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{solve\_te} & F & bisection on $T_e$ coupled with the ionization \\
+\code{te\_fixed} & 1e4 & fixed $T_e$ [K] when \code{solve\_te} is off \\
+\code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
+\code{gas\_tol\_te} & 1e-3 & convergence on $\max|\Delta T_e|/T_e$ \\
+\code{atomic\_dir} & 'data/atomic' & coefficient files (relative to the run directory) \\
+\code{use\_metals} & F & registry cascade + metal line cooling \\
+\code{ci\_model} & 'voronov' & collisional ionization: 'voronov' (default) or 'dere\_hybrid' (Voronov $\times$ the Dere 2007/Voronov ratio; matters only in shielded low-ionization zones) \\
+\code{abund\_C/N/O/Ne/S} & HII20 values & $n({\rm X})/n({\rm H})$; an element is active when $>0$ \\
+\code{abund\_Ar/Mg/Fe} & 0 & further registry elements (gas-phase values; Mg/Fe are heavily depleted) \\
+\code{abund\_Si/Cl/Ca} & 0 & five-stage registry elements (gas-phase; Si and especially Ca heavily depleted, Cl nearly undepleted --- Orion-like 3e-6 / 3e-7 / 2e-8); adds [Si\,\textsc{ii}] 34.8\,$\mu$m, Si\,\textsc{iii/iv}, [Cl\,\textsc{ii/iii/iv}] (5518/5538 density pair), Ca\,\textsc{ii}, [Ca\,\textsc{v}] \\
+\code{ion\_metal\_abs} & T & metal photoionization absorption in the band opacity (active with \code{use\_metals}); the only gas opacity in the FUV bins \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{emis\_output} & F & write \code{\_emis} (HDF5/FITS): leaf-by-leaf line emissivities + the state needed for maps (Section~\ref{sec:outputs}) \\
+\code{h\_coll\_effects} & F & add the collisional H\,\textsc{i} Balmer component (excitation of neutral H) as separate \code{hc} rows/blocks; matters at fronts and hot cells \\
+\code{fe\_levels\_full} & F & load the expanded Fe\,\textsc{ii}/\textsc{iii} models (\code{nlevel\_fe\_\{2,3\}\_full.txt}, 16/34 levels) instead of the compact 13/14 for iron-line studies \\
+\code{diffuse\_field} & F & explicit ground-recombination packets \\
+\code{hei\_diffuse} & F & fourth diffuse channel (needs \code{diffuse\_field}): He\,\textsc{i} excited-level recombination photons (19.82~eV, 584~\AA, two-photon) --- correct energy bookkeeping; moves Te by $\sim$1\% at HII40, He split unchanged \\
+\code{gaunt\_vh14} & F & free--free Gaunt factors from the van Hoof et al.\ (2014) table (\code{data/gauntff\_vh14.dat}) instead of Hummer (1988); the two agree to $\lesssim$0.5\% in $T_e$ \\
+\code{metal\_ne} & F & PDR: electrons from the metal cascade join the $n_e$ closure (the only electrons beyond the I-front) \\
+\code{metal\_heat} & F & PDR: metal photoheating in the thermal balance \\
+\code{grain\_pe} & F & PDR thermal package: grain photoelectric heating + recombination cooling (Bakes \& Tielens 1994) from the local FUV field (needs \code{add\_fuv}), plus H-impact [C\,\textsc{ii}] 158\,$\mu$m / [O\,\textsc{i}] 63\,$\mu$m cooling; scaled by \code{pe\_scale} and the leaf dust amount \\
+\code{pe\_scale} & 1.0 & photoelectric-efficiency scale factor \\
+\code{use\_sec\_ion} & F & secondary ionization by fast photoelectrons (Shull \& van Steenberg 1985): a photoelectron with kinetic energy $E_0 = h\nu - E_{\rm th}$ above 40~eV deposits only $f_{\rm heat}(x)$ of its excess as heat and the balance drives secondary H\,\textsc{i}/He\,\textsc{i} ionizations ($x$ = ionized fraction of the H+He nuclei); $\sim$0 in fully ionized gas, matters at fronts / PDR / hard fields \\
+\code{metal\_freefree} & T & include the trace metals in the free--free cooling with the net ion charge $Z_{\rm ion}=$ (stage $-1$), not the nuclear $Z$; a trace ($\sim$10$^{-4}$ of the H/He free--free) correctness term, on by default \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{I-front re-refinement}
+\begin{center}\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{refine\_front} & F & rebuild the octree on the I-front once \\
+\code{refine\_iter}  & 20 & at which iteration \\
+\code{refine\_lbase}, \code{refine\_lmax} & 5, 7 & base/front levels \\
+\code{refine\_eps} & 1e-2 & front flag: $\epsilon < x_{\rm HI} < 1{-}\epsilon$ \\
+\code{refine\_dx}  & 0.2  & or a face-neighbor $x_{\rm HI}$ jump above this \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Dust in the band and dust emission}
+\label{sec:sedust}
+\begin{center}\small
+\begin{tabular}{llp{6.8cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{ion\_add\_dust} & F & dust absorption in the band (dusty Str\"omgren) \\
+\code{ion\_dust\_kext} & '' & kext table with EUV coverage (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2009}); required \\
+\code{ion\_dust\_scatter} & F & sample dust scattering (HG, albedo weights) \\
+\code{dust\_sed} & F & SEDust stochastic dust SED at output time \\
+\code{dust\_model\_sed} & 'astrodust' & 'astrodust'/'dl07'/'zubko' \\
+\code{sed\_workdir} & '' (auto) & SEDust \code{sed/} tree whose dielectric tables are read relative to it; blank auto-resolves to \code{<executable dir>/SEDust/sed} (the in-tree copy), so it normally needs no setting \\
+\code{sed\_qtable}, \code{sed\_sizedist} & in-tree defaults & optics/size-distribution tables (relative to \code{sed\_workdir}) \\
+\code{sed\_NT}, \code{sed\_Tlo}, \code{sed\_Thi} & 200, 2.7, 5e3 & SEDust temperature grid \\
+\code{dust\_emis\_bands} & unset & up to 8 wavelengths [$\mu$m] (e.g.\ 8, 24, 70, 160): SEDust band emissivities of each leaf $\rightarrow$ \code{\_dustemis} (blocks \code{emis\_dust}/\code{wl\_dust} [erg\,s$^{-1}$\,cm$^{-3}$\,$\mu$m$^{-1}$]); the Python map maker projects them into dust-band images (the IR is optically thin) \\
+\code{sed\_pah\_live} & F & $x_{\rm HII}$-dependent PAH survival in the emission: the leaf spectrum is assembled from the model channels with the PAH channel weighted by $(x_{\rm HI} + f_{\rm ion,pah}\,x_{\rm HII})$ (needs a model with a 'PAH' channel, i.e.\ astrodust); turns the 8-$\mu$m map into the classic PAH ring at the ionization front \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Peel-off imaging}
+\begin{center}\small
+\begin{tabular}{llp{7.0cm}}
+\toprule
+parameter & default & meaning \\
+\midrule
+\code{ion\_peel} & F & after convergence, one extra transport pass peels direct (stellar + diffuse) and dust-scattered contributions toward the observers $\rightarrow$ \code{\_image} (blocks \code{direct\_ion}/\code{scatt\_ion}, plus \code{\_fuv} with \code{add\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] \\
+\code{peel\_bins} & F & bin-resolved cubes \code{direct\_cube}/\code{scatt\_cube} $(n_x, n_y, n_\nu)$ in addition to the band-integrated channel images (hardness maps, synthetic EUV/FUV photometry); the third (bin) axis is labelled by the \code{E\_bin}/\code{dE\_bin} [eV] and \code{wl\_bin} [\AA] arrays written once into the same file \\
+\code{save\_direc0} & F & also write the unattenuated direct image (\code{direc0\_ion}/\code{\_fuv}, and \code{direc0\_cube} with \code{peel\_bins}): the direct source with the path extinction $e^{-\tau}$ omitted, so \code{direc0/direct}$=e^{+\tau}$ is the line-of-sight optical depth toward the observer \\
+\code{obsx,obsy,obsz} & unset & observer positions (or directions) in code units; or use \code{alpha/beta/gamma} angle lists [deg]; default: one observer on $+z$ far away \\
+\code{distance} & auto & observer distance (code units) \\
+\code{nxim}, \code{nyim} & 129, 129 & image pixels \\
+\code{dxim}, \code{dyim} & auto & pixel scale [deg]; auto-sized to cover the box \\
+\bottomrule
+\end{tabular}
+\end{center}
+Peel-off also works with the external field: an external packet's direct
+peel uses the Lambert weight
+$\max(\hat k_{\rm obs}\cdot\hat n_{\rm in},0)/\pi$ about its entry-surface
+inward normal, so only the far-side surface contributes and the image is
+the background field seen through the medium (the cloud in silhouette);
+with \code{save\_direc0}, \code{direc0/direct}$\,=e^{+\tau}$ is again the
+line-of-sight optical-depth map.
+
+\subsection{Output}
+\code{out\_file} (base name; extension follows \code{file\_format} =
+'hdf5' or 'fits').
+
+%==========================================================================
+\section{Output files}
+\label{sec:outputs}
+\subsection{\code{<base>\_rates.h5}}
+One dataset for each extension, leaf-ordered:
+\begin{center}\small
+\begin{tabular}{lp{9.5cm}}
+\toprule
+extension & content \\
+\midrule
+\code{Gamma\_HI/HeI/HeII} & photoionization rates [s$^{-1}$] \\
+\code{Heat\_HI/HeI/HeII} & photoheating per particle [erg/s] \\
+\code{Heat\_dust} & grain heating [erg\,s$^{-1}$\,cm$^{-3}$] (when \code{ion\_add\_dust}) \\
+\code{T\_dust} & equilibrium mixture dust temperature [K] \\
+\code{x\_HI}, \code{x\_HeI}, \code{x\_HeII}, \code{n\_e}, \code{T\_e} & converged state \\
+\code{x\_<el>\_stages} & metal ion fractions (stage, leaf) \\
+\code{J\_nu} & band mean intensity (bin, leaf) [erg/s/cm$^2$/Hz/sr] \\
+\code{E\_bin}, \code{dE\_bin} & band grid [eV] \\
+\code{LeafXYZ}, \code{LeafSize} & leaf centers and full widths (code units; for slices/cutouts) \\
+\bottomrule
+\end{tabular}
+\end{center}
+The file header also carries the convergence record of the gas
+iteration: \code{CONVERGD} (did it converge), \code{NITERDON}
+(iterations run), \code{FINALDX} (final $\max|\Delta x_{\rm HII}|$), and
+\code{FINALDTE} (final $\max|\Delta T_e|/T_e$).
+
+\subsection{Line and emissivity outputs}
+\label{sec:lineout}
+\code{<base>\_lines.txt} is a text table of integrated line luminosities on
+the converged state, one row for each line: element, ionization stage,
+wavelength [\AA], $L$ [erg\,s$^{-1}$], and $L/L({\rm H}\beta)$.  With
+\code{emis\_output} the same line set is also written leaf-by-leaf to
+\code{<base>\_emis} (HDF5, or FITS with \code{file\_format='fits'}) as
+emissivity blocks in erg\,s$^{-1}$\,cm$^{-3}$, where
+$\sum {\rm emis}\cdot V = L_{\rm line}$ and the block row order matches the
+text table.  Every line comes from one of two sources: recombination-line
+tables (H and He, Table~\ref{tab:reclines}) and $n$-level
+statistical-equilibrium solves (the metals plus the optional collisional
+H\,\textsc{i} component, Table~\ref{tab:metallines}).
+
+\begingroup\small
+\begin{longtable}{@{}l p{3.3cm} p{6.0cm} p{3.0cm}@{}}
+\caption{Recombination-line blocks in \code{<base>\_emis}; wavelengths in
+  \AA\ unless $\mu$m noted.}\label{tab:reclines}\\
+\toprule
+block & source & lines & weighting, when present \\
+\midrule
+\endfirsthead
+\code{emis\_h} & Storey \& Hummer (1995) H\,\textsc{i}, case set by
+  \code{case\_ab} & H$\alpha$ 6565, H$\beta$ 4863, H$\gamma$ 4342,
+  H$\delta$ 4103, Pa$\alpha$ 1.876\,$\mu$m, Pa$\beta$ 1.282\,$\mu$m,
+  Br$\gamma$ 2.166\,$\mu$m & always; $n_e\,n_{\rm HII}$ \\
+\code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{case\_ab}) &
+  1640, 3204, 4543, 4686, 5413, 10126 & only where an He\,\textsc{iii}
+  zone exists; $n_e\,n_{\rm HeIII}$ \\
+\code{emis\_hei} & Porter et al.\ (2012/2013) He\,\textsc{i}, case B &
+  3889, 4026, 4471, 5876, 6678, 7065, 7281, 10830 & where He\,\textsc{ii}
+  is present; $n_e\,n_{\rm HeII}$ \\
+\code{emis\_hc} & 25-level H\,\textsc{i} collisional solve &
+  H$\alpha$/H$\beta$/H$\gamma$ collisional component (separate \code{hc}
+  rows) & only with \code{h\_coll\_effects}; $n_{\rm HI}$ \\
+\bottomrule
+\end{longtable}
+\endgroup
+\noindent\small The He\,\textsc{i} Porter table is case B only; under case A
+a note is printed and the H\,\textsc{i}/He\,\textsc{ii} tables switch to
+case A while He\,\textsc{i} stays case B.\normalsize
+
+\medskip
+The metal line blocks \code{emis\_<el>\_<stage>} follow the $n$-level solve.
+One block is written for every active registry ion (element abundance $>0$)
+that has an \code{nlevel\_<el>\_<stage>} data file.  Elements C, N, O, Ne, S
+are active by default; Ar, Mg, Fe, Si, Cl, Ca are activated by setting their
+\code{par\%abund\_<El>}.  Only the principal lines are listed below --- the
+full transition list of each block is in \code{<base>\_lines.txt}.
+
+\begingroup\small
+\begin{longtable}{@{}l p{12.6cm}@{}}
+\caption{Metal collisional-line blocks (\code{emis\_<el>\_<stage>});
+  wavelengths in \AA\ unless $\mu$m noted.}\label{tab:metallines}\\
+\toprule
+ion (block) & principal lines \\
+\midrule
+\endfirsthead
+\multicolumn{2}{@{}l}{\small\itshape Table~\ref{tab:metallines} (continued)}\\
+\toprule
+ion (block) & principal lines \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{c\_2} [C\,\textsc{ii}]   & 2325 (UV multiplet), 158\,$\mu$m \\
+\code{c\_3} C\,\textsc{iii}]   & 977, 1907, 1909, 178\,$\mu$m \\
+\code{n\_2} [N\,\textsc{ii}]   & 3064/3071, 5756, 6550, 6585, 122\,$\mu$m, 205\,$\mu$m \\
+\code{n\_3} [N\,\textsc{iii}]  & 1750 (UV multiplet), 57\,$\mu$m \\
+\code{o\_1} [O\,\textsc{i}]    & 5579, 6302, 6366, 63\,$\mu$m, 145\,$\mu$m \\
+\code{o\_2} [O\,\textsc{ii}]   & 2471, 3727, 3730, 7321/7331 \\
+\code{o\_3} [O\,\textsc{iii}]  & 1661/1666, 2322/2332, 4364, 4960, 5008, 52\,$\mu$m, 88\,$\mu$m \\
+\code{ne\_2} [Ne\,\textsc{ii}] & 12.8\,$\mu$m \\
+\code{ne\_3} [Ne\,\textsc{iii}]& 3343, 3870, 3969, 15.55\,$\mu$m, 36\,$\mu$m \\
+\code{s\_2} [S\,\textsc{ii}]   & 4070/4078, 6718, 6733, 1.03\,$\mu$m, 315\,$\mu$m \\
+\code{s\_3} [S\,\textsc{iii}]  & 3722, 6314, 8831, 9070, 9532, 12\,$\mu$m, 18.7\,$\mu$m, 33.5\,$\mu$m \\
+\midrule
+\multicolumn{2}{@{}l}{\itshape Optional --- activate with \code{par\%abund\_<El>}}\\
+\midrule
+\code{ar\_3} [Ar\,\textsc{iii}]& 3006/3110, 5193, 7138, 7753, 8.99\,$\mu$m, 21.8\,$\mu$m \\
+\code{ar\_4} [Ar\,\textsc{iv}] & 2854/2869, 4713, 4741, 7170 (multiplet), 56\,$\mu$m, 78\,$\mu$m \\
+\code{mg\_2} Mg\,\textsc{ii}   & 2796, 2804 \\
+\code{fe\_2} [Fe\,\textsc{ii}] & 1.26/1.32\,$\mu$m, 5.34\,$\mu$m, 17.9\,$\mu$m, 26\,$\mu$m (40 lines total) \\
+\code{fe\_3} [Fe\,\textsc{iii}]& 4659, 4703, 4881, 5011, 22.9\,$\mu$m (38 lines; 16/34-level with \code{fe\_levels\_full}) \\
+\code{si\_2} [Si\,\textsc{ii}] & 2335 (multiplet), 34.8\,$\mu$m \\
+\code{si\_3} Si\,\textsc{iii}] & 1206, 1883, 1892, 38\,$\mu$m \\
+\code{si\_4} Si\,\textsc{iv}   & 1394, 1403 \\
+\code{cl\_2} [Cl\,\textsc{ii}] & 3587/3679, 6164, 8581, 9126, 14.4\,$\mu$m, 33\,$\mu$m \\
+\code{cl\_3} [Cl\,\textsc{iii}]& 3344/3354, 5519, 5539, 8480 (multiplet) \\
+\code{cl\_4} [Cl\,\textsc{iv}] & 3120/3205, 5325, 7263, 7533, 11.8\,$\mu$m, 20.3\,$\mu$m \\
+\code{ca\_2} Ca\,\textsc{ii}   & 3935, 3970, 7293/7326, 8500/8544/8665 \\
+\code{ca\_5} [Ca\,\textsc{v}]  & 3999, 5311, 6088, 3.05\,$\mu$m, 4.16\,$\mu$m, 11.5\,$\mu$m \\
+\end{longtable}
+\endgroup
+\noindent\small Some registry ions are tracked in the ionization balance but
+carry no line block because CHIANTI v11 has no level/collision data for them:
+Ar\,\textsc{ii}, Cl\,\textsc{v}, Ca\,\textsc{iii}, Ca\,\textsc{iv}.\normalsize
+
+\paragraph{State blocks.}  Beyond the emissivities, \code{<base>\_emis}
+carries the state a map needs without the rates file: \code{LeafXYZ} (leaf
+centers) with the \code{DIST\_CM} keyword, \code{LeafSize} (leaf edge length;
+$V = ($\code{LeafSize}$\cdot$\code{DIST\_CM}$)^3$), \code{n\_H}, \code{n\_e},
+\code{T\_e}, \code{x\_HI}, \code{x\_HeI}, \code{x\_HeII}, and the
+\code{x\_<el>\_stages} metal-fraction blocks (same layout as the rates file).
+The Python \code{EmisData} reader (\code{tools/python/mochii\_output.py})
+turns these blocks into line maps without the rates file.
+
+\subsection{Spectral and image outputs}
+\begin{center}\small
+\begin{tabular}{lp{9.2cm}}
+\toprule
+file & content \\
+\midrule
+\code{\_nebcont.txt} & nebular continuum $L_\nu$ (fb+ff tables, Milne, two-photon) \\
+\code{\_dustir.txt} & equilibrium-mixture dust IR spectrum (1--1000 $\mu$m) with the energy-closure header \\
+\code{\_dustsed.txt} & SEDust stochastic dust SED with PAH bands (when \code{dust\_sed}) \\
+\code{\_dustemis.h5} & (with \code{dust\_emis\_bands}) SEDust band emissivities of each leaf, same block layout as \code{\_emis} --- readable by \code{EmisData} for dust-band maps \\
+\code{\_image.h5} & (with \code{ion\_peel}) peel-off images for each observer: \code{direct\_ion}/\code{scatt\_ion} (+\code{\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$], suffix \code{\_obs<k>} when several observers; with \code{peel\_bins}, \code{direct\_cube}/\code{scatt\_cube} $(n_x,n_y,n_\nu)$ and the \code{E\_bin}/\code{dE\_bin}/\code{wl\_bin} bin-grid arrays; with \code{save\_direc0}, the unattenuated \code{direc0\_ion}/\code{\_fuv} (or \code{direc0\_cube}) \\
+\code{\_slab\_Imu.txt} & (with \code{source\_geometry\,=\,'slab'}) the emergent intensity $I(\mu)$ at the two z-boundaries: columns $\mu$, $I_{\rm top}$, $I_{\rm bot}$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] on \code{slab\_nmu} bins ($F=2\pi\!\int\! I\mu\,{\rm d}\mu$), with the reflected / transmitted / absorbed energy budget (fractions of the entering $L$) in the header \\
+\bottomrule
+\end{tabular}
+\end{center}
+\label{sec:slabout}
+
+\subsection{Reading outputs in Python}
+\code{tools/python/mochii\_output.py} is an importable module (works
+directly in a notebook) that reads every section file (HDF5 or FITS;
+\code{read\_sections}), the line table (\code{read\_lines\_table}),
+and the text spectra (\code{read\_spectrum}), and builds 2D maps from
+the emissivity file:
+\begin{verbatim}
+import sys; sys.path.insert(0, ".../MoCHII/tools/python")
+import matplotlib.pyplot as plt
+from mochii_output import EmisData
+
+d = EmisData("run_emis.h5")
+d.info()                            # blocks, fields, line count
+d.line_list()                       # every stored line (block, wl)
+
+# ready-made figures (notebook): returns (fig, ax)
+fig, ax = d.plot_line("o_3", 5007.)                  # log S map
+fig, ax = d.plot_line("h", 6563., unit="intensity",
+                      photons=True)  # photons/s/cm^2/sr
+fig, ax = d.plot_field("T_e", weight="EM")
+fig, axs = plt.subplots(1, 2); d.plot_line("s_2", 6717., ax=axs[0]) \
+    ; d.plot_line("s_2", 6731., ax=axs[1])   # doublet side by side
+
+# raw arrays, when the figure is yours to build
+img, ext = d.line_map("o_3", 5007., axis="z", npix=512)
+img, ext = d.line_map("h", 6563., unit="intensity", photons=True)
+img, ext = d.field_map("T_e", weight="EM")   # LOS-weighted average
+Q = d.line_luminosity("h", 4861., photons=True)  # photon rate [1/s]
+\end{verbatim}
+Line maps are flux-conserving: each leaf's luminosity is deposited
+with exact area overlap onto the pixel grid (AMR leaf sizes handled),
+so $\sum S\,A_{\rm pix} = L_{\rm line}$ to machine precision.
+\code{unit='flux'} (default) gives surface brightness
+[erg\,s$^{-1}$\,cm$^{-2}$]; \code{unit='intensity'} gives specific
+intensity [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] $= S/4\pi$ (isotropic
+emission, optically thin); \code{photons=True} converts either to
+photon units (divides by $hc/\lambda$ of the line).  A
+\code{slab=(lo,hi)} cut restricts the line of sight.  Field maps
+average \code{T\_e}, \code{n\_e}, \code{x\_HI}, \dots\ along the line
+of sight with weight \code{'EM'} ($n_e^2 V$), \code{'ne'},
+\code{'nH'}, or \code{'V'}.  The same module doubles as a
+command-line tool for quick looks:
+\begin{verbatim}
+python3 mochii_output.py run_emis.h5                  # list lines
+python3 mochii_output.py run_emis.h5 --line o_3 5007 \
+        --npix 512 --log --out o3.png
+python3 mochii_output.py run_emis.h5 --line h 6563 \
+        --unit intensity --photons     # photons/s/cm^2/sr
+python3 mochii_output.py run_emis.h5 --field T_e --weight EM
+\end{verbatim}
+
+\subsection{Slices and cutouts}
+A \emph{slice} is the actual leaf value on a plane (the cell that contains
+each pixel), distinct from the line-of-sight \emph{projection} above --- a
+slice resolves the ionization front sharply where a projection blurs it.
+\code{tools/python/leaf\_field.py} holds the backend
+(\code{leaf\_slice}, the nearest-leaf fallback \code{leaf\_slice\_nn}, and
+\code{plot\_slice}); \code{mochii\_output.py} exposes it on the output
+files:
+\begin{verbatim}
+from mochii_output import EmisData, RatesData
+r = RatesData("run_rates.h5")                 # leaf state
+fig, ax = r.plot_field_slice("T_e", axis="z", coord=0.0)
+fig, ax = r.plot_field_slice("x_HI", axis="z", coord=0.0, log=True)
+img, ext = r.slice_field("n_e", axis="x", coord=0.0,
+                         bounds=(-2,2,-2,2))  # cutout window
+
+d = EmisData("run_emis.h5")
+fig, ax = d.plot_line_slice("o_3", 5007., axis="z")   # emissivity slice
+\end{verbatim}
+Exact slices need the leaf full widths: the \code{\_emis.h5} file always
+carries \code{LeafSize}, and \code{\_rates.h5} does too; a rates file
+written before \code{LeafSize} existed falls back to a nearest-leaf
+slice (a one-time note is printed).  The command line takes
+\code{--slice FIELD --axis z --coord 0} on either file.
+
+\subsection{Building AMR grids}
+\code{tools/python/AMR\_grid/} builds the generic AMR octree file the code
+reads (\code{grid\_type='amr'}): \code{AMR\_grid.py} (the \code{AMRGrid}
+class --- uniform, density-gradient, or resolution refinement;
+\code{set\_density}/\code{set\_neutral\_fraction}; \code{write} to
+HDF5/FITS/\code{.fits.gz}/text with columns \code{x,y,z,level,nH}
+[\code{,metallicity,xHI,ndust}]) and \code{make\_amr\_sphere.py} (a
+sphere/shell CLI).  \code{AMRGrid} carries the same
+\code{slice}/\code{plot\_slice}/\code{cutout} so a grid can be inspected
+before a run.
+
+%==========================================================================
+\section{Worked examples (the regression tests)}
+Each \code{tests/} directory is self-contained: grid builder or a
+symlinked grid, the input file, and a \code{check\_*.py} gate script.
+\begin{center}\small
+\begin{tabular}{lp{10.2cm}}
+\toprule
+directory & what it demonstrates / gate \\
+\midrule
+\code{g0\_gamma} & rate integrals vs.\ analytic attenuation (bias $+0.004\%$) \\
+\code{g1\_stromgren} & Str\"omgren sphere, case B fixed $T_e$; AMR $\equiv$ uniform \\
+\code{g2a\_thermal} & thermal H/He nebula vs.\ the 1D exact reference \\
+\code{g2\_hii} & MOCASSIN Lexington HII20/HII40 benchmarks + line fluxes \\
+\code{g4\_refine} & I-front re-refinement vs.\ native level 7 \\
+\code{g4\_tng} & Illustris-TNG post-processing demo (shadows, maps) \\
+\code{d\_dusty} & dusty Str\"omgren; scattering bracket; $T_{\rm d}$/IR \\
+\code{peel} & peel-off images vs.\ the optically thin analytic flux ($+0.017\%$); bin cubes \\
+\code{uni\_dda} & uniform grid: shared walk $\equiv$ octree (bit-identical); DDA walk to rounding \\
+\code{pdr} & FUV/PDR switches: carbon-electron shell, photoelectric $T_e$ \\
+\code{ext\_field} & isotropic external field: interior $J = J_{\rm ext}$ to 0.2\% (rec and sph) \\
+\code{multi\_src} & multiple point sources: superposition, spectrum resolution, one-file spectra \\
+\code{peel\_ext} & external-field peel: silhouette flux vs.\ $J A_{\rm proj}/d^2$, chord $\tau$ spectrum \\
+\code{qmc} & quasi-random launch: Sobol generator vs.\ \code{scipy} + Owen-net balance; the fixed-state variance gate (cell-wise $\Gamma_{\rm HI}$ gain $29\times$ at $2^{17}$, $222\times$ at $2^{20}$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+A minimal thermal + metals + dust input (from \code{d\_dusty}):
+\begin{verbatim}
+&parameters
+ par%no_photons = 4.0e7          par%iseed = 1234
+ par%grid_type = 'amr'           par%amr_file = 'amr_L6.fits'
+ par%distance_unit = 'pc'        par%dust_model = 'global_dgr'
+ par%use_ion_band = .true.       par%nnu_ion = 32
+ par%eion_min = 13.598           par%eion_max = 100.0
+ par%tstar = 4.0e4               par%luminosity = 3.178e38
+ par%xHI_init = 1.0e-3           par%He_abund = 0.1
+ par%gas_niter = 60              par%gas_tol = 2.0e-3
+ par%solve_te = .true.           par%atomic_dir = '../../data/atomic'
+ par%use_metals = .true.
+ par%ion_add_dust = .true.
+ par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%cext_dust = 4.868e-22       par%DGR = 1.0
+ par%out_file = 'run.h5'         par%file_format = 'hdf5'
+/
+\end{verbatim}
+
+%==========================================================================
+\section{Adding an ion}
+Adding an ion touches only data:
+\begin{enumerate}
+\item \code{tools/fitting/fit\_cooling.py}: add the ion with a
+  $T_i$ ladder guessed from its \code{.elvlc} level energies; run; check
+  the reported max error and the overlay figure.
+\item \code{tools/fitting/fit\_nlevel.py}: add the ion with the
+  level count needed for its diagnostics; run.
+\item \code{tools/fitting/make\_element\_data.py}: add the element to
+  \code{ELEMENTS} (Z, stage count) and its thresholds; charge exchange
+  entries where sources exist; run.  The CHIANTI
+  \code{.rrparams}/\code{.drparams} types 1--3 are handled
+  (\code{RR}/\code{RR2}/\code{DR}/\code{DR2} lines).
+\item Fortran: a \code{par\%abund\_<El>} field and one entry in the
+  \code{species\_setup} name/abundance lists (only for a NEW element;
+  new stages of a known element need nothing).
+\item Verify: extend \code{verify\_nlevel\_pyneb.py} with a diagnostic
+  ratio where PyNeb has data; run a smoke test and check the new lines
+  in \code{\_lines.txt}.
+\end{enumerate}
+Data caveats met so far: Ar\,\textsc{ii} has no CHIANTI v11
+level/collision data (stage tracked without lines); Fe\,\textsc{iii}
+collision strengths differ from PyNeb's BB14 by up to $\sim$16\% in
+4658/4702 (known spread for iron); charge-exchange stage labels differ
+between the Huang (2023) and MOCASSIN transcriptions for Mg/Fe (the
+Huang labels are adopted; see \code{make\_element\_data.py}).
+
+%==========================================================================
+\section{Practical notes}
+\begin{itemize}
+\item \textbf{Bins}: 32 bins give $\sim$2\% rate-integral
+  discretization; use 64 for sub-percent work.  The \code{add\_fuv}
+  extension carries its own bins below \code{eion\_min}, so the
+  ionizing resolution is unaffected.
+\item \textbf{FUV and the PDR}: without \code{add\_fuv} there is no
+  radiation beyond the I-front and the metals there recombine toward
+  neutral; with it, FUV penetrates the neutral gas (dust extinction
+  only) and produces the PDR-side C\,\textsc{ii} and Mg\,\textsc{ii}.
+  Metal photoheating and grain photoelectric heating are not in the
+  thermal balance, so PDR-zone temperatures are indicative only.
+\item \textbf{Convergence}: use \code{conv\_crit = 'vol'} for
+  production --- the cell-max criterion stalls at the front-cell noise
+  floor (and, with \code{add\_fuv}, at no-heating cells where $T_e$
+  pins to \code{te\_min}).  Both measures are printed each iteration.
+  The explicit diffuse field smooths the front and converges far better.
+\item \textbf{Starts}: prefer an ionized initial state; a neutral start
+  advances the front $\sim$one cell per iteration.
+\item \textbf{kext tables}: must cover the band (the astrodust table
+  stops at 912~\AA; use the D03 table for EUV work).  Tables are sorted
+  on read (the D03 file has an out-of-order seam).
+\item \textbf{Re-refinement}: one event per run; the old shared-memory
+  windows are reclaimed only at exit.
+\item \textbf{SEDust}: \code{sed\_workdir} must point at a SEDust
+  \code{sed/} tree; the exact stochastic solve costs
+  $\sim$0.05--0.1~s for each gas leaf (distributed over ranks).
+\end{itemize}
+
+\end{document}

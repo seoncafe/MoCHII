@@ -1,0 +1,1717 @@
+%% MoCHII, M3, and MAPPINGS V 5.2.1: algorithmic and physical comparison.
+%% Author: Kwang-Il Seon
+%% Written for my_memo.cls.
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\hypersetup{hidelinks}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\MoCHII}{\textsc{MoCHII}}
+\newcommand{\Mthree}{M$^3$}
+\newcommand{\Mappings}{MAPPINGS V 5.2.1}
+\newcommand{\HII}{H\,\textsc{ii}}
+\newcommand{\HI}{H\,\textsc{i}}
+\newcommand{\HeI}{He\,\textsc{i}}
+\newcommand{\HeII}{He\,\textsc{ii}}
+\newcommand{\HeIII}{He\,\textsc{iii}}
+\newcommand{\Te}{T_{\rm e}}
+\newcommand{\nelec}{n_{\rm e}}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\begin{document}
+
+\title{MoCHII, M$^3$, and MAPPINGS V 5.2.1:\\
+An Algorithmic and Physical Comparison}
+\author{Kwang-Il Seon}
+\date{\docmoddate}
+\maketitle
+
+\begin{abstract}
+This memo compares \MoCHII{} (MOnte Carlo for \HII{} regions), the public
+\Mthree{} (Messenger Monte Carlo MAPPINGS V) tree at
+\code{\char`~/RT\_Codes/MAPPINGS/M3-main}, and the independent public
+\Mappings{} release at
+\code{\char`~/RT\_Codes/MAPPINGS/mappings\_V-521}.  The comparison is
+based on connected execution paths and quantitative tests rather than on
+routine names alone.  \MoCHII{} is strongest as a modern
+three-dimensional transport and synthetic-observation engine: octree AMR,
+an analytic absorption estimator, a dedicated Cartesian DDA backend,
+solution-driven ionization-front refinement, dust absorption and
+scattering, stochastic dust/PAH emission, and observer peel-off imaging.
+\Mappings{} is strongest as a deterministic one-dimensional general
+plasma engine: a 30-element option, density-dependent multilevel cooling,
+finite-source-age photoionization, non-equilibrium cooling, radiation
+pressure, and steady radiative MHD shocks with an iterated precursor.
+Its 1D photoionization path also connects detailed grain/PAH physics to a
+stochastic infrared solver.  \Mthree{} occupies a distinct middle ground:
+it grafts three-dimensional Monte Carlo transport onto an older MAPPINGS
+V 5.1.13-era physics tree and therefore combines broad MAPPINGS
+microphysics with arbitrary Cartesian geometry, but it does not inherit
+all later 5.2.1 changes or expose all parent modes through its public 3D
+driver.  The principal limitations are correspondingly different.
+\MoCHII{} presently uses low-density-limit metal cooling fits in its hot
+thermal loop and has an \HII-region-centered ion inventory; \Mthree{} has
+no AMR and a communication-heavy uniform-grid packet algorithm; and
+\Mappings{} is restricted to spherical or plane-parallel 1D structures,
+uses an outward-only diffuse-field approximation, and retains a legacy
+interactive global-state architecture.  The recommended strategy is to
+retain the \MoCHII{} transport architecture, use \Mappings{} as the
+current microphysics and 1D shock/time-dependence reference, and use
+\Mthree{} specifically to study how MAPPINGS physics behaves after being
+mapped into three dimensions.
+\end{abstract}
+
+\tableofcontents
+
+%==============================================================================
+\section{Purpose, scope, and basis of the comparison}
+
+\MoCHII{} and \Mthree{} are self-consistent three-dimensional Monte Carlo
+photoionization codes, whereas \Mappings{} is a deterministic one-dimensional
+plasma and radiative-shock code.  \MoCHII{} adds gas
+physics to the validated MoCafe v2.00 dust radiative-transfer engine.  Its
+founding design treats grid traversal, radiation estimators, dust physics,
+parallelism, file formats, and synthetic observations as first-class
+components.  \Mthree{} adds three-dimensional Monte Carlo radiation
+transport to MAPPINGS V, whose principal strength is its extensive atomic,
+ionic, heating, cooling, and emission-line physics \cite{jin2022,sd1993}.
+\Mappings{} continues that parent line as version 5.2.1, with separate
+photoionization, shock, equilibrium-cooling, non-equilibrium-cooling, and
+single-ion diagnostic drivers.
+
+This memo distinguishes three levels of evidence:
+
+\begin{enumerate}[leftmargin=2em]
+\item \emph{Physics present in the parent code.}  The MAPPINGS V source
+  tree contains one-dimensional photoionization, shock, non-equilibrium,
+  dust, and plasma utilities.
+\item \emph{Physics connected to the three-dimensional driver.}  A routine
+  appearing in the source tree is not automatically active in the
+  \code{montph7} Monte Carlo path.
+\item \emph{Physics quantitatively gated in the current code.}  This is the
+  strongest evidence: an analytic test, independent solver, database
+  comparison, or published benchmark with a stated numerical tolerance.
+\end{enumerate}
+
+This distinction is essential for shocks and time dependence.  The public
+MAPPINGS tree contains \code{shock2--shock5}, \code{timion}, and
+\code{timtqui}; however, the three-dimensional \code{montph7} family sets
+\code{nmod='EQUI'} before the cell thermal solve.  Thus the present
+three-dimensional \Mthree{} calculation is an equilibrium photoionization
+model.  The legacy routines remain valuable MAPPINGS capabilities, but
+they should not be described as coupled three-dimensional \Mthree{}
+physics without additional development and validation.
+
+No direct same-input, same-atomic-data timing or line-flux campaign among
+the three local executables has yet been performed.  Numerical performance
+comparisons in this memo therefore use algorithm structure and each code's
+own recorded gates.  They are diagnostic rather than a substitute for a
+controlled cross-code experiment.
+
+%==============================================================================
+\section{Lineage: why MAPPINGS V 5.2.1 is not
+\texorpdfstring{M$^3$}{M3} 5.2.1}
+
+The three code names can easily obscure the most important architectural
+fact.  \Mthree{} is not a three-dimensional front end to the newly added
+\Mappings{} directory.  Its source identifies itself as MAPPINGS V
+5.1.13 with a separate Monte Carlo development history.  The two trees
+still share 78 Fortran filenames, but the shared implementations have
+diverged substantially; the 5.2.1 versions of core files such as
+\code{photo6.f}, \code{photo7.f}, \code{shock5.f}, \code{mapinit.f}, and
+\code{cool.f} contain extensive later changes.  \Mthree{} adds its own
+\code{montph7}, Cartesian packet transport, PDF, and three-dimensional
+thermal-solver files instead \cite{jin2022,mappings521}.
+
+This gives each branch a different meaning:
+
+\begin{itemize}[leftmargin=2em]
+\item \Mappings{} is the newer parent-physics branch.  Its public
+  \code{map52} executable offers P6/P7 multizone photoionization, S5
+  shock plus precursor models, CIE and NEQ cooling curves, PIE curves,
+  single slabs, and multilevel-ion diagnostic modes.
+\item \Mthree{} is the three-dimensional geometry branch.  It is the
+  relevant comparison for arbitrary density fields, but its physics
+  inventory must be assessed from the connected \code{montph7} path,
+  not inferred from the presence of a similarly named MAPPINGS routine.
+\item \MoCHII{} is an independent three-dimensional transport branch built
+  from MoCafe rather than MAPPINGS.  Similar physical terms therefore have
+  independent algorithms, atomic-data pipelines, and validation histories.
+\end{itemize}
+
+Consequently, a discrepancy between \MoCHII{} and \Mthree{} cannot safely
+be labeled a discrepancy with \Mappings{} 5.2.1.  For future differential
+tests, 5.2.1 should be the primary one-zone and 1D microphysics reference;
+\Mthree{} should be treated as the older MAPPINGS-derived 3D realization.
+
+%==============================================================================
+\section{MAPPINGS V 5.2.1 in its own right}
+
+\subsection{Deterministic 1D integration and diffuse radiation}
+
+P6 and P7 integrate successive zones in spherical or plane-parallel
+geometry.  Step sizes respond to optical depth and predicted changes in
+temperature and ionization.  The result has no Monte Carlo shot noise and
+is therefore efficient for large parameter grids, detailed spectra, and
+thin cooling zones.  Isobaric models can include radiation pressure,
+$P(r)=P_0+P_{\rm rad}(r)$, while other choices provide constant density or
+a prescribed density law.  The model may terminate at a distance, an ion
+or hydrogen column, or an optical/radiation-bounded condition.
+
+The price is geometric closure.  The diffuse field is explicitly labeled
+``OUTWARD ONLY'' in \code{photo6.f} and \code{photo7.f}.  It follows the
+allowed 1D directions rather than transporting recombination photons over
+arbitrary solid angle.  This is fast and often adequate for a monotonic
+sphere or slab, but it cannot represent porous escape, oblique shadows,
+clump illumination, or inward/backward diffuse coupling as a true 3D
+transport calculation can.  The word ``adaptive'' in the S5 menu refers
+to an adaptive one-dimensional shock integration, not to a 3D AMR mesh.
+
+\subsection{Time dependence, cooling flows, and shocks}
+\label{sec:mapstrength}
+
+Unlike the public \Mthree{} 3D driver, the P6/P7 path genuinely connects a
+finite source lifetime to the time-dependent ion solver.  It supports an
+equilibrium solution, a finite-age ionization calculation, and a
+post-equilibrium source-off evolution.  The implementation advances ionic
+populations with adaptive substeps and couples the elapsed ionization-front
+time to each new zone.  This is a useful one-dimensional ionization-history
+model, although it is not radiation hydrodynamics and does not evolve an
+arbitrary multidimensional density field.
+
+The S5 path is an even clearer 5.2.1 advantage.  It solves a steady,
+plane-parallel radiative MHD shock, adapts its step to atomic, cooling, and
+photon-absorption timescales, and iterates the shock radiation with an
+automatically calculated photoionized precursor.  The source description
+advertises shock speeds from roughly 10 to $10^4$ km s$^{-1}$.  Companion
+drivers compute CIE cooling, non-equilibrium cooling, and PIE curves.  For
+one-dimensional shock spectra and cooling flows, neither current 3D code
+offers an equivalent connected and mature path.
+
+\subsection{Atomic, electron, and dust physics}
+
+The standard preference file activates 16 elements, while
+\code{mapFull.prefs} activates all 30 elements from H through Zn; static
+dimensions permit 31 ion stages and 10,240 photon-energy entries.  The
+thermal loop directly calls fine-structure, intercombination, resonance,
+multilevel, iron, recombination, free-free, collisional-ionization,
+charge-exchange, grain/PAH, and cosmic-ray terms.  Optional $\kappa$
+electron distributions modify excitation, ionization, and recombination
+rates.  These are major strengths for broad plasma diagnostics and for
+gas near or above coolant critical densities.
+
+The 1D dust path is materially more complete than the public \Mthree{} 3D
+dust branch.  In addition to grain charge, depletion, photoelectric
+heating, gas-grain collisions, PAHs, and destruction prescriptions,
+P6/P7 call \code{dusttemp} zone by zone.  That routine implements a
+Draine--Li stochastic temperature distribution and returns an infrared
+photon field.  Thus \Mappings{} has a coupled 1D gas--dust--IR calculation,
+whereas \MoCHII{} has the stronger spatially resolved 3D dust transport
+and imaging chain.
+
+Several cautions remain.  The atomic tables are broad but globally coupled
+and are harder to provenance or replace ion by ion than the \MoCHII{}
+registry.  A Compton routine exists but no call from the examined main
+cooling path was found, and the microturbulent heating block in
+\code{cool.f} is commented out; neither should be counted as active 5.2.1
+physics without a dedicated execution test.  Resonance-line attenuation
+uses escape/transfer approximations rather than a multidimensional,
+frequency-redistributing Monte Carlo line solver.
+
+\subsection{Software and workflow limitations}
+
+\Mappings{} preserves a productive but legacy Fortran architecture:
+common blocks, compile-time maxima, runtime table loading, interactive
+menus, and many ASCII output products.  P7 exposes experimental routines
+and an API, but the normal workflow remains less scriptable and less
+modular than \MoCHII{}'s namelist, HDF5/FITS, module, and Python-reader
+design.  The documentation overview describes the manual as work
+in progress, so reliable use still requires source reading.  The benefit
+of this conservatism is continuity with decades of MAPPINGS models; the
+cost is a higher barrier to automated regression testing, embedding, and
+isolated replacement of atomic data.
+
+%==============================================================================
+\section{Executive comparison}
+
+\begin{longtable}{P{0.19\textwidth}P{0.35\textwidth}P{0.35\textwidth}}
+\caption{High-level comparison of the current three-dimensional codes.}
+\label{tab:executive}\\
+\toprule
+Topic & \MoCHII{} & \Mthree{} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:executive} continued.}\\
+\toprule
+Topic & \MoCHII{} & \Mthree{} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Grid & Octree AMR or a memory-minimal uniform Cartesian backend; optional
+solution-driven I-front refinement. & Uniform Cartesian grid divided into
+equal MPI blocks; no AMR. \\
+
+Absorption transport & Analytic leaf-by-leaf attenuation estimator when
+the band has no scattering; only direction and frequency are sampled. &
+Lucy-style random optical depth, discrete absorption, and immediate local
+re-emission. \\
+
+Diffuse field & Explicit selected H/He recombination channels rebuilt from
+the current state; case B OTS remains available. & Local continuum and line
+emissivity PDF sampled immediately after gas absorption; isotropic
+re-emission. \\
+
+Frequency treatment & Dynamically allocated FUV and EUV segments, normally
+tens of rate-optimized bins with threshold alignment. & Up to 10,240 bins;
+a fixed number of packets is launched at every frequency and packet energy
+follows the source spectrum. \\
+
+Parallel model & Packet decomposition and shared-memory grid arrays; one
+full grid copy per node. & Spatial domain decomposition; packets crossing
+blocks are synchronized through MPI. \\
+
+Gas microphysics & Modern, provenance-bearing fitted data for an
+H\,\textsc{ii}-region/PDR-centered registry; low-density cooling fits in
+the thermal loop. & Broad MAPPINGS ion network and multilevel line cooling
+inside the thermal loop; older but extensively exercised atomic-data
+compilation. \\
+
+Dust & EUV/FUV absorption and HG scattering, live dust/PAH survival,
+equilibrium temperature, SEDust stochastic emission, and IR maps. & Rich
+grain charge, depletion, photoelectric, and PAH microphysics; the public 3D
+dust transport branch treats dust extinction/absorption but does not expose
+an equivalent scattering plus stochastic-IR imaging chain. \\
+
+Synthetic observations & Leaf emissivities, flux-conserving line and field
+maps, dust-band maps, multi-observer peel-off images, and spectral cubes. &
+Extensive line spectrum and cell-resolved emissivities; maps can be made by
+projection, but no equivalent general observer peel-off layer is evident in
+the public path. \\
+
+Best current use & Dusty, clumpy, spatially resolved H\,\textsc{ii}
+regions and atomic PDR skins on simulation-derived density fields. & Broad
+nebular line diagnostics, denser gas, harder PN-like spectra, and problems
+that benefit from the full MAPPINGS ion and cooling inventory. \\
+\end{longtable}
+
+The concise verdict is:
+
+\begin{quote}
+\MoCHII{} is presently the stronger three-dimensional transport, dust, AMR,
+and synthetic-observation framework.  \Mthree{} is presently the stronger
+broad-spectrum nebular microphysics framework, especially when many ion
+stages or density-dependent line cooling determine the solution.
+\end{quote}
+
+\begin{longtable}{P{0.24\textwidth}P{0.34\textwidth}P{0.32\textwidth}}
+\caption{What \Mappings{} adds to the original two-code comparison.}
+\label{tab:mappings}\\
+\toprule
+Topic & \Mappings{} strength & Limitation relative to the 3D codes \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:mappings} continued.}\\
+\toprule
+Topic & \Mappings{} strength & Limitation relative to the 3D codes \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Photoionization & Noise-free adaptive 1D integration; equilibrium,
+finite-age, and source-off evolution; radiation-pressure options. & Only
+spherical or plane-parallel structure; outward-only diffuse field. \\
+
+Shocks and cooling flows & Connected steady radiative MHD shock plus
+iterated precursor, CIE cooling, NEQ cooling, and PIE modes. & Steady or
+prescribed 1D histories, not multidimensional radiation hydrodynamics. \\
+
+Microphysics & Full 30-element preference set, many ion stages,
+density-dependent line cooling, $\kappa$ electrons, cosmic rays, and broad
+spectral output. & Global tables are harder to audit and update ion by ion;
+not every dormant routine is connected to the main cooling path. \\
+
+Dust & Grain/PAH charge and destruction, gas--grain exchange, stochastic
+temperature distribution, and a coupled 1D IR field. & No arbitrary 3D
+dust geometry, shadowing, AMR, or observer image construction. \\
+
+Numerics and workflow & Fast deterministic parameter grids with decades
+of model heritage. & Legacy interactive common-block architecture,
+compile-time maxima, fragmented ASCII products, and incomplete manuals. \\
+
+Best current use & Integrated spectra of 1D H\,\textsc{ii} regions, PNe,
+AGN slabs, radiative shocks, and equilibrium/non-equilibrium cooling
+sequences. & Not a replacement for 3D modeling when geometry is part of
+the physical question. \\
+\end{longtable}
+
+%==============================================================================
+\section{Radiative-transfer algorithms}
+
+\subsection{Radiation-field estimators}
+
+Both three-dimensional codes estimate the cell radiation field from packet trajectories, but
+their estimators differ fundamentally.  \Mthree{} follows the Lucy path
+length estimator.  At frequency $\nu$, a packet with energy
+$\epsilon_\nu$ crossing a distance $l$ in cell volume $V$ contributes
+schematically
+\begin{equation}
+ J_\nu \;=\; \frac{1}{4\pi\,\Delta t\,V}
+       \sum_{\rm paths}\epsilon_\nu l .
+ \label{eq:m3j}
+\end{equation}
+The distance to the next absorption is sampled from
+\begin{equation}
+ \tau_p=-\ln p,
+ \label{eq:taup}
+\end{equation}
+with $p$ uniform on $(0,1)$.  The packet crosses Cartesian cells until its
+accumulated optical depth reaches $\tau_p$, is absorbed, and is re-emitted
+in situ from the local emissivity distribution.  This is conceptually
+general and treats diffuse radiation naturally.
+
+For the absorption-only ionizing band, \MoCHII{} instead integrates the
+attenuated packet weight analytically through every crossed leaf:
+\begin{equation}
+ \Delta J_b({\rm leaf}) = w L_{\rm pkt}
+   \frac{e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}}}{\kappa_b} .
+ \label{eq:edge}
+\end{equation}
+The packet is followed to the domain edge and contributes the expectation
+value of the absorbed path in each leaf.  There is no sampled absorption
+location; statistical noise comes only from direction and bin sampling.
+The analytic attenuation gate measured a mean photo-rate bias of
+$+0.004\%$.  An optional Owen-scrambled Sobol launch
+(\code{launch\_sequence='sobol'}) stratifies exactly those remaining
+launch variables: on the same gate the cell-wise photo-rate error then
+scales as $\sim 1/N$ rather than $1/\sqrt{N}$, with measured effective
+photon gains of $29\times$ at $2^{17}$ packets and $222\times$ at
+$2^{20}$, and the launch set becomes independent of the MPI task count.  When dust scattering is enabled, \MoCHII{} changes to a
+forced-first-interaction estimator, applies the dust albedo as a packet
+weight, samples an HG scattering direction, and uses Russian roulette at
+low weight.
+
+Equation~(\ref{eq:edge}) is a substantial advantage for the present
+\MoCHII{} target regime: ionizing radiation in H\,\textsc{ii} regions is
+normally absorption-dominated.  \Mthree{} pays the variance of discrete
+absorption events even in that limit.  Conversely, the \Mthree{} packet
+cycle is more general for a diffuse spectrum containing many continuum and
+line channels, whereas the current \MoCHII{} diffuse emitter is explicitly
+limited to selected recombination channels.
+
+\Mappings{} has neither Monte Carlo estimator.  Its zone integrator is
+deterministic and therefore essentially noise-free, but achieves that
+efficiency by imposing spherical or plane-parallel symmetry and an
+outward-only closure for the diffuse field.
+
+\subsection{Diffuse radiation and energy packets}
+
+In \Mthree{}, gas absorption converts the stellar packet into a diffuse
+packet immediately.  Its new frequency is drawn from a local emissivity
+PDF containing recombination continua and lines, and its new direction is
+isotropic.  This implements a full three-dimensional alternative to
+outward-only diffuse-field approximations \cite{jin2022}.
+
+\MoCHII{} offers two controlled limits.  Case B uses on-the-spot
+recombination.  With the explicit diffuse field enabled, case A is used
+and the emission table is rebuilt each iteration from the current state.
+The principal channels are H\,\textsc{ii}, He\,\textsc{ii}, and
+He\,\textsc{iii} ground recombination continua; the optional He\,\textsc{i}
+excited channel adds the 19.82-eV, 584-\AA{}, and two-photon contributions.
+These packets use the same transport estimator as stellar packets.  This
+split makes case-A/case-B bracketing and energy accounting transparent,
+but it is not yet the full local emissivity inventory sampled by \Mthree{}.
+
+\subsection{Spectral discretization}
+
+The public \Mthree{} compile-time ceiling is 10,240 frequency entries.
+The Monte Carlo loop launches $N$ packets for every frequency interval;
+packet energy is proportional to $L_\nu\Delta\nu/N$.  This stratified
+sampling guarantees representation of weak spectral intervals and is
+attractive for detailed continua.  Its cost scales approximately with
+$N_\nu N$ rather than with one total packet budget, and its large
+$J_\nu(x,y,z)$ and opacity arrays are major memory consumers.
+
+\MoCHII{} samples a frequency bin from the luminosity CDF and assigns every
+packet the same band luminosity.  Its bins are designed around rate
+integrals rather than spectral oversampling.  The ionizing grid can align
+edges with H, He, and active metal thresholds, while an independent FUV
+segment preserves the EUV resolution.  This is efficient for ionization
+and thermal balance, but a fine line-rich diffuse spectrum would require
+many more bins and packets than the normal 32--64-bin production setup.
+
+\subsection{Velocity fields and line transport}
+
+\Mthree{} reads a three-dimensional velocity field and applies a projected
+Doppler shift to the packet frequency bin during continuum transport.
+\MoCHII{} currently has no velocity-dependent band transport.  This is a
+real \Mthree{} advantage for bulk-flow effects on continuum opacity.
+
+None of the three codes should yet be treated as a general resonance-line transfer
+solver.  \Mthree{} includes resonance emissivities but, in the published
+implementation, assigns resonance lines the same cross section as the
+continuum.  This is not a frequency-redistributing resonant-scattering
+calculation.  \MoCHII{} explicitly treats its diagnostic lines as optically
+thin emissivities and leaves resonance transfer to a dedicated code such
+as LaRT.  \Mappings{} applies geometry-dependent escape and attenuation
+approximations rather than multidimensional redistribution.  For forbidden
+and recombination lines this is normally adequate;
+for Ly$\alpha$, C\,\textsc{iv}, Mg\,\textsc{ii}, or line profiles in moving
+media, neither current path is sufficient.
+
+%==============================================================================
+\section{Grid algorithms, resolution, and parallelism}
+
+\subsection{Octree AMR versus a uniform Cartesian mesh}
+
+The primary spatial difference is adaptive resolution.  \Mthree{} accepts
+an arbitrary density distribution on a Cartesian mesh, but every cell at a
+given global resolution exists.  The published HII20, HII40, and PN150
+tests used $33^3$ and $55^3$ grids.  Most integrated lines agreed within
+10\%, but I-front and boundary tracers such as [O\,\textsc{i}],
+[O\,\textsc{ii}], and [S\,\textsc{ii}] could differ by more than 10\%
+\cite{jin2022}.  This is the expected weakness of a uniform grid: the
+thin zone that most needs resolution occupies a small part of the volume.
+
+\MoCHII{} can ingest a pre-existing octree or rebuild the octree after an
+initial solution.  A leaf is refined when it lies in the I-front or sees a
+large face-neighbor ionization jump.  In the recorded gate, refinement
+from a level-5 start to level 7 produced 464,248 leaves instead of the
+2,097,152 cells of a complete level-7 grid; the effective ionized radius
+agreed with the native level-7 result by $0.008\%$.  The refinement follows
+clump skins and distributed fronts in turbulent media, not merely the
+source position.
+
+For problems that truly require a uniform mesh, \MoCHII{} also has a
+raster-indexed Cartesian backend.  It allocates no octree topology,
+neighbor table, center array, or leaf maps.  The dedicated incremental
+Amanatides--Woo DDA precomputes $t_{\max}$ and $t_\Delta$ per ray and
+advances by comparisons and additions.  In the recorded Str\"omgren test
+it was twice as fast as the octree traversal, while matching the solution
+to rounding.  At $512^3$, omitting the tree and geometry arrays saves
+approximately 10 GB before physical fields are counted.
+
+\subsection{MPI decomposition and scaling trade-offs}
+
+\Mthree{} spatially decomposes the Cartesian domain into equal blocks.
+Each rank stores the local thermal and ionization state, and packets
+crossing a block boundary are transferred through collective MPI
+operations.  Spatial decomposition is attractive when no node can hold
+the full grid.  It also introduces frequent synchronization: the current
+transport implementation collectively reduces large packet-state arrays
+containing flags, positions, directions, frequencies, and absorption
+counts.  At large $N_\nu$, packet count, and MPI task count, communication
+can dominate.
+
+\MoCHII{} decomposes packets rather than space.  The octree and leaf fields
+reside in MPI-3 shared memory, so ranks on one node share one copy; each
+node nevertheless holds a complete grid.  Ranks transport independent
+packets and reduce the accumulated radiation tally at the end of a pass.
+This minimizes packet communication and is well matched to Monte Carlo
+transport, but the requirement of a full grid on each node ultimately
+limits the largest possible AMR problem.  Thus the scaling comparison is not
+one-sided: \MoCHII{} should normally scale more cleanly in packet number,
+whereas \Mthree{} can distribute spatial memory more aggressively.
+\Mappings{} avoids the 3D memory problem entirely by advancing one 1D
+structure, which is a decisive throughput advantage only when its symmetry
+assumptions are physically defensible.
+
+%==============================================================================
+\section{Ionization, thermal balance, and atomic data}
+
+\subsection{Element and ion inventories}
+
+The local \Mthree{} default atom file activates 16 elements:
+H, He, C, N, O, Ne, Na, Mg, Al, Si, S, Cl, Ar, Ca, Fe, and Ni.  Static
+array dimensions allow up to 30 elements and 31 ion stages.  The published
+description characterizes the parent MAPPINGS V system as containing 30
+elements and roughly 80,000 cooling and recombination lines
+\cite{jin2022}.  The distinction between the parent capacity and the
+default public data set should be retained when quoting these numbers.
+The new \Mappings{} audit resolves the parent-code side directly:
+\code{mapStd.prefs} is the 16-element setup and \code{mapFull.prefs}
+activates 30 elements from H through Zn.  This full preference set, rather
+than the \Mthree{} default, is the relevant breadth reference.
+
+\MoCHII{} currently treats H and He plus an eleven-element metal registry:
+C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, and Ca.  The tracked stages are chosen
+for H\,\textsc{ii} regions and atomic PDR skins, rather than extending to
+the highest charge state of every nucleus.  New ions are added through
+provenance-bearing element, cooling-fit, and $n$-level files.  This is much
+easier to audit and extend than the global MAPPINGS tables, but the present
+inventory is less suitable for hard PN, X-ray, or coronal-ion problems.
+
+\subsection{Photoionization, recombination, and charge exchange}
+
+\MoCHII{} uses exact hydrogenic ground-state cross sections for \HI{} and
+\HeII{}, and Verner et al.\ \cite{verner1996} fits for \HeI{} and metals.
+Hydrogen and helium recombination defaults to the Badnell (2023) radiative
+total minus the Mao--Kaastra (2016) ground-state coefficient (case B), with
+the Hui--Gnedin fits retained as an option; metal RR and DR
+are derived primarily from Badnell/CHIANTI v11.0.2 data.  Charge exchange
+uses the modern first-stage rates of Huang et al.\ and the higher-stage
+Kingdon--Ferland compilation.  Each generated file records its source,
+fit range, formula, and maximum fit error.
+
+\Mthree{} uses the established MAPPINGS compilation.  The published code
+description identifies photoionization data from Seaton, Raymond,
+Osterbrock, and Gould, including Auger corrections, and separates hydrogenic from
+non-hydrogenic recombination.  Much of this compilation is older than the
+\MoCHII{} sources, but it spans more ions and has been exercised in many
+MAPPINGS applications.  ``Newer'' is not automatically equivalent to
+``more accurate'': line predictions can differ by several to tens of
+percent among reputable collision-strength and $A$-value compilations,
+especially for iron.  The decisive test is therefore ion-by-ion
+comparison with direct database evaluation and observation, not vintage
+alone.
+
+\subsection{Electron distributions and secondary processes}
+
+Both \Mthree{} and \Mappings{} support either a Maxwellian or a $\kappa$
+electron energy distribution, with rate corrections supplied by KAPPA
+data.  This is
+useful when exploring non-Maxwellian interpretations of nebular
+diagnostics.  \MoCHII{} assumes a Maxwellian distribution.
+
+All three codes include secondary-ionization concepts.  \MoCHII{} optionally
+partitions the energy of photoelectrons above 40 eV among heat and
+secondary H/He ionizations following Shull--van Steenberg.  The MAPPINGS
+ion-balance routines call a secondary-ionization module and also include
+cosmic-ray ionization/heating.  The MAPPINGS-derived codes therefore have
+the broader general-plasma framework.  A Compton routine is present in
+both source trees, but no call from either examined main cooling path was
+found; it should not be counted as active physics without a dedicated test.
+
+\subsection{The critical difference: density-dependent metal cooling}
+\label{sec:densitycool}
+
+This is the most important gas-physics advantage of both MAPPINGS-derived
+codes over \MoCHII{}.  Their thermal solvers call fine-structure,
+intercombination, multilevel, and iron line
+modules during every evaluation of the net cooling function.  Level
+populations and collisional de-excitation therefore affect the equilibrium
+temperature when $\nelec$ approaches or exceeds a transition's critical
+density.
+
+\MoCHII{} deliberately separates two products:
+
+\begin{itemize}[leftmargin=2em]
+\item analytic Tier-1 cooling fits, evaluated cheaply inside the thermal
+  bisection in the optically thin low-density limit; and
+\item Tier-2 $n$-level statistical-equilibrium data, evaluated on the
+  converged state to produce density-dependent diagnostic emissivities.
+\end{itemize}
+
+The output line ratios therefore respond to density, but collisional
+quenching does not feed back into the hot thermal loop.  At ordinary
+H\,\textsc{ii}-region densities this is often acceptable.  In compact
+H\,\textsc{ii} regions, dense PN, shocked cooling zones, or any model with
+$\nelec\gtrsim n_{\rm crit}$ for a dominant coolant, \Mthree{} is
+physically better founded.  Moving the generic \MoCHII{} $n$-level solver
+or a reduced density-suppression fit into the thermal loop is the
+highest-value gas-physics improvement suggested by this comparison.
+
+\subsection{Thermal processes and equilibrium solution}
+
+All three codes solve ionization and temperature under the current
+radiation field, iterating the spatial solution where required.  \MoCHII{}
+brackets the root of heating minus cooling in
+$\log \Te$ and re-solves the H/He and metal ionization at every trial
+temperature.  Its current budget includes photoionization heating,
+H/He recombination and collisional losses, free-free emission with a
+tabulated Gaunt integral (H/He and, by default, the trace metals with
+their net ion charge), metal-line cooling, optional metal
+photoheating, secondary ionization, and the atomic-PDR grain and neutral
+collision terms.
+
+The MAPPINGS thermal solver used by \Mappings{} and inherited by \Mthree{}
+includes a broader traditional plasma budget:
+hydrogen and helium line cooling, fine/intercombination/resonance and
+multilevel metal cooling, free-free, collisional ionization,
+recombination, photoionization heating, charge-exchange energy exchange,
+cosmic rays, grain/PAH photoelectric terms, and grain collisional cooling.
+The microturbulent dissipation block in the examined 5.2.1
+\code{cool.f} is commented out and is therefore not listed as active.
+This breadth and the direct multilevel coupling are major MAPPINGS
+strengths.
+
+%==============================================================================
+\section{Dust, PAHs, and PDR physics}
+
+\subsection{Where the MAPPINGS microphysics is stronger}
+
+The MAPPINGS grain microphysics is detailed.  The local source tree carries
+graphite and silicate size distributions, depletion bookkeeping, grain
+charge balance, electron and ion sticking, grain photoelectric heating,
+collisional grain cooling, PAH charge states, and optional thermal or
+ionization-parameter-dependent grain destruction.  For the local exchange
+of energy and charge between gas and a resolved grain population, this is
+more microscopic than the current \MoCHII{} Bakes--Tielens heating
+prescription.
+
+In \Mappings{}, this layer is connected to the P6/P7 zone integration and
+to \code{dusttemp}, which computes a Draine--Li stochastic temperature
+distribution and an IR photon field.  It is therefore a complete 1D dust
+emission path, not merely a library capability.  The distinction below is
+specific to the public \Mthree{} three-dimensional branch.
+
+\subsection{Where the three-dimensional \texorpdfstring{M$^3$}{M3} dust path is limited}
+
+The public \code{montph7\_dust} branch includes dust in the extinction and
+terminates a packet when the selected interaction is grain absorption.
+The dust data contain absorption, scattering, and asymmetry information,
+but the examined 3D branch computes an absorption fraction and does not
+sample a new dust-scattering direction.  The dedicated \code{dusttemp}
+routine is called from the one-dimensional \code{photo6/7} family, not
+from the public 3D driver.  Consequently, the rich MAPPINGS grain
+microphysics should not be conflated with a complete 3D dust radiative
+transfer and emergent-IR calculation.
+
+This does not imply that dust is absent from \Mthree{}: dust opacity,
+depletion, grain heating/cooling, and PAH processes affect the gas.  It
+means that the public path does not presently expose a validated chain
+equivalent to \MoCHII{}'s dust scattering, absorbed-energy ledger,
+stochastic emission, and observer maps.
+
+\subsection{The MoCHII dust chain}
+
+\MoCHII{} couples dust to the same FUV/EUV radiation field that sets the
+gas state:
+
+\begin{enumerate}[leftmargin=2em]
+\item Gas and dust compete for ionizing photons using bin-dependent
+  absorption cross sections.  The dusty Str\"omgren gate reproduces the
+  one-dimensional radius to $+0.69\%$ and the classic radius reduction
+  $R/R_0=0.735$.
+\item With scattering enabled, the extinction includes the dust scattering
+  coefficient, a forced first event is sampled, and the packet follows an
+  HG direction with an albedo weight.  The dusty-sphere result lies between
+  the pure-absorption and extinction-as-absorption bounds.
+\item The live dust model updates the dust abundance from the computed
+  neutral fraction.  A separate PAH survival fraction permits destruction
+  inside ionized gas and produces a PAH-bright I-front ring.
+\item The absorbed FUV/EUV power gives a leaf equilibrium mixture
+  temperature and an energy-conserving IR spectrum.
+\item SEDust supplies astrodust, DL07, or Zubko stochastic emission.  The
+  final normalization enforces
+  $\int L_\lambda\,d\lambda=\sum_{\rm leaf}H_{\rm dust}V$; the smoke test
+  closes at unity and resolves the usual PAH bands.
+\item Leaf SEDs at selected wavelengths generate spatially resolved 8, 24,
+  70, and 160-$\mu$m maps.
+\end{enumerate}
+
+For dusty three-dimensional H\,\textsc{ii} regions, this end-to-end chain
+is the clearest overall physical advantage of \MoCHII{}.
+
+\subsection{PDR scope}
+
+\MoCHII{} extends the band below 13.6 eV so that low-threshold metals and
+dust see the FUV field beyond the H I-front.  Optional switches include
+electrons from the metal cascade, metal photoheating, Bakes--Tielens grain
+photoelectric heating plus recombination cooling, and neutral-H impact
+cooling in [C\,\textsc{ii}] 158 $\mu$m and [O\,\textsc{i}] 63 $\mu$m.
+This is an atomic PDR skin, not a complete PDR code.  H$_2$/CO chemistry,
+molecular self-shielding, molecular cooling, line transfer, and gas--dust
+collisional coupling remain outside the model.
+
+The MAPPINGS trees likewise contain more grain and general plasma physics
+than a minimal H\,\textsc{ii} solver, but the present comparison did not
+identify a full molecular H$_2$/CO network in either the 5.2.1
+photoionization path or the public \Mthree{} 3D driver.  None of the three
+codes should be selected as a substitute for a dedicated molecular PDR
+code without additional chemistry.
+
+%==============================================================================
+\section{Emission lines, continua, and synthetic observations}
+
+\subsection{Line inventories and emissivity accuracy}
+
+The MAPPINGS lineage was designed to predict a very broad line spectrum.
+The \Mthree{} cooling and output path includes resonance,
+intercombination, forbidden, fine-structure, hydrogenic, helium, heavy
+recombination, and extensive iron-line data.  Its five-level and
+multilevel populations are already part of the thermal solution.  This
+makes \Mthree{} attractive for integrated diagnostic grids and hard
+nebulae for which a large fraction of the periodic table and many ion
+stages matter.
+
+\Mappings{} is the strongest version of that argument when 1D geometry is
+acceptable: the full preference set covers 30 elements, and the
+deterministic zone solver can afford a detailed spectrum without Monte
+Carlo sampling noise.  \Mthree{} trades some parent-code recency and 1D
+special modes for arbitrary Cartesian geometry.
+
+\MoCHII{} has a narrower but highly auditable diagnostic layer.  Every
+registered ion with a Tier-2 file is solved by the same partial-pivot
+statistical-equilibrium code using fitted CHIANTI v11 effective collision
+strengths and explicit $A$-values.  H I and He II recombination lines use
+Storey--Hummer case-A/B tables.  The nebular continuum includes free-bound
+plus free-free and two-photon components.  On an identical state, the
+Fortran line luminosities match the independent Python solver to at least
+four significant figures.  The limitation is coverage, not the internal
+emissivity algebra.
+
+\subsection{Images and observing geometry}
+
+\MoCHII{} writes leaf state and line-emissivity blocks to HDF5/FITS.  Its
+Python reader deposits each AMR leaf with exact pixel-area overlap, so
+surface-brightness integration recovers the three-dimensional luminosity
+to machine precision.  It also supports slab cuts and EM-, electron-,
+hydrogen-, or volume-weighted field maps.
+
+For the transported FUV/EUV field, an extra converged-state pass applies
+observer peel-off.  Stellar and diffuse emission contribute direct
+$e^{-\tau}$ terms, every dust interaction contributes an HG-weighted
+scattered term, and the optical-depth walk uses the same gas and dust
+opacity as the rate calculation.  Multiple observers, unattenuated direct
+images, and bin-resolved cubes are available.  The direct thin-medium gate
+matches the analytic image-integrated flux by $+0.15\%$ under the current
+defaults (exact hydrogenic cross sections, threshold-aligned bins).
+
+\Mthree{} outputs cell-resolved physical quantities and line emissivities,
+and its published applications construct spatial line maps from them.
+This is adequate for optically thin line projection.  The public driver
+does not show a comparable general next-event estimator for arbitrary
+observers, nor the separation of direct and dust-scattered continua.
+Thus \Mthree{} is richer in the number of intrinsic lines, while
+\MoCHII{} is richer in the chain that turns a three-dimensional state
+into calibrated synthetic observations.
+
+%==============================================================================
+\section{Convergence, verification, and maturity}
+
+\subsection{Convergence criteria}
+
+\Mthree{} updates the radiation field, solves each illuminated cell, and
+counts cells whose temperature and H$^+$ changes meet the selected
+tolerances.  The run stops when a requested fraction of ionized cells has
+converged or after the iteration limit.  Its public defaults use percent-
+level cell changes and increase the packet count when convergence stalls.
+This is intuitive, but the result is sensitive to how the ionized-cell
+mask and required fraction are chosen.
+
+\MoCHII{} reports both cell-max and volume-integrated pairs:
+\begin{equation}
+ \delta_x^{(V)} =
+ \frac{\sum V\,|\Delta x_{\rm HII}|}{\sum V x_{\rm HII}},
+ \qquad
+ \delta_T^{(V)} =
+ \frac{\sum V\nelec\,|\Delta\Te|}{\sum V\nelec\Te}.
+ \label{eq:conv}
+\end{equation}
+The volume criterion suppresses front-cell jitter by the small volume of
+the front and excludes temperature oscillations in nearly electron-free
+cells.  In the FUV dusty test, cell maxima remained at 0.1 and 6.4 while
+the volume measures reached stable Monte Carlo floors of
+$2.7\times10^{-3}$ and $6.6\times10^{-3}$.  Thirty further iterations
+changed the ionized volume by only 0.014\%.  This is a stronger convergence
+diagnostic for turbulent, clumpy grids, provided the tolerance is set just
+above the packet-noise floor.
+
+\subsection{Validation evidence}
+
+The MAPPINGS lineage has the stronger external maturity record.  \Mthree{}
+inherits decades of MAPPINGS development and has been published against the HII20, HII40,
+and PN150 Lexington/Meudon standards.  Its three-dimensional blister,
+bipolar, and fractal applications demonstrate the importance of geometry
+for spatially resolved line diagnostics \cite{jin2022,jin2022fractal}.
+
+\MoCHII{} is newer, but its current repository contains unusually granular
+gates:
+
+\begin{itemize}[leftmargin=2em]
+\item analytic H/He attenuation and rate integrals;
+\item a Str\"omgren sphere against an exact one-dimensional reference;
+\item AMR versus uniform and solution-driven refinement versus native high
+  resolution;
+\item H/He thermal balance against an independent Gauss--Seidel reference;
+\item direct CHIANTI fit evaluation and PyNeb line-ratio checks;
+\item MOCASSIN HII20/HII40 state and line comparisons;
+\item case-A/case-B diffuse-field bracketing;
+\item dust absorption/scattering brackets and IR energy closure;
+\item direct peel-off flux against an analytic observer solution; and
+\item exact three-dimensional emissivity-to-map luminosity conservation.
+\end{itemize}
+
+These gates provide strong internal evidence and make regressions easy to
+localize.  They do not yet replace the independent user base and long
+publication history of MAPPINGS.  The correct conclusion is that
+the MAPPINGS lineage is more mature externally, while \MoCHII{} is more explicit and
+fine-grained in its current numerical audit trail.
+
+\Mappings{} does not have a Monte Carlo convergence problem: zone step
+control and the global shock/precursor iteration dominate instead.  Its
+decades of use and broad model suite are a major maturity advantage, but
+the inspected 5.2.1 tree does not provide a gate hierarchy as explicit as
+the current \MoCHII{} test directories.  A controlled local benchmark is
+still required before attributing any line difference to geometry rather
+than to the 5.1.13-versus-5.2.1 atomic and solver divergence.
+
+%==============================================================================
+\section{Software architecture and maintainability}
+
+\MoCHII{} uses Fortran modules, allocatable leaf arrays, a single namelist,
+MPI-3 shared memory, HDF5/FITS sections, and a data-driven species
+registry.  New atomic products are generated offline by Python tools and
+carry machine-readable provenance.  A new ion normally requires no new
+solver code.  The transport, ion balance, thermal balance, lines, dust,
+and output layers are separated modules.  This architecture substantially
+reduces the cost and risk of adding physics.
+
+The public \Mthree{} tree retains the Fortran 77 MAPPINGS architecture:
+large common blocks, compile-time maxima, interactive input, and many
+global arrays.  Several historical \code{montph7\_*} variants duplicate
+large parts of the transport driver.  This structure has the advantage of
+preserving a mature code base and its full menu of MAPPINGS models, but it
+makes a change to the 3D algorithm harder to propagate and test.  The
+available Sphinx input/output documentation is sparse, so reliable use
+often requires reading the source and reproducing the authors' setup.
+
+The architectural verdict is therefore clear: \MoCHII{} is easier to
+extend, audit, automate, and connect to simulation data.  \Mthree{}'s
+value lies primarily in the depth of the inherited physical library, not
+in modern software structure.
+
+\Mappings{} shares the same common-block and interactive heritage, but its
+organization is cleaner than the collection of duplicated \Mthree{}
+\code{montph7\_*} experiments and it has a single public \code{map52}
+model selector.  Runtime preference files make the 16- or 30-element atom
+sets configurable without recompilation.  Nevertheless, automated model
+grids require scripting interactive input and parsing many ASCII outputs;
+the current documentation overview explicitly remains incomplete.  For
+maintainability the ordering is \MoCHII{} first, \Mappings{} second, and
+the experimental \Mthree{} 3D fork third.
+
+%==============================================================================
+\section{Suitability by science case}
+
+\begin{longtable}{P{0.42\textwidth}P{0.20\textwidth}P{0.30\textwidth}}
+\caption{Recommended code by present science requirement.}
+\label{tab:science}\\
+\toprule
+Science requirement & Preferred code & Reason \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table~\ref{tab:science} continued.}\\
+\toprule
+Science requirement & Preferred code & Reason \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Clumpy or porous H\,\textsc{ii} region from a TNG/RAMSES snapshot &
+\MoCHII{} & AMR, front refinement, and simulation-oriented I/O. \\
+
+Ionization-front position, shadows, and clump skins & \MoCHII{} &
+Adaptive resolution and the analytic absorption estimator. \\
+
+Dusty Str\"omgren structure and UV attenuation & \MoCHII{} & Gas--dust
+competition and validated HG scattering in the 3D band. \\
+
+PAH rings, IR SEDs, or 8--160-$\mu$m maps & \MoCHII{} & SEDust,
+leaf dust emissivities, and exact absorbed-energy normalization. \\
+
+Spatially resolved IFU line maps & Usually \MoCHII{} & AMR emissivities
+and flux-conserving projection; verify that the required ions exist. \\
+
+Very broad integrated optical/UV/IR line inventory & \Mappings{} & Current
+full 30-element MAPPINGS preference set and deterministic detailed spectrum. \\
+
+Compact high-density nebula & \Mappings{} if 1D; \Mthree{} if 3D & Both
+feed density-dependent multilevel cooling back into $\Te$; geometry decides. \\
+
+Hard PN-like ionizing spectrum & \Mappings{} if 1D; \Mthree{} if 3D & More
+high charge states; \Mthree{} additionally has published PN150 3D validation. \\
+
+Non-Maxwellian $\kappa$ electron experiment & \Mappings{} or \Mthree{} &
+Both MAPPINGS-derived trees have native $\kappa$ rate support. \\
+
+One-dimensional radiation-pressure-confined nebula & \Mappings{} &
+Isobaric photoionization can include the accumulated radiation pressure. \\
+
+Finite source lifetime or source-off ionization history in 1D & \Mappings{}
+& P6/P7 connect finite-age modes to the time-dependent ion solver. \\
+
+Steady 1D radiative MHD shock and precursor & \Mappings{} & S5 couples
+adaptive post-shock cooling to an iterated auto-preionization solution. \\
+
+CIE, NEQ, or PIE cooling-curve grid & \Mappings{} & Dedicated CC, NC, and
+PP drivers and a broad general-plasma ion inventory. \\
+
+Controlled test of modern CHIANTI v11 coefficients & \MoCHII{} &
+Versioned fitted data and direct fit-error gates. \\
+
+Three-dimensional time-dependent ionization & None & Both public 3D
+drivers are equilibrium solvers; \Mappings{} time dependence is 1D. \\
+
+Three-dimensional radiative shock & None & \Mappings{} has a strong 1D
+shock mode, but it is not coupled to either 3D transport architecture. \\
+
+Molecular H$_2$/CO PDR & None & All three need a dedicated molecular
+chemistry and line-transfer layer. \\
+
+Ly$\alpha$ or metal resonance-line profiles & None & Requires
+frequency-redistributing resonant transfer, e.g.\ LaRT. \\
+\end{longtable}
+
+%==============================================================================
+\section{Recommended development path for MoCHII}
+
+The comparison suggests a focused roadmap rather than wholesale
+replacement of either code.
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Put density dependence into the thermal cooling.}  Reuse the
+  generic $n$-level solver in the thermal loop for dominant coolants, or fit
+  a suppression factor versus $(\Te,\nelec)$ around each critical density.
+  This closes the most consequential gap relative to MAPPINGS.
+\item \textbf{Extend the registry upward in ion stage.}  Add the ions needed
+  for PN and hard-field applications before adding marginal new low stages.
+  The existing data-operation design is well suited to this.
+\item \textbf{Add Na, Al, and Ni only when driven by a diagnostic need.}
+  Their MAPPINGS implementations provide useful reference behavior, while
+  the \MoCHII{} pipeline should retain explicit provenance and ion-by-ion
+  gates.
+\item \textbf{Retain the present transport architecture.}  The octree,
+  analytic estimator, Cartesian DDA, threshold-aligned bins, and peel-off
+  layer are major advantages and should not be replaced by the legacy
+  \Mthree{} packet synchronization model.
+\item \textbf{Use \Mappings{} as the differential microphysics oracle.}
+  Construct one-zone tests at fixed $(\Te,\nelec,J_\nu)$ and compare ion
+  fractions, heating/cooling terms, and individual line emissivities before
+  comparing full 3D nebulae.  Use \Mthree{} only as the second-stage test
+  of how that inherited microphysics behaves in arbitrary geometry.
+\item \textbf{Perform a controlled common-physics benchmark.}  Use the same
+  uniform grid, source SED, abundances, dust-off setting, frequency range,
+  and atomic subset.  Compare $J_\nu$, photo-rates, ion fractions, $\Te$,
+  cooling budgets, and line emissivities separately.  Only then compare
+  total runtime and MPI scaling.
+\end{enumerate}
+
+The most valuable hybrid would combine \Mappings{}-like density-dependent
+microphysics with the current \MoCHII{} geometry, transport, dust, and
+observer layers.  This would preserve the strongest feature of each code
+without inheriting the principal numerical and software limitations of the
+other.
+
+%==============================================================================
+\section{Final assessment}
+
+\begin{center}
+\begin{tabular}{P{0.46\textwidth}P{0.20\textwidth}P{0.20\textwidth}}
+\toprule
+Capability & Stronger now & Confidence \\
+\midrule
+Three-dimensional transport estimator & \MoCHII{} & High \\
+Adaptive spatial resolution & \MoCHII{} & High \\
+Dust scattering and IR/PAH observables & \MoCHII{} & High \\
+Observer imaging and data products & \MoCHII{} & High \\
+Atomic-data provenance and fit auditability & \MoCHII{} & High \\
+Element and ion-stage breadth & \Mappings{} & High \\
+Density-dependent thermal line cooling & \Mappings{}/\Mthree{} & High \\
+Hard PN/general plasma coverage & \Mappings{} & High \\
+Finite-age 1D photoionization & \Mappings{} & High \\
+Radiative MHD shock and precursor & \Mappings{} & High \\
+Noise-free 1D parameter-grid throughput & \Mappings{} & High \\
+External validation history & MAPPINGS lineage & High \\
+Software extensibility and automation & \MoCHII{} & High \\
+Absolute line accuracy for every ion & Case dependent & Requires a
+common-data benchmark \\
+Massively distributed memory ceiling & Architecture dependent & Requires
+a scaling experiment \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For the principal intended application--dusty, structured, spatially
+resolved H\,\textsc{ii} regions--\MoCHII{} is the better current platform.
+For broad integrated emission-line diagnostics, dense nebulae, harder
+ionization conditions, finite-age 1D photoionization, and radiative shocks,
+\Mappings{} is the more complete physical reference.  \Mthree{} becomes
+preferable only when those MAPPINGS-like line and cooling strengths must be
+combined with arbitrary three-dimensional Cartesian geometry.  None of
+these judgments is universal: first decide whether geometry, time history,
+shock dynamics, dust observables, density-dependent cooling, or ion-stage
+breadth is the controlling requirement.
+
+%==============================================================================
+\section{Hard-spectrum (PN and AGN) extension plan}
+\label{sec:hardplan}
+
+This section records the staged plan that follows from the comparison
+(kept as \code{docs/HARD\_SPECTRUM\_PLAN.md}, drafted 2026-07-18, not yet
+started).  It uses the same staged-gate discipline as \code{docs/PLAN.md}.
+
+\subsection{Scope and the two tracks}
+
+``Hard spectrum'' splits into two physically distinct regimes, kept as
+separate tracks because they need different physics:
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{PN track} --- thermal central stars,
+  $T_{\rm eff}\sim75$--200 kK.  A 150 kK blackbody has $kT=12.9$ eV; its
+  photon flux at 300 eV sits $\sim$23\,$kT$ out on the Wien tail
+  ($e^{-23}\sim10^{-10}$ before the phase-space factors), and the lowest
+  K-shell edge of an abundant metal (C, 290 eV) is never reached with
+  significant flux.  The MOCASSIN PN150 benchmark itself integrates its
+  band only to \code{nuMax} $=24$ Ryd $=326$ eV.  The PN track therefore
+  needs \emph{no inner-shell/Auger physics and no Compton terms} --- it
+  is band headroom, higher ion stages, the \HeII{} diffuse channels, and
+  (at PN densities) density-dependent cooling.
+\item \textbf{AGN track} --- a power-law/big-bump continuum extending to
+  keV X-rays.  Above $\sim$0.3 keV inner-shell absorption dominates the
+  metal opacity and Auger multi-electron ejection couples non-adjacent
+  ion stages; near $\sim$0.5--1 keV the Thomson cross section
+  ($6.65\times10^{-25}$ cm$^2$) overtakes the steeply falling
+  ($\sigma\propto E^{-3}$) photoabsorption of the residual neutrals, and
+  Compton heating enters the energy budget.  The first increment caps
+  the band at $\sim$500 eV, where photoabsorption still dominates, and
+  defers the Compton terms (Section~\ref{sec:harddeferred}).
+\end{itemize}
+
+Current baseline (v1.00-dev, 2026-07-18): band 13.6--100 eV (+FUV
+option); registry stages C 4 / N 3 / O 3 / Ne 3 / S 4 / Ar 4 / Mg 3 /
+Fe 4 / Si 5 / Cl 5 / Ca 5, with the compile-time stage ceiling
+\code{MAX\_ST} $=6$ in \code{species\_mod} --- the PN targets below fit
+it exactly, so no framework change is needed there; \code{te\_max}
+$=5\times10^4$ K and the Tier-1 cooling fits are generated over
+$10^3$--$10^5$ K; $\bar g_{\rm ff}$ is tabulated for $Z_{\rm ion}=1$--4
+(\code{cooling\_mod}, parameter \code{NGZ}); secondary ionization
+(\code{use\_sec\_ion}, Shull--van Steenberg 1985) is implemented but
+default off; the Owen-scrambled Sobol launch is available.  The \HeII{}
+Storey--Hummer lines (case A and B), the \HeI{} Porter lines, and the
+diffuse \HeIII{} ground channel already cover the \HeII{} 4686
+diagnostic side, and the aligned-edge band builder
+(\code{ion\_align\_edges}, default on) with its graceful
+threshold-dropping logic is exactly the piece that makes many new
+in-band edges safe.
+
+\subsection{Reference assets (verified present)}
+
+\begin{longtable}{P{0.44\textwidth}P{0.46\textwidth}}
+\caption{Local reference assets for the hard-spectrum work.}
+\label{tab:hardassets}\\
+\toprule
+Asset & Use \\
+\midrule
+\endfirsthead
+\multicolumn{2}{l}{\small\itshape Table~\ref{tab:hardassets} continued.}\\
+\toprule
+Asset & Use \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+MOCASSIN PN150 + PN75 benchmark inputs
+(\code{benchmarks/gas/\{PN150,PN75\}}) & primary 3D Monte Carlo gates;
+run MOCASSIN itself \emph{converged} (the HII40 lesson).  PN150 input
+read directly: 150 kK blackbody, $n_{\rm H}=3000$ cm$^{-3}$,
+$R_{\rm in}=10^{17}$, $R_{\rm out}=4.07\times10^{17}$ cm, band to
+24 Ryd, abundances He 0.10, C $3\times10^{-4}$, N $10^{-4}$,
+O $6\times10^{-4}$, Ne $1.5\times10^{-4}$, Mg $3\times10^{-5}$,
+Si $3\times10^{-5}$, S $1.5\times10^{-5}$ (\code{abunPN150.in}) ---
+note Mg and Si ARE in the composition, which drives their stage targets
+below. \\
+Cloudy c23.01 test suite (\code{tsuite/auto/pn\_paris*.in},
+\code{nlr\_paris.in}, \code{agn\_lex00\_u\{0,1,m1\}.in}) & 1D cross-code
+gates: Meudon PN, AGN NLR, and the Lexington-2000 X-ray slabs.  The
+\code{agn\_lex00} inputs read directly: $n_{\rm H}=10^5$ cm$^{-3}$,
+$\phi({\rm H})=10^{15.477}$ cm$^{-2}$s$^{-1}$, stop column
+$10^{16}$ cm$^{-2}$, and a \emph{tabulated} SED (Cloudy
+\code{interpolate/continue} points) --- so \MoCHII{} reproduces the
+illumination exactly through the existing \code{spectrum\_type} file
+route, without waiting for the AGN preset. \\
+Cloudy AGN SED (\code{source/parse\_agn.cpp}) & the standard AGN
+continuum parameterization (big-bump $T$, $\alpha_{\rm ox}$ anchored at
+2500 \AA--2 keV, $\alpha_{\text{uv}}$, $\alpha_{\rm x}$) for a \MoCHII{}
+preset. \\
+Kaastra \& Mewe (1993) Auger yields
+(\code{data/mewe\_nelectron.dat}, \code{mewe\_fluor.dat}) & electrons
+ejected per inner-shell vacancy, shell-resolved, machine-readable
+provenance for the Auger stage. \\
+Verner \& Yakovlev (1995) shell-resolved cross sections
+(\code{sigma\_vy95} already in \code{photo\_xsec.f90}) & inner-shell
+photoionization above the K/L edges. \\
+CHIANTI v11.0.2 + Badnell 2023 RR/DR (in-tree) & levels/collision
+strengths and recombination for every new ion stage (coverage
+verified). \\
+\end{longtable}
+
+\subsection{HS1: band headroom}
+
+Mostly validation; the code changes are one-line parameters.
+
+\begin{enumerate}[leftmargin=2em]
+\item \code{eion\_max} (define.f90, default 100 eV) raised to
+  300--500 eV for hard runs.  This matters even for stages the registry
+  ALREADY tracks: the Ne\,\textsc{iv}$\to$\textsc{v} threshold is
+  97.1 eV --- just under the present cap --- so today's band cannot
+  photoionize to Ne\,\textsc{v} at all, and the new O/Ne thresholds
+  (113.9, 126.2 eV) lie beyond it.  Cross-section validity is not the
+  issue (the Verner et al.\ fits extend to keV energies and \HI/\HeII{}
+  are exact hydrogenic); the work is verifying the pieces that ASSUME
+  the band shape: the aligned-edge builder with $\sim$30--40 in-band
+  thresholds once HS2 lands (recommend \code{nnu\_ion} $\geq 64$, 128
+  clean; the largest-remainder allocator and the metal-edge dropping
+  logic already degrade gracefully), the FUV+ionizing two-segment
+  bookkeeping, the diffuse \code{ion\_bin\_of} edge search, and the
+  secondary-ionization band integrals whose $E_0>40$ eV branch becomes
+  the COMMON case on a hard field.
+\item $\bar g_{\rm ff}$: raise \code{NGZ} from 4 to 8 in
+  \code{cooling\_mod} (the van Hoof table already spans the required
+  $\gamma^2$ range; the metal free-free sum then covers the new
+  stages).
+\item \code{te\_max}: allow $10^5$--$10^6$ K for X-ray-heated zones.
+  Any ion used above $10^5$ K needs its Tier-1 fit regenerated over the
+  wider range (a flag in \code{chianti\_cooling.py}, not new code); the
+  bisection itself is range-agnostic.
+\item Recommended hard-field defaults, documented in the example
+  inputs: \code{use\_sec\_ion=.true.}\ (a 150 kK field makes
+  $E_0>40$ eV photoelectrons routine, and X-ray fields more so) and
+  \code{launch\_sequence='sobol'} (the shielded, partially neutral
+  zones where secondaries act are exactly where launch noise hurts
+  most).
+\end{enumerate}
+
+\emph{Gate HS1:} the G0 pattern on the widened band --- fixed-state
+analytic attenuation with a 150 kK blackbody, $\Gamma_{\rm HI/HeI/HeII}$
+vs the analytic integrals bin by bin; $Q(>13.6)/Q(>24.6)/Q(>54.4)$
+photon-rate ratios against exact Planck integrals to $<0.1\%$ with
+aligned edges; and a spot check that the tabulated VFKY96 metal cross
+sections at 300--500 eV match the published fit values (guards against
+table-range assumptions in \code{photo\_xsec}).
+
+\subsection{HS2: registry upward in ion stage}
+
+A data operation through the existing fitting pipeline:
+
+\begin{longtable}{P{0.10\textwidth}P{0.12\textwidth}P{0.28\textwidth}P{0.36\textwidth}}
+\caption{Target stages and the diagnostics they unlock.}
+\label{tab:hardions}\\
+\toprule
+El. & now$\to$target & new thresholds [eV] & key new lines \\
+\midrule
+\endfirsthead
+\multicolumn{4}{l}{\small\itshape Table~\ref{tab:hardions} continued.}\\
+\toprule
+El. & now$\to$target & new thresholds [eV] & key new lines \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+C & 4$\to$5 & C\,\textsc{iv}$\to$\textsc{v} 64.5 & C\,\textsc{iv}
+1548/1550 (resonance --- optically thin caveat) \\
+N & 3$\to$5 & 47.4, 77.5 & N\,\textsc{iv}] 1486, N\,\textsc{v} 1240 \\
+O & 3$\to$6 & 54.9, 77.4, 113.9 & [O\,\textsc{iv}] 25.9 $\mu$m,
+O\,\textsc{iv}] 1400, O\,\textsc{v}] 1218 \\
+Ne & 3$\to$6 & 63.4, 97.1, 126.2 & [Ne\,\textsc{iv}] 2422/2425,
+[Ne\,\textsc{v}] 3346/3426 + 14.3/24.3 $\mu$m, [Ne\,\textsc{vi}]
+7.65 $\mu$m \\
+S & 4$\to$6 & 47.2, 72.6 & [S\,\textsc{iv}] 10.5 $\mu$m (new $n$-level
+file) \\
+Ar & 4$\to$6 & 59.8, 75.0 & [Ar\,\textsc{v}] 7.90/13.1 $\mu$m,
+[Ar\,\textsc{vi}] 4.53 $\mu$m \\
+Mg & 3$\to$6 & 80.1, 109.3, 141.3 & stage tracking for the PN150
+composition (Mg $3\times10^{-5}$); [Mg\,\textsc{iv}] 4.49 $\mu$m,
+[Mg\,\textsc{v}] 5.61 $\mu$m as data permit \\
+Si & 5$\to$6 & Si\,\textsc{v}$\to$\textsc{vi} 166.8 & stage tracking
+for the PN150 composition (Si $3\times10^{-5}$) \\
+\end{longtable}
+
+Fe/Cl/Ca hold (extend only on diagnostic demand; coronal
+[Fe\,\textsc{vii}+] deferred).  All targets fit the existing
+\code{MAX\_ST} $=6$ ceiling exactly; \code{MAXLEV} $=40$ /
+\code{MAXTR} $=600$ and the 600-line \code{lines\_mod} arrays already
+accommodate the new $n$-level models.  Work items, all through
+\code{tools/fitting/}:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Element files} (\code{make\_element\_data.py}): VFKY96
+  \code{PHOTO} rows exist in phfit2 for every target stage; Voronov CI
+  covers all stages; Badnell 2023 RR+DR cover these isoelectronic
+  sequences in the in-tree \code{clist\_K} files (with the CHIANTI
+  \code{RR2}/\code{DR2} fallback forms already supported where a fit is
+  absent).  \textbf{Charge exchange} above stage $\sim$4 is not in the
+  Kingdon--Ferland fits: adopt the fast Dalgarno-type
+  $\sim1.92\times10^{-9}z$ cm$^3$s$^{-1}$ recombination-only scaling
+  used by Cloudy, with an explicit provenance note in each element
+  file, or document neglect --- decide once, apply uniformly (CX
+  matters little in the hot interior where these stages live, but the
+  decision must be recorded).
+\item \textbf{Tier-1 cooling fits} (\code{chianti\_cooling.py}) for
+  each new stage, fit range matched to the chosen \code{te\_max}.
+\item \textbf{Tier-2 $n$-level files} for the diagnostic ions
+  ([Ne\,\textsc{iv}], [Ne\,\textsc{v}], [O\,\textsc{iv}],
+  [S\,\textsc{iv}], [Ar\,\textsc{v}], [Ar\,\textsc{vi}], N\,\textsc{iv},
+  N\,\textsc{v}, C\,\textsc{iv}); CHIANTI v11 carries level and
+  collision data for all of them.  Ions without CHIANTI level data are
+  tracked without lines --- the established Ar\,\textsc{ii} pattern.
+\item \textbf{PN abundance example} (\code{examples/}): the
+  \code{abunPN150.in} values verbatim, so the PN150 gate input is
+  reproducible from the repository alone.
+\end{enumerate}
+
+\emph{Gate HS2:} PyNeb ratio checks ion by ion at the established
+database-spread tolerances (sub-percent for well-determined optical
+pairs, up to $\sim$5--10\% for the known compilation-spread classes):
+the [Ne\,\textsc{v}] 3426/24.3 $\mu$m temperature pair, the
+[Ne\,\textsc{iv}] 2422/2425 and [Ar\,\textsc{iv}] 4711/4740 density
+pairs, [O\,\textsc{iv}] 25.9 $\mu$m against its A-value limit; then an
+end-to-end hard-field smoke showing every new line in
+\code{\_lines.txt} with physically sane ratios.
+
+\subsection{HS3: He II excited-channel diffuse photons}
+
+The PN \HeIII{} zone is large, and case-B \HeII{} recombinations emit
+ionizing photons beyond the ground continuum already carried
+(\code{diffuse\_mod} channel 3).  The hydrogenic $n=2$ cascade of
+\HeII{} produces three components, every one of which ionizes \HI{}:
+
+\begin{itemize}[leftmargin=2em]
+\item \HeII{} Ly$\alpha$ at 40.8 eV --- ionizes \HI{} AND \HeI{}, the
+  dominant piece;
+\item the \HeII{} Balmer continuum --- its threshold is
+  $Z^2\,{\rm Ry}/n^2 = 13.60$ eV, i.e.\ exactly at the \HI{} edge; the
+  aligned-grid \code{ion\_bin\_of} binary search (the 2026-07-18 bug
+  fix) is precisely what makes this land in the correct bin;
+\item the \HeII{} two-photon continuum (0--40.8 eV), of which the
+  $>13.6$ eV part ionizes --- sampled like the \HeI{} two-photon branch
+  with its ionizing probability precomputed.
+\end{itemize}
+
+Implementation is the \code{hei\_diffuse} pattern verbatim: a fifth
+channel in \code{dif\_ch} weighted by the case-B \HeIII{}
+recombination rate in each leaf, branch fractions from the hydrogenic
+$2{\rm s}/2{\rm p}$ cascade shares (Osterbrock \& Ferland tables),
+energies fixed (Ly$\alpha$), threshold-plus-exponential (Balmer
+continuum), or flat-sampled (two-photon).  The quasi-random diffuse
+launch needs NO new dimensions --- the channel pick d7 simply spans
+five values.  Regime note: at HII40 the analogous \HeI{} channel moved
+$\Te$ by only $\sim$1\%, but there the \HeIII{} zone was a small core;
+in a 150 kK PN the \HeIII{} region fills much of the nebula and this
+becomes a first-order energy-budget term.
+
+\emph{Gate HS3:} channel energy conservation (emitted diffuse
+luminosity equals the case-B $n\geq2$ recombination power of the
+\HeIII{} zone); the PN150 He structure and $\Te$ recorded with the
+channel off/on, attributed as one lever.
+
+\subsection{HS4: PN validation gates}
+
+\textbf{MOCASSIN PN150/PN75}, with the full-quality protocol that
+resolved HII40: MOCASSIN re-run CONVERGED (its stored reduced settings
+--- $10^6$ photons, 10 iterations, \code{convLimit} 0.05, $13^3$ ---
+are a moving target exactly as the HII20/40 baselines were), and
+\MoCHII{} run with \code{conv\_crit='vol'}, \code{nnu\_ion} 64--128
+aligned, $\geq4\times10^7$ packets, \code{launch\_sequence='sobol'}.
+The PN150 setup is fully specified by the benchmark input quoted in
+Table~\ref{tab:hardassets} (150 kK, $n_{\rm H}=3000$ cm$^{-3}$, shell
+$10^{17}$--$4.07\times10^{17}$ cm).  Compare, in order of diagnostic
+power:
+
+\begin{enumerate}[leftmargin=2em]
+\item $\Te$(\HII{}) and the radial $\Te$ profile (PN Te $\sim$12--18 kK
+  --- also exercises the hotter thermal range);
+\item the He\,\textsc{i}/\textsc{ii}/\textsc{iii} structure --- the
+  \HeII{}-edge (54.4 eV) photon budget is the PN analog of the He edge
+  discretization that dominated HII40, so the aligned grid must show
+  its value here;
+\item the new high-stage fractions O\,\textsc{iii/iv/v},
+  Ne\,\textsc{iii/iv/v}, N\,\textsc{iii/iv};
+\item the line table: $L$(H$\beta$), \HeII{} 4686/H$\beta$,
+  [O\,\textsc{iii}] 5007/4363, [Ne\,\textsc{v}] 3426,
+  [Ne\,\textsc{iii}] 15.5 $\mu$m, [O\,\textsc{iv}] 25.9 $\mu$m,
+  [N\,\textsc{ii}] 6584, [S\,\textsc{iv}] 10.5 $\mu$m,
+  [Ar\,\textsc{v}].
+\end{enumerate}
+
+\textbf{Cloudy \code{pn\_paris}} as the 1D cross-check with identical
+SED, abundances, density, and dust off: zone-by-zone $\Te$ and ion
+fractions along the radius plus $\sim$20 integrated ratios.  Because
+Cloudy solves density-dependent level populations in its thermal loop,
+the PN150 residual BEFORE stage HS7 directly measures how much the
+low-density Tier-1 fits miss at $n_{\rm H}=3000$ cm$^{-3}$ --- that
+number is the input to HS7, which is why HS4 deliberately precedes it.
+
+\emph{Acceptance:} land inside (or bracket) the published Lexington
+PN150 cross-code spread, with each residual attributed one lever at a
+time (binning, diffuse channels, density-dependent cooling, data
+vintage) exactly as the HII40 campaign did.
+
+\subsection{HS5: AGN SED input}
+
+An \code{ion\_spectrum='agn'} preset implementing the Cloudy continuum
+(\code{parse\_agn.cpp}; Mathews--Ferland form):
+\begin{equation}
+ f_\nu \;=\; \nu^{\alpha_{\text{uv}}}\,
+   e^{-h\nu/kT_{\rm bump}}\, e^{-kT_{\rm IR}/h\nu}
+   \;+\; a\,\nu^{\alpha_{\rm x}} ,
+ \label{eq:agnsed}
+\end{equation}
+with the X-ray normalization $a$ fixed by $\alpha_{\rm ox}$ through the
+2500 \AA--2 keV energy ratio (the 403.3 factor in the Cloudy source)
+and the standard defaults $\alpha_{\text{uv}}=-0.5$,
+$\alpha_{\rm x}=-1$, IR cutoff at $kT_{\rm IR}=0.01$ Ryd.  It enters
+\code{ion\_band\_mod} exactly like the Planck function --- a spectral
+density integrated on the 32-point sub-grid in each band bin --- and is
+normalized by the existing derive-or-rescale luminosity rules.  The
+tabulated-file route (\code{spectrum\_type='per\_ev'} etc.) remains the
+reference path and already reproduces the \code{agn\_lex00} gate SEDs
+verbatim (Table~\ref{tab:hardassets}); the preset adds convenience and
+reproducibility for parameter studies.  Also add an
+ionization-parameter helper to the rank-0 log,
+$U = Q_{\rm ion}/(4\pi r^2 n_{\rm H} c)$ evaluated at a reference
+radius, so slab setups map onto Cloudy inputs without hand conversion.
+
+\emph{Gate HS5:} the bin-integrated preset spectrum against Cloudy
+\code{save continuum} output for identical parameters (shape agreement
+to $\sim$1\% per bin); $Q$-ratio integrals exact; the derive/rescale
+bookkeeping re-verified on the preset (the ISRF-preset test pattern).
+
+\subsection{HS6: inner-shell absorption and Auger (AGN track)}
+
+The one genuine framework extension of the plan, in four parts:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Shell-resolved opacity.}  Above each K/L edge the total
+  cross section becomes the VFKY96 outer-shell fit plus the Verner \&
+  Yakovlev (1995) inner-shell partials,
+  $\sigma_{\rm tot}(E)=\sigma_{\rm outer}(E)+\sum_s\sigma_s(E)$.  The
+  \code{sigma\_vy95} evaluator and the \code{PHOTO2} element-file rows
+  already exist (the Cl path); the extension is carrying several shells
+  with their edges in the aligned-band threshold list.
+\item \textbf{Auger yields.}  Kaastra \& Mewe (1993) electrons per
+  vacancy, shell-resolved, read from the Cloudy data file format
+  (\code{mewe\_nelectron.dat}: element, ion, shell, yield
+  distribution): an inner-shell ionization of stage $i$ lands at stage
+  $i+n_{\rm e}({\rm shell})$ with the tabulated probability
+  distribution over $n_{\rm e}$.  Fluorescence (K$\alpha$ photon
+  emission instead of one Auger electron, \code{mewe\_fluor.dat}) is
+  a small branch for low-$Z$ elements; the first increment deposits it
+  as local heat with a documented note rather than transporting the
+  line photon.
+\item \textbf{Cascade generalization.}  \code{species\_fractions}
+  currently solves the strict adjacent-stage chain as a product form.
+  Auger couples stage $i$ to $i+2,\,i+3,\dots$, so each element's
+  stationary balance becomes a small $n_{\rm stage}\times n_{\rm stage}$
+  matrix problem ($M\mathbf{x}=0$ with $\sum_j x_j=1$); the
+  partial-pivot elimination already used by \code{nlevel\_mod} is
+  reused directly.  The chain path is KEPT as the default and the
+  matrix path activates only when an inner-shell channel is present ---
+  the off-path stays arithmetically identical, the house rule for every
+  extension.
+\item \textbf{Energetics.}  The Auger electron carries
+  $E_0 = h\nu - E_{\rm th,shell} - \sum E_{\text{secondary vacancies}}$
+  and is fast; it enters the EXISTING Shull--van Steenberg partition
+  through the absorber-resolved excess-energy integrals with no new
+  heating physics.  Compton remains excluded at $\leq$500 eV.
+\end{enumerate}
+
+\emph{Gate HS6:} the X-ray-illuminated slab against the Cloudy
+\code{agn\_lex00\_u\{m1,0,1\}} set (three ionization parameters at
+$n_{\rm H}=10^5$ cm$^{-3}$, tabulated SED, stop column
+$10^{16}$ cm$^{-2}$): ion-fraction profiles of C/N/O/Ne through the
+partially ionized zone, the $\Te$ profile, and the H/He recombination
+lines, within the published Lexington-2000 cross-code spread.  A
+secondary check: with Auger artificially disabled the slab must
+reproduce the HS2-era solution (isolates the new coupling).
+
+\subsection{HS7: density-dependent metal cooling in the thermal loop}
+
+Required at PN densities.  The coolants that dominate at nebular
+temperatures quench in a specific order because their critical
+densities span five decades (approximate values at $10^4$ K):
+[C\,\textsc{ii}] 158 $\mu$m $n_{\rm crit,e}\sim50$,
+[N\,\textsc{ii}] 122 $\mu$m $\sim3\times10^2$,
+[O\,\textsc{iii}] 88 $\mu$m $\sim5\times10^2$,
+[O\,\textsc{iii}] 52 $\mu$m $\sim3.5\times10^3$,
+[O\,\textsc{ii}] 3729 $\sim3\times10^3$,
+[S\,\textsc{ii}] 6716 $\sim2\times10^3$,
+[N\,\textsc{ii}] 6584 $\sim9\times10^4$,
+[O\,\textsc{iii}] 5007 $\sim7\times10^5$.  At the PN150 density
+($n_{\rm H}=3000$, $\nelec$ up to $\sim$7000 cm$^{-3}$ in the \HeIII{}
+zone) the IR fine-structure lines are already partly quenched while the
+optical forbidden lines are not --- the low-density Tier-1 fits
+therefore OVERESTIMATE cooling and bias $\Te$ low, with the error
+growing toward compact PN and NLR densities.
+
+Primary design, keeping ``fitted offline, evaluated online'':
+
+\begin{enumerate}[leftmargin=2em]
+\item \code{chianti\_cooling.py} already solves the full $n$-level
+  system to build its fits; extend it to emit
+  $\Lambda(T,\nelec)$ tables on a log-$\nelec$ grid ($\sim$7 nodes,
+  $10^1$--$10^7$ cm$^{-3}$) $\times$ the existing log-$T$ range, one
+  block appended to each \code{cooling\_tier1\_*.txt} behind a
+  format-version flag (old files keep working).
+\item \code{species\_mod::metal\_cooling} evaluates
+  bilinear-in-$(\log T,\log\nelec)$; the memory cost is trivial
+  ($\sim$60$\times$7 values for each ion) and the evaluation stays a
+  handful of multiply-adds inside the bisection --- the
+  \code{species\_ne} cache pattern applies unchanged.
+\item The lowest-density node MUST reproduce the current fits to fit
+  accuracy (regression guard), so HII20/HII40 and every recorded gate
+  move by $<0.1\%$.
+\item Verification: an in-loop $n$-level solve for the dominant
+  coolants on a small model, confirming table interpolation error
+  $<1\%$ in $\Lambda$ over the used $(T,\nelec)$ range; the H-impact
+  PDR cooling terms (\code{metal\_cooling\_H}) stay as they are (their
+  two-level low-density form is correct in the PDR regime they serve).
+\end{enumerate}
+
+\emph{Gate HS7:} a two-zone analytic check (one low- and one
+high-density zone against the exact $n$-level cooling); PN150 $\Te$
+with the tables off/on (the residual measured at HS4 must shrink
+accordingly); HII20/HII40 unchanged to $<0.1\%$.
+
+\subsection{Deferred items}
+\label{sec:harddeferred}
+
+Recorded once so they are conscious exclusions, not oversights:
+Compton heating/cooling and Thomson-scattering transport
+($\gtrsim$0.5 keV; Cloudy is the reference implementation); Fe K
+fluorescence photon transport (the yield enters HS6 as local heat);
+coronal ions beyond $\sim$stage 8 ([Fe\,\textsc{vii}] 6087,
+[Fe\,\textsc{x}] 6374 need Fe stages 8--11 and a hotter thermal range);
+X-ray and UV resonance-line transfer (LaRT territory); grain
+destruction/sputtering in hard radiation fields (the PAH survival
+switches are a partial hook, not a destruction model); and time
+dependence / finite source age, where MAPPINGS remains the 1D
+reference.
+
+\subsection{Suggested order}
+
+\begin{center}\small
+\begin{tabular}{P{0.06\textwidth}P{0.38\textwidth}P{0.20\textwidth}P{0.20\textwidth}}
+\toprule
+Order & Stage & Framework risk & Blocking \\
+\midrule
+1 & HS1 band headroom & low & gates HS2+ \\
+2 & HS2 registry upward & none (data) & gates HS4 \\
+3 & HS3 \HeII{} diffuse channels & low & sharpens HS4 \\
+4 & HS4 PN gates (MOCASSIN + Cloudy) & none & PN track done \\
+5 & HS7 density-dependent cooling & medium & PN accuracy \\
+6 & HS5 AGN SED preset & low & gates HS6 \\
+7 & HS6 inner-shell/Auger & high (cascade) & AGN track done \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+HS7 can run in parallel with HS2--HS4 (independent code paths); the
+first PN150 pass deliberately precedes HS7, so it measures how much of
+the PN residual the density-dependent cooling must explain --- the same
+one-lever-at-a-time attribution that worked for HII40.
+
+%==============================================================================
+\section{Feasibility: time dependence, cooling flows, and shocks in
+\texorpdfstring{\MoCHII{}}{MoCHII}}
+\label{sec:tdcs}
+
+Section~\ref{sec:tdcs}\ addresses the three capabilities where the public
+\Mthree{} 3D driver and \MoCHII{} both trail \Mappings{}: the connected
+time-dependent ionization history of P6/P7, the 1D cooling flow, and the
+S5 steady radiative shock with an iterated precursor
+(\S\ref{sec:mapstrength}).  The question is not whether these are useful
+--- they plainly are --- but how much each would cost to add to
+\MoCHII{}, given its architecture.  The three answers differ sharply:
+time dependence is a bounded project that the design accommodates
+naturally, a cooling flow rides on top of it, and a radiative shock is a
+separate one-dimensional radiation-hydrodynamic calculation that the
+Monte Carlo transport engine does little to help.
+
+\subsection{The architectural pivot}
+
+\MoCHII{}'s iteration loop transports Monte Carlo packets, tallies the
+cell radiation field, solves the \emph{equilibrium} ionization and thermal
+balance in each cell (\code{solve\_ion\_cell}: a damped fixed point on
+$\nelec$ with a bisection on $\Te$), refreshes the opacity, and repeats
+until converged.  The state solver is therefore a \emph{root finder}:
+given the rates it returns the steady state.  It integrates no
+$\mathrm{d}n_i/\mathrm{d}t$, carries no velocity field, and solves no
+fluid equations.  That single fact sets the cost of each addition: one
+reuses the root finder almost unchanged, one adds a time integrator
+beside it, and one needs what the code does not have at all.
+
+\subsection{Time-dependent ionization: moderate, and the natural fit}
+
+Almost everything a finite-lifetime calculation needs already exists.  The
+transport, the photoionization, recombination, collisional-ionization, and
+charge-exchange rate coefficients (already evaluated cell by cell), the
+tally, the octree, and the diffuse field are all reusable without change.
+The cell solver is already ``given the rates, find the state''; the new
+piece is a sibling routine, ``given the rates, the old state, and
+$\Delta t$, find the new state.''
+
+What is genuinely new is threefold.  First, a stiff ordinary-differential
+integrator for the ionic populations and, where the thermal time is not
+short compared with the ionization time, the electron temperature --- a
+backward-Euler or semi-implicit step in each cell, of the kind
+\Mappings{}'s \code{timion} performs, rather than the present root find.
+Second, an outer time loop with a step controller keyed to the atomic,
+cooling, and photon-absorption times.  Third, a source light curve or a
+finite on/off lifetime as input.
+
+The design accommodates this cleanly through operator splitting.
+\MoCHII{} already performs one transport pass for each iteration, so the
+natural structure is an outer radiation step that holds $J_\nu$ fixed
+while the chemistry is substepped in each cell, with the radiation field
+recomputed once the ionization has advanced enough to change the opacity.
+An ionization front that advances while a source brightens, or recedes
+after it switches off, is a reachable target.  The hard part is the stiff
+integrator and the step control, not the infrastructure.
+
+\subsection{Cooling flows: depends on which cooling flow}
+
+The term carries two meanings, and they price very differently.
+
+In the \Mappings{} sense --- a parcel of gas that cools radiatively as it
+moves down a prescribed density and velocity history --- a cooling flow is
+a special case of time-dependent cooling on a fixed trajectory: switch off
+(or freeze) the photoionizing field, and integrate the non-equilibrium
+ionization and the radiative losses down a temperature ramp.  Once the
+time-dependent solver of the previous subsection exists, this is a modest
+addition, because the cooling terms it needs --- recombination,
+free--free, and the metal-line coolants through the Tier-1 fits and the
+Tier-2 $n$-level solve --- are already present.  Its one real prerequisite
+is the density-dependent cooling flagged as HS7 and in
+\S\ref{sec:densitycool}: a cooling flow crosses coolant critical
+densities, so a $\Lambda(\Te,\nelec)$ that suppresses forbidden lines
+correctly is required for it to be quantitative.
+
+In the cluster or galaxy sense --- a self-consistent inflow driven by its
+own radiative losses, with gravity and hydrodynamics --- a cooling flow is
+a fluid-dynamics problem and lies outside the present scope without a
+hydrodynamic solver.  The comparison with \Mappings{} concerns the first
+meaning.
+
+\subsection{Radiative shocks: hard, and off the architecture}
+
+The \Mappings{} S5 shock solves the Rankine--Hugoniot jump conditions and
+then integrates the post-shock cooling zone as a one-dimensional flow ---
+mass, momentum, and energy conservation along the flow coordinate with
+radiative losses --- while iterating an upstream photoionized precursor
+computed from the shock's own radiation to self-consistency.  Its essence
+is a one-dimensional radiation-hydrodynamic flow, not a three-dimensional
+transport problem.
+
+This is the poor fit.  \MoCHII{} has no velocity field, no fluid
+equations, and no flow coordinate.  The post-shock structure is gas that
+moves and compresses; the static octree grid and the Monte Carlo photon
+transport represent none of that, and three-dimensional Monte Carlo
+transport buys almost nothing for a one-dimensional steady shock.  The
+honest route is a separate one-dimensional radiative-shock module, a
+companion solver in the spirit of the 1D references \MoCHII{} already uses
+for its gates: it would reuse the atomic and cooling data but not the
+octree or the Monte Carlo engine, and it would carry the jump conditions,
+an adaptive cooling-zone integrator, and the precursor iteration itself.
+That is real work, largely decoupled from the transport code, and --- this
+is the key qualification --- it would be a 1D shock, not a 3D radiative
+shock.  A genuine three-dimensional radiative shock needs actual radiation
+hydrodynamics, which is a different code, not an extension of this one.
+
+\subsection{Summary and suggested order}
+
+\begin{center}
+\begin{tabular}{P{0.26\textwidth}P{0.16\textwidth}P{0.44\textwidth}}
+\toprule
+Capability & Difficulty & Why \\
+\midrule
+Time-dependent ionization & Moderate &
+  Reuses all transport and rates; new work is a stiff cell ODE, a time
+  loop, and a light curve.  Operator splitting maps onto the existing
+  one-transport-for-each-iteration loop. \\
+Cooling flow (\Mappings{} sense) & Moderate &
+  A prescribed-trajectory special case of the time-dependent solver;
+  needs the density-dependent $\Lambda(\Te,\nelec)$ of HS7. \\
+Cooling flow (cluster sense) & Out of scope &
+  Requires gravity and hydrodynamics. \\
+Radiative shock (S5) & Hard &
+  A separate 1D radiation-hydrodynamic module; the octree and Monte Carlo
+  engine do not apply.  Not a 3D shock. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent A sensible order is: (1)~time-dependent ionization first, as the
+most natural addition and the foundation for the rest; (2)~the
+density-dependent cooling of HS7, needed for both PN accuracy and cooling
+flows; (3)~the \Mappings{}-sense cooling flow as a thin layer on top of
+(1) and~(2); and (4)~a decoupled 1D radiative-shock module last, and only
+if a shock diagnostic is actually required.  The first three share the
+same time-integration and cooling infrastructure and reinforce the PN and
+hard-spectrum work of \S\ref{sec:hardplan}; the fourth stands apart.
+
+%==============================================================================
+\section{Implementation evidence consulted}
+
+The principal local sources used for this audit were:
+
+\begin{itemize}[leftmargin=2em]
+\item \MoCHII{}: \code{docs/PLAN.md}, \code{docs/MoCHII\_physics.tex},
+  \code{docs/MoCHII\_UserGuide.tex}, the transport/grid modules under
+  \code{src/}, and the quantitative gates under \code{tests/}.
+\item \Mthree{}: \code{README.md}, \code{lab/data/ATDAT.txt},
+  \code{src/mastercode/montph7.f}, \code{montph7\_dust.f},
+  \code{crosssections.f}, \code{mcteequi.f}, \code{teequi2.f},
+  \code{equion.f}, \code{cool.f}, \code{multilevel.f},
+  \code{grainpar.f}, \code{hgrains.f}, \code{hpahs.f},
+  \code{dusttemp.f}, \code{timion.f}, and \code{shock2--shock5.f}.
+\item \Mappings{}: \code{README.md}, \code{src/mappings.f},
+  \code{photo6.f}, \code{photo7.f}, \code{teequi.f}, \code{teequi2.f},
+  \code{timion.f}, \code{timtqui.f}, \code{cool.f}, \code{dusttemp.f},
+  \code{shock5.f}, \code{neqc.f}, \code{coolc.f},
+  \code{transferline.f}, \code{lab/mapStd.prefs},
+  \code{lab/mapFull.prefs}, and \code{docs/DocumentionOverview.html}.
+\end{itemize}
+
+The public \Mthree{} source contains several historical or experimental
+driver variants.  Statements in this memo refer to the main
+\code{mastercode/montph7.f} and explicitly selected
+\code{montph7\_dust.f} paths unless otherwise stated.
+Statements about \Mappings{} refer to the connected public 5.2.1
+\code{map52} P6/P7/S5/CC/NC/PP paths, not merely to routines present in
+the directory.
+
+%==============================================================================
+\begin{thebibliography}{99}
+
+\bibitem{jin2022}
+Jin, Y., Kewley, L. J., \& Sutherland, R. S. 2022,
+``Messenger Monte Carlo MAPPINGS V (M$^3$)--A Self-consistent,
+Three-dimensional Photoionization Code,'' ApJ, 927, 37,
+\url{https://doi.org/10.3847/1538-4357/ac48f3}.
+
+\bibitem{jin2022fractal}
+Jin, Y., Kewley, L. J., \& Sutherland, R. S. 2022,
+``Theoretically Modeling Photoionized Regions with Fractal Geometry in
+Three Dimensions,'' ApJL, 934, L1,
+\url{https://doi.org/10.3847/2041-8213/ac80f3}.
+
+\bibitem{sd1993}
+Sutherland, R. S., \& Dopita, M. A. 1993,
+``Cooling Functions for Low-density Astrophysical Plasmas,'' ApJS, 88, 253.
+
+\bibitem{mappings521}
+Sutherland, R. S., Dopita, M. A., Binette, L., et al.\ 2022,
+``MAPPINGS V v5.2.1 Public Source Release,''
+\url{https://mappings.anu.edu.au}.
+
+\bibitem{lucy1999}
+Lucy, L. B. 1999, ``Computing Radiative Equilibria with Monte Carlo
+Techniques,'' A\&A, 344, 282.
+
+\bibitem{verner1996}
+Verner, D. A., Ferland, G. J., Korista, K. T., \& Yakovlev, D. G. 1996,
+``Atomic Data for Astrophysics. II. New Analytic Fits for Photoionization
+Cross Sections of Atoms and Ions,'' ApJ, 465, 487.
+
+\end{thebibliography}
+
+\end{document}

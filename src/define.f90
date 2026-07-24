@@ -275,6 +275,24 @@ public
      !--- 'draine' (Draine 1978), 'habing' (Draine shape / 1.71), 'mathis'
      !--- (Mathis, Mezger & Panagia 1983).  par%ext_scale multiplies a preset.
      real(kind=wp)      :: ext_scale     = 1.0_wp
+     !--- Plane-parallel slab illumination (par%source_geometry = 'slab', needs
+     !--- par%xy_periodic).  Light enters the top (+z) and/or bottom (-z) face;
+     !--- each face is a collimated beam at incidence angle theta or an isotropic
+     !--- (Lambert) field, with its own source strength.  The horizontal-face
+     !--- flux F_z (= mu*F_n for a beam, mu=cos theta; = pi*I for isotropic) is
+     !--- the sole normalization: L = F_z * A_zface sets the packet weight and
+     !--- every per-volume result is independent of the tile area.  The spectrum
+     !--- is the global one (par%tstar / par%ion_spectrum).
+     character(len=8)   :: slab_faces    = 'top'    ! 'top' | 'bottom' | 'both'
+     character(len=16)  :: slab_top_mode = 'beam'   ! 'beam' | 'isotropic'
+     character(len=16)  :: slab_bot_mode = 'beam'
+     real(kind=wp)      :: slab_top_theta = 0.0_wp  ! [deg] incidence from the inward normal
+     real(kind=wp)      :: slab_bot_theta = 0.0_wp
+     real(kind=wp)      :: slab_top_phi   = 0.0_wp  ! [deg] beam azimuth
+     real(kind=wp)      :: slab_bot_phi   = 0.0_wp
+     real(kind=wp)      :: slab_top_source = 0.0_wp ! I [erg/s/cm^2/sr] (iso) or F_n [erg/s/cm^2] (beam)
+     real(kind=wp)      :: slab_bot_source = 0.0_wp
+     integer            :: slab_nmu       = 20      ! emergent I(mu) boundary bins
      !--- shared memory & master-slave algorithm
      integer       :: num_send_at_once   = 10000
      logical       :: use_shared_memory  = .false.

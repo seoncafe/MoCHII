@@ -78,6 +78,17 @@ module ion_band_mod
   !--- Habing (1968) FUV energy density in 6-13.6 eV [erg/cm^3]; G0 = 1 unit.
   real(kind=wp), parameter :: HABING_U_FUV = 5.29e-14_wp
 
+  !--- Plane-parallel slab illumination (source_geometry = 'slab').  Per face
+  !--- 1 = top (+z), 2 = bottom (-z): lit flag, mode (0 = beam, 1 = isotropic),
+  !--- mu = cos(incidence), azimuth phi [rad], and the horizontal-face flux F_z
+  !--- [erg/s/cm^2].  slab_ptop = probability of drawing the top face.
+  logical       :: slab_lit(2)  = .false.
+  integer       :: slab_mode(2) = 0
+  real(kind=wp) :: slab_mu(2)   = 1.0_wp
+  real(kind=wp) :: slab_phi(2)  = 0.0_wp
+  real(kind=wp) :: slab_Fz(2)   = 0.0_wp
+  real(kind=wp) :: slab_ptop    = 1.0_wp
+
 contains
 
   !=========================================================================
@@ -153,13 +164,25 @@ contains
     !--- type par%ext_spectrum file is given).  With exactly one component the
     !--- single fast path runs (legacy RNG stream); otherwise the multi path
     !--- splits the packets among the components (each with its own spectrum).
-    ncomp = par%nsource
-    if (external_on()) ncomp = ncomp + 1
-    multi_src = ncomp >= 2
+    if (trim(par%source_geometry) == 'slab') then
+       ncomp = 1;  multi_src = .false.       ! slab is its own single component
+    else
+       ncomp = par%nsource
+       if (external_on()) ncomp = ncomp + 1
+       multi_src = ncomp >= 2
+    end if
 
     Lnorm = 0.0_wp;  Jband = 0.0_wp;  uFUV = 0.0_wp;  presid = 0;  derived = .false.
     if (.not. multi_src) then
-       if (par%nsource == 0) then
+       if (trim(par%source_geometry) == 'slab') then
+          !===================== plane-parallel slab fast path ================
+          !--- global-spectrum shape scaled so the ionizing-band luminosity
+          !--- equals L_slab = sum_face F_z(face) * A_zface.  slab_setup fills
+          !--- the per-face F_z / mu / mode used by emit_slab.
+          call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false., is_abs)
+          call slab_setup(Lnorm)
+          call finalize_source(ion_lum, nnu, nfuv, is_abs, Lnorm, Lnorm)
+       else if (par%nsource == 0) then
           !===================== external-only fast path =====================
           !--- absolute (preset / physical file) or legacy (shape / Planck)
           !--- external field; build_ext_bins fills ion_lum with bin
@@ -227,6 +250,8 @@ contains
     implicit none
     if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
        ion_qmc_ndim = 3
+    else if ((.not. multi_src) .and. trim(par%source_geometry) == 'slab') then
+       ion_qmc_ndim = 6      ! u1 freq, u2 face, u3/u4 xy, u5 mu, u6 phi
     else
        ion_qmc_ndim = 7
     end if
@@ -1328,6 +1353,8 @@ contains
           call emit_external_rec(photon)
        case ('external_sph')
           call emit_external_sph(photon)
+       case ('slab')
+          call emit_slab(photon)
        end select
        u = rand_number()
        photon%inu = nnu_band
@@ -1406,6 +1433,10 @@ contains
        !--- single point source: stage-1 layout (u1 = frequency).
        call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
                            u(2), u(3))
+       photon%inu = bin_from_cdf(ion_cdf, u(1))
+    else if ((.not. multi_src) .and. trim(par%source_geometry) == 'slab') then
+       !--- slab layout: u1 frequency, u2 face, u3/u4 xy, u5 mu, u6 phi.
+       call emit_slab_qmc(photon, u(2), u(3), u(4), u(5), u(6))
        photon%inu = bin_from_cdf(ion_cdf, u(1))
     else if (.not. multi_src) then
        !--- single external component (nsource=0): superset angle/surface dims,
@@ -1598,6 +1629,150 @@ contains
     photon%y = photon%y - nudge*rhy
     photon%z = photon%z - nudge*rhz
   end subroutine emit_external_sph
+
+  !=========================================================================
+  ! Plane-parallel slab illumination setup.  Fills the module slab_* arrays
+  ! (per face 1 = top +z, 2 = bottom -z) and returns L_slab [erg/s], the
+  ! ionizing-band luminosity entering the tile = sum_face F_z(face) * A_zface,
+  ! where the horizontal-face flux is F_z = mu*F_n (beam, mu = cos theta) or
+  ! pi*I (isotropic).  slab_*_source is the band-integrated source strength.
+  !=========================================================================
+  subroutine slab_setup(Lslab)
+    use mpi
+    use octree_mod, only : amr_grid
+    implicit none
+    real(kind=wp), intent(out) :: Lslab
+    real(kind=wp) :: azface, src(2), theta(2)
+    integer :: f, ierr
+    logical :: top, bot
+
+    top = trim(par%slab_faces) == 'top'    .or. trim(par%slab_faces) == 'both'
+    bot = trim(par%slab_faces) == 'bottom' .or. trim(par%slab_faces) == 'both'
+    slab_lit = [top, bot]
+    src   = [par%slab_top_source, par%slab_bot_source]
+    theta = [par%slab_top_theta,  par%slab_bot_theta]
+    slab_phi = [par%slab_top_phi, par%slab_bot_phi] * deg2rad
+    slab_mode(1) = merge(1, 0, trim(par%slab_top_mode) == 'isotropic')
+    slab_mode(2) = merge(1, 0, trim(par%slab_bot_mode) == 'isotropic')
+
+    !--- horizontal (z-face) area of one periodic tile [cm^2].
+    azface = (amr_grid%xrange * par%distance2cm) * (amr_grid%yrange * par%distance2cm)
+
+    slab_Fz = 0.0_wp;  slab_mu = 1.0_wp
+    do f = 1, 2
+       if (.not. slab_lit(f)) cycle
+       if (slab_mode(f) == 1) then
+          slab_Fz(f) = pi * src(f)                       ! isotropic: F_z = pi I
+          slab_mu(f) = 1.0_wp                            ! (unused; Lambert sampled)
+       else
+          slab_mu(f) = cos(theta(f) * deg2rad)           ! beam: mu = cos theta
+          slab_Fz(f) = slab_mu(f) * src(f)               ! F_z = mu F_n
+       end if
+    end do
+
+    Lslab = sum(slab_Fz) * azface
+    if (Lslab <= 0.0_wp) then
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: source_geometry=''slab'' has zero entering flux; set '// &
+          'par%slab_top_source / par%slab_bot_source (> 0) on the lit face(s).'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+    slab_ptop = slab_Fz(1) / sum(slab_Fz)
+
+    if (mpar%p_rank == 0) then
+       write(*,'(3a)')       ' ION: slab illumination, faces = ', trim(par%slab_faces)
+       if (slab_lit(1)) write(*,'(a,es11.4,a,f6.2,a,i0)') &
+          '   top    F_z = ', slab_Fz(1), ' erg/s/cm^2, mu = ', slab_mu(1), &
+          ', mode(0=beam,1=iso) = ', slab_mode(1)
+       if (slab_lit(2)) write(*,'(a,es11.4,a,f6.2,a,i0)') &
+          '   bottom F_z = ', slab_Fz(2), ' erg/s/cm^2, mu = ', slab_mu(2), &
+          ', mode(0=beam,1=iso) = ', slab_mode(2)
+       write(*,'(a,es11.4,a,es11.4)') '   A_zface [cm^2] = ', azface, &
+          ',  L_slab [erg/s] = ', Lslab
+    end if
+  end subroutine slab_setup
+
+  !=========================================================================
+  ! Emit one slab packet: draw a lit z-face (weighted by its F_z), place the
+  ! entry point uniformly over the face, and set the direction (a collimated
+  ! beam at the face's incidence angle, or a Lambert-isotropic ray into the
+  ! inward hemisphere).  from_external + the inward normal drive the peel.
+  !=========================================================================
+  subroutine emit_slab(photon)
+    use random,     only : rand_number
+    use octree_mod, only : amr_grid
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp) :: mu, sinm, ph, nudge, span, sgn
+    integer :: f
+
+    span  = min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)
+    nudge = 1.0e-6_wp * span
+    f = 1
+    if (rand_number() > slab_ptop) f = 2      ! 1 = top (+z), 2 = bottom (-z)
+    sgn = merge(-1.0_wp, 1.0_wp, f == 1)      ! inward z direction: top -> -z
+
+    !--- entry point uniform over the illuminated z-face.
+    photon%x = amr_grid%xmin + amr_grid%xrange*rand_number()
+    photon%y = amr_grid%ymin + amr_grid%yrange*rand_number()
+    if (f == 1) then
+       photon%z = amr_grid%zmax - nudge
+    else
+       photon%z = amr_grid%zmin + nudge
+    end if
+
+    if (slab_mode(f) == 1) then
+       mu = sqrt(rand_number())               ! isotropic: Lambert incidence
+       ph = twopi*rand_number()
+    else
+       mu = slab_mu(f)                         ! beam: fixed incidence
+       ph = slab_phi(f)
+    end if
+    sinm = sqrt(max(1.0_wp - mu*mu, 0.0_wp))
+    photon%kx = sinm*cos(ph)
+    photon%ky = sinm*sin(ph)
+    photon%kz = sgn*mu
+
+    photon%from_external = .true.
+    photon%snx = 0.0_wp;  photon%sny = 0.0_wp;  photon%snz = sgn
+  end subroutine emit_slab
+
+  !=========================================================================
+  ! Quasi-random twin of emit_slab: the same face pick / entry point / beam or
+  ! Lambert direction, with the Mersenne draws replaced by launch uniforms
+  ! (u_face, u_c1, u_c2 always; u_mu, u_phi for the isotropic mode).
+  !=========================================================================
+  subroutine emit_slab_qmc(photon, u_face, u_c1, u_c2, u_mu, u_phi)
+    use octree_mod, only : amr_grid
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    real(kind=wp),     intent(in)    :: u_face, u_c1, u_c2, u_mu, u_phi
+    real(kind=wp) :: mu, sinm, ph, nudge, span, sgn
+    integer :: f
+    span  = min(amr_grid%xrange, amr_grid%yrange, amr_grid%zrange)
+    nudge = 1.0e-6_wp * span
+    f = 1
+    if (u_face > slab_ptop) f = 2
+    sgn = merge(-1.0_wp, 1.0_wp, f == 1)
+    photon%x = amr_grid%xmin + amr_grid%xrange*u_c1
+    photon%y = amr_grid%ymin + amr_grid%yrange*u_c2
+    if (f == 1) then
+       photon%z = amr_grid%zmax - nudge
+    else
+       photon%z = amr_grid%zmin + nudge
+    end if
+    if (slab_mode(f) == 1) then
+       mu = sqrt(u_mu);  ph = twopi*u_phi
+    else
+       mu = slab_mu(f);  ph = slab_phi(f)
+    end if
+    sinm = sqrt(max(1.0_wp - mu*mu, 0.0_wp))
+    photon%kx = sinm*cos(ph)
+    photon%ky = sinm*sin(ph)
+    photon%kz = sgn*mu
+    photon%from_external = .true.
+    photon%snx = 0.0_wp;  photon%sny = 0.0_wp;  photon%snz = sgn
+  end subroutine emit_slab_qmc
 
   !=========================================================================
   ! Quasi-random emit helpers.  Each mirrors its legacy counterpart EXACTLY

@@ -130,7 +130,9 @@ contains
   have_Z     = allocated(Zarr)
   have_xHI   = allocated(xHIarr)
   have_ndust = allocated(ndustarr)
-  par%xyz_symmetry = .false.;  par%xy_periodic = .false.;  par%z_symmetry = .false.
+  !--- honor the namelist par%xy_periodic (the slab boundary condition); the
+  !--- reflecting symmetries are not used by MoCHII grids and stay off.
+  par%xyz_symmetry = .false.;  par%z_symmetry = .false.
 
   !--- MoCHII gas-density model (both 'car' and 'amr'): a uniform density
   !--- (par%nH_const) and/or a spherical sphere/shell cut (par%rmax/rmin) let

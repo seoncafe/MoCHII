@@ -1,0 +1,346 @@
+%% MoCHII — CHIANTI atomic-data fitting pipeline (cooling and n-level fits).
+%% Author: Kwang-Il Seon
+%% Written 2026-07-11 for kiseon_memo.cls.
+\documentclass[english,a4paper]{kiseon_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+
+\newcommand{\ergcm}{\mathrm{erg\,cm^{3}\,s^{-1}}}
+\newcommand{\Lam}{\Lambda}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+
+\title{The MoCHII Atomic-Data Fitting Pipeline:\\ CHIANTI Cooling and $n$-level Fits}
+\author{Kwang-Il Seon}
+\date{2026-07-11}
+\maketitle
+
+\begin{abstract}
+MoCHII evaluates all metal-line atomic data from analytic fits; the raw
+CHIANTI database is never parsed at runtime.  The Python pipeline under
+\code{tools/fitting/} is the auditable source of every coefficient in
+\code{data/atomic/}.  This memo records the first production cycle
+(2026-07-11) for the ion set O\,\textsc{ii}, O\,\textsc{iii},
+N\,\textsc{ii}, S\,\textsc{ii}, S\,\textsc{iii}, Ne\,\textsc{ii}, and
+Ne\,\textsc{iii}: the cooling-function fits used inside the thermal
+iteration, the $n$-level data files (level energies, $A$-values, and
+Chebyshev fits of the effective collision strengths in Burgess--Tully
+scaled space) used for output-time line emissivities, and the verification
+of both against the CHIANTI v11.0.2 source data and against PyNeb.
+The fitted files reproduce direct CHIANTI evaluation to $\lesssim 0.5\%$ in
+the classic diagnostic ratios; the remaining differences from PyNeb
+(up to $6$--$10\%$ for the density diagnostics near their critical
+densities) trace to PyNeb's independent choice of collision strengths and
+$A$-values, not to fit error.
+\end{abstract}
+
+\section{Overview: two products, one design rule}
+The metal-line design requires that adding an ion be a data operation,
+not a code operation.  The pipeline therefore produces, for each
+registered ion, self-contained coefficient files with provenance headers
+(CHIANTI version, population model, fit range, fit form, maximum fit
+error), of two kinds:
+
+\begin{itemize}
+\item \textbf{Cooling fits (hot loop).}  A smooth closed-form
+  cooling function $\Lam_{\rm ion}(T)$, cheap and Newton-friendly inside
+  the thermal-balance iteration.  Coronal (low-density) limit by
+  construction.
+\item \textbf{$n$-level data (diagnostics).}  Level energies,
+  statistical weights, radiative $A$-values, and fitted effective
+  collision strengths $\Upsilon(T)$ feeding the generic $n$-level solver,
+  evaluated only at output time on the converged state.  These
+  supply the density-dependent emissivities and the diagnostic line
+  ratios that the cooling fits cannot give.
+\end{itemize}
+
+The pipeline is seeded from EXHALE: \code{chianti\_cooling.py} (copied
+from \code{EXHALE/cooling\_data/}) reads the raw CHIANTI ASCII ion files
+(\code{.elvlc}, \code{.wgfa}, \code{.scups}) directly, with no ChiantiPy
+dependency, and applies the Burgess--Tully (1992) descaling of the stored
+scaled collision strengths.  CHIANTI v11.0.2 lives at
+\code{\char`~/RT\_Codes/CHIANTI/dbase}.
+
+\section{The cooling function}
+For a transition $l\to u$ with energy gap $\Delta E_{lu}$, the Maxwellian
+electron-impact excitation rate coefficient is
+\begin{equation}
+  q_{lu}(T) \;=\; \frac{8.629\times 10^{-6}}{g_l\,\sqrt{T}}\,
+  \Upsilon_{lu}(T)\, e^{-\Delta E_{lu}/kT}
+  \qquad [\mathrm{cm^{3}\,s^{-1}}],
+  \label{eq:qlu}
+\end{equation}
+with $\Upsilon_{lu}(T)$ the effective collision strength obtained by
+descaling the \code{.scups} data.  In the optically thin, low-density
+limit every collisional excitation is followed by a radiative decay, so
+the line cooling normalized by $n_e\,n_{\rm ion}$ is
+\begin{equation}
+  \Lam_{\rm ion}(T) \;=\; \sum_{l\to u} f_l(T)\, q_{lu}(T)\, \Delta E_{lu}
+  \qquad [\ergcm],
+  \label{eq:lambda}
+\end{equation}
+where $f_l(T)$ is the fractional population of the lower level.  The
+pipeline uses the \emph{ground-term} population model: the levels within
+$0.4$~eV of ground (the ground-term fine structure, e.g.\ the
+$^3\!P_{0,1,2}$ block of O\,\textsc{iii}) are Boltzmann-distributed and
+all excitations out of them cool.  For the single $^4\!S_{3/2}$ ground
+level of O\,\textsc{ii} and S\,\textsc{ii} this reduces to the coronal
+limit.
+
+\section{Cooling-function fits}
+Each $\Lam_{\rm ion}(T)$ curve is fitted over $10^3\mbox{--}10^5$~K with
+the multi-exponential form used throughout EXHALE,
+\begin{equation}
+  \Lam_{\rm ion}(T) \;=\; T^{-1/2} \sum_{i=1}^{N} A_i\, e^{-T_i/T},
+  \label{eq:cool}
+\end{equation}
+a Levenberg--Marquardt fit on $\log\Lam$ with the $T_i$ initialized from
+the level-energy ladder of each ion (fine structure / forbidden optical /
+UV blocks read off the \code{.elvlc} file).  The fitter tries $N$,
+$N{+}1$, $N{+}2$ terms and keeps the best.  One case needed care:
+Ne\,\textsc{ii} cooling is a single fine-structure line
+($12.8\,\mu$m, $\Delta E/k \simeq 1123$~K) whose slow decay
+($\Lam \propto T^{-0.35}$, set by the $T$ dependence of $\Upsilon$)
+must be superposed from a ladder of $T_i$ values before the far UV block
+at ${\sim}3\times10^{5}$~K takes over; it converges with $N=7$.
+Table~\ref{tab:cool} lists the fit quality; Figure~\ref{fig:cool}
+overlays the fits on the CHIANTI curves.  The coefficients are written to
+\code{data/atomic/cooling\_<ion>.txt}.
+
+\begin{table}[htb]
+\centering
+\caption{Cooling fits, $10^3\mbox{--}10^5$~K.  The maximum relative error
+is against the direct CHIANTI evaluation of Eq.~(\ref{eq:lambda}).}
+\label{tab:cool}
+\begin{tabular}{lccl}
+\hline
+Ion & $N$ & max error & output file \\
+\hline
+O\,\textsc{ii}   & 5 & 0.07\% & \code{cooling\_o\_2.txt} \\
+O\,\textsc{iii}  & 4 & 1.83\% & \code{cooling\_o\_3.txt} \\
+N\,\textsc{ii}   & 6 & 0.14\% & \code{cooling\_n\_2.txt} \\
+S\,\textsc{ii}   & 3 & 2.26\% & \code{cooling\_s\_2.txt} \\
+S\,\textsc{iii}  & 6 & 0.46\% & \code{cooling\_s\_3.txt} \\
+Ne\,\textsc{ii}  & 7 & 0.65\% & \code{cooling\_ne\_2.txt} \\
+Ne\,\textsc{iii} & 4 & 0.58\% & \code{cooling\_ne\_3.txt} \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[!b]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/cooling_fits.png}
+\caption{Cooling fits (red dashed) over the direct CHIANTI curves
+(black), $10^3\mbox{--}10^5$~K, ground-term population, low-density
+limit.}
+\label{fig:cool}
+\end{figure}
+
+A caveat carried in every file header: Eq.~(\ref{eq:cool}) is
+low-density-limit cooling.  Transitions with low critical density (the
+fine-structure IR lines; [O\,\textsc{ii}] $\lambda\lambda 3726,3729$;
+[S\,\textsc{ii}] $\lambda\lambda 6717,6731$) saturate above
+$n_{\rm crit}$, where the cooling fit overestimates the cooling.  If an
+application demands it, a fitted density-suppression factor can be added
+later; the emissivities themselves always come from the $n$-level data.
+
+\section{$n$-level data with fitted collision strengths}
+For each ion the lowest $n$ levels are exported --- enough for the
+optical/IR diagnostics (Table~\ref{tab:nlev}); extra levels are harmless
+to the solver.  The file \code{data/atomic/nlevel\_<ion>.txt} contains
+three blocks:
+\begin{itemize}
+\item \code{NLEV}: level index, statistical weight $g$, energy in
+  cm$^{-1}$ (observed values preferred, theoretical as fallback);
+\item \code{NRAD}: radiative rates $A_{ul}$ from \code{.wgfa} (duplicate
+  rows summed);
+\item \code{NUPS}: one line for each collisional transition --- the
+  Burgess--Tully type, scaling parameter $C$, transition energy in Ryd,
+  the fitted domain $[s_{\rm lo}, s_{\rm hi}]$, a log flag, and the
+  Chebyshev coefficients, followed by the recorded maximum fit error.
+\end{itemize}
+
+\subsection{Burgess--Tully scaling and Chebyshev fits}
+CHIANTI stores $\Upsilon$ on the Burgess--Tully (1992) scaled temperature
+$s\in[0,1]$.  With $e_t \equiv kT/\Delta E$, the forward map is
+\begin{equation}
+  s \;=\;
+  \begin{cases}
+    1 - \dfrac{\ln C}{\ln(e_t + C)}, & \text{types 1, 4},\\[8pt]
+    \dfrac{e_t}{e_t + C}, & \text{types 2, 3, 5, 6},
+  \end{cases}
+\end{equation}
+and the descaling back to $\Upsilon$ is
+\begin{equation}
+  \Upsilon \;=\; y\ln(e_t+e)~[1];\quad y~[2];\quad
+  \frac{y}{e_t+1}~[3];\quad y\ln(e_t+C)~[4];\quad
+  \frac{y}{e_t}~[5];\quad 10^{\,y}~[6],
+\end{equation}
+where $y(s)$ is the scaled value.  Instead of the spline-through-table
+evaluation used by CHIANTI itself, the pipeline fits $y(s)$ with a
+Chebyshev series over the image of $T\in[10^3,10^5]$~K intersected with
+the tabulated range,
+\begin{equation}
+  u = \frac{2(s - s_{\rm lo})}{s_{\rm hi}-s_{\rm lo}} - 1,\qquad
+  y = \sum_{k=0}^{n_c-1} c_k\, T_k(u),
+\end{equation}
+clipping $s$ into $[s_{\rm lo}, s_{\rm hi}]$ outside the fit domain.  The
+degree grows from 2 until the descaled $\Upsilon(T)$ matches the direct
+spline evaluation to $0.2\%$ (cap at 12).  Weak intercombination
+transitions whose tables span decades (e.g.\ O\,\textsc{iii}
+$^1\!D_2,^1\!S_0 \rightarrow {}^5\!S_2$) defeat a linear-space fit; for
+those the series stores $\log_{10} y$ instead, marked by the log flag
+(\code{logf=1}, apply $10^{y}$ before descaling).  The Fortran
+\code{nlevel\_mod} must evaluate exactly this recipe; it is replicated in
+\code{verify\_nlevel\_pyneb.py} as the reference implementation.
+
+\begin{table}[htb]
+\centering
+\caption{$n$-level exports.  ``worst $\Upsilon$ error'' is the largest
+maximum relative error among the fitted transitions of that ion,
+measured on the descaled $\Upsilon(T)$ against the direct spline
+evaluation over $10^3\mbox{--}10^5$~K.}
+\label{tab:nlev}
+\begin{tabular}{lcccc}
+\hline
+Ion & levels & $A$-values & $\Upsilon$ fits & worst $\Upsilon$ error \\
+\hline
+O\,\textsc{ii}   & 5 &  9 & 10 & 0.28\% \\
+O\,\textsc{iii}  & 6 & 10 & 15 & 1.68\% \\
+N\,\textsc{ii}   & 5 &  8 & 10 & 0.17\% \\
+S\,\textsc{ii}   & 5 &  9 & 10 & 1.25\% \\
+S\,\textsc{iii}  & 6 & 12 & 15 & 0.29\% \\
+Ne\,\textsc{ii}  & 2 &  1 &  1 & 0.16\% \\
+Ne\,\textsc{iii} & 5 &  9 & 10 & 0.19\% \\
+\hline
+\end{tabular}
+\end{table}
+
+The two entries above $1\%$ have benign origins: the O\,\textsc{iii}
+outlier is the physically negligible $^1\!S_0$--$^5\!S_2$
+intercombination transition ($\Upsilon \sim 10^{-4}$), and the
+S\,\textsc{ii} errors reflect the coarse 10-point \code{.scups} tables of
+that ion --- the deviation is from the interpolating spline, at the level
+of the resolution of the source data itself.
+
+\subsection{Statistical equilibrium and emissivities}
+Given $(T_e, n_e)$, the solver builds the rate matrix from the file
+contents alone: collisional rates from Eq.~(\ref{eq:qlu}) with
+de-excitation by detailed balance,
+$q_{ul} = 8.629\times10^{-6}\,\Upsilon/(g_u\sqrt{T})$ and
+$q_{lu} = (g_u/g_l)\,q_{ul}\,e^{-\Delta E/kT}$, plus the radiative
+$A_{ul}$; the level populations follow from $\dot{n}=0$ with the closure
+$\sum_i n_i = 1$, and the emissivity of a line is
+$j_{ul} \propto n_u A_{ul}\,\Delta E_{ul}$.
+
+\section{Verification}
+\subsection{Internal consistency: fitted files vs.\ direct CHIANTI}
+Running the same statistical-equilibrium solver twice --- once reading the
+fitted \code{nlevel} files, once evaluating the raw CHIANTI splines and
+\code{.wgfa} rates directly --- isolates the error contributed by the fits
+and the file format.  Over the grid $T_e \in \{5,10,20\}\times10^3$~K,
+$n_e \in \{10^2,10^3,10^4\}$~cm$^{-3}$:
+\begin{center}
+\begin{tabular}{lc}
+\hline
+Diagnostic ratio & worst $|$fit/raw $- 1|$ \\
+\hline
+$[$O\,\textsc{ii}$]$ $\lambda3726/\lambda3729$ & 0.05\% \\
+$[$S\,\textsc{ii}$]$ $\lambda6717/\lambda6731$ & 0.52\% \\
+\hline
+\end{tabular}
+\end{center}
+The fitted files are faithful to CHIANTI v11.0.2.
+
+\subsection{Cross-check against PyNeb}
+PyNeb (v1.1.31) carries its own atomic data --- for these ions the
+collision strengths SSB14 (O\,\textsc{iii}), T11 (N\,\textsc{ii}),
+Kal09 (O\,\textsc{ii}), TZ10 (S\,\textsc{ii}) with $A$-values
+FFT04-SZ00, FFT04, Z82-WFD96, RGJ19 respectively --- so this comparison is
+a cross-calibration against an independent reference, not a fit-residual
+test.  Tables~\ref{tab:pyneb_te} and \ref{tab:pyneb_ne} give the classic
+temperature and density diagnostics.
+
+\begin{table}[p]
+\centering
+\caption{Temperature diagnostics vs.\ PyNeb.}
+\label{tab:pyneb_te}
+\begin{tabular}{rr rrr rrr}
+\hline
+ & & \multicolumn{3}{c}{$[$O\,\textsc{iii}$]$ $\lambda5007/\lambda4363$}
+   & \multicolumn{3}{c}{$[$N\,\textsc{ii}$]$ $\lambda6584/\lambda5755$} \\
+$T_e$ [K] & $n_e$ [cm$^{-3}$] & MoCHII & PyNeb & diff
+                              & MoCHII & PyNeb & diff \\
+\hline
+ 5000 & $10^2$ & 4104  & 4153  & $-1.2\%$ & 829.6 & 828.6 & $+0.1\%$ \\
+ 5000 & $10^3$ & 4093  & 4133  & $-1.0\%$ & 818.3 & 817.2 & $+0.1\%$ \\
+ 5000 & $10^4$ & 3907  & 3943  & $-0.9\%$ & 624.7 & 623.9 & $+0.1\%$ \\
+10000 & $10^2$ & 152.0 & 153.4 & $-0.9\%$ & 66.97 & 66.93 & $+0.1\%$ \\
+10000 & $10^3$ & 151.7 & 152.8 & $-0.7\%$ & 65.75 & 65.64 & $+0.2\%$ \\
+10000 & $10^4$ & 146.0 & 147.0 & $-0.6\%$ & 52.23 & 52.12 & $+0.2\%$ \\
+15000 & $10^2$ & 50.97 & 51.30 & $-0.6\%$ & 29.06 & 29.08 & $-0.1\%$ \\
+15000 & $10^3$ & 50.77 & 51.10 & $-0.6\%$ & 28.53 & 28.59 & $-0.2\%$ \\
+15000 & $10^4$ & 49.08 & 49.43 & $-0.7\%$ & 23.26 & 23.32 & $-0.3\%$ \\
+20000 & $10^2$ & 29.82 & 29.78 & $+0.2\%$ & 19.23 & 19.23 & $+0.0\%$ \\
+20000 & $10^3$ & 29.58 & 29.67 & $-0.3\%$ & 18.92 & 18.92 & $-0.0\%$ \\
+20000 & $10^4$ & 28.68 & 28.81 & $-0.5\%$ & 15.71 & 15.71 & $+0.0\%$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[p]
+\centering
+\caption{Density diagnostics vs.\ PyNeb.}
+\label{tab:pyneb_ne}
+\begin{tabular}{rr rrr rrr}
+\hline
+ & & \multicolumn{3}{c}{$[$O\,\textsc{ii}$]$ $\lambda3726/\lambda3729$}
+   & \multicolumn{3}{c}{$[$S\,\textsc{ii}$]$ $\lambda6717/\lambda6731$} \\
+$T_e$ [K] & $n_e$ [cm$^{-3}$] & MoCHII & PyNeb & diff
+                              & MoCHII & PyNeb & diff \\
+\hline
+ 5000 & $10^2$ & 0.8045 & 0.7641 & $+5.3\%$ & 1.298  & 1.333  & $-2.6\%$ \\
+ 5000 & $10^3$ & 1.436  & 1.383  & $+3.9\%$ & 0.8223 & 0.8396 & $-2.1\%$ \\
+ 5000 & $10^4$ & 2.364  & 2.491  & $-5.1\%$ & 0.5577 & 0.5052 & $+10.4\%$ \\
+10000 & $10^2$ & 0.7697 & 0.7411 & $+3.9\%$ & 1.309  & 1.351  & $-3.1\%$ \\
+10000 & $10^3$ & 1.260  & 1.241  & $+1.5\%$ & 0.8810 & 0.9139 & $-3.6\%$ \\
+10000 & $10^4$ & 2.267  & 2.397  & $-5.4\%$ & 0.5655 & 0.5203 & $+8.7\%$ \\
+15000 & $10^2$ & 0.7566 & 0.7341 & $+3.1\%$ & 1.320  & 1.349  & $-2.1\%$ \\
+15000 & $10^3$ & 1.180  & 1.179  & $+0.2\%$ & 0.9185 & 0.9520 & $-3.5\%$ \\
+15000 & $10^4$ & 2.209  & 2.345  & $-5.8\%$ & 0.5704 & 0.5294 & $+7.7\%$ \\
+20000 & $10^2$ & 0.7502 & 0.7319 & $+2.5\%$ & 1.343  & 1.347  & $-0.3\%$ \\
+20000 & $10^3$ & 1.136  & 1.144  & $-0.7\%$ & 0.9543 & 0.9786 & $-2.5\%$ \\
+20000 & $10^4$ & 2.170  & 2.311  & $-6.1\%$ & 0.5766 & 0.5373 & $+7.3\%$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The temperature diagnostics agree to $1.2\%$ ([O\,\textsc{iii}]) and
+$0.3\%$ ([N\,\textsc{ii}]).  The density diagnostics drift to $6$--$10\%$
+at $n_e = 10^4$~cm$^{-3}$, near and above the critical densities of the
+$^2\!D$ levels, where the ratios become $A$-value-limited --- and the two
+codes take their $A$-values from different compilations (CHIANTI v11 vs.\
+Z82-WFD96 and RGJ19).  Since the fitted files reproduce raw CHIANTI to
+$\leq 0.5\%$ (previous subsection), this spread measures the state of the
+atomic data, not the pipeline; it should be kept in mind as the floor of
+attainable agreement when the validation gates compare MoCHII line ratios
+with PyNeb-based references.
+
+\section{Adding an ion}
+The procedure is a data operation:
+\begin{enumerate}
+\item add one entry (element, stage, level-energy guesses / level count)
+  to the \code{IONS} dictionary of \code{fit\_cooling.py} and of
+  \code{fit\_nlevel.py};
+\item run both scripts; check the reported maximum fit errors and the
+  overlay figure;
+\item extend \code{verify\_nlevel\_pyneb.py} with the diagnostic ratios
+  of the new ion where PyNeb has data, and record the comparison.
+\end{enumerate}
+The suggested order of addition (cooling importance plus diagnostics)
+continues with C, Ar, and Fe.
+
+\end{document}
