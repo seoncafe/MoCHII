@@ -324,6 +324,12 @@ program main
        call lines_write()
      end block
   end if
+  if (par%hei_metastable) then
+     block
+       use hei_metastable_mod, only : hei_metastable_run
+       call hei_metastable_run()
+     end block
+  end if
   if (par%solve_te) then
      block
        use nebcont_mod, only : nebcont_setup, nebcont_write

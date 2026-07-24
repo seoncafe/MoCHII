@@ -40,6 +40,15 @@ from leaf_field import leaf_slice, leaf_slice_nn, plot_slice, leaf_box_mask
 
 HC_ERG_A = 1.9864458571489287e-08     # h*c [erg Angstrom]
 
+# Line-center absorption (He I 10830 diagnostic): the Doppler line-center
+# opacity is kappa_0 = sqrt(pi) e^2/(m_e c) f (lambda/b) n_l, with the classical
+# integrated cross section pi e^2/(m_e c) = 0.02654 cm^2 Hz divided by
+# sqrt(pi) b for the Gaussian peak.  Constants below in CGS (e, m_e, c) and the
+# He atomic mass; kB for the Doppler b-parameter.
+SQRTPI_E2_MEC = 1.4973641488e-02      # sqrt(pi) e^2/(m_e c) [cm^2 Hz]
+M_HE_G = 6.646477e-24                 # He atomic mass [g] (4.002602 amu)
+KB_CGS = 1.380649e-16                 # Boltzmann [erg/K]
+
 
 # ---------------------------------------------------------------------------
 # low-level: read every section of a MoCHII HDF5/FITS file
@@ -185,9 +194,93 @@ class _LeafSliceable:
 
 
 # ---------------------------------------------------------------------------
+# line-of-sight projection over the leaf cells (flux-conserving deposit)
+# ---------------------------------------------------------------------------
+class _LeafProjectable(_LeafSliceable):
+    """Flux-conserving projection of a leaf field onto a pixel grid.
+
+    A subclass must set ``self.xyz`` (3, nleaf; code units), ``self.size`` (the
+    full cell width, 1D), ``self.dist_cm`` (cm per code unit), and
+    ``self.vol_cm3`` (leaf volume [cm^3]).  Each leaf's total (value x volume)
+    is deposited onto the grid with exact area overlap and conserved to machine
+    precision (sum of the deposit = sum of the leaf totals).  This is the same
+    deposit the emissivity maps use; ``column_map`` reuses it for a line-of-
+    sight column density [cm^-2] of any scalar leaf field.
+    """
+
+    def _axes(self, axis):
+        ia = "xyz".index(axis)
+        iu, iv = [i for i in range(3) if i != ia]
+        return ia, iu, iv
+
+    def _grid(self, iu, iv, npix):
+        h = 0.5 * self.size
+        lo = min((self.xyz[iu] - h).min(), (self.xyz[iv] - h).min())
+        hi = max((self.xyz[iu] + h).max(), (self.xyz[iv] + h).max())
+        edges = np.linspace(lo, hi, npix + 1)
+        return edges, (lo, hi, lo, hi)
+
+    def _deposit(self, lum, axis, npix, slab):
+        """Flux-conserving deposit of leaf totals [any units] onto the image
+        grid; returns (sum image, extent, pixel area cm^2).  The sum image
+        conserves the input (sum over pixels = sum over leaves)."""
+        ia, iu, iv = self._axes(axis)
+        edges, extent = self._grid(iu, iv, npix)
+        dpix = edges[1] - edges[0]
+        img = np.zeros((npix, npix))
+
+        u = self.xyz[iu];  v = self.xyz[iv];  h = 0.5 * self.size
+        sel = lum != 0.0
+        if slab is not None:
+            w = self.xyz[ia]
+            sel &= (w + h > slab[0]) & (w - h < slab[1])
+        idx = np.nonzero(sel)[0]
+        lo = edges[0]
+        for il in idx:
+            L = lum[il]
+            if slab is not None:      # partial slab overlap along the LOS
+                ov = (min(self.xyz[ia][il] + h[il], slab[1])
+                      - max(self.xyz[ia][il] - h[il], slab[0]))
+                L = L * ov / (2.0 * h[il])
+            i0 = max(int((u[il] - h[il] - lo) / dpix), 0)
+            i1 = min(int((u[il] + h[il] - lo) / dpix) + 1, npix)
+            j0 = max(int((v[il] - h[il] - lo) / dpix), 0)
+            j1 = min(int((v[il] + h[il] - lo) / dpix) + 1, npix)
+            if i1 <= i0 or j1 <= j0:
+                continue
+            # exact 1D overlaps of the leaf footprint with each pixel
+            eu = edges[i0:i1 + 1]
+            ou = (np.minimum(eu[1:], u[il] + h[il])
+                  - np.maximum(eu[:-1], u[il] - h[il])).clip(min=0.0)
+            ev = edges[j0:j1 + 1]
+            ov2 = (np.minimum(ev[1:], v[il] + h[il])
+                   - np.maximum(ev[:-1], v[il] - h[il])).clip(min=0.0)
+            frac = np.outer(ou, ov2) / (2.0 * h[il])**2
+            img[i0:i1, j0:j1] += L * frac
+        apix_cm2 = (dpix * self.dist_cm)**2
+        return img, extent, apix_cm2
+
+    def column_map(self, field, axis="z", npix=256, slab=None):
+        """Line-of-sight column density [cm^-2] of a scalar leaf field.
+
+        For a density field n [cm^-3] this returns the projected column
+        N = integral n dl [cm^-2]: each leaf's n*V is deposited with exact area
+        overlap and divided by the pixel area, so
+        ``sum(column * A_pix) = sum(n * V)`` to machine precision (A_pix the
+        physical pixel area [cm^2]).  ``slab`` = (lo, hi) restricts the LOS
+        integral to a code-unit window along ``axis``.  Returns (image, extent).
+        """
+        n = np.asarray(self.fields[field], float)
+        if n.ndim != 1:
+            raise ValueError(f"'{field}' is not a scalar leaf field")
+        img, extent, apix = self._deposit(n * self.vol_cm3, axis, npix, slab)
+        return img / apix, extent
+
+
+# ---------------------------------------------------------------------------
 # the emissivity file
 # ---------------------------------------------------------------------------
-class EmisData(_LeafSliceable):
+class EmisData(_LeafProjectable):
     """Leaf emissivities + state from '<base>_emis.h5' (par%emis_output)."""
 
     def __init__(self, fname):
@@ -265,57 +358,6 @@ class EmisData(_LeafSliceable):
         return L
 
     # -- projection ---------------------------------------------------------
-    def _axes(self, axis):
-        ia = "xyz".index(axis)
-        iu, iv = [i for i in range(3) if i != ia]
-        return ia, iu, iv
-
-    def _grid(self, iu, iv, npix):
-        h = 0.5 * self.size
-        lo = min((self.xyz[iu] - h).min(), (self.xyz[iv] - h).min())
-        hi = max((self.xyz[iu] + h).max(), (self.xyz[iv] + h).max())
-        edges = np.linspace(lo, hi, npix + 1)
-        return edges, (lo, hi, lo, hi)
-
-    def _deposit(self, lum, axis, npix, slab):
-        """Flux-conserving deposit of leaf luminosities [erg/s] onto the
-        image grid; returns (sum image [erg/s], extent, pixel area cm^2)."""
-        ia, iu, iv = self._axes(axis)
-        edges, extent = self._grid(iu, iv, npix)
-        dpix = edges[1] - edges[0]
-        img = np.zeros((npix, npix))
-
-        u = self.xyz[iu];  v = self.xyz[iv];  h = 0.5 * self.size
-        sel = lum != 0.0
-        if slab is not None:
-            w = self.xyz[ia]
-            sel &= (w + h > slab[0]) & (w - h < slab[1])
-        idx = np.nonzero(sel)[0]
-        lo = edges[0]
-        for il in idx:
-            L = lum[il]
-            if slab is not None:      # partial slab overlap along the LOS
-                ov = (min(self.xyz[ia][il] + h[il], slab[1])
-                      - max(self.xyz[ia][il] - h[il], slab[0]))
-                L = L * ov / (2.0 * h[il])
-            i0 = max(int((u[il] - h[il] - lo) / dpix), 0)
-            i1 = min(int((u[il] + h[il] - lo) / dpix) + 1, npix)
-            j0 = max(int((v[il] - h[il] - lo) / dpix), 0)
-            j1 = min(int((v[il] + h[il] - lo) / dpix) + 1, npix)
-            if i1 <= i0 or j1 <= j0:
-                continue
-            # exact 1D overlaps of the leaf footprint with each pixel
-            eu = edges[i0:i1 + 1]
-            ou = (np.minimum(eu[1:], u[il] + h[il])
-                  - np.maximum(eu[:-1], u[il] - h[il])).clip(min=0.0)
-            ev = edges[j0:j1 + 1]
-            ov2 = (np.minimum(ev[1:], v[il] + h[il])
-                   - np.maximum(ev[:-1], v[il] - h[il])).clip(min=0.0)
-            frac = np.outer(ou, ov2) / (2.0 * h[il])**2
-            img[i0:i1, j0:j1] += L * frac
-        apix_cm2 = (dpix * self.dist_cm)**2
-        return img, extent, apix_cm2
-
     def line_map(self, block, wl, axis="z", npix=256, slab=None,
                  unit="flux", photons=False):
         """Projected map of one line.
@@ -505,6 +547,160 @@ class RatesData(_LeafSliceable):
 
 
 # ---------------------------------------------------------------------------
+# the He I 2^3S metastable diagnostic file
+# ---------------------------------------------------------------------------
+def _default_atomic_dir():
+    """data/atomic relative to this file (tools/python/../../data/atomic)."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "..", "data", "atomic")
+
+
+def read_line10830(atomic_dir=None):
+    """Read the LINE10830 fine-structure constants from hei_metastable.txt.
+
+    Returns a (3, 3) array of rows (vacuum wavelength [A], oscillator strength
+    f, Einstein A [s^-1]) for the 2^3S -> 2^3P_{0,1,2} components, in file
+    order (J' = 0, 1, 2).  ``atomic_dir`` defaults to the in-tree data/atomic.
+    """
+    if atomic_dir is None:
+        atomic_dir = _default_atomic_dir()
+    rows = []
+    with open(os.path.join(atomic_dir, "hei_metastable.txt")) as fh:
+        for ln in fh:
+            ln = ln.strip()
+            if ln.startswith("#") or not ln:
+                continue
+            t = ln.split()
+            if t[0] == "LINE10830":
+                rows.append([float(x) for x in t[1:4]])
+    if len(rows) != 3:
+        raise ValueError("expected 3 LINE10830 rows in hei_metastable.txt, "
+                         f"found {len(rows)}")
+    return np.asarray(rows, float)
+
+
+class HeiMetaData(_LeafProjectable):
+    """He I 2^3S metastable diagnostic from '<base>_heimeta' (par%hei_metastable).
+
+    Carries the 2^3S density n_2s3 [cm^-3], the 2^3S photoionization rate Phi_3
+    [s^-1], n_e, T_e, and the leaf geometry.  Adds a line-of-sight ``column_map``
+    (from _LeafProjectable) and a ``tau10830_map`` for the 10830 A line-center
+    optical depth, using the fine-structure constants from
+    data/atomic/hei_metastable.txt (Stage 2 of docs/HEI_10830_PLAN.md).
+    """
+
+    def __init__(self, fname, atomic_dir=None):
+        sec = read_sections(fname)
+        self.fname = fname
+
+        xyz = sec["LeafXYZ"]["data"]
+        if xyz.shape[0] != 3:
+            xyz = xyz.T
+        self.xyz = np.asarray(xyz, dtype=float)      # (3, nleaf), code units
+        self.nleaf = self.xyz.shape[1]
+        self.size = np.asarray(sec["LeafSize"]["data"], float).ravel()
+        self.dist_cm = float(sec["n_2s3"]["attrs"].get("DIST_CM", 1.0))
+        self.a31 = float(sec["n_2s3"]["attrs"].get("A31", np.nan))
+
+        self.fields = {}
+        for name in ("n_2s3", "Phi_3", "n_H", "n_e", "T_e"):
+            if name in sec and sec[name]["data"] is not None:
+                self.fields[name] = np.asarray(sec[name]["data"], float).ravel()
+        self.vol_cm3 = (self.size * self.dist_cm)**3
+        self.lines10830 = read_line10830(atomic_dir)     # (3, 3): lam[A], f, A
+
+    def info(self):
+        n3 = self.fields["n_2s3"]
+        print(f"{self.fname}: {self.nleaf} leaves, "
+              f"max n_2s3 = {n3.max():.3e} cm^-3, "
+              f"max Phi_3 = {self.fields['Phi_3'].max():.3e} s^-1")
+        print("fields:", ", ".join(sorted(self.fields)))
+        print("10830 components (vac A, f, A s^-1):",
+              ", ".join("%.3f/%.4f/%.3e" % (r[0], r[1], r[2])
+                        for r in self.lines10830))
+
+    def __repr__(self):
+        return (f"HeiMetaData('{self.fname}', nleaf={self.nleaf})")
+
+    # -- 10830 line-center opacity ------------------------------------------
+    def _component_rows(self, component):
+        """Rows of self.lines10830 selected by ``component``:
+        'doublet' -> the blended J'=1,2 pair; 'all' -> all three; an int
+        0/1/2 -> that single fine-structure component."""
+        if component == "doublet":
+            return self.lines10830[[1, 2], :]
+        if component == "all":
+            return self.lines10830
+        i = int(component)
+        if i not in (0, 1, 2):
+            raise ValueError("component must be 'doublet', 'all', or 0/1/2")
+        return self.lines10830[[i], :]
+
+    def kappa0_10830(self, v_turb=0.0, component="doublet"):
+        """Leaf line-center absorption coefficient [cm^-1] of the 10830 line.
+
+        kappa_0 = sqrt(pi) e^2/(m_e c) sum_i f_i (lambda_i/b) n_3, with the
+        Doppler b-parameter b = sqrt(2 k T_e/m_He + v_turb^2).  ``v_turb`` is
+        the turbulent velocity [km/s].  For ``component='doublet'`` the two
+        blended J'=1,2 components (10833.217, 10833.306 A, 0.089 A apart, far
+        inside the thermal Doppler width) are summed at line center; 'all' sums
+        all three; an int selects one.  Returns a 1D array over the leaves.
+        """
+        Te = self.fields["T_e"]
+        n3 = self.fields["n_2s3"]
+        vt_cms = float(v_turb) * 1.0e5
+        b = np.sqrt(2.0 * KB_CGS * Te / M_HE_G + vt_cms**2)   # cm/s
+        rows = self._component_rows(component)
+        # sum_i f_i lambda_i [cm] over the selected fine-structure components.
+        f_lam = np.sum(rows[:, 1] * rows[:, 0] * 1.0e-8)
+        return SQRTPI_E2_MEC * f_lam * n3 / b                 # cm^-1
+
+    def tau10830_map(self, v_turb=0.0, component="doublet", axis="z",
+                     npix=256, slab=None, warn=True):
+        """Line-center optical depth map tau_0 = integral kappa_0 dl of the
+        10830 A line.
+
+        Uses the same flux-conserving deposit as ``column_map`` on the leaf
+        opacity kappa_0 [cm^-1] (kappa_0 * V summed along the LOS, divided by
+        the pixel area = integral kappa_0 dl).  ``component`` = 'doublet'
+        (default; the blended J'=1,2 pair), 'all', or 0/1/2; ``v_turb`` [km/s].
+        When ``warn`` and any pixel has line-center tau > 1, prints a warning:
+        the diagnostic assumes optically thin 10830 (line transfer is out of
+        scope; see docs/HEI_10830_PLAN.md sec. 5).  Returns (image, extent).
+        """
+        kappa = self.kappa0_10830(v_turb=v_turb, component=component)
+        img, extent, apix = self._deposit(kappa * self.vol_cm3, axis, npix,
+                                           slab)
+        tau = img / apix
+        if warn and np.nanmax(tau) > 1.0:
+            print("warning: line-center tau_10830 > 1 (max = %.2f) in %d "
+                  "pixel(s) -- the optically-thin assumption fails there; "
+                  "line transfer is out of scope (see HEI_10830_PLAN sec. 5)"
+                  % (np.nanmax(tau), int(np.count_nonzero(tau > 1.0))))
+        return tau, extent
+
+    # -- ready-made figures --------------------------------------------------
+    def plot_column(self, field="n_2s3", axis="z", npix=256, slab=None,
+                    log=True, ax=None, cmap="inferno"):
+        """Column-density map as a matplotlib figure; returns (fig, ax)."""
+        img, ext = self.column_map(field, axis=axis, npix=npix, slab=slab)
+        lbl = r"$N$(" + field.replace("_", r"\_") + r") [cm$^{-2}$]"
+        return plot_slice(img, ext, ax=ax, log=log, cmap=cmap,
+                          cbar_label=lbl, title=field.replace("_", r"\_")
+                          + " column", axis=axis)
+
+    def plot_tau10830(self, v_turb=0.0, component="doublet", axis="z",
+                      npix=256, slab=None, log=True, ax=None, cmap="inferno"):
+        """10830 optical-depth map as a matplotlib figure; returns (fig, ax)."""
+        img, ext = self.tau10830_map(v_turb=v_turb, component=component,
+                                     axis=axis, npix=npix, slab=slab)
+        return plot_slice(img, ext, ax=ax, log=log, cmap=cmap,
+                          cbar_label=r"$\tau_0$(10830)",
+                          title=r"He\,\textsc{i} 10830 " + str(component)
+                          + r" $\tau_0$", axis=axis)
+
+
+# ---------------------------------------------------------------------------
 # command line: quick-look maps
 # ---------------------------------------------------------------------------
 def _main():
@@ -533,15 +729,37 @@ def _main():
     ap.add_argument("--coord", type=float, default=0.0,
                     help="plane position along --axis [code units] "
                          "(default 0)")
+    ap.add_argument("--column", metavar="FIELD",
+                    help="line-of-sight column-density map of a leaf field "
+                         "(n_2s3, n_e, ...) from a <base>_heimeta file")
+    ap.add_argument("--tau10830", action="store_true",
+                    help="10830 A line-center optical-depth map "
+                         "(<base>_heimeta file)")
+    ap.add_argument("--component", default="doublet",
+                    help="10830 component: doublet (default), all, 0, 1, 2")
+    ap.add_argument("--vturb", type=float, default=0.0,
+                    help="turbulent velocity [km/s] for the 10830 b-parameter")
     ap.add_argument("--axis", default="z", choices=["x", "y", "z"])
     ap.add_argument("--npix", type=int, default=256)
     ap.add_argument("--log", action="store_true", help="log10 color scale")
     ap.add_argument("--out", default=None, help="output PNG")
     args = ap.parse_args()
 
-    is_emis = any(n.startswith("emis_") for n in _section_names(args.infile))
+    names = _section_names(args.infile)
+    is_emis = any(n.startswith("emis_") for n in names)
+    is_heimeta = "n_2s3" in names
 
-    if args.slice:
+    if args.column:
+        d = HeiMetaData(args.infile)
+        fig, ax = d.plot_column(args.column, axis=args.axis, npix=args.npix,
+                                log=args.log)
+        base = f"column_{args.column}_{args.axis}"
+    elif args.tau10830:
+        d = HeiMetaData(args.infile)
+        fig, ax = d.plot_tau10830(v_turb=args.vturb, component=args.component,
+                                  axis=args.axis, npix=args.npix, log=args.log)
+        base = f"tau10830_{args.component}_{args.axis}"
+    elif args.slice:
         d = EmisData(args.infile) if is_emis else RatesData(args.infile)
         fig, ax = d.plot_field_slice(args.slice, axis=args.axis,
                                      coord=args.coord, npix=args.npix,
@@ -561,7 +779,12 @@ def _main():
                                weight=args.weight, log=args.log)
         base = f"map_{args.field}_{args.weight}"
     else:
-        d = EmisData(args.infile) if is_emis else RatesData(args.infile)
+        if is_emis:
+            d = EmisData(args.infile)
+        elif is_heimeta:
+            d = HeiMetaData(args.infile)
+        else:
+            d = RatesData(args.infile)
         d.info()
         if is_emis:
             print("stored lines:")

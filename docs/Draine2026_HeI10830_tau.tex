@@ -1,0 +1,339 @@
+%% Cross-check of the He I 1.0833 um triplet optical-depth normalization
+%% in Draine (2026), against MoCHII and standard atomic physics.
+%% Author: Kwang-Il Seon
+%% Written for my_memo.cls.
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\hypersetup{hidelinks}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\HeI}{He\,\textsc{i}}
+\newcommand{\HII}{H\,\textsc{ii}}
+\newcommand{\tSSS}{2\,^3\!S_1}
+\newcommand{\tPPP}{2\,^3\!P^o_J}
+\newcommand{\tautot}{\tau_{\rm tot}}
+\newcommand{\gu}{g_u}
+\newcommand{\gl}{g_\ell}
+\newcolumntype{C}{>{\centering\arraybackslash}p{0.15\textwidth}}
+
+\begin{document}
+
+\title{The He\,\textsc{i} 1.0833\,$\mu$m Triplet Optical Depth in Draine (2026):\\
+A Factor-of-Three Cross-Check against MoCHII}
+\author{Kwang-Il Seon}
+\date{\docmoddate}
+\maketitle
+
+\begin{abstract}
+While cross-checking the MoCHII metastable \HeI{} $\tSSS$ diagnostic
+against B.\,T.\ Draine's recent study of resonant scattering of the
+\HeI{} $1.0833\,\mu$m triplet in \HII{} regions (2026, ApJ 999, 3;
+arXiv:2601.11710), I find that the two treatments agree on the
+metastable population physics but disagree by exactly a factor of three
+in the line-center scattering optical depth.  The paper's optical-depth
+normalization (its Eqs.~8, 9, 11, and 12) is three times larger than the
+standard atomic-physics result for a given $\tSSS$ column density.  The
+discrepancy traces to the upper-level statistical weights listed in the
+paper's Table~1, which are $g_u = 3, 9, 15$ where the true fine-structure
+degeneracies of $\tPPP$ are $2J+1 = 1, 3, 5$.  The printed weights are
+internally inconsistent with the NIST $A$- and $f$-values that the same
+table cites: those values are mutually consistent \emph{only} with
+$g_u = 2J+1$ and the $\tSSS$ lower-level weight $\gl = 3$.  MoCHII's
+$\tau_0$ normalization, the p-winds/Oklop\v{c}i\'c \& Hirata (2018)
+exoplanet standard, and the LaRT $1.0833\,\mu$m module all use the
+$2J+1$ weights and agree with one another.  Because \HII{} regions are
+optically thick to the triplet under either normalization, the paper's
+qualitative conclusions (broad multi-peaked profiles, an overall
+blueshift, and dust-absorption enhancement by resonant trapping) are
+unaffected, but the quantitative $\tautot$ thresholds and the derived
+column-density scale should be read a factor of three lower.  All
+numerical claims below were recomputed independently.
+\end{abstract}
+
+%==========================================================================
+\section{Context}
+The \HeI{} $1.0833\,\mu$m triplet arises from the $\tSSS$--$\tPPP$
+transition and is fed by recombination of He$^+$ into the triplet system,
+which cascades into the long-lived metastable $\tSSS$ level.  MoCHII
+computes the $\tSSS$ population as a closed-form local balance in every
+leaf on the converged state (the Oklop\v{c}i\'c \& Hirata 2018 balance,
+hereafter OH18), and derives the $1.0833\,\mu$m line-center opacity from
+it; the design and gate results are recorded in
+\code{docs/HEI\_10830\_PLAN.md}.  Draine (2026) treats the same level as
+the resonant scatterer in a Monte-Carlo transfer calculation of the
+$1.0833\,\mu$m emission profile emerging from an \HII{} region.  Since the
+two efforts model the same atomic level in overlapping regimes, they form
+a natural mutual check.  The population physics agrees; the optical-depth
+normalization does not.  This memo records the cross-check.
+
+Throughout, $\tSSS$ is the metastable lower level (statistical weight
+$\gl = 2J+1 = 3$), and $\tPPP$ are the three upper fine-structure levels
+$J = 0, 1, 2$ (true weights $2J+1 = 1, 3, 5$).  The Doppler broadening
+parameter is $b$, quoted in the paper's fiducial units of $10$\,km\,s$^{-1}$,
+and $N \equiv N(\tSSS)$ is the center-to-edge column density of metastable
+helium.
+
+%==========================================================================
+\section{Where the paper and MoCHII agree}
+The metastable population physics is common to both treatments.  Draine's
+Eq.~(1),
+\begin{equation}
+  n(\tSSS) = \frac{\alpha_{\rm trip}\, n_e\, n({\rm He}^+)}
+                  {A_{ms} + n_e k_d},
+\end{equation}
+is the OH18 balance MoCHII solves, reduced to its two dominant terms:
+recombination into the triplet system as the source, and radiative decay
+of $\tSSS$ plus collisional transfer to the singlet system as the sink.
+Draine notes that $\tSSS$ photoionization ($h\nu > 4.77$\,eV) and Penning
+ionization with H$^0$ are usually subdominant, exactly as MoCHII finds in
+the dense \HII{} regime.  The rate coefficients agree to a few percent:
+\begin{itemize}\itemsep2pt
+  \item $\alpha_{\rm trip}(9000\,{\rm K}) = 2.42\times10^{-13}$\,cm$^3$\,s$^{-1}$
+        (Del Zanna \& Storey 2022) vs.\ MoCHII/OH18
+        $2.28\times10^{-13}$ at the same temperature --- within 6\%;
+  \item $k_d = 3.3\times10^{-8}$\,cm$^3$\,s$^{-1}$ (Bray et al.\ 2000) vs.\
+        MoCHII's $q_{31a}+q_{31b} = 3.2\times10^{-8}$ from the same Bray
+        source --- within $\sim$3\%;
+  \item critical density $n_{\rm crit} = A_{ms}/k_d$: $3855$\,cm$^{-3}$
+        (Draine) vs.\ $\sim$$3.9\times10^{3}$\,cm$^{-3}$ (MoCHII, $3945$)
+        --- the small difference following directly from $k_d$;
+  \item Draine's Eq.~(4) center-to-edge $N(\tSSS)$ formula reproduces the
+        MoCHII low-density example (Q$_{48}=10$, $n_e = 110$\,cm$^{-3}$,
+        $T_e = 10^4$\,K; $N \sim 1.4\times10^{13}$\,cm$^{-2}$) to within
+        $\sim$25\%.
+\end{itemize}
+On the population side the two codes are consistent within their input
+atomic-data spread.
+
+%==========================================================================
+\section{The factor-of-three discrepancy}
+The disagreement is entirely in the mapping from a metastable column
+density $N$ to a scattering optical depth.  Draine's Eqs.~(8) and (9)
+give the center-to-edge line-center optical depth for
+$\tSSS \to \tPPP$ absorption as
+\begin{equation}
+  \tau_0(\tSSS \to \tPPP)
+    = (2J+1)\,\frac{A_{u\ell}\,\lambda_{u\ell}^3\,N}{8\pi^{3/2} b}
+    = 29.2\,(2J+1)
+      \left(\frac{N}{10^{14}\,{\rm cm^{-2}}}\right)
+      \left(\frac{10\,{\rm km\,s^{-1}}}{b}\right),
+  \label{eq:draine8}
+\end{equation}
+and summing the three components (his Eq.~11) yields
+\begin{equation}
+  \tautot \equiv \sum_{J=0}^{2}\tau_0(\tSSS \to \tPPP)
+    = 262
+      \left(\frac{N}{10^{14}\,{\rm cm^{-2}}}\right)
+      \left(\frac{10\,{\rm km\,s^{-1}}}{b}\right).
+  \label{eq:draine11}
+\end{equation}
+The standard line-center cross section for a Doppler-broadened line,
+written either in oscillator-strength or in Einstein-$A$ form,
+\begin{equation}
+  \sigma_0
+    = \frac{\sqrt{\pi}\,e^2}{m_e c}\, f_{\ell u}\,\frac{\lambda_{u\ell}}{b}
+    = \frac{\gu}{\gl}\,\frac{A_{u\ell}\,\lambda_{u\ell}^3}{8\pi^{3/2} b},
+  \label{eq:sigma0}
+\end{equation}
+carries the ratio $\gu/\gl$.  With the true weights $\gu = 2J+1$ and
+$\gl = 3$, and the Table-1 wavelengths and $A$-values, the three
+components sum to
+\begin{equation}
+  \tautot^{\rm std}
+    = 87.5
+      \left(\frac{N}{10^{14}\,{\rm cm^{-2}}}\right)
+      \left(\frac{10\,{\rm km\,s^{-1}}}{b}\right),
+\end{equation}
+which I confirmed to be identical whether computed from the
+oscillator-strength form or the $A$-value form of Eq.~(\ref{eq:sigma0}).
+Component by component (per $10^{14}$\,cm$^{-2}$, $b = 10$\,km\,s$^{-1}$):
+
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+$J$ & standard $\tau_0$ ($\gu = 2J{+}1$, $\gl = 3$)
+    & paper's Eq.~(8)
+    & ratio \\
+\midrule
+0 & \phantom{0}9.72 & \phantom{0}29.2 & 3.00 \\
+1 & 29.16           & \phantom{0}87.5 & 3.00 \\
+2 & 48.60           & 145.8           & 3.00 \\
+\midrule
+sum & 87.5 & 262.4 & 3.00 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ratio is $262.4/87.5 = 3.0000$ to the precision of the input data.
+The paper's Eq.~(8) is the standard $\sigma_0 N$ of
+Eq.~(\ref{eq:sigma0}) with $\gu \to (2J+1)$ but with the lower-level
+weight $\gl$ set to unity rather than to its true value $\gl = 3$; the
+missing denominator is the source of the factor of three.
+
+%==========================================================================
+\section{Root cause: the statistical weights}
+The missing $\gl$ is visible directly in the paper's own Table~1, whose
+$g_u$ column lists $3, 9, 15$ where the fine-structure levels $\tPPP$ have
+degeneracies $2J+1 = 1, 3, 5$.  Table~\ref{tab:weights} places the two
+side by side.
+
+\begin{table}[h]
+\centering
+\caption{The \HeI{} $1.0833\,\mu$m triplet: statistical weights and
+oscillator strengths.  The paper's Table~1 lists $g_u = 3, 9, 15$, which
+are $3\times$ the true fine-structure degeneracies $2J+1$.  The $f_{\ell u}$
+values, computed from the tabulated $A_{u\ell}$ with the true
+$\gu = 2J+1$ and $\gl = 3$, reproduce the NIST oscillator strengths (their
+1\,:\,3\,:\,5 ratio and sum $0.539$) exactly.}
+\label{tab:weights}
+\begin{tabular}{ccccccc}
+\toprule
+$u$ & $J$ & Draine $g_u$ & true $2J+1$
+    & $A_{u\ell}$ (s$^{-1}$) & $\lambda_{\rm vac}$ ($\mu$m)
+    & $f_{\ell u}$ (this work $=$ NIST) \\
+\midrule
+$2\,^3\!P^o_0$ & 0 & \phantom{0}3 & 1 & $1.0216\times10^7$ & 1.083206 & 0.05990 \\
+$2\,^3\!P^o_1$ & 1 & \phantom{0}9 & 3 & $1.0216\times10^7$ & 1.083322 & 0.17974 \\
+$2\,^3\!P^o_2$ & 2 & 15          & 5 & $1.0216\times10^7$ & 1.083331 & 0.29958 \\
+\midrule
+sum & & 27 & 9 & & & 0.539 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The most likely origin of $3, 9, 15$ is a redundant multiplication by the
+spin multiplicity $2S+1 = 3$: the fine-structure weight $2J+1$ already
+partitions the full term degeneracy $(2S+1)(2L+1) = 9$ among the three
+$J$ levels ($\sum_J (2J+1) = 9$), so multiplying each $2J+1$ again by
+$2S+1 = 3$ double-counts the triplet spin and yields
+$3, 9, 15$ (sum $27 = 3\times9$).  In the paper's Eq.~(8) this
+same factor of three appears as the omitted $\gl = 3$: using the standard
+$\sigma_0 = (\gu/\gl)\cdots$ with the inflated $\gu = 3(2J+1)$ and the
+correct $\gl = 3$ gives $\gu/\gl = (2J+1)$, exactly the bare $(2J+1)$
+printed in the paper's Eq.~(8).  The two readings --- ``Table~1 $g_u$
+inflated by 3'' and ``$\gl$ omitted from Eq.~8'' --- are the same
+statement.
+
+%==========================================================================
+\section{Proof by NIST self-consistency}
+Independently of any external code, the printed weights are inconsistent
+with the $A$- and $f$-values Table~1 itself cites (NIST ASD; Kramida et
+al.\ 2024).  The exact relation between an Einstein $A$ and an absorption
+oscillator strength is
+\begin{equation}
+  \gl\, f_{\ell u}
+    = \frac{m_e c}{8\pi^2 e^2}\,\lambda_{u\ell}^2\, \gu\, A_{u\ell}
+  \quad\Longrightarrow\quad
+  f_{\ell u} = \frac{\gu}{\gl}\,
+    \frac{m_e c\,\lambda_{u\ell}^2 A_{u\ell}}{8\pi^2 e^2}.
+  \label{eq:Af}
+\end{equation}
+Substituting the Table-1 $A_{u\ell} = 1.0216\times10^7$\,s$^{-1}$ with the
+\emph{true} $\gu = 2J+1$ and $\gl = 3$ reproduces the NIST oscillator
+strengths to five digits:
+\[
+  f_{\ell u} = 0.05990,\ 0.17974,\ 0.29958
+  \quad (J = 0, 1, 2),
+\]
+in the ratio $1:3:5$ with sum $0.539$ --- the last column of
+Table~\ref{tab:weights}.  Had the Table-1 $\gu = 3, 9, 15$ been used in
+Eq.~(\ref{eq:Af}) with $\gl = 1$ (the implicit choice behind
+Eq.~(\ref{eq:draine8})), the oscillator strengths would be
+$f = 0.180, 0.539, 0.899$ (sum $1.62$), a factor of three above the cited
+NIST values in every component and in the sum.  The NIST $A$ and $f$ tabulations are therefore mutually
+consistent \emph{only} with $\gu = 2J+1$ and $\gl = 3$; the Table-1 $g_u$
+column and the $\tau_0$ normalization built on it are the outliers.
+
+%==========================================================================
+\section{Independent anchors}
+Three further independent references use the $2J+1$ weights and agree with
+the standard normalization:
+\begin{enumerate}\itemsep2pt
+  \item The oscillator-strength form of $\sigma_0$ in
+        Eq.~(\ref{eq:sigma0}), derived from first principles for a
+        Doppler-broadened line, gives $\tautot^{\rm std} = 87.5$ per
+        $10^{14}$\,cm$^{-2}$ at $b = 10$\,km\,s$^{-1}$, identical to the
+        $A$-value form.
+  \item The p-winds / OH18 exoplanet implementation
+        (\code{p\_winds/microphysics.py}) uses the same $f$-values and the
+        same $\sigma_0$; that opacity has been validated against
+        metastable-helium transit observations.
+  \item The LaRT $1.0833\,\mu$m module (\code{LaRT\_v2.00}) adopts the same
+        $f = 1:3:5$ ratio and $A = 1.0216\times10^7$\,s$^{-1}$.  A direct
+        numerical closure confirms the two independent implementations
+        agree: feeding a MoCHII $n(\tSSS)$ grid (the dense H\,\textsc{ii}
+        example, center-to-edge $N = 1.71\times10^{15}$\,cm$^{-2}$) into
+        LaRT yields \code{tau\_pole} $= 1.294\times10^{3}$ (strongest
+        component, center to edge), while MoCHII's blended doublet
+        $\tau_0 = 4.12\times10^{3}$ (full diameter) converts to the same
+        convention as $4.12\times10^{3} \times \tfrac{1}{2} \times
+        f_2/(f_1{+}f_2) = 1.288\times10^{3}$ --- agreement to 0.5\%.
+\end{enumerate}
+MoCHII's own $\tau_0$ normalization sits in this group.  For thermal
+broadening at $T_e = 10^4$\,K ($b_{\rm therm} = 6.45$\,km\,s$^{-1}$,
+$v_{\rm turb} = 0$), MoCHII gives a blended line-center opacity of the
+$J = 1, 2$ doublet $\sigma_0 = 1.21\times10^{-12}$\,cm$^2$, i.e.\
+$\tau_0 = 1$ at $N(\tSSS) = 8.3\times10^{11}$\,cm$^{-2}$, and a doublet-to-
+$J{=}0$ optical-depth ratio $(f_1+f_2)/f_0 = 8.00$ --- consistent with the
+$f$-value ratios of Table~\ref{tab:weights}.
+
+%==========================================================================
+\section{Implications}
+The paper's Monte-Carlo profiles are parameterized by $\tautot$, and the
+transfer results as functions of $\tautot$ are unaffected --- the issue is
+only the mapping from physical conditions to $\tautot$.  For a given
+metastable column density, or a given $(Q_{48}, n_3)$, the true optical
+depth is one-third of the paper's quoted value.  Table~\ref{tab:tau}
+collects the affected coefficients.
+
+\begin{table}[h]
+\centering
+\caption{Optical-depth coefficients: the paper vs.\ the standard
+normalization.  All quantities scale as $(N/10^{14}\,{\rm cm^{-2}})
+(10\,{\rm km\,s^{-1}}/b)$ except Eq.~(12), which scales as
+$\xi^{1/3} Q_{48}^{1/3} n_3^{4/3}/(1+0.26 n_3)$.}
+\label{tab:tau}
+\begin{tabular}{lccc}
+\toprule
+quantity & Draine (2026) & standard / MoCHII & ratio \\
+\midrule
+single-component coeff.\ (Eq.~9)      & $29.2\,(2J{+}1)$ & $9.72\,(2J{+}1)$ & 3 \\
+$\tautot$ coeff.\ (Eq.~11)            & 262   & 87.5 & 3 \\
+$\tautot$ from $(Q_{48}, n_3)$ (Eq.~12) & 448 & 149  & 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The paper's contours and example thresholds should be read accordingly:
+the $\tautot$ values quoted for M51 NE-Strip \HII{} ($\sim$180--10$^3$),
+M17-B ($\sim$2000), and NGC\,3603 Source E ($\sim$940) are three times the
+true values.  The qualitative conclusions nonetheless stand.  Bright \HII{}
+regions are optically thick to the $1.0833\,\mu$m triplet under either
+normalization --- MoCHII's own $\tau_0$ for representative \HII{} regions
+ranges from a classical example (doublet $\tau_0 \approx 34$) to a dense
+example ($\tau_0 \sim 4\times10^3$) --- so the predicted broad,
+multi-peaked profiles, the $\sim$14\,km\,s$^{-1}$ blueshift, and the
+enhancement of dust absorption by resonant trapping all survive.  What
+changes is the quantitative placement of the transition thresholds and the
+column-density scale inferred from an observed profile: at fixed physical
+conditions the resonant-scattering effects set in at three times the
+$\tautot$ the paper assigns to those conditions.
+
+Because the printed statistical weights are inconsistent with the NIST
+$A$- and $f$-values the paper itself cites, and the standard normalization
+is confirmed by three independent implementations, the factor of three
+appears to be a transcription of the upper-level degeneracies in Table~1
+rather than a difference of convention --- a candidate for an erratum.
+MoCHII's $\tau_0$ normalization is unaffected and requires no change.
+
+\vspace{6pt}
+\noindent\emph{Reproducibility.}\ All numbers in this memo were recomputed
+from the Table-1 $A$-values, wavelengths, and CODATA constants; the check
+script is kept in the session scratchpad.
+
+\end{document}

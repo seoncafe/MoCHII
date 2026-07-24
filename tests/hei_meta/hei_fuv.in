@@ -1,0 +1,55 @@
+&parameters
+ ! MoCHII He I 2^3S metastable gate -- LOW density + FUV (Phi_3 gate).
+ ! Uniform nH=100 sphere, R=4 pc, Q_H=1e49 (tstar 4e4 K), case B, Te=1e4 K
+ ! fixed.  hei_metastable writes hei_lowd_heimeta.h5 (n_2s3, Phi_3, n_e, T_e);
+ ! the H/He ionization structure comes from the standard band solve.  In the
+ ! ionized core n_e ~ n_H(1 + 2 y_He), n_HeII > 0, so n_3/n_HeII approaches the
+ ! low-density radiative limit alpha_3 n_e / A_31.  add_fuv down to 4.78 eV gives Phi_3 > 0 (full-band 2^3S photoionization).
+
+ par%no_photons    = 4.0e6
+ par%no_print      = 4.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%car_walk      = 'dda'
+ par%nx            = 64
+ par%ny            = 64
+ par%nz            = 64
+ par%xmax          = 4.0
+ par%ymax          = 4.0
+ par%zmax          = 4.0
+ par%nH_const      = 100.0
+ par%rmax          = 4.0
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+ par%luminosity    = 3.177837e38
+
+ par%xHI_init      = 1.0
+ par%xHeI_init     = 1.0
+ par%xHeII_init    = 0.0
+ par%He_abund      = 0.1
+
+ par%add_fuv       = .true.
+ par%efuv_min      = 4.78
+ par%nnu_fuv       = 16
+
+ par%gas_niter     = 60
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%te_fixed      = 1.0e4
+ par%ion_relax     = 1.0
+ par%case_ab       = 'B'
+
+ par%atomic_dir      = '../../data/atomic'
+ par%hei_metastable  = .true.
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'hei_fuv.h5'
+/

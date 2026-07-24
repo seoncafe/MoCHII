@@ -652,6 +652,14 @@ public
      !--- hot-cell bias where n_HI and free electrons coexist).  Off by
      !--- default -> no change to the SH95 recombination H lines.
      logical            :: h_coll_effects = .false.
+     !--- He I 2^3S (triplet metastable) diagnostic: on the converged state,
+     !--- solve the OH18 (Oklopcic & Hirata 2018) closed-form 2^3S balance
+     !--- leaf by leaf and write '<base>_heimeta' (n_2s3, Phi_3, n_e, T_e).
+     !--- Phi_3 (2^3S photoionization, threshold 4.78 eV) uses the full band
+     !--- tally; set add_fuv with efuv_min=4.78 to capture the soft-UV part.
+     !--- No feedback into the ionization/thermal balance (n_3 is a ~1e-7
+     !--- trace of He).  Off by default.
+     logical            :: hei_metastable = .false.
      !--- gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
      real(kind=wp)      :: xHI_init     = 1.0_wp

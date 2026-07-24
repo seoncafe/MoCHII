@@ -1,0 +1,19 @@
+&parameters
+ par%line_id         = 'HeI_10833'
+ par%cart_file       = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/examples/hei_metastable/hei_high_density_lart_car.h5'
+ par%distance2cm     = 1.0
+ par%no_photons      = 1.00000e+05
+ par%temperature     = 1.00000e+04
+ par%DGR             = 0.0000
+ par%comoving_source = .false.
+ par%save_all        = .false.
+ par%recoil          = .false.
+ par%geometry        = 'sphere'
+ par%source_geometry = 'point'
+ par%spectral_type   = 'voigt'
+ par%nvelocity       = 201
+ par%velocity_min    =  -80.0
+ par%velocity_max    =   40.0
+ par%nprint          = 1.0e+04
+ par%out_file        = 'hei_high_density_lart.h5'
+/

@@ -433,6 +433,19 @@ contains
         'ERROR: par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (par%hei_metastable) then
+     !--- Phi_3 (2^3S photoionization) starts at 4.78 eV; a band floor above
+     !--- it misses the soft-UV part of the integral (rank-0 note, no abort).
+     block
+       real(kind=wp) :: efloor
+       efloor = par%eion_min
+       if (par%add_fuv) efloor = par%efuv_min
+       if (mpar%p_rank == 0 .and. efloor > 4.78_wp) &
+          write(*,'(a,f7.3,a)') 'NOTE: hei_metastable band floor ', efloor, &
+          ' eV > 4.78 eV -> Phi_3 misses [4.78, floor); set add_fuv with '// &
+          'efuv_min=4.78 for the full 2^3S photoionization integral.'
+     end block
+  endif
   if (par%ion_peel .and. par%xy_periodic) then
      !--- the point-observer peel is ill-defined under xy-periodicity (the
      !--- medium tiles into infinitely many periodic images); the emergent

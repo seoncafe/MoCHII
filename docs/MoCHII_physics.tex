@@ -796,6 +796,92 @@ H$\alpha$/H$\beta$/H$\gamma$, weights it by $n_{\rm HI}$, and writes it as
 separate \code{hc} rows --- a first-cut estimate (optically-thin cascade)
 for the front and hot-cell bias, kept apart from the recombination lines.
 
+\subsection{He\,\textsc{i} 2$^3$S metastable diagnostic}
+\label{sec:heimeta}
+The Porter case-B 10830~\AA\ table above is a collisional-radiative
+\emph{total} emissivity, correct in the dense, optically-thin,
+recombination-dominated H\,\textsc{ii} regime it was built for.  It does
+\emph{not} give the 2$^3$S population $n_3$, its line-of-sight column, or
+the 10830~\AA\ \emph{absorption} opacity --- the observables of exoplanet
+transit, chromospheric, and PDR 10830 work, where the line is seen against
+a background.  \code{hei\_metastable\_mod} (\code{par\%hei\_metastable})
+adds these as a separate diagnostic; it does not add or modify any emission
+row, and in particular \emph{nothing is summed onto} the Porter 10830 line
+(which already carries the metastable-collisional term --- summing an
+explicit collisional 10830 would double-count).
+
+\paragraph{The 2$^3$S balance (Oklopcic \& Hirata 2018).}  OH18 track the
+neutral singlet ground 1$^1$S, the metastable triplet 2$^3$S, and the ion.
+Because $n_3/n_{\rm He}\sim10^{-7}$ the balance is linear in $n_3$ --- a
+closed-form quotient in each leaf, no iteration:
+\begin{equation}
+n_3 = \frac{\alpha_3\,n_e\,n_{\rm HeII} + q_{13}\,n_e\,n_{\rm HeI}}
+           {A_{31} + \Phi_3 + n_e\,(q_{31a}+q_{31b}) + n_{\rm HI}\,Q_{31}},
+\end{equation}
+with source terms recombination into the triplet system
+($\alpha_3\,n_e\,n_{\rm HeII}$) and e-impact excitation
+1$^1$S\,$\to$\,2$^3$S ($q_{13}\,n_e\,n_{\rm HeI}$), and sinks the radiative
+decay $A_{31}$ (2$^3$S\,$\to$\,1$^1$S), photoionization $\Phi_3$,
+spin-changing e-impact transfer into the singlets
+($q_{31a} = $ 2$^3$S\,$\to$\,2$^1$S, $q_{31b} = $ 2$^3$S\,$\to$\,2$^1$P ---
+\emph{not} 2$^3$S\,$\to$\,1$^1$S), and Penning/associative ionization with
+neutral hydrogen ($n_{\rm HI}\,Q_{31}$).  Two limits anchor the gates: the
+low-density radiative limit $n_3/n_{\rm He^+} = \alpha_3 n_e/A_{31}$ and the
+high-density collisional plateau $\alpha_3/(q_{31a}+q_{31b})$, crossing at
+$n_{\rm crit} = A_{31}/(q_{31a}+q_{31b})$.
+
+The rate coefficients are closed-form fits transcribed from the EXHALE
+triplet implementation (offline into the coefficient file, Fortran only
+evaluates): $\alpha_3(T) = 2.10{\times}10^{-13}(T/10^4)^{-0.778}$ (OH18);
+$q_{13}, q_{31a}, q_{31b}$ from Bray et al.\ (2000) collision strengths via
+OH18; $A_{31} = 1.272{\times}10^{-4}$~s$^{-1}$ (the CHIANTI \code{he\_1.wgfa}
+$A(1\!-\!2) = 1.73{\times}10^{-4}$ is $\sim$36\% high and is \emph{not} used);
+$Q_{31}$ from Taylor et al.\ (2025) Table~2 (Garcia Mu\~noz 2025 recorded as
+the alternative, 1.2--2.2$\times$ lower --- the documented uncertainty of the
+neutral/PDR sink).  A consistency check: at $10^4$~K,
+$\alpha_3 = 0.998\times0.75\,\alpha_B({\rm He\,II})$, matching the
+\code{HEI\_F3S} $=0.75$ triplet branching the diffuse field already uses.
+
+\paragraph{The 2$^3$S photoionization rate.}
+$\Phi_3 = \sum_\nu 4\pi J_\nu\,\sigma_3(\nu)\,\Delta\nu/(h\nu)$ over the
+\emph{full} band (the reduced tally \code{jt\_ion}, the same integral pattern
+as $\Gamma_i$).  The threshold is 4.78~eV, but $\sigma_3 \sim
+1$--$2{\times}10^{-18}$~cm$^2$ remains significant far above 13.6~eV
+(Cooper minimum near 34.7~eV, bump near 45.6~eV), so the ionizing band alone
+gives $\Phi_3 > 0$ wherever a field exists; \code{add\_fuv} with
+\code{efuv\_min}$=4.78$ adds the soft-UV part $[4.78, 13.6)$~eV (a rank-0 note
+fires when the band floor sits above 4.78~eV).  $\sigma_3(E)$ is two VFKY96
+wings joined by a log-linear bridge, a $\sim$4\% fit to Norcross (1971)\,+\,TOPbase.
+
+\paragraph{10830~\AA\ absorption (Stage 2).}  From $n_3$ the line-center
+opacity of each fine-structure component is
+\begin{equation}
+\kappa_{0,i} = \frac{\sqrt{\pi}\,e^2}{m_e c}\,f_i\,\frac{\lambda_i}{b}\,n_3,
+\qquad b = \sqrt{2 k T_e/m_{\rm He} + v_{\rm turb}^2},
+\end{equation}
+the classical integrated cross section $\pi e^2/(m_e c) = 0.02654$~cm$^2$\,Hz
+divided by $\sqrt{\pi}\,b$ for the Gaussian peak.  The three
+2$^3$S\,$\to$\,2$^3$P$_J$ components (vacuum 10832.06 / 10833.22 /
+10833.31~\AA; $f = 0.0599 / 0.1797 / 0.2996$, ratio 1:3:5; $A =
+1.0216{\times}10^7$~s$^{-1}$ each) take the NIST ASD values (Drake 2007),
+cross-checked against p-winds; the CHIANTI \code{he\_1.wgfa} $A \simeq
+1.15{\times}10^7$ ($\sim$13\% high) is \emph{not} used.  The $J'=1,2$ pair sits
+0.089~\AA\ apart, far inside the $\sim$0.4~\AA\ thermal Doppler width at
+$10^4$~K, so they blend into the observed ``doublet'' (their line-center
+opacities are summed); $J'=0$ at 10832.06~\AA\ is resolved.  The Python
+\code{HeiMetaData} reader deposits $n_3$ and $\kappa_0$ along the line of
+sight (the flux-conserving deposit of the emissivity maps) into column
+[cm$^{-2}$] and $\tau_0 = \int\!\kappa_0\,{\rm d}l$ maps, and warns when
+line-center $\tau_0 > 1$.
+
+The module runs once at output time (no hot-loop cost, no feedback --- $n_3$
+is a $\sim$10$^{-7}$ trace of He).  Caveats recorded at the code site:
+(i)~\emph{local equilibrium} --- the advection term $v\,{\rm d}f_3/{\rm d}r$
+is absent, valid where the 2$^3$S destruction time is short against any flow
+time (dense H\,\textsc{ii}), not a faithful outflow benchmark; (ii)~10830 can
+be optically thick in dense metastable columns, where the optically-thin
+$\tau_0$ diagnostic breaks down (line transfer is out of scope).
+
 %==========================================================================
 \section{Algorithms}
 \subsection{The iteration loop}
@@ -1876,6 +1962,36 @@ continuum $L_\nu$ (free-bound + free-free from the verified tables and
 the Milne extension above the edges, plus the three two-photon
 continua), written on a 400-point log-$\nu$ grid from 11.4\,$\mu$m to
 217\,\AA.
+
+\subsection{He\,\textsc{i} 2$^3$S metastable and 10830~\AA\ absorption}
+The 2$^3$S diagnostic (Section~\ref{sec:heimeta}) is gated in
+\code{tests/hei\_meta/} on three runs (low/high density and an
+\code{add\_fuv} run).  \textbf{Stage 1}: the data-file analytic limits
+reproduce the low-density ratio $\alpha_3 n_e/A_{31} =
+1.6509{\times}10^{-7}$ (spec $1.65{\times}10^{-7}$ at $n_e=100$, $10^4$~K),
+the plateau $6.513{\times}10^{-6}$, and $n_{\rm crit} = 3945$~cm$^{-3}$ (the
+$n_e$-scan half-plateau crossing lands at 3926); the Fortran module $n_3$
+matches the independent Python closed form on each run's own state to worst
+relative $4{\times}10^{-15}$ (machine precision); the low-density core sits
+within median 2.8\%\,/\,max 3.9\% of the radiative limit and the
+high-density run ($n_e = 1.1{\times}10^4 > n_{\rm crit}$) at 0.676 of the
+plateau; $\Phi_3$ from the band tally matches an independent $J_\nu$
+integration to $1.5{\times}10^{-9}$ (max $9.07{\times}10^{-5}$~s$^{-1}$); and
+$\alpha_3(10^4\,{\rm K}) = 0.998\times0.75\,\alpha_B({\rm He\,II})$, the
+diffuse \code{HEI\_F3S} consistency.  \textbf{Stage 2 (10830 absorption)}:
+the LINE10830 constants carry the $f$ ratio 1:3:5 and $A =
+1.0216{\times}10^7$~s$^{-1}$ each (NIST/p-winds, not the CHIANTI
+$1.15{\times}10^7$); a synthetic uniform cube reproduces the column
+conservation $\sum N A_{\rm pix} = \sum n V$ and the interior column
+$n_3\,\ell$ exactly, and the line-center $\tau_0 = \int\!\kappa_0\,{\rm d}l$
+per component and for the doublet matches the hand integral
+$\kappa_0^{\rm hand}\,\ell$ to $<2{\times}10^{-16}$; the optically-thin case
+raises no warning while a $\times10^5$ scaled case pushes $\tau_0 > 1$ and
+fires it.  On the high-density run the column conserves to
+$9{\times}10^{-15}$ and the doublet/$J'{=}0$ $\tau_0$ ratio is 8.003, equal
+to the $(f_1{+}f_2)/f_0 = 8.002$ oscillator-strength ratio of the blended
+lines (that run's metastable column is optically thick, $\tau_0 \sim
+10^4$ --- flagged by the warning, as designed).
 
 %==========================================================================
 \section{Known limitations and next steps}

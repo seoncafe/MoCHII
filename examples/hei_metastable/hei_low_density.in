@@ -1,0 +1,54 @@
+&parameters
+ ! He I 2^3S metastable diagnostic, LOW-density (radiative) limit.
+ !
+ ! A Stromgren sphere (uniform nH=100, R=4 pc, hot star, case B, fixed
+ ! Te=1e4 K) with par%hei_metastable = .true.  The switch adds ONLY a
+ ! diagnostic pass on the converged state -- it does NOT change the physics
+ ! (nothing feeds back into the ionization/thermal balance); the 2^3S
+ ! population n_3 is a ~1e-7 trace of helium.  The pass writes
+ ! hei_low_density_heimeta.h5 with the 2^3S number density n_2s3, the 2^3S
+ ! photoionization rate Phi_3, n_e, and T_e.
+ !
+ ! What this run shows: in the ionized core n_e ~ 110 cm^-3, far below the
+ ! critical density n_crit = A_31/(q_31a+q_31b) ~ 3945 cm^-3 at 1e4 K, so the
+ ! metastable balance sits in the low-density RADIATIVE limit -- the collisional
+ ! sink n_e(q_31a+q_31b) is only ~2.5% of A_31 and
+ !    n_3/n_HeII  ->  alpha_3 n_e / A_31   (~1.65e-7 at n_e=100, 1e4 K).
+ ! Without add_fuv, Phi_3 keeps only the EUV part (>= 13.6 eV), which is
+ ! << A_31 in the core, so the radiative limit holds (compare
+ ! hei_low_density_fuv, which adds the soft-UV part and depletes n_3 near the
+ ! star).
+ par%no_photons    = 2.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%nx = 48
+ par%ny = 48
+ par%nz = 48
+ par%xmax = 4.0
+ par%ymax = 4.0
+ par%zmax = 4.0
+ par%nH_const      = 100.0          ! cm^-3 inside the sphere
+ par%rmax          = 3.8            ! sphere radius (pc); nH = 0 outside
+ par%distance_unit = 'pc'
+ par%dust_model    = 'none'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%tstar         = 4.0e4          ! blackbody source [K]
+ par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0e-3
+
+ par%gas_niter     = 40
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%case_ab       = 'B'
+ par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+
+ par%atomic_dir      = '../../data/atomic'   ! for hei_metastable.txt
+ par%hei_metastable  = .true.                ! 2^3S diagnostic (no physics change)
+
+ par%source_geometry = 'point'
+ par%out_file        = 'hei_low_density.h5'
+/

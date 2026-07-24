@@ -104,6 +104,7 @@ OBJS	= \
 	nlevel_mod.o \
 	sh95_mod.o \
 	lines_mod.o \
+	hei_metastable_mod.o \
 	gas_rates_mod.o \
 	ion_balance_mod.o \
 	thermal_mod.o \
