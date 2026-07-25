@@ -418,6 +418,12 @@ contains
         'ERROR: par%ion_relax must be in (0, 1].'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%line_case) /= 'A' .and. trim(par%line_case) /= 'B' .and. &
+      trim(par%line_case) /= 'follow') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%line_case must be ''A'', ''B'', or ''follow''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
   if (trim(par%case_ab) /= 'A' .and. trim(par%case_ab) /= 'B') then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%case_ab must be ''A'' or ''B''.'

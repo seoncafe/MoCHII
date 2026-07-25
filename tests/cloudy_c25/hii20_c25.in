@@ -1,0 +1,49 @@
+title dust free cool HII region model, Lexington 1995
+#
+# commands controlling continuum =========
+black body, T = 20000 K 
+q(h) 49
+# add the CMB after hot star shape & luminosity specified
+CMB 
+#
+# commands for density & abundances =========
+hden = 2
+init file="ism.ini"
+abund He=-1 C=-3.6576 N=-4.39794 O=-3.481146 ne=-4.30103 mg=-8
+continue si=-8 s=-5.04576 cl=-7 ar=-8 fe=-8
+#
+# commands controlling geometry  =========
+radius = 18.477121
+sphere
+# this is to go deep to pick up all H recombs
+stop efract -2
+stop temperature 1000
+#
+# other commands for details     =========
+# must iterate since fine structure lines are optically thick
+iterate
+# assume there is neutral gas beyond what we compute
+double
+#
+# ---------------------------------------------------------------------------
+# Everything above this line is the unmodified physics block of the Cloudy
+# c25.00 test-suite input tsuite/auto/hii_coolstar.in (lines 1-27).  Only the
+# output commands below were added, so the model itself is Cloudy's own
+# maintained version of the Lexington HII20 benchmark.
+# ---------------------------------------------------------------------------
+print line faint 0
+print column densities
+save overview last "hii20_c25.ovr"
+save dr last "hii20_c25.dr"
+save line list "hii20_c25_abs.lin" "wood_lines.dat" last no hash absolute column
+save line list "hii20_c25_rel.lin" "wood_lines.dat" last no hash column
+# Radial ionization structure for the Wood et al. (2004) panel figures.
+# Each file lists depth to the zone center [cm] followed by the fraction of
+# the element in each ionization stage; radius = 10^18.477121 cm + depth.
+save radius last "hii20_c25.rad"
+save element hydrogen last "hii20_c25.ele_h"
+save element helium last "hii20_c25.ele_he"
+save element carbon last "hii20_c25.ele_c"
+save element nitrogen last "hii20_c25.ele_n"
+save element oxygen last "hii20_c25.ele_o"
+save element neon last "hii20_c25.ele_ne"

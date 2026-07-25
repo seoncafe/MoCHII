@@ -9,17 +9,22 @@ Lambda(T) per (n_e * n_ion) with the multi-exponential form used in EXHALE
 for the diagnostic ion set: O II, O III, N II, S II, S III, Ne II, Ne III,
 and the rest of the registry.
 
-Population model: lower levels Boltzmann-distributed over the ground-term
-fine structure (levels within 0.4 eV of ground); every collisional
-excitation radiates (optically thin, low-density limit).  For the single
-4S3/2 ground of O II and S II this reduces to the coronal limit.
+Population model: the n_e -> 0 limit of the n-level statistical equilibrium
+(chianti_cooling.cooling_low_density_limit).  At n_e << n_crit every ion
+sits in its lowest level, so collisional excitation happens out of level 1
+only and the ensuing radiative cascade radiates the full dE_{1u}; the total
+cooling is the excitation power out of the ground level.  Transition
+energies are the observed .elvlc level differences, the same energies the
+Tier-2 n-level solve uses in both the Boltzmann factor and the emitted
+photon (the .scups dE is the Burgess-Tully scaling energy, not a physical
+transition energy).
 
 CAVEAT (carried into each output header): the fits are low-density-limit
 cooling.  Transitions with low critical density (e.g. [O II] 3726/3729,
-[S II] 6717/6731, the fine-structure IR lines) saturate above n_crit; the
-cooling fits overestimate cooling there.  Density-dependent line ratios and
-emissivities come from the n-level solve (Upsilon fits + statistical
-equilibrium).
+[S II] 6717/6731, the fine-structure IR lines, and especially [C II] 158um
+whose n_crit ~ 50 cm^-3) saturate above n_crit; the cooling fits
+overestimate cooling there.  Density-dependent line ratios and emissivities
+come from the n-level solve (Upsilon fits + statistical equilibrium).
 
 Writes:  ../../data/atomic/cooling_<ion>.txt (one file per ion,
          provenance header: CHIANTI version, population model, fit range,
@@ -31,9 +36,11 @@ Run:     python3 fit_cooling.py
 import os
 import numpy as np
 from scipy.optimize import least_squares
-from chianti_cooling import cooling_effective, DBASE
+from chianti_cooling import (cooling_low_density_limit, ion_dir, read_elvlc,
+                             read_scups, upsilon, _level_energy_cm1,
+                             transition_energy_erg, DBASE, K_B_ERG, COLL_PREF)
 
-DATE = "2026-07-11"
+DATE = "2026-07-25"
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "..", "data", "atomic")
 
@@ -43,62 +50,135 @@ with open(os.path.join(DBASE, "VERSION")) as fh:
 T = np.logspace(3.0, 5.0, 201)
 TMIN, TMAX = T[0], T[-1]
 
-# (element, ion_stage, dE-ladder guesses [K] from the .elvlc level energies:
-#  fine structure / forbidden optical / UV blocks)
+NTERM_MAX = 8         # most exponential terms allowed in one fit
+ERR_TARGET = 1.0e-2   # stop adding terms once the max fit error is below this
+NSTART = 6            # restarts per term count (perturbed ladders, fixed seed)
+
+# (element, ion_stage).  The T_i of the fit are excitation temperatures and
+# are derived from the level energies (ground_excitation_ladder), not tuned.
 IONS = {
-    # H I: Ly-alpha (118348 K) dominated collisional-excitation cooling;
-    # single 1s ground level, so 'ground_term' reduces to coronal.  Serves
-    # the H/He thermal balance through the same cooling reader.
-    "HI":    ("h", 1, [118000.0, 150000.0]),
+    # H I: Ly-alpha (118348 K) dominated collisional-excitation cooling.
+    # Serves the H/He thermal balance through the same cooling reader.
+    "HI":    ("h", 1),
     # gate abundance set (MOCASSIN HII20/40) additions: C, N I/III, O I
-    "CI":    ("c", 1, [40.0, 14700.0, 31000.0, 100000.0]),
-    "CII":   ("c", 2, [90.0, 61900.0, 108000.0, 250000.0]),
-    "CIII":  ("c", 3, [75300.0, 147000.0, 300000.0]),
-    "NI":    ("n", 1, [27700.0, 41500.0, 120000.0]),
-    "NIII":  ("n", 3, [250.0, 82300.0, 145000.0, 300000.0]),
-    "OI":    ("o", 1, [300.0, 22800.0, 48600.0, 106000.0]),
-    "OII":   ("o", 2, [38600.0, 58200.0, 172000.0]),
-    "OIII":  ("o", 3, [300.0, 29200.0, 62100.0, 150000.0]),
-    "NII":   ("n", 2, [130.0, 22000.0, 47000.0, 132000.0]),
-    "SII":   ("s", 2, [21400.0, 35300.0, 114000.0]),
-    "SIII":  ("s", 3, [800.0, 16300.0, 39100.0, 120000.0]),
-    # Ne II is one fine-structure line (12.8 um) decaying ~T^-0.35 up to the
-    # ~3.1e5 K UV block: the shallow decay needs a T_i ladder to superpose.
-    "NeII":  ("ne", 2, [1120.0, 3000.0, 8000.0, 25000.0, 80000.0, 300000.0]),
-    "NeIII": ("ne", 3, [1000.0, 37200.0, 80200.0, 250000.0]),
+    "CI":    ("c", 1),
+    "CII":   ("c", 2),
+    "CIII":  ("c", 3),
+    "NI":    ("n", 1),
+    "NIII":  ("n", 3),
+    "OI":    ("o", 1),
+    "OII":   ("o", 2),
+    "OIII":  ("o", 3),
+    "NII":   ("n", 2),
+    "SII":   ("s", 2),
+    "SIII":  ("s", 3),
+    # S IV: the [S IV] 10.51um ground fine-structure line (951 cm^-1 = 1369 K)
+    # plus the 3s3p^2 UV blocks; a ~1.2% coolant of the HII40 benchmark.
+    "SIV":   ("s", 4),
+    "NeII":  ("ne", 2),
+    "NeIII": ("ne", 3),
     # G5: argon.  Ar II has no CHIANTI v11 level/collision data (only
     # RR/DR), so the Ar II stage carries no cooling fit ([Ar II] 6.98um
     # omitted); Ar III/IV are complete.
-    "ArIII": ("ar", 3, [1600.0, 5000.0, 20200.0, 47900.0, 150000.0]),
-    "ArIV":  ("ar", 4, [30400.0, 50200.0, 171000.0]),
+    "ArIII": ("ar", 3),
+    "ArIV":  ("ar", 4),
     # G5: magnesium and iron (gas-phase; strongly depleted onto grains).
-    "MgII":  ("mg", 2, [51400.0, 101000.0, 200000.0]),
-    "FeII":  ("fe", 2, [600.0, 3000.0, 12000.0, 20000.0, 60000.0]),
-    "FeIII": ("fe", 3, [900.0, 29000.0, 36000.0, 100000.0]),
+    "MgII":  ("mg", 2),
+    "FeII":  ("fe", 2),
+    "FeIII": ("fe", 3),
     # Si, Cl, Ca (5-stage registry; Si V / Cl V and the Ca III/IV gaps
     # carry no cooling — level data absent or excitation negligible at
     # nebular temperatures).
-    "SiII":  ("si", 2, [290.0, 45000.0, 63000.0, 150000.0]),
-    "SiIII": ("si", 3, [500.0, 76800.0, 110000.0, 148000.0, 300000.0]),
-    "SiIV":  ("si", 4, [103000.0, 200000.0]),
-    "ClII":  ("cl", 2, [1000.0, 1430.0, 16560.0, 34000.0, 100000.0]),
-    "ClIII": ("cl", 3, [26100.0, 41600.0, 100000.0, 250000.0]),
-    "ClIV":  ("cl", 4, [700.0, 1900.0, 20700.0, 43800.0, 130000.0]),
-    "CaII":  ("ca", 2, [19700.0, 25400.0, 60000.0]),
-    "CaV":   ("ca", 5, [2400.0, 5900.0, 27000.0, 55000.0, 150000.0]),
+    "SiII":  ("si", 2),
+    "SiIII": ("si", 3),
+    "SiIV":  ("si", 4),
+    "ClII":  ("cl", 2),
+    "ClIII": ("cl", 3),
+    "ClIV":  ("cl", 4),
+    "CaII":  ("ca", 2),
+    "CaV":   ("ca", 5),
 }
 
 SPEC_LABEL = {  # for plot titles (ASCII / LaTeX-safe)
     "HI": "H I", "CI": "[C I]", "CII": "[C II]", "CIII": "C III]",
     "NI": "[N I]", "NIII": "[N III]", "OI": "[O I]",
     "OII": "[O II]", "OIII": "[O III]", "NII": "[N II]",
-    "SII": "[S II]", "SIII": "[S III]", "NeII": "[Ne II]",
+    "SII": "[S II]", "SIII": "[S III]", "SIV": "[S IV]", "NeII": "[Ne II]",
     "NeIII": "[Ne III]", "ArIII": "[Ar III]", "ArIV": "[Ar IV]",
     "MgII": "Mg II", "FeII": "[Fe II]", "FeIII": "[Fe III]",
     "SiII": "[Si II]", "SiIII": "Si III]", "SiIV": "Si IV",
     "ClII": "[Cl II]", "ClIII": "[Cl III]", "ClIV": "[Cl IV]",
     "CaII": "Ca II", "CaV": "[Ca V]",
 }
+
+
+def ground_excitation_ladder(elem, stage, nterm):
+    """Starting T_i ladder [K] built from the excitation temperatures.
+
+    In the low-density limit the cooling sum is
+
+        Lambda(T) = T^-1/2 sum_u [COLL_PREF/g_1 * Ups_1u(T) * dE_1u]
+                                 * exp(-T_u/T) ,   T_u = dE_1u/k ,
+
+    which is the fitted form exactly, apart from the slow temperature
+    dependence of Upsilon.  So the T_i are the excitation temperatures of the
+    upper levels: group the transitions out of the ground level into nterm
+    clusters in log T_u (weighted k-means, the weight being the share of the
+    cooling each transition carries across the fit range) and return the
+    weighted mean T_u of each cluster.  This replaces hand-tuned starting
+    ladders and follows the atomic structure of each ion automatically.
+    """
+    d = ion_dir(elem, stage)
+    lev = _level_energy_cm1(read_elvlc(os.path.join(d, f"{elem}_{stage}.elvlc")))
+    Tu, contrib = [], []
+    for tr in read_scups(os.path.join(d, f"{elem}_{stage}.scups")):
+        if tr["ll"] != 1:
+            continue
+        de_erg = transition_energy_erg(lev, tr)
+        if de_erg <= 0.0:
+            continue
+        lam_u = (COLL_PREF / (lev[1][0] * np.sqrt(T)) * upsilon(tr, T)
+                 * np.exp(-de_erg / (K_B_ERG * T)) * de_erg)
+        Tu.append(de_erg / K_B_ERG)
+        contrib.append(lam_u)
+    contrib = np.asarray(contrib)
+    tot = contrib.sum(axis=0)
+    wt = (contrib / np.where(tot > 0.0, tot, 1.0)).sum(axis=1)
+    Tu = np.asarray(Tu)
+    keep = wt > 1.0e-8 * wt.max()
+    Tu, wt = Tu[keep], wt[keep]
+
+    x = np.log10(Tu)
+    ncl = min(nterm, len(np.unique(np.round(x, 3))))
+    # weighted quantiles of the cooling share as the cluster seeds
+    o = np.argsort(x)
+    cw = np.cumsum(wt[o]) / wt.sum()
+    cen = np.interp((np.arange(ncl) + 0.5) / ncl, cw, x[o])
+    for _ in range(50):
+        lab = np.argmin(np.abs(x[:, None] - cen[None, :]), axis=1)
+        new = np.array([(x[lab == k] * wt[lab == k]).sum() / wt[lab == k].sum()
+                        if (lab == k).any() else cen[k] for k in range(ncl)])
+        if np.allclose(new, cen, rtol=1e-6):
+            break
+        cen = new
+    # Ions with only a few excitation blocks (e.g. the Cl ions have four
+    # transitions out of the ground term) still need extra terms: a single
+    # exponential has a fixed A, so the temperature dependence of Upsilon has
+    # to be carried by superposing neighbouring terms.  Pad by splitting the
+    # widest gaps, then by bracketing the ladder.
+    cen = list(np.sort(cen))
+    while len(cen) < nterm:
+        if len(cen) > 1:
+            gaps = [(cen[i + 1] - cen[i], i) for i in range(len(cen) - 1)]
+            gmax, i = max(gaps)
+        else:
+            gmax = 0.0
+        if gmax > 0.1:
+            cen.insert(i + 1, 0.5 * (cen[i] + cen[i + 1]))
+        else:
+            cen = [cen[0] - 0.3] + cen + [cen[-1] + 0.3]
+            cen = sorted(cen)[:nterm] if len(cen) > nterm else cen
+    return sorted(10.0 ** np.asarray(cen[:nterm]))
 
 
 def fit_multiexp(lam, nterm, Tguess):
@@ -135,10 +215,21 @@ def write_ion_file(name, elem, stage, A, Ti, err, rel_err):
                  "   [erg cm^3 s^-1] per (n_e * n_ion)\n")
         fh.write(f"# source: CHIANTI v{CHIANTI_VERSION} .elvlc/.scups,"
                  " Burgess-Tully descaling (tools/fitting/chianti_cooling.py)\n")
-        fh.write("# population: Boltzmann over ground-term fine structure"
-                 " (levels within 0.4 eV); optically thin, low-density limit\n")
-        fh.write("# caveat: no density suppression above n_crit;"
-                 " density-dependent emissivities come from the n-level solve\n")
+        fh.write("# population: true low-density statistical-equilibrium"
+                 " populations (n_e -> 0 limit of the n-level solve: all ions"
+                 " in the lowest level,\n")
+        fh.write("#   excitation out of it only, each excitation radiating the"
+                 " full dE_1u through the cascade); optically thin\n")
+        fh.write("# energies: observed .elvlc level differences, in both the"
+                 " Boltzmann factor and the emitted photon\n")
+        fh.write("#   (the .scups dE is the Burgess-Tully scaling energy, not"
+                 " a physical transition energy)\n")
+        fh.write("# caveat: no density suppression above n_crit; the FIR"
+                 " fine-structure lines ([C II] 158um, [O III] 52/88um) and\n")
+        fh.write("#   the [O II]/[S II] optical doublets saturate above their"
+                 " n_crit, where this limit overestimates the cooling;\n")
+        fh.write("#   density-dependent emissivities come from the n-level"
+                 " solve\n")
         fh.write(f"# fit range: {TMIN:.1e} - {TMAX:.1e} K;"
                  f" max fit error: {err*100:.2f}%"
                  f" ({rel_err*100:.2f}% where Lambda > 1e-3 max)\n")
@@ -151,19 +242,25 @@ def write_ion_file(name, elem, stage, A, Ti, err, rel_err):
 
 results = {}
 print(f"{'ion':6s} {'nterm':>5s} {'maxerr_fit':>11s} {'maxerr_relevant':>16s}")
-for name, (el, st, guess) in IONS.items():
-    lam = cooling_effective(el, st, T, pop="ground_term")
+for name, (el, st) in IONS.items():
+    lam = cooling_low_density_limit(el, st, T)
     best = None
-    for nterm in (len(guess), len(guess) + 1, len(guess) + 2):
-        g = guess + [2.0e5] * (nterm - len(guess))
-        try:
-            A, Ti = fit_multiexp(lam, nterm, g)
-        except Exception:
-            continue
-        fit = evaluate(A, Ti, T)
-        err = np.abs(fit / lam - 1.0).max()
-        if best is None or err < best[0]:
-            best = (err, A, Ti, fit)
+    for nterm in range(2, NTERM_MAX + 1):
+        base = np.asarray(ground_excitation_ladder(el, st, nterm))
+        rng = np.random.default_rng(12345 + nterm)
+        starts = [base] + [base * 10.0 ** rng.uniform(-0.25, 0.25, nterm)
+                           for _ in range(NSTART - 1)]
+        for guess in starts:
+            try:
+                A, Ti = fit_multiexp(lam, nterm, np.sort(guess))
+            except Exception:
+                continue
+            fit = evaluate(A, Ti, T)
+            err = np.abs(fit / lam - 1.0).max()
+            if best is None or err < best[0]:
+                best = (err, A, Ti, fit)
+        if best[0] < ERR_TARGET:
+            break
     err, A, Ti, fit = best
     mask = lam > 1e-3 * lam.max()
     rel_err = np.abs(fit / lam - 1.0)[mask].max()

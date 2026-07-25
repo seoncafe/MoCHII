@@ -582,35 +582,47 @@ multi-exponential form fitted to direct CHIANTI v11.0.2 evaluations
   \qquad [\mathrm{erg\,cm^3\,s^{-1}}\ \text{per } (n_e n_{\rm ion})],
   \label{eq:cool}
 \end{equation}
-lower levels Boltzmann-distributed over the ground-term fine structure
-(within 0.4~eV), optically thin, low-density limit.  Fit range
-$10^3$--$10^5$~K; Levenberg--Marquardt on $\log\Lambda$ with the $T_i$
-ladder initialized from the level energies.
+evaluated in the optically thin $n_e\rightarrow0$ limit of statistical
+equilibrium: every ion sits in its lowest level, excitation happens out
+of that level only, and the cascade radiates the full excitation energy,
+so $\Lambda_{\rm ion}$ is the excitation power out of the ground level
+and equals what the $n$-level solve (Section~\ref{sec:nlev}) returns as
+$n_e\rightarrow0$.  Transition energies are the observed \code{.elvlc}
+level differences in both the Boltzmann factor and the radiated photon
+(the \code{.scups} \code{de} is the Burgess--Tully scaling energy, and
+detailed balance ties the excitation rate to the level gap that appears
+in the equilibrium matrix).  Fit range $10^3$--$10^5$~K;
+Levenberg--Marquardt on $\log\Lambda$ with the $T_i$ ladder derived from
+the excitation temperatures $\Delta E_{1u}/k$ of each ion.
 
 \begin{center}\small
 \begin{tabular}{lcc@{\qquad}lcc}
 \toprule
 ion & $N$ & max err & ion & $N$ & max err \\
 \midrule
-H\,\textsc{i}   & 4 & 0.52\% & O\,\textsc{i}    & 6 & 0.22\% \\
-C\,\textsc{i}   & 6 & 0.34\% & O\,\textsc{ii}   & 5 & 0.07\% \\
-C\,\textsc{ii}  & 6 & 0.11\% & O\,\textsc{iii}  & 4 & 1.83\% \\
-C\,\textsc{iii} & 5 & 0.58\%$^{a}$ & S\,\textsc{ii} & 3 & 2.26\% \\
-N\,\textsc{i}   & 5 & 0.59\% & S\,\textsc{iii}  & 6 & 0.46\% \\
-N\,\textsc{ii}  & 6 & 0.14\% & Ne\,\textsc{ii}  & 7 & 0.65\% \\
-N\,\textsc{iii} & 6 & 0.15\% & Ne\,\textsc{iii} & 4 & 0.58\% \\
- & & & Ar\,\textsc{iii} & 5 & 1.21\%$^{b}$ \\
- & & & Ar\,\textsc{iv}  & 5 & 0.25\% \\
+H\,\textsc{i}   & 4 & 0.52\% & O\,\textsc{i}    & 6 & 0.20\% \\
+C\,\textsc{i}   & 6 & 0.27\% & O\,\textsc{ii}   & 4 & 0.27\% \\
+C\,\textsc{ii}  & 5 & 0.35\% & O\,\textsc{iii}  & 5 & 0.32\% \\
+C\,\textsc{iii} & 6 & 0.50\%$^{a}$ & S\,\textsc{ii} & 3 & 2.23\% \\
+N\,\textsc{i}   & 5 & 0.58\% & S\,\textsc{iii}  & 5 & 0.23\% \\
+N\,\textsc{ii}  & 5 & 0.66\% & S\,\textsc{iv}   & 3 & 0.61\% \\
+N\,\textsc{iii} & 5 & 0.70\% & Ne\,\textsc{ii}  & 5 & 0.40\% \\
+ & & & Ne\,\textsc{iii} & 5 & 0.34\% \\
+ & & & Ar\,\textsc{iii} & 2 & 0.22\%$^{b}$ \\
+ & & & Ar\,\textsc{iv}  & 4 & 0.27\% \\
 \bottomrule
 \end{tabular}\\[2pt]
 {\footnotesize $^a$in the relevant range ($\Lambda > 10^{-3}\max$);
-5.4\% at the negligible low-$T$ tail.
-$^b$over 5\,000--20\,000~K; 4.6\% at the $10^5$-K endpoint.}
+5.5\% at the negligible low-$T$ tail.
+$^b$at $10^4$~K; 3.9\% at the $10^5$-K endpoint.}
 \end{center}
-Ne\,\textsc{ii} is a single fine-structure line (12.8\,$\mu$m) whose
-$\sim T^{-0.35}$ decay requires a ladder of $T_i$ terms to superpose.
-The caveat carried in every header: these are low-density-limit fits;
-density-dependent emissivities come from the $n$-level data.
+The caveat carried in every header: these are low-density-limit fits and
+carry no suppression above $n_{\rm crit}$, so the low-$n_{\rm crit}$
+lines ([C\,\textsc{ii}] 158\,$\mu$m, [O\,\textsc{iii}] 52/88\,$\mu$m,
+the [O\,\textsc{ii}] and [S\,\textsc{ii}] optical doublets) are
+overestimated in dense gas; this is now the leading approximation of the
+thermal loop (Section~\ref{sec:hii}).  Density-dependent emissivities
+come from the $n$-level data.
 
 \subsection{$n$-level (diagnostic) data}
 \label{sec:nlev}

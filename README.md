@@ -82,8 +82,9 @@ infrared dust/PAH spectrum.
 
 MoCHII shares its transport engine with the author's dust radiative-transfer
 code [MoCafe](https://github.com/seoncafe/MoCafe) and is validated against
-analytic Strömgren solutions, the Lexington/MOCASSIN H II-region benchmarks,
-and PyNeb emissivities.
+analytic Strömgren solutions, the Lexington H II-region benchmarks (against
+the published multi-code results and against current Cloudy and MOCASSIN
+runs), and PyNeb emissivities.
 
 ## Build and run
 
@@ -107,8 +108,9 @@ without setting `par%sed_workdir`.
 
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
-data, algorithms, and validation results; and `docs/MoCHII_fitting.pdf` for
-the CHIANTI fitting pipeline.
+data, algorithms, and validation results; `docs/MoCHII_fitting.pdf` for
+the CHIANTI fitting pipeline; and `docs/MoCHII_cooling_analysis.pdf` for the
+line-cooling verification against other photoionization codes.
 
 ## Author
 
@@ -116,4 +118,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-24 23:44 KST
+Last updated: 2026-07-25 22:27 KST

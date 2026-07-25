@@ -1,0 +1,59 @@
+&parameters
+ ! MoCHII G2 gate: Lexington HII40 benchmark, threshold-aligned bins.
+ ! Blackbody 40 kK, Q_H = 4.26e49 s^-1, nH = 100 cm^-3, hollow shell
+ ! Rin = 3e18 cm, Rout = 1.46e19 cm; abundances He 0.1, C 2.2e-4, N 4e-5,
+ ! O 3.3e-4, Ne 5e-5, S 9e-6.  References: converged MOCASSIN 2.02 re-run
+ ! Te(H+) = 8176.2 K (tests/results/02_gas_HII40_fullq__fullq) and the
+ ! Lexington multi-code median 8026 K (Ercolano et al. 2003, Table 4).
+
+ par%no_photons    = 4.0e7
+ par%no_print      = 4.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g2_hii/hii40_L6.fits'
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=3.082e39 erg/s
+ !--- (40 kK, 41.3% of the bolometric luminosity) -> Q_H = 4.265e49 s^-1
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 4.0e4
+ par%luminosity    = 1.273400e39
+
+ !--- ionized start (fast convergence; equilibrium is unique)
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.5
+ par%xHeII_init    = 0.5
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ !--- thermal balance + metals; explicit diffuse field (case A), as the
+ !--- published benchmark codes transport it, including the He I channels
+ par%gas_niter     = 100
+ par%gas_tol       = 5.0e-3
+ par%conv_crit     = 'vol'
+ par%ion_align_edges = .true.
+ par%ion_relax     = 1.0
+ par%case_ab       = 'A'
+ par%diffuse_field = .true.
+ par%hei_diffuse   = .true.
+ par%solve_te      = .true.
+ par%te_min        = 3.0e3
+ par%te_max        = 3.0e4
+ par%gas_tol_te    = 1.0e-2
+ par%atomic_dir    = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%use_metals    = .true.
+ par%abund_C       = 2.2e-4
+ par%abund_N       = 4.0e-5
+ par%abund_O       = 3.3e-4
+ par%abund_Ne      = 5.0e-5
+ par%abund_S       = 9.0e-6
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'hii40_bench.h5'
+/

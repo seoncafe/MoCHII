@@ -67,8 +67,13 @@ contains
     use mpi
     implicit none
     character(len=64) :: hi_file, heii_file
-    !--- select the SH95 tables that match the ionization case.
-    if (trim(par%case_ab) == 'A') then
+    !--- Select the SH95 tables by the Lyman-LINE optical depth (par%line_case),
+    !--- not by the continuum treatment (par%case_ab): a nebula whose diffuse
+    !--- Lyman continuum is transported explicitly still traps its Lyman lines
+    !--- and therefore radiates case-B Balmer lines.  'follow' reproduces the
+    !--- historical behavior of tying the two together.
+    if (trim(par%line_case) == 'A' .or. &
+        (trim(par%line_case) == 'follow' .and. trim(par%case_ab) == 'A')) then
        hi_file   = 'sh95_hi_caseA.txt'
        heii_file = 'sh95_heii_caseA.txt'
     else

@@ -35,7 +35,7 @@ from numpy.polynomial import chebyshev as C
 from chianti_cooling import (ion_dir, read_elvlc, read_wgfa, read_scups,
                              upsilon, DBASE, KB_OVER_RY)
 
-DATE = "2026-07-11"
+DATE = "2026-07-25"
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "..", "data", "atomic")
 TMIN, TMAX = 1.0e3, 1.0e5
@@ -55,6 +55,9 @@ IONS = {
     "NII":   ("n", 2, 5),
     "SII":   ("s", 2, 5),
     "SIII":  ("s", 3, 6),
+    # S IV: [S IV] 10.51um (the 3s^2 3p ^2P ground doublet) plus the
+    # 3s3p^2 ^4P intercombination lines near 1400 A.
+    "SIV":   ("s", 4, 5),
     "NeII":  ("ne", 2, 2),
     "NeIII": ("ne", 3, 5),
     # MOCASSIN HII20/40 line set additions ([C II] 158um, C III] 1907/1909,
@@ -88,7 +91,7 @@ IONS = {
 SPEC_LABEL = {
     "HI": "H I",
     "OII": "[O II]", "OIII": "[O III]", "NII": "[N II]",
-    "SII": "[S II]", "SIII": "[S III]", "NeII": "[Ne II]",
+    "SII": "[S II]", "SIII": "[S III]", "SIV": "[S IV]", "NeII": "[Ne II]",
     "NeIII": "[Ne III]", "CII": "[C II]", "CIII": "C III]",
     "NIII": "[N III]", "OI": "[O I]",
     "ArIII": "[Ar III]", "ArIV": "[Ar IV]",

@@ -197,6 +197,7 @@ def black1981_HI_lya(T):
 
 
 HC_OVER_K = 1.438776877  # h c / k_B  [cm K]; E[cm^-1]*HC_OVER_K/T = E/kT
+HC_ERG_CM = 1.9864458571489287e-16  # h c [erg cm]; E[cm^-1]*HC_ERG_CM = E[erg]
 
 
 def _level_energy_cm1(lev):
@@ -209,6 +210,53 @@ def _level_energy_cm1(lev):
     return out
 
 
+def transition_energy_erg(lev, tr):
+    """Energy [erg] of a .scups transition from the observed level energies.
+
+    The .scups header value tr['de'] is the Burgess & Tully SCALING energy (a
+    theoretical value used to build the scaled temperature); it is not the
+    physical transition energy and must not be used either as the radiated
+    energy or in the Boltzmann factor of the excitation rate.  Detailed balance
+    ties the excitation rate to the SAME level gap that appears in the
+    statistical-equilibrium matrix, so both must be the observed .elvlc
+    difference (e.g. [O II] 3726/3729: .scups 30661 cm^-1 vs observed
+    26811 cm^-1, a factor 0.583 in the cooling at 8000 K).
+
+    Returns 0.0 when the observed energies do not order the two levels, so the
+    caller can skip the transition.
+    """
+    de_cm1 = lev[tr["ul"]][1] - lev[tr["ll"]][1]
+    return de_cm1 * HC_ERG_CM if de_cm1 > 0.0 else 0.0
+
+
+def cooling_low_density_limit(elem, ion, T, restrict_to_wgfa=False):
+    """Collisional line cooling in the n_e -> 0 limit [erg cm^3 s^-1].
+
+    This is the low-density (coronal) limit of the n-level statistical
+    equilibrium, per (n_e * n_ion_total):
+
+        Lambda(T) = sum_u q_{1u}(T) * dE_{1u} ,
+
+    the sum running over every .scups transition out of the lowest level.  At
+    n_e << n_crit of the ground-term fine structure every ion sits in its
+    lowest level (the metastable levels are radiatively drained faster than
+    they are collisionally populated), so excitation happens only out of level
+    1; each excitation is followed by a radiative cascade that ultimately
+    radiates the full dE_{1u}, whatever route it takes down.  Total cooling is
+    therefore the excitation power out of the ground level, and it is exactly
+    what the n-level solve returns as n_e -> 0.
+
+    dE is the observed .elvlc level difference (see transition_energy_erg).
+
+    CAVEAT: no density suppression.  Transitions with a low critical density
+    (the FIR fine-structure lines, [O II] 3726/3729, [S II] 6716/6731)
+    saturate above n_crit and this limit then overestimates their cooling;
+    density-dependent emissivities come from the n-level solve.
+    """
+    return cooling_effective(elem, ion, T, pop="coronal",
+                             restrict_to_wgfa=restrict_to_wgfa)
+
+
 def cooling_effective(elem, ion, T, pop="coronal", e_cut_cm1=None,
                       restrict_to_wgfa=False):
     """Effective collisional line-cooling per (n_e * n_ion_total) [erg cm^3 s^-1].
@@ -217,11 +265,18 @@ def cooling_effective(elem, ion, T, pop="coronal", e_cut_cm1=None,
     fractional population of the lower level l and q_lu the Maxwellian
     excitation-rate coefficient. Upper levels are assumed to decay radiatively
     (optically thin), so every excitation out of a populated lower level cools.
+    dE_lu is the observed .elvlc level difference (transition_energy_erg).
 
     pop selects the lower-level population model:
       'coronal'     only the ground level (idx 1) is populated  (f_1 = 1).
+                    This is the n_e -> 0 limit of statistical equilibrium; use
+                    cooling_low_density_limit(), which documents the physics.
       'ground_term' Boltzmann among the lowest levels sharing the ground config
-                    label (e.g. the Fe II a6D fine-structure multiplet).
+                    label (e.g. the Fe II a6D fine-structure multiplet).  This
+                    is a HIGH-density model (LTE within the ground term): it is
+                    reached only for n_e >> n_crit of the fine structure, and it
+                    suppresses the FIR fine-structure cooling by roughly
+                    g_1/sum(g_term) when applied at nebular densities.
       'boltzmann'   Boltzmann over every level with E < e_cut_cm1 (the
                     metastable manifold); levels >= e_cut are depleted. This is
                     Huang (2023) Section 2.5 for Fe I/Fe II (cut at the lowest
@@ -275,7 +330,9 @@ def cooling_effective(elem, ion, T, pop="coronal", e_cut_cm1=None,
         if wgfa_pairs is not None and (ll, tr["ul"]) not in wgfa_pairs:
             continue
         g_l = lev[ll][0]
-        de_erg = tr["de"] * RY_ERG
+        de_erg = transition_energy_erg(lev, tr)
+        if de_erg <= 0.0:
+            continue
         ups = upsilon(tr, T)
         q_lu = COLL_PREF / (g_l * np.sqrt(T)) * ups * np.exp(-de_erg / (K_B_ERG * T))
         total += f[ll] * q_lu * de_erg

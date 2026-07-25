@@ -1,0 +1,1587 @@
+%% Discovery, diagnosis and repair of two physics defects in the MoCHII
+%% Tier-1 collisional line-cooling fits, and a cooling-inventory comparison
+%% against the other Monte Carlo photoionization codes.
+%% Author: Kwang-Il Seon
+%% Written for my_memo.cls.  Internal technical memo, not a paper.
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\hypersetup{hidelinks}
+
+% my_memo.cls builds the trailing period of a section number into
+% \thesection, so "Section~\ref{...}." would come out as "Section 3..".
+% Move that period into the heading format instead, leaving \ref clean.
+\makeatletter
+\renewcommand{\thesection}{\@arabic\c@section}
+\renewcommand{\thesubsection}{\thesection.\@arabic\c@subsection}
+\renewcommand{\@seccntformat}[1]{\csname the#1\endcsname
+  \@ifundefined{seccntdot@#1}{}{.}\quad}
+\@namedef{seccntdot@section}{}
+\makeatother
+
+% float packing: these tables are small, let several share a page
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.72}
+\setcounter{topnumber}{3}
+\setcounter{totalnumber}{4}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\MoCHII}{\textsc{MoCHII}}
+\newcommand{\Cloudy}{\textsc{Cloudy}}
+\newcommand{\Mocassin}{\textsc{Mocassin}}
+\newcommand{\CMI}{\textsc{CMacIonize}}
+\newcommand{\Torus}{\textsc{Torus}}
+\newcommand{\HII}{H\,\textsc{ii}}
+\newcommand{\HI}{H\,\textsc{i}}
+\newcommand{\HeI}{He\,\textsc{i}}
+\newcommand{\HeII}{He\,\textsc{ii}}
+\newcommand{\HeIII}{He\,\textsc{iii}}
+\newcommand{\OI}{O\,\textsc{i}}
+\newcommand{\OII}{O\,\textsc{ii}}
+\newcommand{\OIII}{O\,\textsc{iii}}
+\newcommand{\NI}{N\,\textsc{i}}
+\newcommand{\NII}{N\,\textsc{ii}}
+\newcommand{\NIII}{N\,\textsc{iii}}
+\newcommand{\CI}{C\,\textsc{i}}
+\newcommand{\CII}{C\,\textsc{ii}}
+\newcommand{\CIII}{C\,\textsc{iii}}
+\newcommand{\CIV}{C\,\textsc{iv}}
+\newcommand{\SII}{S\,\textsc{ii}}
+\newcommand{\SIII}{S\,\textsc{iii}}
+\newcommand{\SIV}{S\,\textsc{iv}}
+\newcommand{\NeII}{Ne\,\textsc{ii}}
+\newcommand{\NeIII}{Ne\,\textsc{iii}}
+\newcommand{\Te}{T_{\rm e}}
+\newcommand{\nel}{n_{\rm e}}
+\newcommand{\OIV}{O\,\textsc{iv}}
+\newcommand{\nH}{n_{\rm H}}
+\newcommand{\ncrit}{n_{\rm crit}}
+
+\begin{document}
+
+\title{Two Physics Defects in the \MoCHII{} Line-Cooling Fits:\\
+Discovery by a Fixed-State Cooling Budget, Repair,\\
+and a Comparison with the Other Monte Carlo Codes}
+\author{Kwang-Il Seon}
+\date{\docmoddate}
+\maketitle
+
+\begin{abstract}
+\MoCHII{} reproduced the ionization structure of the Lexington/Meudon
+\HII{}-region benchmarks well but ran hotter than every published code:
+$\langle T[N_{\rm p}N_{\rm e}]\rangle = 9159$~K at HII40 against a published
+range of 7720--8199~K, and 7370~K at HII20 against 6402--6749~K.  Candidate
+causes were excluded one at a time by direct experiment, which left the
+cooling function itself.  A \emph{fixed-state} comparison --- evaluating
+\MoCHII{}'s cooling expressions on \Cloudy{} c25.00's own converged zone
+state, so that no feedback can hide a difference --- localized the problem
+immediately: on an identical state the Tier-1 fits that drive the thermal
+balance delivered $0.72$ of \Cloudy{}'s total cooling while the Tier-2
+$n$-level solve that produces the line output delivered $0.98$.  The gap was
+two defects in the offline fitting pipeline, both in \code{chianti\_cooling.py}
+and its caller.  D1: the lower-level populations were distributed among the
+ground-term fine-structure levels by Boltzmann factors, which at
+$kT \gg \Delta E_{\rm fs}$ is the statistical-weight (high-density) limit and
+suppressed the far-infrared fine-structure cooling ($\OIII{}$ $\times 1.64$,
+$\NIII{}$ $\times 2.9$, $\CII{}$ $\times 2.5$ too small); volume-integrated
+impact $23.9\%$ of the total cooling.  D2: the excitation energy was taken
+from the \code{.scups} Burgess--Tully \emph{scaling} energy rather than the
+observed \code{.elvlc} level difference, and entered both the Boltzmann factor
+and the radiated photon ($\OII{}$: 30661 versus 26811~cm$^{-1}$, a factor
+$0.583$ at 8000~K); impact $10.6\%$.  Missing channels were not the story
+($\SIV{}$, the largest, is $1.2\%$).  Rebuilding all 28 fits from the
+$\nel \to 0$ limit of statistical equilibrium with observed transition energies
+moved HII40 to \textbf{7894~K, inside the published range}, and HII20 to
+6376~K, $0.4\%$ below the published floor; $L({\rm H}\beta)$, $R_{\rm out}$
+and the line ratios all moved into or next to the published spread at the same
+time.  The remaining known limitation is that $\Lambda(T)$ carries no density
+suppression.  A comparison of the cooling inventories of the other Monte Carlo
+photoionization codes is included; it turned up defects on their side as well,
+and one omission common to all five codes.
+\end{abstract}
+
+%==========================================================================
+\section{Context: what was left after everything else was excluded}
+\label{sec:context}
+
+The Lexington/Meudon \HII{}-region benchmarks HII40 (40~kK blackbody) and
+HII20 (20~kK blackbody) are the standard multi-code comparison for
+photoionization codes; the published columns used here are those of Wood
+et al.\ (2004, their Table~1), which agree entry by entry with the compilation
+of Ercolano et al.\ (2003, their Tables~4 and 5).  \MoCHII{} matched the published
+ionization structure but sat above every participating code in temperature:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+ & \MoCHII{} (before) & published range & \Cloudy{} c25.00 \\
+\midrule
+HII40 $\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & 7720--8199 & 8210 \\
+HII20 $\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & 6402--6749 & 6910 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+that is $+14.1\%$ over the HII40 published median (8026~K) and $+11.6\%$ over
+a current \Cloudy{} run of the same deck.  The following candidate causes were
+each excluded by a direct experiment rather than by argument:
+
+\begin{itemize}\itemsep2pt
+\item \textbf{Charge exchange.}  A stage-mapping error was found and corrected
+      (transition $i$ must use \code{chex}$(Z,i)$, not $(Z,i+1)$); the
+      corrected rates changed HII40 $\Te$ by $-0.7\%$, not by $9\%$.
+\item \textbf{Convergence of the reference.}  The stored \Mocassin{} baseline
+      was underconverged; a full-quality re-run moved \emph{it} by $-230$~K
+      and left the disagreement in place.
+\item \textbf{Spatial resolution.}  A $25^3$ \Mocassin{} grid gives 8195~K
+      against 8176~K on $13^3$.
+\item \textbf{Recombination-coefficient vintage.}  Replacing the Badnell~2023
+      metal RR+DR by \Mocassin{}'s Pequignot~1991 / Nussbaumer--Storey~1983
+      set inside \MoCHII{} moved $\Te$ by $+0.2\%$ --- and in the wrong
+      direction.
+\item \textbf{\OIII{} collision strengths.}  The dominant coolant's
+      $^3P \to {}^1D$ collision strength agrees between CHIANTI~v7 (the
+      \Mocassin{} vintage) and v11 to $0.9\%$ (2.283 versus 2.262 at
+      $10^4$~K), worth $<30$~K.
+\item \textbf{Ionizing-band discretization.}  Aligning the band edges on the
+      ionization thresholds fixed a real He and metal over-ionization but left
+      $\Te$ unchanged.
+\item \textbf{Transport treatment.}  Switching from case-B on-the-spot to the
+      explicit Monte Carlo diffuse field \emph{raises} $\Te$ by $+2.6\%$
+      (HII40) and $+1.6\%$ (HII20), so it cannot be the cause of an excess.
+\item \textbf{Trace-species coupling.}  Adding the metal electrons to $\nel$
+      and the metal photoheating to the balance moved HII40 from 9159 to
+      9178~K, $+0.2\%$.
+\item \textbf{Photoheating.}  The mean excess energy per photoionization is
+      $\langle h\nu - 13.6\,{\rm eV}\rangle_{\rm H} = 3.9$~eV and
+      $\langle h\nu - 24.6\,{\rm eV}\rangle_{\rm He} = 4.1$~eV, ordinary
+      values for a mildly hardened 40~kK field, and the volumetric heating
+      equals $\nel n_{\rm p}\alpha\langle h\nu - h\nu_{\rm th}\rangle$ with a
+      standard $\alpha$.
+\end{itemize}
+
+A second apparent discrepancy turned out to be a consequence of the first
+rather than an independent one.  $L({\rm H}\beta)$ was $12\%$ low at HII40.
+Photon counting only holds for a radiation-bounded model: the temperature
+excess lowers $\alpha_{\rm B}$ by $\times 0.897$, grows the Str\"omgren volume
+by $\times 1.115$, and drives the ionization front past the prescribed outer
+radius, so part of the ionizing luminosity leaves the model.  The predicted
+leaked fraction, $10.3\%$, matched the measured one (recombinations
+$3.788\times10^{49}$ against $Q_{\rm H} = 4.265\times10^{49}$~s$^{-1}$, an
+$11.2\%$ escape), and HII20, which stays bounded, showed no such deficit.
+So one open item remained, on the cooling side.
+
+%==========================================================================
+\section{The fixed-state cooling-budget method}
+\label{sec:method}
+
+Comparing two converged models confounds three things: the thermal balance,
+the ionization structure, and the radiation field.  Each feeds back on the
+others, and a cooling deficit hides itself by raising the temperature until
+the books balance again.  The diagnosis therefore used a \emph{fixed-state}
+comparison, in which no feedback is possible:
+
+\begin{enumerate}\itemsep2pt
+\item run \Cloudy{} c25.00 on the HII40 benchmark and save its zone-by-zone
+      cooling inventory, heating inventory, overview state and ionization
+      structure;
+\item read the state $(\Te, \nel, \nH, x_{\rm ion})$ of every zone;
+\item evaluate \MoCHII{}'s own cooling expressions on that state, channel by
+      channel, and volume-integrate both sides on $4\pi r^2\,dr$.
+\end{enumerate}
+
+Any difference is then attributable to the atomic data and the cooling
+formulas alone.  The \Cloudy{} run is the physics block of the distributed
+test-suite deck \code{tsuite/auto/hii\_paris.in}, unmodified, with only output
+commands appended (\code{tests/cloudy\_c25/hii40\_cool.in}); grains and cosmic
+rays are absent from that deck, as its own log states.
+
+Two evaluations of the \MoCHII{} side are carried through, because \MoCHII{}
+computes metal line cooling twice, by two independent routes:
+\begin{description}\itemsep2pt
+\item[Tier-1] the fitted curves $\Lambda(T) = T^{-1/2}\sum_i A_i
+      \exp(-T_i/T)$ read from \code{data/atomic/cooling\_<ion>.txt}.  These
+      drive the thermal balance and are the object of this memo.
+\item[Tier-2] the $n$-level statistical-equilibrium solve on the
+      \code{nlevel\_<ion>.txt} models, used at output time for line
+      luminosities.
+\end{description}
+Both are built from the same CHIANTI v11.0.2 files by the same offline
+pipeline, so a disagreement between them on an identical state is internal
+evidence, independent of \Cloudy{}.
+
+\paragraph{Consistency checks performed before the comparison was believed.}
+\begin{itemize}\itemsep2pt
+\item Parsed ion fractions reproduce the \Cloudy{} file values exactly
+      (\OIII{} 0.4570305, \SIV{} 0.0982921 in zone~1).
+\item The sum of the ion cooling channels of an element reproduces that
+      element's \code{.cooleach} column to $0.9886$--$0.9999$; the residual is
+      the free-bound share that \code{.cooleach} also carries.
+\item Free-free: the \code{.cool} ``FF'' entry equals the \code{.cooleach}
+      ${\rm FF_H} + {\rm FF_M}$ sum to $1.0000$.
+\item The \code{.ovr} \OIII{} column agrees with the \code{.ele\_o} $\rm O^{+2}$
+      column to $4.4\times10^{-3}$.
+\item \Cloudy{}'s own heating and cooling totals balance to $0.99987$, and its
+      heating is $4.574$~eV per ionizing photon, split $90.8\%$ \HI{},
+      $8.5\%$ \HeI{} --- the same physical picture as \MoCHII{}'s.
+\item The Python Tier-2 solver used here reproduces \MoCHII{}'s own Fortran
+      line luminosities on the same state to $0.1\%$ for all ten benchmark
+      ions, so it is a faithful stand-in for the compiled code.
+\end{itemize}
+
+\paragraph{Result.}  Table~\ref{tab:budget} is the comparison.  The reading is
+unambiguous: with the same state, the same database and the same code base,
+the Tier-2 route reproduces \Cloudy{}'s total cooling to $2\%$ while the
+Tier-1 fits that actually set the temperature deliver $72\%$ of it.  The
+defect is therefore in the construction of the Tier-1 fits, not in the atomic
+database, not in the missing channels, and not in the ionization structure.
+
+\begin{table}[htbp]
+\centering
+\caption{HII40 volume-integrated cooling on the \Cloudy{} c25.00 state.
+``Tier-1'' is \MoCHII{}'s fitted cooling as the thermal balance used it before
+the fix; ``Tier-2'' replaces the metal line cooling by \MoCHII{}'s $n$-level
+solve on the same state.  Both are ratios to the \Cloudy{} column.  The
+free-bound rows are quoted case~A, which is why they exceed unity; \Cloudy{}
+reports free-bound cooling net of escaping photons, so the matched bookkeeping
+is the case-B line at the foot of the table.  Both \MoCHII{} columns are as
+they stood at the time of the diagnosis, when \SIV{} had neither a cooling fit
+nor an $n$-level model; it has both now (Section~\ref{sec:fix}).}
+\label{tab:budget}
+\begin{tabular}{lr@{\hspace{1.5em}}rcc}
+\toprule
+Channel & \Cloudy{} [erg\,s$^{-1}$] & \% of $L_{\rm cool}$ & Tier-1 & Tier-2 \\
+\midrule
+$[\OIII{}]$ lines            & $1.0020\times10^{38}$ & 32.06 & 0.587 & 1.024 \\
+$[\OII{}]$ lines             & $4.8892\times10^{37}$ & 15.65 & 0.633 & 0.980 \\
+$[\SIII{}]$ lines            & $4.7559\times10^{37}$ & 15.22 & 0.703 & 1.000 \\
+H recombination (fb)         & $3.6809\times10^{37}$ & 11.78 & 1.635 & 1.635 \\
+free-free (net)              & $2.3947\times10^{37}$ &  7.66 & 0.998 & 0.998 \\
+$[\NII{}]$ lines             & $1.4818\times10^{37}$ &  4.74 & 0.922 & 0.990 \\
+$[\SII{}]$ lines             & $6.7404\times10^{36}$ &  2.16 & 1.008 & 0.998 \\
+$[\NeIII{}]$ lines           & $6.0443\times10^{36}$ &  1.93 & 0.933 & 1.299 \\
+$[\NIII{}]$ lines            & $5.9069\times10^{36}$ &  1.89 & 0.433 & 1.019 \\
+$[\CII{}]$ lines             & $5.5241\times10^{36}$ &  1.77 & 1.383 & 0.940 \\
+$[\NeII{}]$ lines            & $4.1043\times10^{36}$ &  1.31 & 0.694 & 0.997 \\
+$[\SIV{}]$ lines             & $3.8916\times10^{36}$ &  1.25 & 0.000 & 0.000 \\
+\HeI{} recombination (fb)    & $3.4075\times10^{36}$ &  1.09 & 1.720 & 1.720 \\
+\HI{} collisional lines      & $2.2490\times10^{36}$ &  0.72 & 0.989 & 0.989 \\
+\CIII{}] lines               & $1.2741\times10^{36}$ &  0.41 & 0.822 & 0.990 \\
+$[\OI{}]$ lines              & $3.1112\times10^{35}$ &  0.10 & 0.841 & 0.837 \\
+\HeI{} collisional lines     & $1.9430\times10^{35}$ &  0.06 & 0.000 & 0.000 \\
+metal recombination (fb)     & $1.6610\times10^{35}$ &  0.05 & 0.000 & 0.000 \\
+\midrule
+\textbf{Total (mapped)}      & $3.1244\times10^{38}$ & 99.98 & \textbf{0.819} & \textbf{1.077} \\
+\textbf{Total, case-B recombination} & & & \textbf{0.723} & \textbf{0.981} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two further readings of Table~\ref{tab:budget} are worth recording.  First,
+the ions whose Tier-1 ratio is farthest below unity ($\NIII{}$ 0.433,
+$\OIII{}$ 0.587, $\OII{}$ 0.633, $\NeII{}$ 0.694, $\SIII{}$ 0.703) are exactly
+the ions whose Tier-2 ratio is near unity, so the two tiers disagree with each
+other and only one of them can be right.  Second, the missing channels are
+small: $[\SIV{}]$ 10.5~$\mu$m, the largest one absent from \MoCHII{}
+altogether, is $1.245\%$ of the budget, $[\OIV{}]$ is $0.007\%$, and every
+other omission is below $0.2\%$.  Adding channels could not have closed a
+$28\%$ gap.
+
+%==========================================================================
+\section{The two defects}
+\label{sec:defects}
+
+\subsection{D1: ground-term populations were a high-density model}
+
+The fitting library built the cooling as
+$\Lambda = \sum_{l,u} f_l\,q_{lu}(T)\,\Delta E_{lu}$ and set the lower-level
+fractions $f_l$ by Boltzmann factors among the levels of the ground term:
+\code{cooling\_effective} of
+\code{tools/fitting/chianti\_cooling.py} called with the population model
+\code{pop='ground\_term'}, from \code{tools/fitting/fit\_cooling.py}
+(the call site is line~246 of that file, now reading
+\code{cooling\_low\_density\_limit}).
+
+For a ground term whose fine-structure splittings are far below $kT$ this is
+wrong in a specific way.  At $T = 8000$~K, $kT = 5560$~cm$^{-1}$, while the
+$\OIII{}$ $^3P$ levels lie at 0, 113 and 306~cm$^{-1}$: every Boltzmann factor
+is within a few percent of unity, so the population collapses onto the
+statistical weights, $g = 1, 3, 5$, and the lowest level receives $0.115$.
+That is the LTE limit within the ground term, which is reached only for
+$\nel \gg \ncrit$ of the fine structure.  The true population at the nebular
+$\nel = 110$~cm$^{-3}$, where $\nel \ll \ncrit$, is the opposite limit: the
+metastable fine-structure levels are drained radiatively faster than they are
+collisionally populated, and the lowest level holds $\sim 0.75$.
+Table~\ref{tab:pops} lists both for the benchmark ions.
+
+The mechanism by which this loses cooling is the far-infrared fine-structure
+lines.  The optical lines of $\OIII{}$ are excited out of all three $^3P$
+levels, so their total is nearly insensitive to how the $^3P$ population is
+distributed (the fractions sum to one either way).  The $[\OIII{}]$ 52 and
+88~$\mu$m lines, however, are excitations \emph{within} the term, out of the
+lowest levels into the higher ones; emptying the lowest level empties them.
+At the benchmark state the $n$-level solve puts $46.7\%$ of the $\OIII{}$
+cooling in 52 + 88~$\mu$m and $53.3\%$ in the optical lines --- and the
+defective Tier-1 fit returned $0.594$ of the Tier-2 value, that is, almost
+exactly the optical share alone.
+
+Volume-integrated over the HII40 model, D1 accounts for $23.9\%$ of the total
+cooling.
+
+\begin{table}[htbp]
+\centering
+\caption{D1: the ground-term population model.  ``Boltzmann'' is the fraction
+in the lowest level under the population model that was used; ``true'' is the
+fraction from the $n$-level statistical equilibrium at $\nel = 110$~cm$^{-3}$.
+The last column is the old Tier-1 fit divided by the Tier-2 solve at the same
+state; it exceeds unity for $\CII{}$ because the $[\CII{}]$ 158~$\mu$m line is
+already collisionally saturated at this density (Section~\ref{sec:limit}).
+$T = 8000$~K.}
+\label{tab:pops}
+\begin{tabular}{llccc}
+\toprule
+Ion & ground-term levels $(g, E\,[{\rm cm^{-1}}])$ & Boltzmann $f_1$ & true $f_1$ & Tier-1/Tier-2 \\
+\midrule
+$\OIII{}$  & (1, 0) (3, 113) (5, 306)      & 0.115 & 0.752 & 0.594 \\
+$\SIII{}$  & (1, 0) (3, 298) (5, 833)      & 0.123 & 0.907 & 0.700 \\
+$\NII{}$   & (1, 0) (3, 49) (5, 131)       & 0.113 & 0.280 & 0.905 \\
+$\NIII{}$  & (2, 0) (4, 174)               & 0.340 & 0.885 & 0.425 \\
+$\CII{}$   & (2, 0) (4, 63)                & 0.336 & 0.414 & 1.933 \\
+$\NeII{}$  & (4, 0) (2, 780)               & 0.697 & 1.000 & 0.698 \\
+$\NeIII{}$ & (5, 0) (3, 643) (1, 920)      & 0.587 & 0.999 & 0.731 \\
+$\OII{}$   & (4, 0) (4, 26831) (6, 26811)  & 0.980 & 1.000 & 0.596 \\
+$\SII{}$   & (4, 0) (4, 14853) (6, 14885)  & 0.853 & 0.996 & 1.017 \\
+$\OI{}$    & (5, 0) (3, 158) (1, 227)      & 0.563 & 0.999 & 1.002 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{D2: the Burgess--Tully scaling energy was used as a physical
+energy}
+
+The excitation energy of every transition was taken from the \code{.scups}
+header field, \code{de\_erg = tr["de"] * RY\_ERG}.  That field is the
+Burgess \& Tully \emph{scaling} energy: a theoretical value whose only role is
+to build the scaled temperature on which the collision strength is tabulated.
+It is not the physical transition energy, and it entered the calculation
+twice --- in the Boltzmann factor $\exp(-\Delta E/kT)$ of the excitation rate
+and as the energy of the radiated photon.
+
+The physical requirement is that both be the observed \code{.elvlc} level
+difference.  Detailed balance ties the collisional excitation rate to the same
+level gap that appears in the statistical-equilibrium matrix; if the cooling
+sum and the $n$-level solve use different gaps for the same transition, they
+are describing different atoms.  For $[\OII{}]$ 3726/3729 the \code{.scups}
+value is 30661~cm$^{-1}$ against an observed 26811~cm$^{-1}$: the ratio of
+Boltzmann factors alone is $\exp(-3850\,{\rm cm^{-1}}\,hc/kT) = 0.50$ at
+8000~K, and with the smaller radiated energy the net factor is $0.583$.
+
+Volume-integrated over HII40, D2 accounts for $10.6\%$ of the total cooling.
+
+\begin{table}[htbp]
+\centering
+\caption{Isolating the two defects.  $\Lambda$ at $T = 8000$~K
+[erg\,cm$^3$\,s$^{-1}$] per $\nel n_{\rm ion}$, with each defect repaired
+separately and then together.  ``both'' must reproduce the $\nel \to 0$ limit
+of the $n$-level solve, and does.  The last column is the $n$-level solve at
+the nebular $\nel = 110$~cm$^{-3}$, which additionally carries the density
+suppression the fits do not (Section~\ref{sec:limit}).}
+\label{tab:isolate}
+\begin{tabular}{lcccc@{\hspace{2em}}cc}
+\toprule
+ & \multicolumn{4}{c}{$\Lambda(8000\,{\rm K})$} & \multicolumn{2}{c}{$n$-level solve} \\
+\cmidrule(r){2-5}\cmidrule(l){6-7}
+Ion & as fitted & D2 fixed & D1 fixed & both & $\nel \to 0$ & $\nel = 110$ \\
+\midrule
+$\OIII{}$  & 2.691e$-$21 & 3.328e$-$21 & 4.401e$-$21 & 4.980e$-$21 & 4.970e$-$21 & 4.564e$-$21 \\
+$\OII{}$   & 8.465e$-$22 & 1.452e$-$21 & 8.465e$-$22 & 1.452e$-$21 & 1.452e$-$21 & 1.421e$-$21 \\
+$\SIII{}$  & 3.179e$-$20 & 3.179e$-$20 & 4.691e$-$20 & 4.690e$-$20 & 4.691e$-$20 & 4.543e$-$20 \\
+$\NII{}$   & 4.988e$-$21 & 5.655e$-$21 & 5.470e$-$21 & 6.155e$-$21 & 6.108e$-$21 & 5.512e$-$21 \\
+$\NIII{}$  & 7.412e$-$22 & 7.251e$-$22 & 2.140e$-$21 & 2.109e$-$21 & 2.105e$-$21 & 1.742e$-$21 \\
+$\NeII{}$  & 7.019e$-$22 & 7.022e$-$22 & 1.007e$-$21 & 1.007e$-$21 & 1.007e$-$21 & 1.007e$-$21 \\
+$\NeIII{}$ & 2.143e$-$21 & 2.143e$-$21 & 2.932e$-$21 & 2.933e$-$21 & 2.932e$-$21 & 2.929e$-$21 \\
+$\CII{}$   & 5.892e$-$22 & 5.891e$-$22 & 1.450e$-$21 & 1.450e$-$21 & 1.366e$-$21 & 3.048e$-$22 \\
+$\SII{}$   & 3.458e$-$20 & 3.470e$-$20 & 3.458e$-$20 & 3.470e$-$20 & 3.468e$-$20 & 3.396e$-$20 \\
+$\OI{}$    & 4.702e$-$22 & 4.702e$-$22 & 4.693e$-$22 & 4.693e$-$22 & 4.691e$-$22 & 4.691e$-$22 \\
+$\CIII{}$  & 4.724e$-$23 & 5.887e$-$23 & 4.724e$-$23 & 5.887e$-$23 & 5.845e$-$23 & 5.844e$-$23 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Temperature closure}
+
+The two defects together are worth $34.1\%$ of the HII40 cooling.  The net
+shortfall of the fits against the $n$-level solve is smaller, $25.8\%$,
+because the low-density limit gives back $-8.3\%$ through the density
+suppression it does not carry.
+
+Whether that deficit explains the temperature excess can be checked without
+running the code, because at fixed state the cooling is a smooth power of $T$.
+The logarithmic slope of the total \MoCHII{} cooling at the \Cloudy{} state is
+$d\ln\Lambda/d\ln T = 1.748$.  Scaling $\Te$ by a factor $f$ until \MoCHII{}'s
+cooling equals \Cloudy{}'s --- \Cloudy{} balances its own heating at $f = 1$,
+and the two codes' photoheating agrees --- gives
+\[
+  f = 1.111 \;\longrightarrow\; \Te = 9118~{\rm K},
+\]
+against the 9159~K \MoCHII{} actually converged to and the 8210~K of
+\Cloudy{}.  Repeating with case-B recombination bookkeeping gives 9544~K, so
+the estimate brackets the observed value.  In other words the cooling defect
+accounts for essentially the entire $+11.6\%$ excess.
+
+A second, independent estimate uses \MoCHII{}'s own converged state: there,
+the Tier-2 cooling is $1.270\times$ the Tier-1 cooling at the same
+temperature, and equals it at $f = 0.856$, that is $\langle \Te\rangle =
+7836$~K in place of 9159~K.  The two estimates agree that repairing the fits
+moves the benchmark from above the published range to inside it.
+
+%==========================================================================
+\section{The fix}
+\label{sec:fix}
+
+\subsection{The right population model}
+
+\code{cooling\_low\_density\_limit()}
+(\code{tools/fitting/chianti\_cooling.py}, line~232) replaces the ground-term
+Boltzmann model with the $\nel \to 0$ limit of the $n$-level statistical
+equilibrium,
+\[
+  \Lambda(T) \;=\; \sum_u q_{1u}(T)\,\Delta E_{1u},
+\]
+the sum running over every \code{.scups} transition out of the lowest level.
+The physical argument is the one the defect got backwards: at
+$\nel \ll \ncrit$ every ion sits in its lowest level, so collisional excitation
+happens out of that level only, and each excitation is followed by a radiative
+cascade that ultimately radiates the full $\Delta E_{1u}$ whatever route it
+takes down.  The total cooling is therefore the excitation power out of the
+ground level, which is exactly what the $n$-level solve returns as
+$\nel \to 0$.  That identity is the strongest verification available and is
+checked directly (Section~\ref{sec:fitver}).
+
+\subsection{The right energies}
+
+A new function, \code{transition\_energy\_erg()} at line~213 of the same file,
+returns the observed \code{.elvlc} level difference.
+\code{cooling\_effective} now calls it at line~333, in place of the old
+\code{de\_erg = tr["de"] * RY\_ERG}.  Transitions whose observed
+energies do not order the two levels return zero and are skipped rather than
+silently contributing a negative energy.  The \code{.scups} \code{de} field is
+retained for its only legitimate use, building the scaled temperature.
+
+\subsection{A fit ladder derived from the atomic structure}
+
+The repair also removed a piece of hand tuning that had been hiding the
+defect.  In the low-density limit the cooling is
+\[
+  \Lambda(T) \;=\; T^{-1/2}\sum_u
+      \Big[\tfrac{C}{g_1}\,\Upsilon_{1u}(T)\,\Delta E_{1u}\Big]\,
+      e^{-T_u/T}, \qquad T_u = \Delta E_{1u}/k,
+\]
+which \emph{is} the fitted form $\Lambda = T^{-1/2}\sum_i A_i e^{-T_i/T}$
+apart from the slow temperature dependence of $\Upsilon$.  The fitted $T_i$
+are therefore excitation temperatures, not free parameters, and
+\code{ground\_excitation\_ladder()} (\code{fit\_cooling.py}, line~115) now
+builds the starting ladder by clustering the transitions in $\log T_u$ with
+the share of the cooling each carries as the weight.  The hand-tuned guess
+lists that the previous version carried for each ion are gone, which is why
+the same script can now be pointed at a new ion without tuning.
+
+\subsection{Verification of the rebuilt fits}
+\label{sec:fitver}
+
+Three independent checks were run on all 28 rebuilt files
+(Table~\ref{tab:newfits}):
+
+\begin{enumerate}\itemsep2pt
+\item \textbf{Fit against its own target.}  The fitted curve against the
+      directly evaluated $\nel \to 0$ statistical-equilibrium cooling over
+      $10^3$--$10^5$~K.  The H/C/N/O/Ne/S set is within $0.7\%$ over the whole
+      range except $\CIII{}$ ($5.5\%$ at the cold end, $0.93\%$ at $10^4$~K)
+      and $\SII{}$ ($2.2\%$); the depleted Si, Cl and Ca ions reach $4$--$28\%$
+      at the ends of the range, which is accepted because at abundances
+      $\sim 3\times10^{-7}$ their share of the thermal balance is $\sim
+      10^{-4}$ and their diagnostics run through the exact Tier-2 solve.
+\item \textbf{Fit against a different code path.}  The fitted curve against
+      the Tier-2 $n$-level solve at $\nel = 1$~cm$^{-3}$ --- a different data
+      file and a different solver.  Agreement is $0.1$--$0.2\%$ for the
+      benchmark ions.  The outliers are informative rather than alarming:
+      Fe~\textsc{ii} $0.873$, Fe~\textsc{iii} $0.842$ and Ca~\textsc{v}
+      $1.045$ differ because their $n$-level models are level-truncated, while
+      the Tier-1 fit sums the full \code{.scups} list.
+\item \textbf{New against old.}  The ion-by-ion multiplier at 5, 8 and
+      10~kK, which is the quantitative statement of how much cooling the
+      defects were losing.
+\end{enumerate}
+
+\begin{table}[htbp]
+\centering
+\caption{The rebuilt Tier-1 fits.  ``max err'' and ``err at $10^4$~K'' are
+against the directly evaluated $\nel\to0$ statistical-equilibrium cooling over
+$10^3$--$10^5$~K; ``new/old'' is the rebuilt fit divided by the defective one;
+the last column is the independent Tier-2 solve at $\nel = 1$~cm$^{-3}$ divided
+by the new fit.  $\SIV{}$ is new, so it has no old file.  The Ar, Mg, Fe, Si,
+Cl and Ca ions are omitted here; their multipliers run 0.66--2.83 and their
+default abundances are zero.}
+\label{tab:newfits}
+\begin{tabular}{lcc@{\hspace{2em}}ccc@{\hspace{2em}}c}
+\toprule
+ & \multicolumn{2}{c}{fit quality} & \multicolumn{3}{c}{new/old} & Tier-2$(\nel{=}1)$ \\
+\cmidrule(r){2-3}\cmidrule(r){4-6}\cmidrule(l){7-7}
+Ion & max & at $10^4$~K & 5~kK & 8~kK & 10~kK & / new \\
+\midrule
+\HI{}      & 0.52\% & 0.20\% & 1.012 & 1.008 & 1.006 & 1.000 \\
+C\,\textsc{i}   & 0.27\% & 0.02\% & 1.189 & 1.049 & 1.017 & --- \\
+$\CII{}$   & 0.35\% & 0.12\% & 2.956 & 2.460 & 1.742 & 0.943 \\
+$\CIII{}$  & 5.48\% & 0.93\% & 1.442 & 1.246 & 1.191 & 0.971 \\
+$\NI{}$    & 0.58\% & 0.14\% & 1.161 & 1.092 & 1.069 & --- \\
+$\NII{}$   & 0.66\% & 0.31\% & 1.557 & 1.233 & 1.163 & 0.993 \\
+$\NIII{}$  & 0.70\% & 0.23\% & 2.877 & 2.845 & 2.564 & 0.998 \\
+$\OI{}$    & 0.20\% & 0.08\% & 1.035 & 0.998 & 0.997 & 1.000 \\
+$\OII{}$   & 0.27\% & 0.07\% & 2.616 & 1.716 & 1.492 & 1.000 \\
+$\OIII{}$  & 0.32\% & 0.07\% & 2.731 & 1.836 & 1.501 & 0.999 \\
+$\NeII{}$  & 0.40\% & 0.12\% & 1.397 & 1.432 & 1.446 & 1.001 \\
+$\NeIII{}$ & 0.34\% & 0.11\% & 1.501 & 1.369 & 1.247 & 1.001 \\
+$\SII{}$   & 2.23\% & 0.96\% & 1.005 & 1.003 & 1.003 & 1.001 \\
+$\SIII{}$  & 0.23\% & 0.01\% & 1.944 & 1.474 & 1.349 & 1.001 \\
+$\SIV{}$   & 0.61\% & 0.16\% & \multicolumn{3}{c}{(new ion)}   & 1.002 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{\SIV{} added}
+
+$[\SIV{}]$ 10.51~$\mu$m was the one channel of any size that \MoCHII{} did not
+carry at all.  \SIV{} was already tracked in the ionization cascade, so adding
+it was the intended data operation: \code{cooling\_s\_4.txt} (three
+exponential terms, max fit error $0.61\%$) and \code{nlevel\_s\_4.txt} from
+the same pipeline.  In the rebuilt HII40 model $[\SIV{}]$ 10.51~$\mu$m comes
+out at $0.1868$ of ${\rm H}\beta$ against $0.1894$ from the \Cloudy{} c25.00
+emissivity file, a $1.4\%$ difference.
+
+All 28 coefficient files carry updated provenance headers stating the CHIANTI
+version, the population model, the energy convention, the fit range and the
+maximum fit error, together with the density caveat of
+Section~\ref{sec:limit}.
+
+%==========================================================================
+\section{Benchmarks after the fix}
+\label{sec:bench}
+
+Table~\ref{tab:bench} is the before-and-after on the two benchmark models.
+HII40 moves from $9159$~K, above every published code, to $7894$~K, inside the
+published range.  HII20 moves to $6376$~K, $0.4\%$ below the published floor.
+
+\begin{table}[htbp]
+\centering
+\caption{The Lexington/Meudon benchmarks before and after the cooling fix.
+``published'' is the range over the nine codes of the published compilation; C25 is \Cloudy{} c25.00 run on its own unmodified test-suite deck.
+\MoCHII{} runs use threshold-aligned 32 ionizing bins, the explicit Monte
+Carlo diffuse field with the \HeI{} channels, and case-B recombination-line
+tables.}
+\label{tab:bench}
+\begin{tabular}{lcccc}
+\toprule
+ & before & after & C25 & published \\
+\midrule
+\multicolumn{5}{l}{\textbf{HII40}} \\
+$L({\rm H}\beta)/10^{37}$ erg\,s$^{-1}$ & --- & 1.95 & 2.06 & 2.01--2.10 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & \textbf{7894} & 8210 & 7720--8199 \\
+$T_{\rm inner}$ / K                     & ---  & 7270 & 7812 & 7370--8318 \\
+$R_{\rm out}/10^{19}$ cm                & not predicted & 1.43 & 1.47 & 1.45--1.47 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.667 & 0.715 & 0.741 & 0.715--0.829 \\
+recombinations / $Q_{\rm H}$            & 0.888 & 0.953 & --- & --- \\
+\midrule
+\multicolumn{5}{l}{\textbf{HII20}} \\
+$L({\rm H}\beta)/10^{36}$ erg\,s$^{-1}$ & --- & 4.70 & 4.99 & 4.83--5.04 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & \textbf{6376} & 6910 & 6402--6749 \\
+$T_{\rm inner}$ / K                     & --- & 6752 & 7155 & 6562--7224 \\
+$R_{\rm out}/10^{18}$ cm                & --- & 8.69 & 8.97 & 8.70--9.01 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.047 & 0.047 & 0.043 & 0.034--0.077 \\
+recombinations / $Q_{\rm H}$            & --- & 0.971 & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The photon budget closes at the same time, which is the confirming test of the
+leakage argument of Section~\ref{sec:context}.  With the cooler gas the
+ionization front no longer runs past the prescribed outer radius: the
+recombination rate rises from $0.888$ to $0.953$ of $Q_{\rm H}$ at HII40, the
+mean $x_{\rm H^+}$ in the outermost $2\%$ of the ionized volume falls to
+$0.07$, and $R_{\rm out}$ becomes predictable at both benchmarks
+($1.43\times10^{19}$ and $8.69\times10^{18}$~cm against published $1.45$--$1.47
+\times10^{19}$ and $8.70$--$9.01\times10^{18}$).  $L({\rm H}\beta)$ follows to
+within $3\%$ of the published values.
+
+The line ratios move with the temperature.  Table~\ref{tab:lines} lists the
+principal coolants; the systematic excess is gone, and the residual pattern is
+what one expects from a model sitting at the cool edge of the range: the
+temperature-sensitive optical lines of the doubly ionized species come out low
+($[\SIII{}]$ 9532+9069 is the clearest case), while the infrared
+fine-structure lines, which are nearly temperature-independent, sit inside the
+published spread.
+
+\begin{table}[htbp]
+\centering
+\caption{HII40 line intensities relative to ${\rm H}\beta$ after the fix.
+``published'' is the range over the nine codes of the published compilation.
+$[\OIII{}]$ 5007+4959 was $4.28$ before the fix.}
+\label{tab:lines}
+\begin{tabular}{lccc}
+\toprule
+Line & \MoCHII{} & C25 & published \\
+\midrule
+$[\OIII{}]$ 5007+4959       & 2.06   & 2.46   & 1.64--3.27 \\
+$[\OIII{}]$ 52+88\,$\mu$m   & 2.41   & 2.40   & 2.10--2.42 \\
+$[\OIII{}]$ 4363            & 0.0033 & 0.0046 & 0.0022--0.0070 \\
+$[\OII{}]$ 3726+3729        & 1.90   & 2.32   & 1.60--2.26 \\
+$[\NII{}]$ 6584+6548        & 0.626  & 0.669  & 0.669--0.852 \\
+$[\NIII{}]$ 57.3\,$\mu$m    & 0.280  & 0.286  & 0.223--0.311 \\
+$[\SIII{}]$ 9532+9069       & 0.91   & 1.00   & 1.13--1.44 \\
+$[\SIII{}]$ 18.7\,$\mu$m    & 0.494  & 0.504  & 0.535--0.750 \\
+$[\SII{}]$ 6716+6731        & 0.299  & 0.304  & 0.130--0.315 \\
+$[\NeII{}]$ 12.8\,$\mu$m    & 0.202  & 0.200  & 0.177--0.217 \\
+$[\NeIII{}]$ 15.5\,$\mu$m   & 0.278  & 0.216  & 0.263--0.429 \\
+$\CIII{}]$ 1907+1909        & 0.029  & 0.062  & 0.041--0.091 \\
+$[\SIV{}]$ 10.51\,$\mu$m    & 0.187  & 0.189  & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%==========================================================================
+\section{Remaining limitation: $\Lambda(T)$ carries no density suppression}
+\label{sec:limit}
+
+The repaired fits are the $\nel \to 0$ limit, so they contain no collisional
+de-excitation.  Lines whose critical density lies at or below the nebular
+density are therefore overestimated.  On the same fixed \Cloudy{} state the
+rebuilt Tier-1 line total is $1.116\times$ \Cloudy{}'s while the Tier-2 solve
+at the local $\nel$ gives $1.011\times$; the difference is the density
+suppression, and it is concentrated in exactly the expected places:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Channel & Tier-1 / \Cloudy{} & Tier-2 / \Cloudy{} & excess, points of $L_{\rm line}$ \\
+\midrule
+$[\CII{}]$ 158\,$\mu$m etc. & 2.763 & 0.940 & $+3.93$ \\
+$[\OIII{}]$ (52 + 88\,$\mu$m share) & 1.126 & 1.024 & $+5.12$ \\
+$[\NeIII{}]$ & 1.300 & 1.299 & $+0.73$ \\
+$[\NIII{}]$  & 1.236 & 1.019 & $+0.56$ \\
+$[\NII{}]$   & 1.095 & 0.990 & $+0.57$ \\
+\midrule
+line total & 1.116 & 1.011 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$[\CII{}]$ 158~$\mu$m has $\ncrit \sim 50$~cm$^{-3}$, so at $\nel = 110$ the
+low-density limit overestimates it by $4.5\times$ (Table~\ref{tab:isolate},
+$1.366\times10^{-21}$ against $3.048\times10^{-22}$).  The $[\OIII{}]$
+far-infrared pair is the same effect at a higher $\ncrit$.  $[\NeIII{}]$ is
+\emph{not} a density effect --- Tier-1 and Tier-2 agree with each other and
+both exceed \Cloudy{} by $30\%$ --- so that row is a collision-data difference
+between CHIANTI v11 and \Cloudy{}'s Ne\,\textsc{iii} data, and is noted here
+as a separate open item.
+
+The consequence for the benchmarks is a slight cooling bias at $\nH = 100$,
+and it is visible: both models now sit at the cool edge of the published
+range, and HII20 sits $0.4\%$ below its floor.  The fix is a Tier-1 table in
+$(T, \nel)$ rather than $T$ alone, which is already on the plan for the
+planetary-nebula densities where the effect is much larger.
+
+\paragraph{Consequence for the PDR path (needs re-baselining).}  The
+photodissociation-region test \code{tests/pdr/pdr\_L5.in} shows the expected
+signature.  The PDR shell itself is unchanged --- $\nel = A_{\rm C}\nH$ plus
+$6\%$ from S, Mg and Fe, $\Te = 258$~K, $\CII{} = 1.000$ --- because there
+$\nel \sim 2\times10^{-2}$~cm$^{-3}$ is far below $\ncrit$ and the low-density
+limit is the correct limit.  The \HII{} interior, however, is now about $17\%$
+cooler, because that is where $\CII{}$ dominates the carbon budget at
+$\nel \sim 110$ and the $[\CII{}]$ 158~$\mu$m overestimate bites.  The stored
+PDR gate references and the figures and examples built on them need
+refreshing, and \code{tests/g2a\_thermal/check\_g2a.py} still refers to a
+coefficient file under its former name.
+
+%==========================================================================
+\section{Cooling inventories of the other Monte Carlo codes}
+\label{sec:others}
+
+The temperature of a photoionized nebula is set almost entirely by what is in
+the cooling inventory, and Sections~\ref{sec:method}--\ref{sec:defects} showed
+how a defect there hides itself behind the thermal balance.  The same audit was
+therefore turned on the four Monte Carlo photoionization codes closest to
+\MoCHII{} in method: the code of Wood et al.\ (2004), which is the WME column
+of the benchmark tables; \CMI{}, its open successor, which inherits Wood's ion
+ordering by its own account; \Mocassin{}; and \Torus{}, whose photoionization
+loop borrows from both Wood's code and \Mocassin{}.  This is an internal record, so
+everything found is written down, including defects on their side.  Line
+numbers below were read from the sources in
+\code{\textasciitilde/RT\_Codes/}.
+
+\subsection{Wood et al.\ \code{ionize}}
+
+\paragraph{Ion set.}  Ten five-level ions are read from \code{atom4.dat} in the
+order N\,\textsc{i}, $\NII{}$, $\OI{}$, $\OII{}$, $\OIII{}$, $\NeIII{}$,
+$\SII{}$, $\SIII{}$, $\CII{}$, $\CIII{}$ (\code{setcool.f}:25,
+\code{DO 100 I=1,10}; \code{linecool1.f}:74), plus two two-level ions,
+$\NIII{}$ and $\NeII{}$ (\code{linecool1.f}:160--171, abundances assigned at
+\code{ioneng.f}:168--171).  The code is self-consistent, but two of its own
+comments are not: the header list at \code{linecool1.f}:4--5 puts carbon in
+slots 11--12 rather than 9--10, and the loop comment
+\code{!omit 9,10 = C cooling} on line~74 is stale --- those slots are in the
+loop.  \code{lines.f}:366--367 carries the corrected ordering.
+
+\paragraph{Chlorine and argon data are present but unread.}
+\code{atom4.dat} contains fourteen five-line blocks; blocks 11--14 are
+Cl\,\textsc{ii}, Ar\,\textsc{iii}, Cl\,\textsc{iii} and Ar\,\textsc{iv}
+(\code{atom4.dat}:51, 56, 61, 66).  They are never read, both because the read
+loop stops at ten and because the arrays are dimensioned \code{(10,10)} and
+\code{(10,5)} (\code{setcool.f}:7--8).  Chlorine and argon cooling are
+therefore absent although their data sit in the file.
+
+\paragraph{Defect: \NI{} and \OI{} line cooling.}
+\code{linecool1.f}:42--64 evaluates hardcoded collision-strength fits into
+\code{OM(1,*)} and \code{OM(3,*)} for \NI{} and \OI{}; then
+\code{linecool1.f}:81--83, \emph{inside} the ion loop, overwrites the whole row,
+\begin{center}
+\code{DO MM=1,10 ; OM(J,MM)=CS(J,MM)*T4**CSE(J,MM) ; END DO}
+\end{center}
+so lines 42--64 are dead code.  The replacement values taken from
+\code{atom4.dat} are zero: the \OI{} collision strengths and exponents
+(\code{atom4.dat}:13--14) are all zero, and the \NI{} row
+(\code{atom4.dat}:3) is zero except entries 5 and 10, which in the index order
+of \code{setcool.f}:14 are the $(2,3)$ and $(4,5)$ transitions --- both between
+excited levels.  Every ground-state excitation is zero, the level system
+becomes homogeneous, and both ions cool exactly zero.  Reproducing
+\code{linecool1.f}:85--123 with the file values at $T = 8000$~K,
+$\nel = 100$~cm$^{-3}$ gives $\NI{}$ and $\OI{}$ cooling $= 0$ against
+$4.75\times10^{-19}$~erg\,s$^{-1}$ for $\OIII{}$ on the same inputs.
+
+There is a qualification that makes this worse rather than better.  \code{cs}
+is one array shared by the cooling routine and the diagnostic routine, and
+\code{lines.f}:406--428 writes its own \NI{}/\OI{} fits into \code{CS} rather
+than \code{OM}; because the corresponding \code{CSE} entries are zero, those
+values survive the overwrite at \code{linecool1.f}:81--83.  The diagnostic call
+sits inside the iteration loop (\code{mcionize.f}:575--577) while the thermal
+balance starts only at iteration 5 (\code{itbal.f}:27), so by the time
+\code{linecool} runs, \code{CS(1,*)} and \code{CS(3,*)} hold values left from
+the last cell of the previous iteration's diagnostic pass.  \NI{} and \OI{}
+cooling is thus not identically zero at run time, but frozen at one unrelated
+temperature, with no $T$ rescaling.  Either way it is not the physical term.
+
+\paragraph{Defect: the cooling and diagnostic paths use different atomic data.}
+The two two-level ions carry different collision strengths in the two routines:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+ & cooling (\code{linecool1.f}) & diagnostic (\code{lines.f}) & CHIANTI v11 \\
+\midrule
+$\NIII{}$ 57.3\,$\mu$m $\Upsilon$ & 0.701\,$T_4^{0.136}$ (:31, :164) & 1.45 (:394, :540) & 1.378 \\
+$\NeII{}$ 12.8\,$\mu$m $\Upsilon$ & 0.368 (:32, :169)                & 0.303 (:395, :545) & 0.314 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+at $10^4$~K.  Only the cooling path carries the $T_4^{0.136}$ factor.  This one
+can be adjudicated, because both codes describe the same transition: Wood's
+$\NIII{}$ $A$-value, $4.77\times10^{-5}$~s$^{-1}$, is the CHIANTI v11 value to
+three figures.  Evaluating the CHIANTI v11.0.2 collision strength through
+\MoCHII{}'s own descaling gives $\Upsilon = 1.378$ at $10^4$~K and 1.296 at
+8000~K, so the \emph{diagnostic} value 1.45 is right to $5\%$ and the
+\emph{cooling} value is a factor $2.1$ too small.  $[\NIII{}]$ 57.3~$\mu$m is
+$1.89\%$ of the HII40 cooling budget and lies below its critical density there,
+so the cooling is low by nearly that factor in a channel of that size --- while
+the code's own line output for the same transition uses the larger value.  For
+$\NeII{}$, CHIANTI gives 0.314, again closer to the diagnostic value; the
+cooling value is $17\%$ high.  The hardcoded \NI{} blocks are also assigned to
+different transition indices in the two files (\code{linecool1.f}:44--50 versus
+\code{lines.f}:408--414, with indices 3/4, 6/7 and 8/9 interchanged); which
+ordering is intended cannot be settled from the sources, since neither cites
+the row order of the table it transcribes.
+
+\paragraph{\SIV{} slot never filled.}  The variable \code{csiv10} is declared
+and passed through the argument lists (\code{lines.f}:46, 74, 204, 363, 388)
+and used at \code{lines.f}:250 to fill \code{em(:,:,:,28)}, but no line of the
+code ever assigns it.  There is no \SIV{} cooling anywhere in the code either.
+
+\paragraph{\OIII{} $^1S_0$ level energy.}  \code{atom4.dat}:21 gives the
+$\OIII{}$ levels as $0, 113.4, 306.8, 20271, 43072$~cm$^{-1}$.  The observed
+$^1S_0$ energy is 43185.7~cm$^{-1}$ (CHIANTI \code{o\_3.elvlc}; \CMI{} carries
+43186 at \code{LineCoolingData.cpp}:550), so the file value is low by
+113.7~cm$^{-1}$, which is numerically the $^3P_1$ energy --- a transcription
+slip.  It raises the ground-to-$^1S_0$ Boltzmann factor by $2.1\%$ at 8000~K
+and shifts the nominal $[\OIII{}]$ 4363 wavelength to 4385.8~\AA{}, so the
+line and any temperature diagnosed from it carry that bias.  The cooling itself
+barely notices, because the $^1S_0$ channel is small.
+
+\paragraph{H and He terms.}  The whole budget is
+\code{loss = Lrec + Lff + Lc} (\code{ioneng.f}:191).  \code{RECcool}
+(\code{glfunc.f}:15--29) has exactly two terms, H$^+$ and He$^+$; He$^{++}$ is
+not tracked at all (\code{h0find.f} solves only $h^0$ and ${\rm he}^0$), so
+there is no \HeIII{} recombination cooling and free-free is $Z = 1$ only.
+There is no \HI{} collisional-excitation (Ly$\alpha$) cooling and no
+collisional-ionization cooling.
+
+\subsection{\CMI{}}
+
+\paragraph{Ion set: thirteen ions, \SIV{} included.}  Ten five-level ions in
+Wood's order (\code{LineCoolingData.hpp}:38--61 --- the file says outright that
+``the order is historical: this was the order of the elements in Kenny's
+code'') plus three two-level ions, $\NIII{}$, $\NeII{}$ and $\SIV{}$
+(:68--77).  The \SIV{} data are real, not a placeholder: Martin, Zalubas \&
+Musgrove (1990) energies, a Pradhan (1995) $A$-value of
+$7.73\times10^{-3}$~s$^{-1}$, and fits to Saraph \& Storey (1999)
+(\code{LineCoolingData.cpp}:1341--1376).  So \CMI{} carries the one channel
+Wood omits entirely and \MoCHII{} was missing.
+
+\paragraph{Atomic data provenance.}  The header
+(\code{LineCoolingData.hpp}:126--133) states that many of the sources belong to
+the IRON Project and were located through its online database, with the source
+list at :136--182 (Berrington 1988; Froese Fischer \& Tachiev 2004; Galavis,
+Mendoza \& Zeippen 1997, 1998; Kisielius et al.\ 2009; Lennon \& Burke 1994;
+Tayal 2000, 2008; Tayal \& Zatsarinny 2010; Zatsarinny \& Tayal 2003).  The
+compilation is a mixture, not exclusively IRON Project.
+
+\paragraph{\NI{} and \OI{} are complete.}  Seven-parameter fits for all ten
+transitions of each ion (\code{LineCoolingData.cpp}:112--118 for \NI{}, from
+Tayal 2000; :353--359 for \OI{}, from Zatsarinny \& Tayal 2003 and Berrington
+1988), fed abundances at \code{TemperatureCalculator.cpp}:374--390.  \CMI{}
+does not carry Wood's \NI{}/\OI{} defect, nor the $\OIII{}$ $^1S_0$
+transcription slip.
+
+\paragraph{The He$^+$ difference is in the cooling, not the recombination
+rate.}  The He$^+$ recombination \emph{coefficient} is identical in the two
+codes: the same Verner \& Ferland (1996) HeIa fit with the same constants
+$3.294\times10^{-11}$, $15.54$, $0.309$, $3.676\times10^{7}$, $1.691$
+(\code{VernerRecombinationRates.cpp}:174--183 against Wood
+\code{recomb.f}:17--19), so their ratio is unity at every temperature.  What
+differs by about $11\%$ is the He$^+$ recombination \emph{cooling}
+coefficient: Wood uses $L_{\rm He^+} = 2.6\,\nel n_{\rm He^+} T^{0.32}$
+(\code{glfunc.f}:26) while \CMI{} uses $1.55\,\nel n_{\rm He^+} T^{0.3647}$
+(\code{TemperatureCalculator.cpp}:489) --- which is exactly the expression Wood
+carries commented out on the following line, \code{glfunc.f}:27.  Both are
+attributed to Black (1981), Table~3.  The ratio Wood/\CMI{} is 1.146, 1.123,
+1.111 and 1.077 at 5, 8, 10 and 20~kK.
+
+\paragraph{Budget.}  The code's own comment at
+\code{TemperatureCalculator.cpp}:347--351 lists three terms and no more: line
+cooling, free-free, and H and He recombination.  There is no \HI{}
+collisional-excitation cooling and no collisional-ionization cooling, and
+He$^{++}$ is absent from the code altogether (\code{ElementNames.hpp} defines
+only \code{ION\_H\_n} and \code{ION\_He\_n}), so free-free is $Z = 1$ only and
+there is no \HeIII{} recombination cooling.
+
+\subsection{\Mocassin{}}
+
+\paragraph{Budget and solve.}  \code{coolInt = coolFF + coolRec + coolColl}
+(\code{update\_mod.f90}:1251), with two dust terms added under
+\code{lgDust .and. lgPhotoelectric} (:1253--1256).  \code{thermBalance} is
+called from \code{iterateT} (:392), which re-solves the ionization balance at
+every trial temperature (:365) and then steps on the residual
+\code{heatInt - coolInt} (:397) --- the same arrangement as \MoCHII{}'s
+bisection with the ionization solved inside it.  Collisionally excited line
+photons are not transported: when a diffuse packet is drawn as a line photon it
+escapes (\code{photon\_mod.f90}:925--927), so the line cooling is optically
+thin, as in \MoCHII{}.  Only the resonance lines of a user list are followed,
+and that is for dust absorption downstream of the cooling (\code{nResLines},
+\code{common\_mod.f90}:533).
+
+\paragraph{Ion set: whatever the data directory supplies.}  The heavy-element
+sum runs \code{elem = 3, nElements} with \code{nElements = 30}
+(\code{constants\_mod.f90}:54) and \code{ion = 1, min(elem+1, nstages)},
+\code{nstages} defaulting to 7 and capped at 10
+(\code{set\_input\_mod.f90}:82, :176--186).  An ion enters when its element has
+a nonzero abundance and its file exists: \code{makeElements}
+(\code{hydro\_mod.f90}:478) walks the 259 slots of \code{data/fileNames.dat}
+(:511--518) and sets \code{lgDataAvailable} from the result (:701--731).  116
+of the 259 files are present.  For the benchmark composition (He, C, N, O, Ne,
+S) that is 26 ions at HII40's default \code{nstages} ---
+C\,\textsc{i}--\textsc{iv}, N\,\textsc{i}--\textsc{v},
+O\,\textsc{i}--\textsc{vi}, Ne\,\textsc{ii}--\textsc{vii} and
+S\,\textsc{ii}--\textsc{vi} --- and 25 at the \code{nstages 6} of the HII20
+deck (\code{benchmarks/gas/HII20/input.in}:22).  Adding an ion is a data
+operation here too.  The coverage reaches higher ionization stages than
+\MoCHII{}'s registry, which for these five elements stops at \CIII{}, \NIII{},
+\OIII{}, \NeIII{} and \SIV{}; that is immaterial at 40~kK (\Cloudy{} puts
+$0.007\%$ of the budget in $[\OIV{}]$) but not for the hard-spectrum models on
+\MoCHII{}'s plan.
+
+\paragraph{Level populations are a statistical-equilibrium solve at the local
+$\nel$.}  \code{equilibrium} (\code{emission\_mod.f90}:1913--2122) interpolates
+each $\Upsilon$ by a cubic spline in $\log_{10}T$ (:2015--2032), forms
+$q_{lu} = 8.63\times10^{-6}\,\Upsilon\,e^{-\Delta E/kT}/(g_l\sqrt{T})$ from the
+observed level energies of the file (:2040--2047), builds the rate matrix with
+$\nel q$ in both directions plus the $A$-values (:2063--2089), solves it by LU
+decomposition and normalizes the populations (:2091--2101), and returns
+$A_{ji}\Delta E_{ji}n_j$ for every transition with a nonzero $A$
+(:2104--2116).  Collisional de-excitation is therefore carried, and the
+far-infrared fine-structure lines saturate above their critical density.  This
+is precisely what \MoCHII{}'s thermal balance does not do
+(Section~\ref{sec:limit}): on the fixed \Cloudy{} state \MoCHII{}'s
+$\nel \to 0$ fits deliver $1.116\times$ \Cloudy{}'s line cooling where its own
+$n$-level solve at the local $\nel$ delivers $1.011\times$, a difference that
+is a factor $4.5$ on $[\CII{}]$ 158~$\mu$m alone.  \Mocassin{} has that
+suppression in the thermal balance; \MoCHII{} has it only in the line output.
+
+The recombination-pumping term of the same routine is dormant.  It requires a
+trailing \code{br, z, a\_r(4), a\_d(5)} block in the ion file
+(\code{hydro\_mod.f90}:651--664, consumed at
+\code{emission\_mod.f90}:1992--2004 and :2087); none of the 116 files carries
+one, so \code{br = 0} and the populations are purely collisional --- the same
+assumption as \MoCHII{}'s Tier-2 models.
+
+Cooling and line output come from the same routine and the same files.  The
+driver is duplicated, once inside the thermal balance
+(\code{update\_mod.f90}:1264--1319, called at :1100) and once for the
+emissivities (\code{emission\_mod.f90}:838--904), and the two differ only in
+the unit factor ($1.9865\times10^{-16}$ against $1.9865\times10^{9}$).
+\Mocassin{} therefore cannot carry the kind of cooling/diagnostic data split
+found in Wood's code.
+
+\paragraph{Two truncations.}  \code{nForLevels = 17}
+(\code{constants\_mod.f90}:55) dimensions \code{forbiddenLines}
+(\code{grid\_mod.f90}:89) and the line output uses all 17 levels, but the
+cooling sum runs \code{j,k = 1..10} only (\code{update\_mod.f90}:1105--1106).
+Thirty of the 116 ion models have more than ten levels, so for those the
+cooling and the line list are not built from the same level set.  At nebular
+temperatures this costs nothing: the $\OIII{}$ levels that fall outside the sum
+start at 142382~cm$^{-1}$, a Boltzmann factor of $8\times10^{-12}$ at 8000~K.
+Iron is the second case.  Its 142-level model (\code{nForLevelsLarge}, :56) is
+written to a separate array, \code{forbiddenLinesLarge}
+(\code{update\_mod.f90}:1278--1293), which the \code{coolColl} sum never reads,
+so Fe\,\textsc{ii} line cooling is absent from the thermal balance although its
+lines are output.  Both truncations are latent: every composition shipped with
+the code has Fe = 0, and an iron- or calcium-bearing model would in any case
+stop at \code{emission\_mod.f90}:1974--1978, since Fe\,\textsc{vi} (19 levels)
+and Ca\,\textsc{vii} (27) exceed \code{nForLevels} and are reached at
+\code{nstages} $\geq 6$ and $\geq 7$.
+
+\paragraph{Atomic data: CHIANTI v7, with two pre-CHIANTI files among the main
+coolants.}  Every ion file states its provenance in its own header.
+\code{data/oiii.dat}:2 reads ``Atomic data from version 7 of the CHIANTI
+database'', and so do all the benchmark files except two.
+\code{data/siii.dat}:2--3 gives ``Upsilons from Mendoza (1983, Proc. IAU Symp.
+103, p. 143); Aij's from Mendoza \& Zeippen (MNRAS, 199, 1025, 1982)'' on five
+levels and four temperatures (5000--20000~K), and \code{data/ci.dat}:2--3 gives
+Pequignot \& Aldrovandi (1976), with $A$-values from Nussbaumer \& Rusca
+(1979), on six levels and six temperatures (500--20000~K).  $[\SIII{}]$ is
+$15.2\%$ of the HII40 cooling budget (Table~\ref{tab:budget}), so \Mocassin{}'s
+second-largest metal coolant runs on a 1983 compilation sampled at four
+temperatures.
+
+Table~\ref{tab:mocassinions} puts a number on what the vintage is worth.  For
+each ion the $\nel \to 0$ line cooling was evaluated twice with the same
+formula and the same upper levels, once from the \Mocassin{} file and once from
+CHIANTI v11.0.2 through \MoCHII{}'s own descaling.  The procedure reproduces
+the $\OIII{}$ cross-check quoted in Section~\ref{sec:context}: the total
+$\Upsilon(^3P \to {}^1D)$ is 2.283 from the file against 2.262 from v11, a
+ratio of 1.009.  The reading of the table is that the older data are
+systematically \emph{higher} on three of the four largest metal coolants ---
+$\SIII{}$ $1.223$ (its $\Upsilon(^3P \to {}^1D)$ is 8.39 against 6.96),
+$\NII{}$ $1.199$, $\SII{}$ $1.163$, with $\NIII{}$ $1.154$ and $\OII{}$
+$1.088$ --- while $\OIII{}$, $\NeIII{}$, $\SIV{}$ and $\OI{}$ agree to $3\%$.
+$\CIII{}]$ is $1.457$ on a $0.41\%$ channel.
+
+Two entries fall the other way, and the larger one is worth stating carefully.
+\NI{} is a factor 17 low against v11, and this is a genuine change of
+calculation rather than a transcription slip: \Mocassin{}'s file gives
+$\Upsilon(^4S \to {}^2D_{5/2}) = 0.027$ at $10^4$~K and cites Tayal (2000),
+\CMI{}'s independent fit to the same Tayal (2000) data gives $0.025$
+(\code{LineCoolingData.cpp}:112--118 through the fit form at :1590--1598), and
+CHIANTI v11, which uses Tayal (2006), gives $0.337$.  The two calculations
+converge above $10^5$~K ($0.550$ against $0.563$).  So $\NI{}$ cooling and the
+$[\NI{}]$ 5200 diagnostic differ by an order of magnitude between the 2000 and
+the 2006 calculation, in exactly the partly neutral gas where \NI{} lives.
+$\CI{}$ is $0.640$, the 1976 compilation against v11.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\caption{\Mocassin{}'s ion models for the benchmark coolants: levels and
+tabulated temperatures in \code{data/<ion>.dat}, the source of the effective
+collision strengths as the file's own header gives it, and
+$\Lambda_{\rm M}/\Lambda_{11}$, the ratio of the $\nel \to 0$ line cooling
+computed from that file to the same quantity computed from CHIANTI v11.0.2
+through \MoCHII{}'s descaling, at $T = 8000$~K with the same upper levels on
+both sides.  All files are labeled CHIANTI v7 except \code{ci.dat} and
+\code{siii.dat}, whose headers are quoted in the text.  The temperature grid is
+the CHIANTI-wide $0.2$-dex grid from 100~K to $2.51\times10^{6}$~K where it has
+23 points.}
+\label{tab:mocassinions}
+\begin{tabular}{llcclc}
+\toprule
+Ion & file & levels & $T$ pts & collision strengths & $\Lambda_{\rm M}/\Lambda_{11}$ \\
+\midrule
+$\CI{}$    & \code{ci.dat}    &  6 &  6 & Pequignot \& Aldrovandi (1976)      & 0.640 \\
+$\CII{}$   & \code{cii.dat}   & 10 & 23 & Blum \& Pradhan (1992)              & 0.966 \\
+$\CIII{}$  & \code{ciii.dat}  & 10 & 23 & Berrington et al.\ (1985, 1989)     & 1.457 \\
+$\NI{}$    & \code{ni.dat}    & 13 & 23 & Tayal (2000)                        & 0.058 \\
+$\NII{}$   & \code{nii.dat}   & 15 & 23 & Stafford et al.\ (1994)             & 1.199 \\
+$\NIII{}$  & \code{niii.dat}  & 10 & 23 & Stafford, Bell \& Hibbert (1994)    & 1.154 \\
+$\OI{}$    & \code{oi.dat}    &  7 & 23 & Zatsarinny \& Tayal (2003)          & 1.004 \\
+$\OII{}$   & \code{oii.dat}   & 13 & 23 & Pradhan et al.\ (2006)              & 1.088 \\
+$\OIII{}$  & \code{oiii.dat}  & 15 & 23 & Burke \& Lennon (1994)              & 1.028 \\
+$\NeII{}$  & \code{neii.dat}  &  2 & 23 & Saraph \& Tully (1994)              & 0.905 \\
+$\NeIII{}$ & \code{neiii.dat} &  9 & 23 & McLaughlin \& Bell (2000)           & 0.997 \\
+$\SII{}$   & \code{sii.dat}   &  5 & 23 & Ramsbottom, Bell \& Stafford (1996) & 1.163 \\
+$\SIII{}$  & \code{siii.dat}  &  5 &  4 & Mendoza (1983)                      & 1.223 \\
+$\SIV{}$   & \code{siv.dat}   & 12 & 23 & Tayal (2000)                        & 0.992 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{\HI{}.}  Ly$\alpha$ and Ly$\beta$ collisional excitation from the
+Mathis coefficients (\code{update\_mod.f90}:1072--1089).  The energy radiated
+per excitation is taken as one Rydberg for both lines (\code{hcRyd}, :48)
+rather than the 10.20 and 12.09~eV of the transitions, so the coefficients are
+effective rather than literal --- and the product is right.  Against
+\MoCHII{}'s CHIANTI v11 \HI{} low-density fit
+(\code{data/atomic/cooling\_h\_1.txt}) the expression gives
+$2.211\times10^{-25}$ against $2.276\times10^{-25}$ at 8000~K and
+$4.140\times10^{-24}$ against $4.223\times10^{-24}$ at $10^4$~K, that is
+$0.97$--$0.98$, falling to $0.94$--$0.95$ at 6 and 20~kK; with the literal line
+energies it would be $25\%$ low, because the two-term form has to stand in for
+the whole Lyman series.  The hard cut \code{coolColl = 0} below 5000~K (:1079)
+removes nothing measurable.  There is no separate two-photon or free-bound
+cooling term; free-bound sits inside \code{coolRec}.
+
+\paragraph{He.}  There is no \HeI{} or \HeII{} collisional-excitation cooling:
+the collisionally excited line sum starts at \code{elem = 3} in both drivers
+(\code{update\_mod.f90}:1103, :1272; \code{emission\_mod.f90}:846).  He$^{++}$
+free-free and recombination cooling are present (:1014--1035), the Hummer
+(1994) Table~1 fits with the polynomial doubled and evaluated at
+$\log_{10}(T/4)$, and He$^{+}$ free-free has its own fit (:1047--1048,
+attributed to Hummer \& Storey 1998, Table~6).  The He$^{+}$ \emph{recombination}
+cooling, however, is the H$^{+}$ polynomial copied coefficient for coefficient:
+compare :1059--1062 with :989--991, all five constants identical, while the
+comment above it cites the helium source.  At $10^4$~K it gives
+$2.40\times10^{-25}$~erg\,cm$^3$\,s$^{-1}$ against $3.88\times10^{-25}$ for
+\MoCHII{}'s $k_{\rm B}T\alpha_{\rm B}({\rm He\,\textsc{ii}})$,
+$4.95\times10^{-25}$ for Wood's Black-1981 coefficient and
+$4.46\times10^{-25}$ for \CMI{}'s, so it is low by a factor $1.6$--$2.1$
+against all three.  Only part of that is the copy:
+$\alpha_{\rm B}({\rm He\,\textsc{ii}})$ exceeds
+$\alpha_{\rm B}({\rm H\,\textsc{ii}})$ by $8\%$ at this temperature, so the
+substitution itself is a small error and the remainder is which mean energy per
+recombination the various coefficients represent.  The channel is worth of
+order $1\%$ of the HII40 budget.
+
+\paragraph{Recombination and free-free elsewhere agree well.}  \Mocassin{}'s
+H$^{+}$ recombination cooling equals \MoCHII{}'s Hui \& Gnedin \emph{case-B}
+coefficient to $0.1\%$ at 8000~K and $1.1\%$ at $10^4$~K ($2.346$ against
+$2.343\times10^{-25}$, and $2.403$ against $2.376\times10^{-25}$), and its
+He$^{++}$ term is $0.97\times$ the case-B \HeIII{} coefficient, so its
+recombination cooling is case-B bookkeeping.  Its free-free fits correspond to
+thermally averaged Gaunt factors of $1.259$ and $1.272$ at $Z = 1$ (8000 and
+$10^4$~K) and $1.179$, $1.191$ at $Z = 2$, against $1.252$, $1.266$ and
+$1.176$, $1.187$ from the van Hoof et al.\ (2014) table \MoCHII{} can select:
+agreement better than $1\%$.  What is missing is the metals.  Free-free is
+summed over H$^{+}$, He$^{+}$ and He$^{++}$ only, with no net-charge term for
+the metal ions (\MoCHII{} adds one, worth $\sim2\times10^{-4}$ of the H/He
+term), and there is no metal recombination cooling ($0.05\%$ of the \Cloudy{}
+budget, Table~\ref{tab:budget}; \MoCHII{} omits it too).
+
+\paragraph{Collisional ionization is not in the budget.}  \code{collIon}
+(:1378, Drake \& Ulrich 1980) is computed for hydrogen only, explicitly zeroed
+for every other species (:1485), and enters the ionization ratios (:1490,
+:1496).  It never reaches \code{coolInt}.
+
+\paragraph{Dust.}  \code{setDustGasCollHeatCool} (:811--931) is the gas--grain
+collisional exchange: ions (:831--892) and electrons (:894--924) striking
+grains at the local grain potential, accumulated as \code{gasDustColl\_g} for
+the gas and \code{gasDustColl\_d} for the grains.  It reaches the budget
+together with the photoelectric heating at :1253--1256, and both are computed
+only under \code{lgDust .and. lgGas .and. lgPhotoelectric} (:368--386), so a
+dusty model run with the photoelectric switch off has neither.  This is the one
+cooling channel \Mocassin{} has and \MoCHII{} does not.  Its size at benchmark
+conditions is negligible: with the standard gas--grain rate (Hollenbach \&
+McKee 1989) at $\nH = 100$~cm$^{-3}$, $T = 8000$~K, $T_{\rm d} = 50$~K and
+Milky Way dust it is $\sim5\times10^{-24}$~erg\,cm$^{-3}$\,s$^{-1}$ against
+$\sim4\times10^{-20}$ for the lines, of order $10^{-4}$.  It scales as $\nH^2$
+like the lines, so it matters only at planetary-nebula and
+photodissociation-region densities, and both benchmark models are dust-free.
+\MoCHII{} routes grain energy to the infrared instead (\code{Heat\_dust}) and
+carries grain photoelectric heating with grain recombination cooling
+(\code{par\%grain\_pe}).
+
+\paragraph{Net comparison with \MoCHII{}.}  Two differences dominate, and
+within each code they work against each other.  \Mocassin{} solves the level
+populations at the local $\nel$ inside the thermal balance, which \MoCHII{}'s
+$\Lambda(T)$ cannot do and which removes about $10\%$ of the line cooling at
+$\nH = 100$~cm$^{-3}$ (Section~\ref{sec:limit}); but its collision strengths
+are $15$--$22\%$ higher than the current ones on three of the four largest
+metal coolants, which adds cooling.  \MoCHII{} has the current collision
+strengths and the missing suppression, the same two effects with the signs
+exchanged.  Neither code's temperature can therefore be attributed to a single
+data difference.  On channels rather than data, \MoCHII{} carries three that
+\Mocassin{} does not --- collisional-ionization cooling, metal free-free with
+the net ion charge, and H-impact fine-structure cooling for the
+photodissociation-region path (\Mocassin{}'s $\Upsilon$ tables are
+electron-impact only) --- and \Mocassin{} carries two that \MoCHII{} does not,
+the gas--grain collisional term and the density-dependent level populations.
+
+\subsection{\Torus{}}
+
+\Torus{} (Harries et al.\ 2019) is a Monte Carlo radiation transport and
+hydrodynamics code, and its photoionization loop --- the reference the code
+registers for itself when that loop runs is Haworth \& Harries (2012),
+\code{citations\_mod.f90}:52 --- is a full photoionization-equilibrium plus
+thermal-balance calculation on the same kind of octree \MoCHII{} uses, so it
+belongs in this comparison.  Its provenance runs through both of the codes
+above.  The free-free and photoheating expressions carry the comments ``Kenny
+equation 22'', ``Kenny equation 23'' and ``equation 21 of kenny's''
+(\code{photoionAMR\_mod.F90}:6465--6467, :7813), that is Wood's paper; the
+\HI{} collisional-excitation block is \Mocassin{}'s character for character
+(below); and two of the ion data blocks say in their own comments that they
+were tuned to agree with \Mocassin{} and with Ercolano's $\SIII{}$ data
+(\code{ion\_mod.F90}:609, :1138).
+
+\paragraph{Two copies of the module; the MPI one is the production path.}
+\code{photoion\_mod.F90} (3406 lines) is the serial loop, reached from
+\code{physics\_mod.F90}:412; \code{photoionAMR\_mod.F90} (11179 lines) is the
+MPI/AMR loop, reached from \code{physics\_mod.F90}:437 and compiled only under
+\code{\#ifdef MPI}.  The two carry independent copies of \code{HHeCooling},
+\code{getHeating}, \code{metalcoolingRate} and \code{solveIonizationBalance},
+and they are not identical: the serial one always adds the gas--grain term and
+has no dust radiative term (\code{photoion\_mod.F90}:1368), the MPI one makes
+both conditional.  Everything quoted below is the MPI version unless stated.
+
+\paragraph{Method: Lucy estimator with immediate re-emission.}  The packet
+energy is $\epsilon/\Delta t = L_{\rm ion}/N_{\rm packet}$ (:3626), and the
+photoionization rate of every ion is
+the Lucy (1999) path-length estimator, $(\epsilon/\Delta t/V)\sum \ell\,
+\sigma_i/h\nu$ (accumulated in \code{updateGrid}:6691--6692, consumed at
+:6880); the photoheating uses the same estimator with the weight
+$\ell\,\sigma\,(h\nu - h\nu_{\rm th})/h\nu$ (:6717--6728).  When a packet is
+absorbed it is \emph{immediately re-emitted}: the cell's diffuse emissivity
+spectrum is assembled once per radiation step from the Lyman continua
+(:3325), the higher continua (:3326), the \HI{} recombination lines (:3328),
+the collisionally excited metal lines (:3330) and the dust continuum (:3335),
+a new frequency is drawn from it (:3372) and the packet continues in a random
+direction with its energy unchanged (:3374).  So \Torus{} does not let its
+collisionally excited line photons escape the way \Mocassin{} and \MoCHII{}
+do: they re-enter the transport, and in a photoionized nebula their only sink
+is dust absorption, so this is how line-cooling energy reaches the infrared.
+Because the re-emitted packet keeps the absorbed energy and takes only its
+\emph{shape} from the emissivity, the emergent line luminosities equal the
+cooling-rate line luminosities only in a converged model, where heating equals
+cooling by construction of the temperature solve.  An on-the-spot option
+exists: \code{nodiffuse} zeroes everything above 13.6~eV in the spectrum
+before the redraw (:3347--3349, \code{removeLymanSpectrum} :7858--7868).
+
+\paragraph{The temperature: three modes.}  In the equilibrium mode the
+ionization balance and the temperature alternate in an inner loop per octal
+until both change by less than $1\%$ (:3908--3927), and
+\code{calculateThermalBalanceNew} (:6109--6286) finds the root of
+$\Gamma_{\rm tot} - \Lambda_{\rm tot}$ by Brent's method, bracketing first on
+$0.8T$ and $1.2T$ and falling back to $[T_{\rm min}, T_{\rm max}]$
+(:6165--6176), then under-relaxing the step by $0.6$, or by $0.1$ after
+iteration~10 (:6132--6135).  Unlike \Mocassin{} and \MoCHII{}, the ionization
+balance is \emph{not} re-solved at each trial temperature --- the call that
+would do it sits commented out inside the cooling function
+(\code{photoion\_mod.F90}:1354) --- so the coupling is carried by the outer
+alternation instead.  The time-dependent mode integrates
+$de/dt = \Gamma - \Lambda$ in ten substeps with the same cooling function
+(\code{calculateThermalBalanceTimeDep} :6364--6411).  A third mode,
+\code{quickthermal} (\code{inputs\_modV2.F90}:3948), skips the balance
+altogether and sets $T = T_{\rm min} + (10^4~{\rm K} - T_{\rm min})\,
+x_{\rm H^+}$ (:5974--5990).  Cells the Monte Carlo has undersampled are forced
+to $T_{\rm min}$ (:6279--6280), which for the default $T_{\rm min} = 3$~K
+(\code{inputs\_modV2.F90}:65) is a placeholder rather than a physical
+temperature.
+
+\paragraph{Budget: seven terms, and the code counts them itself.}
+\code{HHeCooling} (:6413--6648) accumulates, in order: free-free (:6465--6467),
+\HI{} collisional excitation (:6500--6520), H$^+$ recombination cooling
+(:6571), He$^+$ recombination cooling (:6582), metal line cooling (:6593),
+the gas--grain collisional term (:6604--6612) and dust radiative cooling
+(:6620--6628).  The routine's own diagnostic branch asserts
+\code{nRates /= 7} (:6636), so seven is the intended count.
+
+Two expressions in the same routine are dead.  A Hummer (1994) free-free
+coefficient and a Hummer (1994) H$^+$ recombination-cooling coefficient are
+evaluated at :6480--6496 and accumulated into \code{becool}, which is used
+only by a debug \code{write} (:6528--6534) and never reaches
+\code{coolingRate}.  The free-free that is actually used is the ``Kenny''
+form, $1.42\times10^{-27}(n_{\rm H^+} + n_{\rm He^+})\,\nel\,
+g_{\rm ff}\sqrt{T}$ with $g_{\rm ff} = 1.1 + 0.34\exp[-(5.5-\log_{10}T)^2/3]$.
+That $g_{\rm ff}$ is $1.245$ at 8000~K and $1.261$ at $10^4$~K, against
+$1.252$ and $1.266$ from the van Hoof et al.\ (2014) table \MoCHII{} can
+select --- agreement to $0.6\%$.  The sum runs over H$^+$ and He$^+$ only, both
+at $Z = 1$: He$^{++}$ is tracked in the ionization balance
+(\code{ion\_mod.F90}:215) but contributes neither $Z = 2$ free-free nor
+recombination cooling, and the metals contribute no free-free.
+
+\paragraph{\HI{} collisional excitation is \Mocassin{}'s expression.}
+:6502--6518 carries \code{ch12 = 2.47e-8}, \code{ch13 = 1.32e-8},
+\code{ex12 = -0.228}, \code{ex13 = -0.460}, \code{th12 = 118338.},
+\code{th13 = 140252.}, the same \code{hcRyd} per excitation and the same hard
+cut below 5000~K as \code{update\_mod.f90}:1071--1089, under the same comment
+``Mathis, Ly alpha, beta''.  It therefore reproduces the \Mocassin{} numbers
+quoted above exactly: $2.211\times10^{-25}$ at 8000~K and
+$4.140\times10^{-24}$ at $10^4$~K, that is $0.97$--$0.98$ of \MoCHII{}'s
+CHIANTI~v11 \HI{} low-density fit.
+
+\paragraph{Recombination cooling: two tabulated coefficients, no cited source.}
+$\nel n_{\rm H^+}kT\beta_{\rm H}$ and $\nel n_{\rm He^+}kT\beta_{\rm He}$ with
+$\sqrt{T}\beta$ read from a 31-point table over $\log_{10}T = 1$--7 for
+hydrogen and an 18-point table over 1--4.4 for helium, linearly interpolated in
+$\log_{10}T$ and set to zero above the helium table's end (:6426--6435,
+:6544--6569).  Neither table carries a provenance comment.  Numerically the
+hydrogen one is case-B recombination cooling: $kT\beta_{\rm H} =
+2.360\times10^{-25}$ at 8000~K and $2.397\times10^{-25}$ at $10^4$~K, which is
+$1.007$ and $1.009$ times \MoCHII{}'s Hui \& Gnedin case-B coefficient and
+$1.006$ and $0.997$ times \Mocassin{}'s.  The helium table is a genuinely
+separate table, not the hydrogen one reused --- which is the defect recorded
+on \Mocassin{}'s side above --- and it gives $2.619\times10^{-25}$ at 8000~K
+and $2.706\times10^{-25}$ at $10^4$~K.  At $10^4$~K that is $1.13$ times
+\Mocassin{}'s copied value and $0.70$ times \MoCHII{}'s
+$kT\alpha_{\rm B}({\rm He\,\textsc{ii}})$, so it sits at the low end of the
+spread but not at \Mocassin{}'s extreme.
+
+\paragraph{Dust enters as two terms.}  With
+\code{decouplegasdust} false, which is the default
+(\code{inputs\_modV2.F90}:3951), the gas and the grains share one temperature,
+the grain thermal emission $4\pi\kappa_{\rm P}(\sigma/\pi)T^4$ is added to the
+cooling side of the same balance (:6620--6628) and the grain heating rate is
+added to the heating side (:7818--7823).  With it true the two temperatures are
+separate, the gas--grain collisional exchange
+$n_{\rm gas}n_{\rm gr}\sigma_{\rm gr}v_{\rm p}f\,2k(T_{\rm gas}-T_{\rm d})$
+becomes a gas cooling term (:6604--6612;
+\code{photoion\_utils\_mod.F90}:1634--1680, with accommodation factor
+$f = 11.8$ in ionized gas and $0.16$ or $1$ in neutral gas, :1666--1674), and
+the grain temperature is solved from radiative equilibrium plus that exchange
+(:6253--6271).  So \Torus{} carries the gas--grain collisional channel that
+\Mocassin{} has and \MoCHII{} does not, as an option, and it additionally
+routes grain emission through the gas thermal balance, which no other code
+here does.
+
+\paragraph{Level populations are a statistical-equilibrium solve at the local
+$\nel$.}  \code{solvePops} (\code{photoion\_utils\_mod.F90}:923--997) builds
+the rate matrix with $\nel q$ in both directions plus the $A$-values
+(:954--974), replaces the first row by the normalization condition
+(:942--943), solves it by LU decomposition (:986) and normalizes; the
+collisional rates are $q = 8.63\times10^{-6}\,\Upsilon/(g\sqrt{T})$ with the
+Boltzmann factor from the observed level energies (\code{getCollisionalRates}
+:999--1046), $\Upsilon$ linearly interpolated in $T$ and clamped at the table
+ends with a one-time warning (:1015--1027).  So \Torus{}, like \Mocassin{} and
+unlike \MoCHII{}'s $\Lambda(T)$, carries collisional de-excitation inside the
+thermal balance and saturates the far-infrared fine-structure lines above their
+critical density --- the limitation of Section~\ref{sec:limit}.  Two
+qualifications.  Every caller passes a population array dimensioned
+\code{pops(10)} (\code{photoionAMR\_mod.F90}:7712, :7732, :8089;
+\code{photoion\_utils\_mod.F90}:1115), so no ion model may exceed ten levels;
+the largest in the file is $\CII{}$ with exactly ten.  And the
+recombination-pumping term is dormant here too: \code{getRecombs} is called
+(:940) but the line that would put its rates into the right-hand side is
+commented out and \code{matrixB(2:n)} is set to zero (:945), so the populations
+are purely collisional --- the same assumption as \MoCHII{}'s Tier-2 models.
+
+\paragraph{Ion set: fifteen line-cooling ions, hardcoded.}  There are no data
+files.  \code{addIons} (\code{ion\_mod.F90}:194--388) builds the registry ---
+\HI{}, \HII{}, \HeI{}, \HeII{}, \HeIII{}, then C\,\textsc{i}--\textsc{iv},
+N\,\textsc{i}--\textsc{iii}, O\,\textsc{i}--\textsc{iii},
+Ne\,\textsc{i}--\textsc{iii} and S\,\textsc{i}--\textsc{iv} under
+\code{usemetals}, twenty-two ions in all --- and
+\code{addLevels} (:428--587) and \code{addTransitions} (:603--1186) fill levels
+and transitions from \code{select case} blocks on the species name, the level
+energies taken from NIST by the file's own statement (:433).  Fifteen ions end
+up with transitions and therefore with cooling: C\,\textsc{i}--\textsc{iv},
+N\,\textsc{i}--\textsc{iii}, O\,\textsc{i}--\textsc{iii}, $\NeII{}$,
+$\NeIII{}$ and S\,\textsc{ii}--\textsc{iv}.  Ne\,\textsc{i} and
+S\,\textsc{i} are in the ionization balance but have neither levels nor lines.
+$\NI{}$ and $\OI{}$ are complete --- ten transitions each with tabulated
+$\Upsilon(T)$, the full set for their five levels (:812--847, :914--937) ---
+and $\SIV{}$ is present as a two-level ion with
+$A = 7.74\times10^{-3}$~s$^{-1}$ (:1179), which is \CMI{}'s Pradhan (1995)
+value to three figures.  So \Torus{} carries neither of the two channels
+Wood's code loses, and like \CMI{} it has the $\SIV{}$ channel \MoCHII{} was
+missing.  There is no chlorine or argon line cooling: argon ions exist only
+under \code{xraymetals} and have no level data at all.
+
+The transition energy is the difference of the two observed level energies
+(\code{addTransition2} :1266), the stated wavelength is kept separately for
+line identification only, and a warning fires if the two disagree by more than
+$5\%$ (:1273--1279).  \Torus{} therefore cannot carry \MoCHII{}'s D2 defect by
+construction.  Cooling and line output run through the same routine and the
+same data --- \code{metalcoolingRate}:7742 and
+\code{cellLineLuminosity}:7707--7722 are the same expression with the same
+\code{solvePops} call --- so it cannot carry Wood's cooling/diagnostic split
+either.
+
+\paragraph{Collision-strength vintage: mixed, and \NI{} is the modern
+calculation.}  The tables are per transition and per ion, with temperature
+grids from two points ($\CIV{}$) to sixteen ($\SII{}$, $\SIII{}$), and their
+lineage is visible in the comments: carbon was ``freshly mod[ded] \dots\ to
+agree with MOCASSIN'' (:609) and the live $\SIII{}$ block is the fourth
+attempt, labeled ``Matching Barbara Ercolano's S III data as closely as
+possible'' (:1138), with a Tayal \& Gupta (1999) block and two others left
+commented out above it (:1060--1136).  Two spot checks against the numbers
+above.  For $\OIII{}$ the total $\Upsilon(^3P \to {}^1D)$ from :967--991 is
+$2.119$ at 8000~K and $2.184$ at $10^4$~K, so $0.965$ of CHIANTI~v11's $2.262$
+and $0.957$ of \Mocassin{}'s v7 file value $2.283$ --- the same few-percent
+band all three sit in.  For $\NI{}$, however,
+$\Upsilon(^4S \to {}^2D_{5/2})$ is $0.2338$ at 8000~K and $0.2877$ at $10^4$~K
+(:817--819), which is $0.85$ of CHIANTI~v11's $0.337$ and an order of magnitude
+above \Mocassin{}'s $0.027$ and \CMI{}'s $0.025$.  \Torus{}'s nitrogen is thus
+on the modern side of the Tayal (2000) versus Tayal (2006) split, and its
+$\NI{}$ cooling and $[\NI{}]$ 5200 diagnostic differ from theirs by that
+factor.
+
+\paragraph{Defect: a Fortran exponent typo makes an $\SII{}$ $A$-value
+negative.}  In the \code{addTransition2} call for the $\SII{}$
+$^2P^{\rm o}_{3/2} \to {}^2P^{\rm o}_{1/2}$ fine-structure transition
+(\code{ion\_mod.F90}:1055) the $A$-value argument is written \code{1.03-6},
+which in Fortran is not $1.03\times10^{-6}$ but the expression
+$1.03 - 6 = -4.97$.  The transition therefore enters with
+$A = -4.97$~s$^{-1}$, which exceeds the sum of the three genuine decay rates
+out of that level ($0.537$~s$^{-1}$) and makes its total radiative loss rate
+negative.  Reproducing \code{solvePops} with the file's own five levels, ten
+transitions and $\Upsilon(T)$ tables gives a \emph{negative}
+$^2P^{\rm o}_{3/2}$ population at every temperature and density tried
+($-1.08\times10^{-8}$ at $T = 8000$~K, $\nel = 100$~cm$^{-3}$, falling to
+$-2.15\times10^{-5}$ at 20~kK and $10^4$~cm$^{-3}$), which the
+\code{pops = max(0, \dots)} clamp at \code{photoion\_utils\_mod.F90}:992 then
+sets to zero.  The consequences are specific.  The three $[\SII{}]$ lines whose
+upper level is $^2P^{\rm o}_{3/2}$ --- 4068.6, 10286.7 and 10320.4~\AA{} ---
+emit exactly zero, while the three whose upper level is
+$^2P^{\rm o}_{1/2}$ --- 4076.4, 10336.3 and 10373.3~\AA{} --- come out a factor
+$3.2$ too strong, because the negative level acts as a sink that inflates
+$^2P^{\rm o}_{1/2}$ from $7.28\times10^{-8}$ to $2.34\times10^{-7}$.  The
+intrinsic 4069/4076 ratio, $3.04$ on the intended $A$, comes out $0$.  The
+\emph{total} $\SII{}$ cooling barely notices, because the two errors have
+opposite sign: $1.005$ of the intended value at 8000~K and $\nel = 100$,
+$1.014$ at $\nel = 10^4$, $1.025$ at 20~kK and $10^4$.  With $[\SII{}]$ at
+$2.16\%$ of the HII40 budget (Table~\ref{tab:budget}) the thermal balance is
+unaffected at the $10^{-4}$ level; what is destroyed is the $[\SII{}]$ auroral
+diagnostic.  The ``Negative contribution from'' warning writer
+(\code{photoionAMR\_mod.F90}:7745--7749) exists but tests the summed ion rate,
+which stays positive.
+
+\paragraph{Defect: the $\NII{}$ $^1S_0$ statistical weight.}
+\code{ion\_mod.F90}:479 enters the $\NII{}$ $^1S_0$ level with $J = 2$, so
+$g = 5$ instead of $1$; every other $^1S_0$ in the file is entered with
+$J = 0$ ($\CIII{}$ :456, $\OIII{}$ :516, $\NeIII{}$ :532, $\SIII{}$ :549).
+Only the de-excitation rate divides by the upper level's $g$
+(\code{photoion\_utils\_mod.F90}:1042), so the error is confined to
+collisional de-excitation out of $^1S_0$; with
+$\ncrit \sim 2\times10^{7}$~cm$^{-3}$ for that level it is negligible at
+nebular densities and wrong by a
+factor $5$ in the de-excitation rate wherever it is not.  Mg\,\textsc{i}
+carries the same slip on its $^1P^{\rm o}_1$ level (:564), harmlessly, because
+magnesium has no transitions.
+
+\paragraph{The X-ray metal set cannot be used as written.}  \code{xraymetals}
+adds twenty-one Mg, Si, Ar and Fe ions to the registry
+(\code{ion\_mod.F90}:296--375), but \code{returnAbundance} (:1317--1345) has no
+case for $Z = 12$, 14, 18 or 26 and returns \code{tiny(a)} with a runtime
+message, and none of the four elements has transition data (magnesium has
+levels but no transitions; silicon, argon and iron have neither).  So the
+switch contributes no cooling and no opacity of consequence.  A latent
+companion: Mg\,\textsc{ii} declares two levels both named \code{"2S\_1/2"}
+(:567, :570) and \code{returnLevel} (:1298--1315) returns the first match, so
+the second would be unreachable if transitions were ever added.
+
+\paragraph{What is absent.}  There is no collisional ionization anywhere:
+\code{solveIonizationBalance} (:6838--6918) forms each stage ratio as
+(photoionization $+$ charge-exchange ionization) over (radiative $+$
+dielectronic recombination $+$ charge-exchange recombination), with no
+collisional term, so there is no collisional-ionization cooling either.  There
+is no \HeI{} or \HeII{} collisional-excitation cooling --- the metal sum starts
+at registry entry~5 (:7737), which is \HeIII{} with no level data, so
+effectively at $\CI{}$, and helium has no level data at all.  There is no
+\HeIII{} recombination cooling, no $Z = 2$ free-free, no metal free-free, no
+metal recombination cooling and no two-photon term (the two-photon routine is
+commented out, :7775--7799).  On the heating side only \HI{} and \HeI{}
+photoionization are counted (:6717--6728, :7812--7817): \HeII{} photoionization
+heating is missing although He$^{++}$ is tracked, and there is no metal
+photoheating, no grain photoelectric heating and no cosmic-ray heating in the
+photoionization loop.  A separate photodissociation-region module does carry
+Weingartner \& Draine photoelectric heating, cosmic-ray, turbulent, chemical,
+gas--grain and H$_2$-formation heating (\code{pdr\_utils\_mod.F90}:366--800),
+invoked from the photoionization loop under \code{pdrcalc}
+(\code{photoionAMR\_mod.F90}:527, :997), but that is a second thermal balance
+with its own inventory and is outside this comparison.  One point in
+\Torus{}'s favor on the electron side: metal electrons are always in $\nel$,
+since \code{returnNe} (\code{ion\_mod.F90}:1410--1433) sums $Z - N$ over the
+whole registry, where \MoCHII{} needs \code{par\%metal\_ne}.
+
+\paragraph{The benchmark directory.}  A Lexington HII40 model is shipped with
+the code.  \code{benchmarks/HII\_region/} and \code{benchmarks/HII\_regionMPI/}
+are the same model in the OpenMP and MPI builds: \code{geometry lexington}, a 1D octree
+at depth 8, one blackbody source at $T_{\rm eff} = 40000$~K with
+$R = 18.67\,R_\odot$ (\code{parameters.dat}), and $\nH = 100$~cm$^{-3}$ uniform
+outside \code{rinner} (\code{calcLexington}, \code{amr\_mod.F90}:7557--7612).
+The default abundances --- He $0.1$, C $2.2\times10^{-4}$, N $4\times10^{-5}$,
+O $3.3\times10^{-4}$, Ne $5\times10^{-5}$, S $9\times10^{-6}$
+(\code{inputs\_modV2.F90}:4107--4133) --- are exactly the Lexington/Meudon
+HII40 composition, so \Torus{}'s photoionization defaults are set by the same
+benchmark \MoCHII{} is measured against.  The output dump
+(\code{dumpLexingtonMPI}, \code{photoionAMR\_mod.F90}:7353--7480) writes 500
+radial points from 1 to 8~pc: radius, $\Te$, then $\log x$ for \HI{}, \HeI{},
+$\OII{}$, $\OIII{}$, $\CII{}$, $\CIII{}$, $\CIV{}$, $\NII{}$, $\NIII{}$,
+N\,\textsc{iv}, Ne\,\textsc{i}, $\NeII{}$, $\NeIII{}$, Ne\,\textsc{iv} and
+$T_{\rm d}$, plus \code{ne.dat} and an \code{orates.dat} carrying the cell
+heating and cooling rates.
+
+The reference file \code{lexington\_benchmark.dat} is committed to the
+repository, so it is \Torus{}'s own stored regression output rather than a
+published table, and \code{comparelex.f90} checks a new run against it in
+$\Te$ and one ion at a $10\%$ tolerance.  It is still usable as a fifth
+column: weighting the stored profile the way the published benchmark tables do
+gives $\langle T[N_{\rm p}N_{\rm e}]\rangle = 8196$~K, with the
+$x_{\rm HI} = 0.5$ front at $4.75$~pc.  Two caveats before that number is
+used.  The dump starts at 1~pc, so the innermost parsec is not in the average;
+and it is a single stored run at whatever packet and iteration count produced
+it, not a converged reference in the sense of Section~\ref{sec:bench}.  Taken
+at face value it sits at the top of the $7720$--$8199$~K published range of
+Table~\ref{tab:bench}, above \MoCHII{}'s post-fix $7894$~K and just under
+\Cloudy{} c25.00's $8210$~K.  \code{benchmarks/HII\_region/} also holds a
+\code{lexington\_cloudy.txt} comparison profile.  Nothing here was re-run.
+
+\paragraph{Net comparison with \MoCHII{}.}  On channels \Torus{} is the closest
+of the four other codes to \MoCHII{} in what it solves and the farthest in what
+it omits.  It has the density-dependent level populations inside the thermal
+balance that \MoCHII{} lacks, on transition energies taken from observed levels
+as \MoCHII{}'s rebuilt fits now are, and from the same routine that makes its
+line output; it has the gas--grain collisional term as an option; and it puts
+grain thermal emission into the gas balance and returns the metal line photons
+to the transport, neither of which \Mocassin{} or \MoCHII{} does.  Against that
+it omits five channels \MoCHII{} carries ---
+collisional-ionization cooling, \HeIII{} recombination cooling, $Z = 2$
+free-free, metal free-free and \HeII{} photoheating --- caps every ion at ten
+levels, and cannot be extended past C, N, O, Ne and S without editing Fortran,
+since its atomic data are \code{select case} blocks rather than files.  On data
+its collision strengths are a mixture whose $\OIII{}$ agrees with CHIANTI~v11
+to $3.5\%$ and whose $\NI{}$ is an order of magnitude above \Mocassin{}'s, so
+the systematic $15$--$22\%$ excess found above in \Mocassin{}'s largest metal
+coolants does not carry over to \Torus{} unexamined.
+
+\subsection{Comparison, and one omission common to all five codes}
+
+\begin{table}[htbp]
+\centering
+\caption{Cooling terms of the five Monte Carlo codes.  \MoCHII{}'s H/He
+inventory is \code{src/cooling\_mod.f90}:225--258.  Ion counts: Wood, \CMI{}
+and \Torus{} are fixed lists compiled into the source; the \Mocassin{} entry is
+what its data files supply for
+the HII40 composition (C, N, O, Ne, S) at the default \code{nstages = 7},
+reaching O\,\textsc{vi}; \MoCHII{}'s 28 are its cooling fits, \HI{} plus 27
+metal ions over 11 elements, reaching stage \textsc{iv} (\textsc{v} for Ca).  \MoCHII{} is a superset of the line and
+H/He channels except for the last three rows: the density-dependent level
+populations, which it has only in its Tier-2 line output; the gas--grain term,
+which \Mocassin{} carries and \Torus{} carries as an option; and \HeI{}
+collisional excitation, which no code carries.}
+\label{tab:codes}
+\footnotesize
+\begin{tabular}{lccccc}
+\toprule
+Cooling term & Wood & \CMI{} & \Mocassin{} & \Torus{} & \MoCHII{} \\
+\midrule
+metal collisionally excited lines & 12 ions & 13 ions & 26 ions & 15 ions & 28 ions \\
+Cl, Ar line cooling      & data unread & no & yes & no & yes \\
+\NI{}, \OI{} line cooling & defective & yes & yes & yes & yes \\
+\SIV{} line cooling      & no  & yes & yes & yes & yes (added here) \\
+\HI{} collisional excitation & no & no & yes & yes & yes \\
+collisional-ionization cooling & no & no & no & no & yes \\
+\HeIII{} recombination cooling & no & no & yes & no & yes \\
+free-free at $Z = 2$ (\HeIII{}) & no & no & yes & no & yes \\
+free-free from the metal ions & no & no & no & no & yes \\
+level populations at the local $\nel$ & yes & yes & yes & yes & Tier-2 only \\
+gas--grain collisional cooling & no & no & yes & optional & no \\
+\HeI{} collisional excitation & no & no & no & no & no \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:codes} collects the result.  The negative result of the audit is
+the last row: \HeI{} collisional-excitation line cooling is absent from all
+five codes, \MoCHII{} included.  In the HII40 budget of
+Table~\ref{tab:budget} \Cloudy{} puts $1.943\times10^{35}$~erg\,s$^{-1}$ in it,
+$0.062\%$ of the total, so at benchmark conditions the omission is harmless; it
+would matter only where neutral helium is abundant and the gas hot enough to
+excite it.
+
+Ranking the Wood findings by what they are worth at HII40, using the \Cloudy{}
+channel shares of Table~\ref{tab:budget}: the $\NIII{}$ collision-strength
+inconsistency is the largest, a factor $2.1$ on $1.89\%$ of the budget; the
+missing \HI{} collisional excitation is $0.72\%$; the unread chlorine and argon
+blocks are $0.093\%$ and $0.006\%$; the missing \HeIII{} recombination cooling
+is $0.001\%$ at this excitation.  The \NI{}/\OI{} defect is negligible at HII40
+($[\OI{}]$ is $0.10\%$, $[\NI{}]$ $0.014\%$) but it lives precisely in the
+partly neutral gas, so it matters for the ionization-front edge, for diffuse
+ionized gas, and for anything PDR-like.  The $\OIII{}$ $^1S_0$ energy slip does
+not move the cooling but biases $[\OIII{}]$ 4363 and the temperature diagnosed
+from it by about $2\%$.
+
+%==========================================================================
+\section{Summary}
+\label{sec:summary}
+
+The \MoCHII{} temperature excess on the Lexington/Meudon benchmarks, which had
+survived the elimination of charge exchange, reference convergence, spatial
+resolution, recombination coefficients, collision-strength vintage, band
+discretization, transport treatment and trace-species coupling, was two
+defects in the offline construction of the Tier-1 cooling fits: ground-term
+level populations set by Boltzmann factors, which at $kT \gg \Delta E_{\rm fs}$
+is the high-density limit and suppressed the far-infrared fine-structure
+cooling by $23.9\%$ of the total, and the Burgess--Tully scaling energy used
+as the physical transition energy in both the excitation rate and the radiated
+photon, worth a further $10.6\%$.  The diagnosis needed a fixed-state
+comparison, because in a converged model the temperature rises until the books
+balance and hides the deficit; the decisive internal evidence was that
+\MoCHII{}'s own $n$-level solve and its own cooling fits disagreed by $28\%$
+on an identical state.  Rebuilding all 28 fits from the $\nel \to 0$ limit of
+statistical equilibrium with observed level energies, and adding $\SIV{}$,
+moved HII40 inside the published temperature range and closed the photon
+budget, the outer radius and the line ratios along with it.  The remaining
+known limitation is the absence of density suppression in $\Lambda(T)$, which
+now biases the benchmarks slightly cool and calls for a $(T, \nel)$ table.
+
+The same audit applied to the other Monte Carlo photoionization codes shows
+that \MoCHII{}'s inventory is now a superset of all four in the line and H/He
+channels, with three exceptions.  \HeI{} collisional-excitation line cooling is
+absent from Wood's code, from \CMI{}, from \Mocassin{}, from \Torus{} and from
+\MoCHII{}, and is worth $0.062\%$ of the HII40 budget.  \Mocassin{} carries a
+gas--grain collisional term and \Torus{} carries one as an option, of order
+$10^{-4}$ of the line cooling at
+$\nH = 100$~cm$^{-3}$.  And all four other codes solve their metal level
+populations at the local $\nel$ inside the thermal balance, which \MoCHII{}
+does only in its Tier-2 line output --- the limitation of
+Section~\ref{sec:limit}.  It also turned up defects on their side --- Wood's \NI{} and
+\OI{} cooling is zeroed by an overwrite of the collision strengths, its cooling
+and diagnostic routines disagree by a factor $2.1$ on the $\NIII{}$
+57.3~$\mu$m collision strength (CHIANTI v11 supports the diagnostic value), its
+chlorine and argon data are present but never read, its \SIV{} output slot is
+never assigned, and its $\OIII{}$ $^1S_0$ energy is low by 113.7~cm$^{-1}$.
+\CMI{} carries none of those, and the $11\%$ He$^+$ difference between the two
+is in the recombination \emph{cooling} coefficient, not the recombination rate,
+which they share exactly.  \Torus{} carries a Fortran exponent typo, \code{1.03-6}
+for $1.03\times10^{-6}$, that makes one $\SII{}$ $A$-value negative and zeroes
+three $[\SII{}]$ lines while inflating three others by $3.2$, and it enters the
+$\NII{}$ $^1S_0$ statistical weight as $5$ instead of $1$.
+
+\paragraph{Where the numbers come from.}  The \Cloudy{} reference runs and
+their output files are in \code{tests/cloudy\_c25/} (\code{hii40\_cool.in} for
+the cooling inventory, \code{hii\{40,20\}\_c25.in} for the line lists and
+structure); the benchmark runs after the fix are
+\code{tests/g2\_hii/hii\{40,20\}\_bench.in} with their \code{\_rates.h5} and
+\code{\_lines.txt} output; the coefficient files are
+\code{data/atomic/cooling\_<ion>.txt} and \code{nlevel\_<ion>.txt}, each with
+its own provenance header; the fitting pipeline is
+\code{tools/fitting/\{chianti\_cooling,fit\_cooling,fit\_nlevel\}.py}; and the
+benchmark table columns are assembled by
+\code{paper/tables/make\_wood\_tables.py}.  The channel-by-channel budget, the
+defect isolation and the temperature closure were computed by analysis scripts
+kept in the working session rather than committed, since each of them is a
+one-off reading of the files listed above.
+
+\end{document}

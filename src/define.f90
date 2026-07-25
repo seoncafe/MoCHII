@@ -708,6 +708,16 @@ public
      real(kind=wp)      :: te_fixed     = 1.0e4_wp
      real(kind=wp)      :: ion_relax    = 1.0_wp
      character(len=1)   :: case_ab      = 'B'
+     !--- case for the H I / He II recombination-LINE emissivities.  This is
+     !--- set by the optical depth of the Lyman LINES, which is a different
+     !--- physical question from par%case_ab: that one selects how the
+     !--- ionizing CONTINUUM is treated (on-the-spot, or an explicit diffuse
+     !--- field with alpha_A).  A nebula whose diffuse Lyman continuum is
+     !--- transported still has optically thick Lyman lines, so its Balmer
+     !--- emissivities are case B; only a genuinely Lyman-line-thin medium is
+     !--- case A.  Default 'B'; 'A' selects the case-A SH95 tables; 'follow'
+     !--- ties the line case to par%case_ab (the historical behavior).
+     character(len=8)   :: line_case    = 'B'
      !--- collisional ionization: 'voronov' (default, Voronov 1997) or
      !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
      !--- ratio per stage, Cloudy c23.01 DereRatio).

@@ -136,6 +136,13 @@ CASES = [
     ("nlevel_n_2.txt", ("N", 2), "[N II] 6584/5755", (4, 3), (5, 4), 6584, 5755),
     ("nlevel_o_2.txt", ("O", 2), "[O II] 3726/3729", (2, 1), (3, 1), 3726, 3729),
     ("nlevel_s_2.txt", ("S", 2), "[S II] 6717/6731", (3, 1), (2, 1), 6717, 6731),
+    # S IV: the 10.51um ground fine-structure line against the 3s3p^2 4P5/2
+    # intercombination line -- a temperature diagnostic that spans both
+    # blocks of the model, so it tests the ground doublet and the UV
+    # transitions at once.  MoCHII wavelengths are vacuum values from the
+    # observed level energies (105105 A); PyNeb tabulates 105076 A.
+    ("nlevel_s_4.txt", ("S", 4), "[S IV] 10.51um/1406", (2, 1), (5, 2),
+     105076.2, 1406.0),
     # G5: argon
     ("nlevel_ar_3.txt", ("Ar", 3), "[Ar III] 7136/7751", (4, 1), (4, 2), 7136, 7751),
     ("nlevel_ar_4.txt", ("Ar", 4), "[Ar IV] 4740/4711", (2, 1), (3, 1), 4740, 4711),

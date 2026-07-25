@@ -1,0 +1,63 @@
+title "New" Paris meeting HII region
+# "standard" HII region model of the Pequignot Meudon Conference
+#
+# commands controlling continuum =========
+black body, T = 40000 K radius = 12.113943
+# add the CMB after hot star shape & luminosity specified
+CMB 
+#
+# commands for density & abundances =========
+hden = 2
+init file="ism.ini"
+## LineList_HII.dat contains an Al III multiplet, so turn back on
+element aluminium on
+element helium abundance -1
+element carbon abundance -3.6576
+element nitrogen abundance -4.39794
+element oxygen abundance -3.481146
+element neon abundance -4.30103
+element magnesium abundance -8
+element aluminium abundance -8
+element silicon abundance -8
+element sulphur abundance -5.04576
+element chlorine abundance -7
+element argon abundance -8
+element iron abundance -8
+#
+# commands controlling geometry  =========
+radius = 18.477121
+sphere
+# next two to make sure we pick up all possible H recombination
+## stop temperature 600
+set temperature floor 1000
+# make sure sim goes very deep into cold gas
+stop temperature 100K 
+stop efrac -2 
+#
+# other commands for details     =========
+# must iterate since fine structure lines are optically thick
+iterate   
+database h-like element hydrogen levels resolved 10
+#
+# ---------------------------------------------------------------------------
+# Everything above this line is the unmodified physics block of the Cloudy
+# c25.00 test-suite input tsuite/auto/hii_paris.in (lines 1-41).  Only the
+# output commands below were added, so the model itself is Cloudy's own
+# maintained version of the Lexington/Meudon HII40 benchmark.
+# ---------------------------------------------------------------------------
+print line faint 0
+print column densities
+save overview last "hii40_c25.ovr"
+save dr last "hii40_c25.dr"
+save line list "hii40_c25_abs.lin" "wood_lines.dat" last no hash absolute column
+save line list "hii40_c25_rel.lin" "wood_lines.dat" last no hash column
+# Radial ionization structure for the Wood et al. (2004) panel figures.
+# Each file lists depth to the zone center [cm] followed by the fraction of
+# the element in each ionization stage; radius = 10^18.477121 cm + depth.
+save radius last "hii40_c25.rad"
+save element hydrogen last "hii40_c25.ele_h"
+save element helium last "hii40_c25.ele_he"
+save element carbon last "hii40_c25.ele_c"
+save element nitrogen last "hii40_c25.ele_n"
+save element oxygen last "hii40_c25.ele_o"
+save element neon last "hii40_c25.ele_ne"

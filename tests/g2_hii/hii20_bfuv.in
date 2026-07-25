@@ -1,0 +1,61 @@
+&parameters
+ ! MoCHII G2 gate: Lexington HII20 benchmark, threshold-aligned bins.
+ ! Blackbody 20 kK, Q_H = 1.006e49 s^-1, nH = 100 cm^-3, hollow shell
+ ! Rin = 3e18 cm, Rout = 9.5e18 cm; abundances He 0.1, C 2.2e-4, N 4e-5,
+ ! O 3.3e-4, Ne 5e-5, S 9e-6.  References: MOCASSIN 2.02 reduced baseline
+ ! Te(H+) = 7248.9 K (tests/baselines/01_gas_HII20; underconverged) and the
+ ! Lexington multi-code median 6662 K (Ercolano et al. 2003, Table 5).
+
+ par%no_photons    = 4.0e7
+ par%no_print      = 4.0e7
+ par%iseed         = 1234
+
+ par%grid_type     = 'amr'
+ par%amr_file      = 'hii20_L6.fits'
+ par%dust_model    = 'none'
+ par%distance_unit = 'pc'
+
+ !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=6.005e39 erg/s
+ !--- (20 kK) -> Q_H = 1.004e49 s^-1
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 32
+ par%eion_min      = 13.598
+ par%add_fuv       = .true.
+ par%efuv_min      = 6.0
+ par%nnu_fuv       = 16
+ par%eion_max      = 100.0
+ par%tstar         = 2.0e4
+ par%luminosity    = 2.532600e38
+
+ !--- ionized start (fast convergence; equilibrium is unique)
+ par%xHI_init      = 1.0e-3
+ par%xHeI_init     = 0.5
+ par%xHeII_init    = 0.5
+ par%He_abund      = 0.1
+ par%ion_add_dust  = .false.
+
+ !--- thermal balance + metals; explicit diffuse field (case A), as the
+ !--- published benchmark codes transport it, including the He I channels
+ par%gas_niter     = 100
+ par%conv_crit     = 'vol'
+ par%gas_tol       = 5.0e-3
+ par%gas_tol_te    = 1.0e-2
+ par%ion_relax     = 1.0
+ par%case_ab       = 'A'
+ par%diffuse_field = .true.
+ par%hei_diffuse   = .true.
+ par%solve_te      = .true.
+ par%te_min        = 3.0e3
+ par%te_max        = 3.0e4
+ par%atomic_dir    = '../../data/atomic'
+ par%use_metals    = .true.
+ par%abund_C       = 2.2e-4
+ par%abund_N       = 4.0e-5
+ par%abund_O       = 3.3e-4
+ par%abund_Ne      = 5.0e-5
+ par%abund_S       = 9.0e-6
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'hii20_bfuv.h5'
+/

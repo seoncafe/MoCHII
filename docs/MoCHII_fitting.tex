@@ -1,7 +1,7 @@
 %% MoCHII — CHIANTI atomic-data fitting pipeline (cooling and n-level fits).
 %% Author: Kwang-Il Seon
-%% Written 2026-07-11 for kiseon_memo.cls.
-\documentclass[english,a4paper]{kiseon_memo}
+%% Written for my_memo.cls.
+\documentclass[english,a4paper]{my_memo}
 \synctex=1
 \usepackage{amsmath}
 \usepackage{amssymb}
@@ -15,21 +15,23 @@
 
 \title{The MoCHII Atomic-Data Fitting Pipeline:\\ CHIANTI Cooling and $n$-level Fits}
 \author{Kwang-Il Seon}
-\date{2026-07-11}
+\date{2026-07-25}
 \maketitle
 
 \begin{abstract}
 MoCHII evaluates all metal-line atomic data from analytic fits; the raw
 CHIANTI database is never parsed at runtime.  The Python pipeline under
 \code{tools/fitting/} is the auditable source of every coefficient in
-\code{data/atomic/}.  This memo records the first production cycle
-(2026-07-11) for the ion set O\,\textsc{ii}, O\,\textsc{iii},
-N\,\textsc{ii}, S\,\textsc{ii}, S\,\textsc{iii}, Ne\,\textsc{ii}, and
-Ne\,\textsc{iii}: the cooling-function fits used inside the thermal
-iteration, the $n$-level data files (level energies, $A$-values, and
-Chebyshev fits of the effective collision strengths in Burgess--Tully
-scaled space) used for output-time line emissivities, and the verification
-of both against the CHIANTI v11.0.2 source data and against PyNeb.
+\code{data/atomic/}.  This memo documents the pipeline and its two
+products: the cooling-function fits evaluated inside the thermal
+iteration, currently 28 ions of the eleven-element registry, and the
+$n$-level data files (level energies, $A$-values, and Chebyshev fits of
+the effective collision strengths in Burgess--Tully scaled space) that
+supply the output-time line emissivities.  Both are verified against the
+CHIANTI v11.0.2 source data and against PyNeb, and the cooling fits are
+additionally checked channel by channel against an independent
+photoionization code on a fixed gas state
+(\code{docs/MoCHII\_cooling\_analysis.pdf}).
 The fitted files reproduce direct CHIANTI evaluation to $\lesssim 0.5\%$ in
 the classic diagnostic ratios; the remaining differences from PyNeb
 (up to $6$--$10\%$ for the density diagnostics near their critical
@@ -45,10 +47,10 @@ registered ion, self-contained coefficient files with provenance headers
 error), of two kinds:
 
 \begin{itemize}
-\item \textbf{Cooling fits (hot loop).}  A smooth closed-form
+\item \textbf{Cooling fits (thermal balance).}  A smooth closed-form
   cooling function $\Lam_{\rm ion}(T)$, cheap and Newton-friendly inside
-  the thermal-balance iteration.  Coronal (low-density) limit by
-  construction.
+  the thermal-balance iteration, in the $n_e \to 0$ limit of statistical
+  equilibrium.
 \item \textbf{$n$-level data (diagnostics).}  Level energies,
   statistical weights, radiative $A$-values, and fitted effective
   collision strengths $\Upsilon(T)$ feeding the generic $n$-level solver,
@@ -83,12 +85,22 @@ the line cooling normalized by $n_e\,n_{\rm ion}$ is
   \label{eq:lambda}
 \end{equation}
 where $f_l(T)$ is the fractional population of the lower level.  The
-pipeline uses the \emph{ground-term} population model: the levels within
-$0.4$~eV of ground (the ground-term fine structure, e.g.\ the
-$^3\!P_{0,1,2}$ block of O\,\textsc{iii}) are Boltzmann-distributed and
-all excitations out of them cool.  For the single $^4\!S_{3/2}$ ground
-level of O\,\textsc{ii} and S\,\textsc{ii} this reduces to the coronal
-limit.
+pipeline evaluates the \emph{$n_e \to 0$ limit of statistical
+equilibrium}: at $n_e \ll n_{\rm crit}$ of the ground-term fine
+structure the metastable levels are drained radiatively faster than
+collisions populate them, so every ion sits in its lowest level
+($f_1 = 1$) and excitation happens out of that level only.  Each
+excitation is followed by a radiative cascade that ultimately radiates
+the full $\Delta E_{1u}$ whatever route it takes down, so
+$\Lam_{\rm ion}$ is the excitation power out of the ground level and is
+exactly what the $n$-level solve of Section~\ref{sec:nlevel} returns as $n_e \to 0$.
+$\Delta E_{lu}$ is the observed \code{.elvlc} level difference in both
+the Boltzmann factor of Eq.~(\ref{eq:qlu}) and the radiated energy of
+Eq.~(\ref{eq:lambda}); the \code{.scups} \code{de} is the
+Burgess--Tully \emph{scaling} energy and enters only the scaled
+temperature.  Detailed balance ties the excitation rate to the same
+level gap that appears in the equilibrium matrix, so the two energies
+must not be interchanged.
 
 \section{Cooling-function fits}
 Each $\Lam_{\rm ion}(T)$ curve is fitted over $10^3\mbox{--}10^5$~K with
@@ -97,18 +109,22 @@ the multi-exponential form used throughout EXHALE,
   \Lam_{\rm ion}(T) \;=\; T^{-1/2} \sum_{i=1}^{N} A_i\, e^{-T_i/T},
   \label{eq:cool}
 \end{equation}
-a Levenberg--Marquardt fit on $\log\Lam$ with the $T_i$ initialized from
-the level-energy ladder of each ion (fine structure / forbidden optical /
-UV blocks read off the \code{.elvlc} file).  The fitter tries $N$,
-$N{+}1$, $N{+}2$ terms and keeps the best.  One case needed care:
-Ne\,\textsc{ii} cooling is a single fine-structure line
-($12.8\,\mu$m, $\Delta E/k \simeq 1123$~K) whose slow decay
-($\Lam \propto T^{-0.35}$, set by the $T$ dependence of $\Upsilon$)
-must be superposed from a ladder of $T_i$ values before the far UV block
-at ${\sim}3\times10^{5}$~K takes over; it converges with $N=7$.
-Table~\ref{tab:cool} lists the fit quality; Figure~\ref{fig:cool}
-overlays the fits on the CHIANTI curves.  The coefficients are written to
-\code{data/atomic/cooling\_<ion>.txt}.
+a Levenberg--Marquardt fit on $\log\Lam$.  In the $n_e \to 0$ limit
+Eq.~(\ref{eq:cool}) is the exact form of Eq.~(\ref{eq:lambda}) apart
+from the slow temperature dependence of $\Upsilon$: the $T_i$ are the
+excitation temperatures $\Delta E_{1u}/k$ and the $A_i$ their
+excitation-weighted strengths.  The starting ladder is therefore built
+from the level energies themselves --- the transitions out of the ground
+level are clustered in $\log(\Delta E_{1u}/k)$, weighted by the share of
+the cooling each carries across the fit range --- and the fitter sweeps
+$N = 2\ldots8$ with perturbed restarts, stopping at the first $N$ that
+holds the maximum error below 1\%.  Ions with only a few excitation
+blocks (the Cl ions have four transitions out of the ground term) still
+need extra terms, because a single exponential has a fixed amplitude and
+the temperature dependence of $\Upsilon$ has to be carried by
+superposing neighbouring terms.  Table~\ref{tab:cool} lists the fit
+quality; Figure~\ref{fig:cool} overlays the fits on the CHIANTI curves.
+The coefficients are written to \code{data/atomic/cooling\_<ion>.txt}.
 
 \begin{table}[htb]
 \centering
@@ -119,13 +135,14 @@ is against the direct CHIANTI evaluation of Eq.~(\ref{eq:lambda}).}
 \hline
 Ion & $N$ & max error & output file \\
 \hline
-O\,\textsc{ii}   & 5 & 0.07\% & \code{cooling\_o\_2.txt} \\
-O\,\textsc{iii}  & 4 & 1.83\% & \code{cooling\_o\_3.txt} \\
-N\,\textsc{ii}   & 6 & 0.14\% & \code{cooling\_n\_2.txt} \\
-S\,\textsc{ii}   & 3 & 2.26\% & \code{cooling\_s\_2.txt} \\
-S\,\textsc{iii}  & 6 & 0.46\% & \code{cooling\_s\_3.txt} \\
-Ne\,\textsc{ii}  & 7 & 0.65\% & \code{cooling\_ne\_2.txt} \\
-Ne\,\textsc{iii} & 4 & 0.58\% & \code{cooling\_ne\_3.txt} \\
+O\,\textsc{ii}   & 4 & 0.27\% & \code{cooling\_o\_2.txt} \\
+O\,\textsc{iii}  & 5 & 0.32\% & \code{cooling\_o\_3.txt} \\
+N\,\textsc{ii}   & 5 & 0.66\% & \code{cooling\_n\_2.txt} \\
+S\,\textsc{ii}   & 3 & 2.23\% & \code{cooling\_s\_2.txt} \\
+S\,\textsc{iii}  & 5 & 0.23\% & \code{cooling\_s\_3.txt} \\
+S\,\textsc{iv}   & 3 & 0.61\% & \code{cooling\_s\_4.txt} \\
+Ne\,\textsc{ii}  & 5 & 0.40\% & \code{cooling\_ne\_2.txt} \\
+Ne\,\textsc{iii} & 5 & 0.34\% & \code{cooling\_ne\_3.txt} \\
 \hline
 \end{tabular}
 \end{table}
@@ -134,20 +151,29 @@ Ne\,\textsc{iii} & 4 & 0.58\% & \code{cooling\_ne\_3.txt} \\
 \centering
 \includegraphics[width=0.92\textwidth]{figures/cooling_fits.png}
 \caption{Cooling fits (red dashed) over the direct CHIANTI curves
-(black), $10^3\mbox{--}10^5$~K, ground-term population, low-density
-limit.}
+(black), $10^3\mbox{--}10^5$~K, in the $n_e \to 0$ limit of statistical
+equilibrium.}
 \label{fig:cool}
 \end{figure}
 
 A caveat carried in every file header: Eq.~(\ref{eq:cool}) is
 low-density-limit cooling.  Transitions with low critical density (the
-fine-structure IR lines; [O\,\textsc{ii}] $\lambda\lambda 3726,3729$;
+fine-structure IR lines, most sharply [C\,\textsc{ii}] $158\,\mu$m with
+$n_{\rm crit} \sim 50$~cm$^{-3}$ and the [O\,\textsc{iii}]
+$52,88\,\mu$m pair; [O\,\textsc{ii}] $\lambda\lambda 3726,3729$;
 [S\,\textsc{ii}] $\lambda\lambda 6717,6731$) saturate above
-$n_{\rm crit}$, where the cooling fit overestimates the cooling.  If an
-application demands it, a fitted density-suppression factor can be added
-later; the emissivities themselves always come from the $n$-level data.
+$n_{\rm crit}$, where the cooling fit overestimates the cooling.  This
+is now the leading approximation of the thermal loop: on the Cloudy
+c25.00 state of the HII40 benchmark ($n_e \simeq 110$~cm$^{-3}$) the fitted
+line cooling exceeds the Cloudy inventory by 11.6\%, of which
+$+5.1$ points come from [O\,\textsc{iii}] and $+3.9$ from
+[C\,\textsc{ii}], while the same ions evaluated with the $n$-level solve
+at the local $n_e$ land within 2.4\% and 6\%.  A density-dependent
+$\Lam(T, n_e)$ is the natural next step; the emissivities themselves
+always come from the $n$-level data.
 
 \section{$n$-level data with fitted collision strengths}
+\label{sec:nlevel}
 For each ion the lowest $n$ levels are exported --- enough for the
 optical/IR diagnostics (Table~\ref{tab:nlev}); extra levels are harmless
 to the solver.  The file \code{data/atomic/nlevel\_<ion>.txt} contains

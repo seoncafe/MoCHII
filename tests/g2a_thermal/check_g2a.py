@@ -12,7 +12,7 @@ the SAME thermal balance as thermal_mod/cooling_mod:
     (the Fortran integrates the ported Hummer getGauntFF; the difference
     is ~1-2% of a ~10% cooling term — noted in the report);
   - collisional-ionization cooling;
-  - H I line cooling from the SAME Tier-1 file data/atomic/cooling_tier1_h_1.txt.
+  - H I line cooling from the SAME Tier-1 file data/atomic/cooling_h_1.txt.
 
 Expected physics: without metal cooling Te ~ 13-20 kK (the known pure-H/He
 overshoot, docs/PLAN.md section 8).  Gate: median |Te_MC/Te_1D - 1| < 1%
@@ -109,7 +109,7 @@ def load_tier1(path):
     return np.array(A), np.array(Ti)
 
 
-T1_A, T1_T = load_tier1("../../data/atomic/cooling_tier1_h_1.txt")
+T1_A, T1_T = load_tier1("../../data/atomic/cooling_h_1.txt")
 
 
 def lam_HI(T):

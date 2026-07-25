@@ -54,13 +54,16 @@ contains
     do_emis = par%emis_output
     status  = 0
 
-    !--- the SH95 H I / He II tables now follow par%case_ab (case-A tables
-    !--- are loaded for case A, case-B for case B), so they are consistent
-    !--- with the ionization balance.  The He I Porter table is case B only
-    !--- (no case-A Porter set); note the residual mismatch under case A.
-    if (trim(par%case_ab) == 'A') write(*,'(a)') &
-       ' LINE: note - He I Porter lines are case B (no case-A Porter'// &
-       ' table); H I/He II lines use case A.'
+    !--- the SH95 H I / He II tables follow par%line_case, which is set by the
+    !--- Lyman-LINE optical depth and is deliberately independent of
+    !--- par%case_ab (the ionizing-continuum treatment): a nebula with an
+    !--- explicit diffuse continuum still traps its Lyman lines.  The He I
+    !--- Porter table is case B only (no case-A Porter set).
+    if (trim(par%line_case) == 'A' .or. &
+        (trim(par%line_case) == 'follow' .and. trim(par%case_ab) == 'A')) &
+       write(*,'(a)') &
+       ' LINE: note - H I/He II lines use the case-A SH95 tables'// &
+       ' (He I Porter lines are case B; no case-A Porter table).'
 
     !--- emissivity file: open and write the state blocks first.
     if (do_emis) then
@@ -110,10 +113,11 @@ contains
       open(newunit=unit, file=trim(outname), status='replace')
       write(unit,'(a)') '# MoCHII line luminosities (converged state)'
       write(unit,'(a)') '# H I recombination lines: Storey & Hummer (1995) '// &
-         'case '//trim(par%case_ab)//', bilinear (log T, log ne) interpolation'
+         'case '//trim(line_case_used())//', bilinear (log T, log ne) '// &
+         'interpolation'
       write(unit,'(a)') '# (SH95 H I/He II lines use case '// &
-         trim(par%case_ab)//'; He I Porter lines are case B)'
-      write(unit,'(a)') '# metals: n-level solve per leaf'
+         trim(line_case_used())//'; He I Porter lines are case B)'
+      write(unit,'(a)') '# metals: n-level solve leaf by leaf'
       write(unit,'(a,es14.6,a)') '# L(Hbeta) = ', LHb, ' erg/s'
       write(unit,'(a)') '# elem stage  lambda[A]      L[erg/s]     L/L(Hbeta)'
       do kk = 1, nlh
@@ -401,5 +405,18 @@ contains
     !--- metal stage fractions (same blocks as the rates file).
     if (par%use_metals) call species_write(efile)
   end subroutine emis_write_state
+
+  !=========================================================================
+  ! The recombination-line case actually in use: par%line_case, with
+  ! 'follow' resolving to par%case_ab (see sh95_setup).
+  !=========================================================================
+  function line_case_used() result(c)
+    character(len=1) :: c
+    if (trim(par%line_case) == 'follow') then
+       c = par%case_ab
+    else
+       c = par%line_case(1:1)
+    end if
+  end function line_case_used
 
 end module lines_mod

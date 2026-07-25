@@ -316,7 +316,8 @@ parameter & default & meaning \\
 \code{gas\_tol} & 1e-3 & convergence tolerance on $x_{\rm HII}$ (measure set by \code{conv\_crit}) \\
 \code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended).  See \S\ref{sec:convergence} \\
 \code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
-\code{case\_ab} & 'B' & case A/B recombination ('A' forced by the diffuse field); also selects the SH95 H\,\textsc{i}/He\,\textsc{ii} line tables (case-A/B) \\
+\code{case\_ab} & 'B' & case A/B recombination in the ionization balance, i.e.\ how the ionizing \emph{continuum} is treated ('A' is forced by \code{diffuse\_field}, which transports the ground-state recombination photons) \\
+\code{line\_case} & 'B' & case of the SH95 H\,\textsc{i}/He\,\textsc{ii} recombination-\emph{line} tables.  This is set by the optical depth of the Lyman \emph{lines}, a different question from \code{case\_ab}: a nebula whose diffuse continuum is transported still traps its Lyman lines and radiates case-B Balmer lines, so 'B' is the physical default for H\,\textsc{ii} regions.  'A' selects the case-A tables (Lyman-line-thin gas); 'follow' ties the line case to \code{case\_ab} \\
 \code{require\_convergence} & F & if the gas iteration has not converged at \code{gas\_niter}, print a warning; when T, abort before writing output.  The convergence status is recorded in the \code{\_rates} header either way (\code{CONVERGD}, \code{NITERDON}, \code{FINALDX}, \code{FINALDTE}) \\
 \bottomrule
 \end{tabular}
@@ -534,10 +535,10 @@ block & source & lines & weighting, when present \\
 \midrule
 \endfirsthead
 \code{emis\_h} & Storey \& Hummer (1995) H\,\textsc{i}, case set by
-  \code{case\_ab} & H$\alpha$ 6565, H$\beta$ 4863, H$\gamma$ 4342,
+  \code{line\_case} & H$\alpha$ 6565, H$\beta$ 4863, H$\gamma$ 4342,
   H$\delta$ 4103, Pa$\alpha$ 1.876\,$\mu$m, Pa$\beta$ 1.282\,$\mu$m,
   Br$\gamma$ 2.166\,$\mu$m & always; $n_e\,n_{\rm HII}$ \\
-\code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{case\_ab}) &
+\code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{line\_case}) &
   1640, 3204, 4543, 4686, 5413, 10126 & only where an He\,\textsc{iii}
   zone exists; $n_e\,n_{\rm HeIII}$ \\
 \code{emis\_hei} & Porter et al.\ (2012/2013) He\,\textsc{i}, case-B

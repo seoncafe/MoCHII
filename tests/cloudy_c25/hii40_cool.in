@@ -1,0 +1,102 @@
+title "New" Paris meeting HII region
+# "standard" HII region model of the Pequignot Meudon Conference
+#
+# commands controlling continuum =========
+black body, T = 40000 K radius = 12.113943
+# add the CMB after hot star shape & luminosity specified
+CMB
+#
+# commands for density & abundances =========
+hden = 2
+init file="ism.ini"
+## LineList_HII.dat contains an Al III multiplet, so turn back on
+element aluminium on
+element helium abundance -1
+element carbon abundance -3.6576
+element nitrogen abundance -4.39794
+element oxygen abundance -3.481146
+element neon abundance -4.30103
+element magnesium abundance -8
+element aluminium abundance -8
+element silicon abundance -8
+element sulphur abundance -5.04576
+element chlorine abundance -7
+element argon abundance -8
+element iron abundance -8
+#
+# commands controlling geometry  =========
+radius = 18.477121
+sphere
+# next two to make sure we pick up all possible H recombination
+## stop temperature 600
+set temperature floor 1000
+# make sure sim goes very deep into cold gas
+stop temperature 100K
+stop efrac -2
+#
+# other commands for details     =========
+# must iterate since fine structure lines are optically thick
+iterate
+database h-like element hydrogen levels resolved 10
+#
+# ---------------------------------------------------------------------------
+# Everything above this line is the unmodified physics block of the Cloudy
+# c25.00 test-suite input tsuite/auto/hii_paris.in (lines 1-41), identical to
+# hii40_c25.in.  Only the output commands below differ: this run adds the
+# zone-by-zone cooling and heating inventories used by the MoCHII cooling-
+# budget comparison.
+# ---------------------------------------------------------------------------
+set WeakHeatCool -4
+save cooling each last "hii40_cool.cooleach"
+save cooling last "hii40_cool.cool"
+save heating last "hii40_cool.heat"
+save overview last "hii40_cool.ovr"
+save dr last "hii40_cool.dr"
+save radius last "hii40_cool.rad"
+save element hydrogen last "hii40_cool.ele_h"
+save element helium last "hii40_cool.ele_he"
+save element carbon last "hii40_cool.ele_c"
+save element nitrogen last "hii40_cool.ele_n"
+save element oxygen last "hii40_cool.ele_o"
+save element neon last "hii40_cool.ele_ne"
+save element sulphur last "hii40_cool.ele_s"
+save lines emissivity last "hii40_cool.ems"
+H  1     4861.32A air
+H  1     1215.67A vacuum
+H  1     6562.80A air
+c  2     157.636m air
+blnd     2326     air
+blnd     1909     vacuum
+n  2     121.769m air
+n  2     205.283m air
+n  2     6583.45  air
+n  2     6548.05  air
+n  2     5754.59A air
+n  3     57.3238m air
+o  1     63.1679m air
+o  1     145.495m air
+O  1     6300.30  air
+O  1     6363.78  air
+O  2     3726.03  air
+O  2     3728.81  air
+blnd     7325     air
+o  3     51.8004m air
+o  3     88.3323m air
+o  3     5006.84  air
+o  3     4958.91  air
+O  3     4363.21  air
+ne 2     12.8101m air
+ne 3     15.5509m air
+ne 3     36.0036m air
+ne 3     3868.76  air
+ne 3     3967.47  air
+s  2     6716.44  air
+s  2     6730.82  air
+S  2     4068.6   air
+S  2     4076.35  air
+S  3     18.7078m air
+S  3     33.4704m air
+S  3     9530.62  air
+S  3     9068.62  air
+s  4     10.5076m air
+end of lines
