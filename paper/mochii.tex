@@ -1,0 +1,1600 @@
+%% MoCHII code paper -- draft.
+%% AASTeX v7.0.2.  Target journal: ApJ / ApJS.
+%% Author: Kwang-Il Seon (KASI / UST).
+%%
+%% Build: pdflatex mochii ; bibtex mochii ; pdflatex mochii ; pdflatex mochii
+%%
+%% Numerical values, validation results, and equations are taken from the project
+%% development record (../CLAUDE.md) and the physics memo
+%% (../docs/MoCHII_physics.tex).  Do not alter numbers without checking those
+%% sources.
+
+\documentclass[twocolumn,linenumbers]{aastex702}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+
+%% ---- convenience macros ----
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\MoCHII}{\textsc{MoCHII}}
+\newcommand{\MoCafe}{\textsc{MoCafe}}
+\newcommand{\Mthree}{M$^{3}$}
+\newcommand{\HII}{H\,\textsc{ii}}
+\newcommand{\HI}{H\,\textsc{i}}
+\newcommand{\HeI}{He\,\textsc{i}}
+\newcommand{\HeII}{He\,\textsc{ii}}
+\newcommand{\HeIII}{He\,\textsc{iii}}
+\newcommand{\Te}{T_{\mathrm{e}}}
+\newcommand{\nelec}{n_{\mathrm{e}}}
+\newcommand{\nH}{n_{\mathrm{H}}}
+\newcommand{\xHI}{x_{\mathrm{HI}}}
+\newcommand{\QH}{Q_{\mathrm{H}}}
+\newcommand{\cmc}{\mathrm{cm^{3}\,s^{-1}}}
+
+\shorttitle{MoCHII: Monte Carlo photoionization on octree AMR}
+\shortauthors{Seon}
+
+\begin{document}
+
+\title{MoCHII: A Three-Dimensional Monte Carlo Photoionization
+Code for Dusty Nebulae on Adaptive Octree Grids}
+
+%% TODO: confirm final title.
+\author[orcid=0000-0001-9561-8134,gname=Kwang-Il,sname=Seon]{Kwang-Il Seon}
+\affiliation{Korea Astronomy and Space Science Institute,
+776 Daedeokdae-ro, Yuseong-gu, Daejeon 34055, Republic of Korea}
+\affiliation{Department of Astronomy and Space Science,
+University of Science and Technology, Korea,
+217 Gajeong-ro, Yuseong-gu, Daejeon 34113, Republic of Korea}
+\email[show]{kiseon@kasi.re.kr}
+
+\begin{abstract}
+We present \MoCHII{} (MOnte Carlo for \HII{} regions), a
+three-dimensional Monte Carlo radiative-transfer code for dusty
+photoionized nebulae on adaptive octree (AMR) grids.  \MoCHII{} is built
+by adding a self-consistent gas-physics layer to the validated octree
+transport, peel-off, and stochastic-dust modules of the dust code
+\MoCafe{}, and it computes hydrogen and helium photoionization and
+thermal balance, a trace-metal ionization cascade with modern analytic
+atomic data, the dust and PAH continuum, and the recombination-line and
+nebular-continuum diagnostics all from one radiation field.  The band
+transport uses an analytic (zero-variance) direct-field estimator on the
+octree together with a dedicated Cartesian digital-differential-analyzer
+(DDA) backend, an explicit Monte Carlo diffuse field, dust absorption and
+forward scattering, and observer peel-off imaging.  The atomic data are
+fitted offline and evaluated online: exact hydrogenic \HI/\HeII{} cross
+sections, Verner et al.\ (1996) fits for the remaining ions, Badnell
+(2023) radiative and dielectronic recombination with a Mao \& Kaastra
+(2016) ground-level split for case A/B, Voronov collisional ionization,
+and charge exchange, so that adding a metal ion is a data operation
+rather than a code operation.  We validate the code against analytic
+attenuation (rate-integral bias $+0.004\%$), the Str\"omgren sphere
+(ionized volume $+0.56\%$ versus an exact 1D reference; AMR identical to
+a uniform grid), a thermal H/He nebula (median $0.14\%$ in $\Te$), and
+the Lexington 2000 \HII{} region benchmarks, on which \MoCHII{} lies
+within the published multi-code spread: the
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 7894~K at HII40,
+inside the published 7720--8199~K, and 6376~K at HII20, $0.4\%$ below the
+published floor; the outer radius and the He$^{+}$/H$^{+}$ ratio fall
+inside the published ranges at both, as do 22 of the 36 tabulated line
+entries, and $L(\mathrm{H}\beta)$ is within $3\%$ of them.  The
+line-cooling data are
+cross-validated channel by channel against a \textsc{Cloudy} c25.00
+cooling decomposition on a fixed
+$(\Te, \nelec, \mathrm{ionization})$ state, where the summed line cooling
+agrees to $1\%$.  Both benchmarks sit at the cool edge of the published
+range, which is the signature of the one documented limitation of the
+thermal loop: its cooling function is the zero-density limit, so the
+far-infrared fine-structure lines of low critical density
+([O\,\textsc{iii}] 52 and 88\,$\mu$m, [C\,\textsc{ii}] 158\,$\mu$m) are
+not collisionally suppressed and overcool the line budget by $12\%$ at
+$\nelec = 110\,\mathrm{cm^{-3}}$; a density-dependent
+$\Lambda(T, \nelec)$ is the planned extension.
+Because the published columns are a quarter of a century old, we also run
+\textsc{Cloudy} c25.00 on the same two models and carry it as an extra
+column: it is hotter than every published entry, \MoCHII{} sits 4 and 8\%
+below it, and several of the largest line-ratio differences (notably the
+S\,\textsc{ii}/S\,\textsc{iii} split) prove to be drift in the published
+reference rather than in either modern code.  We further demonstrate
+solution-driven ionization-front re-refinement (a re-refined octree
+reproduces a native high-resolution grid to $+0.008\%$ in ionized volume
+with $4.5\times$ fewer cells), the complete dust and PAH coupling (grain
+heating energy closure $L_{\mathrm{IR}}/L_{\mathrm{abs}} = 1.000$; the
+projected 8\,$\mu$m image turning from a central peak into a
+limb-brightened ionization-front annulus as PAHs are destroyed in ionized
+gas), and an atomic photodissociation-region
+skin with photoelectric heating.  \MoCHII{} is written for modern
+three-dimensional synthetic observations of \HII{} regions and their
+surroundings.
+\end{abstract}
+
+\keywords{\uat{H II regions}{694} --- \uat{Interstellar medium}{847}
+--- \uat{Radiative transfer}{1335} --- \uat{Photoionization}{2060}
+--- \uat{Interstellar dust}{836} --- \uat{Astronomy software}{1855}}
+
+%==========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Photoionized regions --- \HII{} regions, planetary nebulae, the diffuse
+ionized medium, and the circumgalactic gas illuminated by stars and
+active nuclei --- are among the most information-rich objects in
+astrophysics.  Their emission-line and continuum spectra encode the
+ionizing radiation field, the elemental abundances, the electron
+temperature and density, and the dust content of the gas.  Extracting
+that information requires a radiative-transfer model that couples the
+ionizing radiation field to the ionization, thermal, and dust state of
+the gas self-consistently.
+
+The classic tools for this problem are one-dimensional: \textsc{Cloudy}
+\citep{cloudy2017,cloudy2023} and \textsc{Mappings}
+\citep{sutherland1993,mappingsv2017} solve the coupled ionization,
+thermal, and (in the case of \textsc{Mappings}) shock structure of a
+spherical or plane-parallel slab with very detailed microphysics: large
+ion inventories, density-dependent multilevel cooling, non-equilibrium
+and time-dependent options, and grain and PAH physics.  Their strength is
+completeness of the local physics; their limitation is geometry.  Real
+\HII{} regions are clumpy, aspherical, and shadowed, and the diffuse
+recombination field they produce is intrinsically three-dimensional.
+
+Three-dimensional Monte Carlo photoionization codes were developed to
+address exactly this geometry.  \textsc{Mocassin}
+\citep{ercolano2003,ercolano2005,ercolano2008} pioneered the
+self-consistent Monte Carlo treatment of the direct and diffuse fields on
+a Cartesian grid, with a large ion and dust inventory, and it defines the
+\emph{de facto} three-dimensional benchmark suite (the Lexington/Meudon
+comparison cases; \citealt{ferland1995,pequignot2001}).  The code of
+\citet{wood2004} demonstrated Monte Carlo photoionization with an
+efficient path-length estimator for the mean intensity.  \textsc{M}$^{3}$
+(Messenger Monte Carlo \textsc{Mappings V}; \citealt{jin2022,jin2022fractal})
+grafts three-dimensional Monte Carlo transport onto the extensive
+\textsc{Mappings V} microphysics, combining broad atomic physics with
+arbitrary Cartesian geometry.  \textsc{CMacIonize}
+\citep{cmacionize2018} adds a task-based, unstructured (Voronoi or
+adaptive Cartesian) grid and a modern software design.  These codes
+share a common architectural constraint: their spatial grids are either
+uniform Cartesian or, in the \textsc{CMacIonize} case, unstructured, and
+their diffuse-field and grid-traversal designs are tightly coupled.
+
+\MoCHII{} (MOnte Carlo for \HII{}
+regions)\footnote{\url{https://github.com/seoncafe/MoCHII}} is a new
+three-dimensional
+Monte Carlo photoionization code built around a different design choice:
+it reuses the mature octree adaptive-mesh-refinement (AMR) engine,
+event-driven traversal, peel-off imaging, and stochastic dust/PAH
+emission of the dust radiative-transfer code \MoCafe{} (Seon, in
+preparation)\footnote{\url{https://github.com/seoncafe/MoCafe}}, and
+adds a gas-physics layer on top.  The motivation is
+practical.  Retrofitting an octree traversal onto an existing uniform-grid
+photoionization code is difficult: the ray-segment bookkeeping is
+entangled with the physics loop, and structural rewrites are error-prone
+(the \textsc{Mocassin} \code{pathSegment} traversal, for instance,
+carries a dual position representation with many mutation sites).  An
+event-driven AMR transport engine, by contrast, already \emph{is} the
+design such a retrofit would have to reach.  \MoCafe{} provides that
+engine, validated for dust transport, so \MoCHII{} inherits octree AMR,
+an analytic direct-field estimator, a dedicated Cartesian
+digital-differential-analyzer (DDA) backend, peel-off synthetic imaging,
+MPI-3 shared-memory parallelism, and HDF5/FITS I/O without modifying the
+dust tree.
+
+On top of that engine \MoCHII{} adds: (i) an ionizing frequency band with
+threshold-aligned bins and a zero-variance direct-field estimator;
+(ii) hydrogen and helium photoionization and thermal balance with modern
+recombination data; (iii) a trace-metal ionization cascade organized as a
+data-driven registry, so that adding an ion (currently eleven elements,
+C through Ca) is an offline data operation; (iv) an explicit Monte Carlo
+diffuse field with a case-A/B option; (v) the complete dust and PAH
+coupling in the ionizing and far-ultraviolet (FUV) bands, including
+equilibrium and stochastic dust emission; (vi) solution-driven
+ionization-front re-refinement of the octree; and (vii) recombination-line,
+collisional-line, and nebular-continuum diagnostics with leaf-resolved
+emissivity output for synthetic imaging.  The atomic data are fitted
+offline from CHIANTI and the Strathclyde/Badnell tables and evaluated by
+analytic formulae at run time, with a provenance header on every
+coefficient file.
+
+The remainder of this paper is organized as follows.
+Section~\ref{sec:compare} compares \MoCHII{} with the established 1D and
+3D codes.  Section~\ref{sec:methods} describes the Monte Carlo transport,
+the grids, the diffuse field, the iteration and convergence scheme, and
+the quasi-random launch option.  Section~\ref{sec:atomic} documents the
+atomic data and the offline fitting pipeline.
+Section~\ref{sec:validation} presents the validation against analytic
+solutions and the Lexington benchmarks.
+Section~\ref{sec:refine} demonstrates the solution-driven I-front
+re-refinement and a cosmological post-processing application.
+Section~\ref{sec:dust} presents the dust and PAH coupling, and
+Section~\ref{sec:pdr} the photodissociation-region skin.
+Section~\ref{sec:summary} summarizes and outlines planned extensions.
+
+%==========================================================================
+\section{Comparison with existing codes}
+\label{sec:compare}
+
+Table~\ref{tab:compare} places \MoCHII{} next to the reference codes along
+the axes most relevant to three-dimensional nebular modeling.  The
+comparison is deliberately architectural rather than a claim of superior
+physics: \textsc{Cloudy} and \textsc{Mappings} carry more complete local
+microphysics (larger ion inventories, density-dependent cooling,
+non-equilibrium and shock options), and \textsc{Mocassin} carries a
+comparably broad ion and dust inventory in three dimensions.  \MoCHII{}'s
+distinguishing features are the octree AMR grid with solution-driven
+re-refinement, the reuse of a validated dust-transport engine (so that
+dust absorption, forward scattering, equilibrium and stochastic emission,
+and PAH physics are first-class rather than bolted on), and the
+peel-off synthetic-imaging output.
+
+The grid axis is the sharpest distinction.  \textsc{Mocassin} and
+\textsc{M}$^{3}$ use uniform Cartesian grids; \textsc{CMacIonize} uses an
+unstructured Voronoi or adaptive Cartesian grid; \MoCHII{} uses an octree
+whose refinement can be driven by the ionization solution itself
+(Section~\ref{sec:refine}).  On the Str\"omgren problem this lets
+\MoCHII{} concentrate resolution at the ionization front and reproduce a
+native high-resolution run with several times fewer cells.
+
+The diffuse-field axis separates the on-the-spot (OTS) approximation from
+explicit transport.  \MoCHII{} defaults to case-B OTS (no diffuse packets,
+consistent with the analytic direct-field estimator) but offers an
+explicit Monte Carlo diffuse field with case-A rates and
+ground-recombination emission, matching the \textsc{Mocassin} and
+\textsc{Cloudy} treatment; the benchmark runs of Section~\ref{sec:hii} use
+it, so that the transfer treatment is the same on both sides of that
+comparison.
+
+The atomic-data axis reflects vintage.  \MoCHII{} uses exact hydrogenic
+cross sections, Verner et al.\ (1996) fits, Badnell (2023) recombination,
+CHIANTI v11 collision strengths, and Mao \& Kaastra (2016)
+level-resolved radiative recombination --- the same modern data that
+\textsc{Cloudy} uses --- rather than the older compilations still carried
+by \textsc{Mocassin}.
+
+The metal-treatment axis is the clearest algorithmic difference.
+\textsc{Mocassin}, \textsc{M}$^{3}$, \textsc{CMacIonize}, and the 1D codes
+solve a \emph{full network}: the ionization of every element is one coupled
+nonlinear system in which the metal opacity consumes photons from the
+radiation field, the metal electrons enter $\nelec$, and the metal
+photoheating enters the thermal balance, all iterated to self-consistency
+(radiation field $\leftrightarrow$ all ions $\leftrightarrow$ $\nelec$
+$\leftrightarrow$ $T$).  \MoCHII{} instead adopts a \emph{trace-species}
+treatment: because the metals are present at abundances
+$\sim$$10^{-4}$--$10^{-3}$, they are separated as a perturbation on the
+H/He (and dust) skeleton --- the radiation field and $\nelec$ are set by
+H, He, and dust, and each element's ionization cascade is an independent,
+effectively linear chain evaluated on the converged
+$(J_\nu, \nelec, T)$.  The one feedback that is \emph{not} dropped is metal
+line cooling, which enters the thermal balance because the \HII-region
+temperature is itself largely the result of metal cooling
+(Section~\ref{sec:cooldata}).  Where the trace separation genuinely breaks
+down, it is restored selectively by switches (the default is trace, with
+recoupling only where the physics demands it): \code{ion\_metal\_abs} adds
+the metal photoionization opacity to the band (on by default),
+\code{metal\_ne} feeds the metal electrons into the $\nelec$ closure ---
+essential in neutral photodissociation-region gas, where carbon dominates
+the electron budget, and which the calculation of Section~\ref{sec:pdr}
+uses --- and \code{metal\_heat} adds metal photoheating to the thermal
+balance.  The design payoff is that, with each element an independent
+linear chain, adding an ion is a data-file addition rather than a change
+to a coupled solver (the registry of Section~\ref{sec:atomic}), and the
+cell solve stays at the level of closed-form evaluations rather than a
+coupled-network iteration.
+
+A related but separate axis is the cooling inventory --- which channels a
+code carries at all, since that is what sets the equilibrium temperature.
+As implemented in the distributed source, the Monte Carlo code of
+\citet{wood2004} cools by ten five-level metal ions (N\,\textsc{i},
+N\,\textsc{ii}, O\,\textsc{i}, O\,\textsc{ii}, O\,\textsc{iii},
+Ne\,\textsc{iii}, S\,\textsc{ii}, S\,\textsc{iii}, C\,\textsc{ii},
+C\,\textsc{iii}) plus two two-level ions ([N\,\textsc{iii}]
+57\,$\mu$m and [Ne\,\textsc{ii}] 12.8\,$\mu$m), and \textsc{CMacIonize} by
+the same ten five-level ions plus three two-level ions, adding
+[S\,\textsc{iv}] 10.5\,$\mu$m; both then add free-free emission and
+hydrogen and helium recombination cooling, in each case with the H$^{+}$
+and He$^{+}$ terms only.  \MoCHII{}
+carries line cooling for 28 ions --- \HI{} and the 27 metal ions of the
+eleven-element registry (Appendix~\ref{app:atomic}) --- and adds three
+channels that neither of those two codes carries: \HI{} collisional
+excitation, collisional-ionization cooling of H and He, and the He$^{++}$
+terms of the free-free and recombination sums.  In a $10^4$~K \HII{}
+region these are small (\HI{} collisional lines are $0.7\%$ of the
+HII40 cooling budget), but they are the terms that take over in the hot,
+partly neutral gas of an ionization front and in the shielded gas beyond
+it.
+
+\begin{deluxetable*}{>{\raggedright\arraybackslash}p{2.4cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{2.3cm}}
+\tablecaption{Architectural comparison of \MoCHII{} with reference
+photoionization codes.  ``OTS'' = on-the-spot (case B); ``explicit'' =
+transported diffuse field.  This table compares design, not the breadth
+of local microphysics, on which the 1D codes and \textsc{Mocassin} are
+more complete.\label{tab:compare}}
+\tablewidth{0pt}
+\tabletypesize{\footnotesize}
+\tablehead{\colhead{} & \colhead{\MoCHII{}} & \colhead{MOCASSIN} &
+\colhead{M$^{3}$} & \colhead{CMacIonize} & \colhead{Cloudy / MAPPINGS}}
+\startdata
+Dimensionality & 3D & 3D & 3D & 3D & 1D \\[2pt]
+Grid & octree AMR + Cartesian DDA & uniform Cartesian & uniform Cartesian & Voronoi / adaptive Cartesian & spherical / plane-parallel \\[2pt]
+Solution-driven refinement & yes (I-front) & no & no & static AMR & 1D shells \\[2pt]
+Diffuse field & OTS default; explicit MC option & explicit MC & explicit MC & explicit MC & outward-only / OTS \\[2pt]
+Recombination data & Badnell 2023 + Mao \& Kaastra 2016 & Verner \& Ferland 1996 & MAPPINGS V & Verner / Badnell & Badnell / internal \\[2pt]
+Metal treatment & trace-species registry (data-driven) & full network & full MAPPINGS network & full network & full network \\[2pt]
+Dust / PAH & absorption + forward scattering + equilibrium + stochastic + PAH survival & absorption + emission & MAPPINGS grains & absorption + emission & detailed grains/PAH \\[2pt]
+Parallelism & MPI-3 shared memory & MPI & MPI & task-based / MPI & OpenMP / serial \\[2pt]
+Synthetic output & peel-off images, line maps, IR SED & line maps, images & line maps & line maps, images & 1D spectra \\
+\enddata
+\end{deluxetable*}
+
+%==========================================================================
+\section{Methods}
+\label{sec:methods}
+
+\MoCHII{} follows the conventions of its parent dust code: all input is a
+single Fortran namelist (\code{par}); computation is in double precision;
+parallelism is MPI-only with MPI-3 shared-memory windows for the grid;
+output is HDF5 with a FITS fallback; and algorithm variants are selected
+by procedure pointers at startup.  A run reads (or builds) a grid, persists
+a gas leaf state, and iterates transport and equilibrium to convergence.
+
+\subsection{The ionizing band and the source}
+\label{sec:band}
+
+The ionizing band spans photon energies $[E_{\min}, E_{\max}] =
+[13.598, 100]$~eV in $n_\nu$ bins (typically 32).  The source spectrum ---
+a Planck function $B_\nu(T_\star)$ or a tabulated spectrum in shape or
+physical (per-eV, per-Hz, per-\AA, per-$\mu$m) units --- is integrated on
+a sub-grid within each bin and normalized so that $\sum_b L_b =
+L_{\mathrm{band}}$.  Packets sample the bin from the luminosity CDF and
+carry $L_{\mathrm{pkt}} = L_{\mathrm{band}}/N$.
+
+\paragraph{Threshold-aligned bins.}  By default (\code{ion\_align\_edges})
+the bin \emph{edges} are pinned onto the ionization thresholds --- \HI{}
+(13.6~eV), \HeI{} (24.6~eV), \HeII{} (54.4~eV), and the active metal
+edges gathered from the registry --- so that no bin straddles a threshold;
+the sub-segments between thresholds are log-uniform.  This removes a real
+discretization error: a coarse 32-bin log grid straddles the 24.6~eV \HeI{}
+edge and delivers $\sim$18\% too many He-ionizing photons against a true
+40~kK blackbody ($Q_{\mathrm{HeI}}/\QH = 0.127$ versus the exact
+$0.108$), over-ionizing helium and, downstream, the metals.  Aligning the
+edges restores the exact ratio at fixed bin count; this is the single
+largest lever on the He and metal ionization structure in the HII40
+benchmark (Section~\ref{sec:hii}).  When thresholds outnumber bins the
+lowest-priority metal edges are dropped gracefully, so the option is safe
+at any bin count, and disabling it recovers the plain logarithmic grid
+bit-for-bit.
+
+\paragraph{FUV extension and composite sources.}  With \code{par\%add\_fuv}
+the band grows a second, lower segment of FUV bins on
+$[E_{\mathrm{FUV}}, E_{\min}]$ (default $E_{\mathrm{FUV}} = 6$~eV) below
+the unchanged ionizing bins.  H and He cross sections vanish below their
+thresholds, so the FUV bins interact only with dust and with the
+low-threshold metal stages, producing the neutral-zone \HeI-like species
+(e.g.\ Mg\,\textsc{ii}, C\,\textsc{ii}) that the ionizing-only band
+cannot.  The band is fed by any number of internal point sources
+(0--16) plus, independently, one isotropic external radiation field.  The
+external field is a band-integrated mean intensity $J$ entering through
+the box faces or a bounding sphere; the inward flux is the hemisphere
+integral of $J\cos\theta$, so the entering band power is $L = \pi J
+A_{\mathrm{surf}}$, and entry directions are cosine-weighted (Lambert),
+reproducing an isotropic interior field of energy density $u = 4\pi
+J/c$.  Three analytic interstellar-radiation-field presets (Draine,
+Habing, Mathis) are available for the FUV segment.
+
+\subsection{Opacity and the zero-variance edge walk}
+\label{sec:edge}
+
+Each leaf carries the band absorption coefficient
+\begin{multline}
+  \kappa_b = \nH\big[\xHI\,\sigma_{\mathrm{HI}}(E_b) \\
+   + y_{\mathrm{He}}\big(x_{\mathrm{HeI}}\sigma_{\mathrm{HeI}} +
+     x_{\mathrm{HeII}}\sigma_{\mathrm{HeII}}\big)(E_b)\big] d_{\mathrm{cm}}
+   \;(+\,\kappa_{\mathrm{dust}}),
+\end{multline}%
+stored as the full $(n_\nu, n_{\mathrm{leaf}})$ array, plus optional metal
+photoionization opacity.  Because the ionizing band has no scattering
+(without dust) and the diffuse field, when used, is emitted explicitly,
+each packet's contribution to the mean-intensity tally is computed
+\emph{analytically} along its ray --- the forced-first-flight estimator
+of \citet{lucy1999}, made exact:
+\begin{equation}
+  \Delta J_b(\mathrm{leaf}) = w\,L_{\mathrm{pkt}}\,
+  \frac{e^{-\tau_{\mathrm{in}}} - e^{-\tau_{\mathrm{out}}}}{\kappa_b},
+  \label{eq:edgewalk}
+\end{equation}%
+accumulated leaf by leaf until the domain edge.  No interaction sampling
+is needed; the only Monte Carlo variance is in the direction and bin
+sampling.  From the reduced tally $J_b$ the code forms, for each absorber
+$i$, the photoionization rate and photoheating rate
+\begin{align}
+  \Gamma_i &= \sum_b \frac{[4\pi J\,\Delta\nu]_b\,\sigma_i(E_b)}{h\nu_b},
+  \nonumber\\
+  \mathcal{H}_i &= \sum_b [4\pi J\,\Delta\nu]_b\,\sigma_i(E_b)
+  \left(1 - \frac{E_{\mathrm{th},i}}{E_b}\right).
+  \label{eq:rates}
+\end{align}
+
+\subsection{Grids: octree AMR and the Cartesian DDA backend}
+\label{sec:grids}
+
+\MoCHII{} inherits the \MoCafe{} octree.  The grid may be read as an AMR
+leaf list, built from a namelist size ($n_x\times n_y\times n_z$) with an
+optional uniform-density sphere or shell, or read from a 3D density cube.
+Geometry is fully analytic behind accessor functions, so a leaf's center
+and half-size are array reads for a general octree and raster-index decodes
+for a uniform Cartesian (``car'') grid --- the same floating-point
+expressions in both cases.  The car backend allocates no tree or neighbor
+arrays at all (a saving that scales to $\sim$10~GB at $512^3$) and
+traverses rays with a dedicated incremental Amanatides--Woo DDA walk, which
+is the default for uniform grids.  A verification mode reproduces the
+single-level octree traversal bit-for-bit, and the DDA agrees with it to
+rounding, at up to twice the transport throughput.  The two backends share
+all of the physics, transport, and peel-off code.
+
+\subsection{Ionization and thermal equilibrium}
+\label{sec:equil}
+
+In each leaf, the ionization state is solved (\code{solve\_ion\_cell}) from the
+ionization rates $R_i = \Gamma_i + \nelec C_i(T)$ and the case-A/B
+recombination rates $\alpha_i$: $\xHI = \alpha\nelec/(R_{\mathrm{HI}} +
+\alpha\nelec)$, the He chain $n_{i+1}/n_i = R_i/(\alpha_{i+1}\nelec)$, closed
+by $\nelec = \nH[x_{\mathrm{HII}} + y_{\mathrm{He}}(x_{\mathrm{HeII}} +
+2x_{\mathrm{HeIII}})]$ and solved by a damped fixed point on $\nelec$.  When
+thermal balance is enabled, the temperature is updated once each iteration
+by finding the root of the net rate $\mathcal{N}(T) = \mathcal{H}(T) -
+\mathcal{C}(T)$ by bisection on $\log \Te$; the ionization state is
+re-solved at every trial $T$.  The cooling $\mathcal{C}(T)$ assembles
+recombination cooling, free-free (with the net ion charge $Z$, including
+the trace metals at $Z_{\mathrm{ion}} = \mathrm{stage}-1$), collisional
+ionization, \HI{} line cooling, and the trace-metal cooling sum
+$\sum \nelec n_{\mathrm{ion}}\Lambda_{\mathrm{ion}}(T)$.  Optional secondary
+ionization by fast photoelectrons \citep{shull1985} redistributes the
+photoelectron energy between heating and secondary \HI/\HeI{} ionization
+in partially neutral gas.
+
+\subsection{The iteration loop and convergence}
+\label{sec:iterate}
+
+Each iteration zeroes the band tally, transports the stellar packets
+(and, if enabled, rebuilds and transports the diffuse packets), reduces
+the tally over MPI, forms the rate integrals, solves each leaf, and
+refills the opacity from the new state; the stellar tally is recomputed
+from zero each iteration.  Every rank runs the identical cell solves from
+the reduced tallies, so all ranks agree on convergence, and only the
+node master writes the shared state.
+
+Convergence is measured two ways every iteration, and
+\code{par\%conv\_crit} selects which pair controls the loop: the largest
+change found in any single cell ($\max|\Delta x_{\mathrm{HII}}|$,
+$\max|\Delta \Te|/\Te$) and the volume-integrated measures
+\begin{equation}
+  \frac{\sum_{\mathrm{leaf}} V\,|\Delta x_{\mathrm{HII}}|}
+       {\sum_{\mathrm{leaf}} V\,x_{\mathrm{HII}}},
+  \qquad
+  \frac{\sum_{\mathrm{leaf}} V\,\nelec\,|\Delta \Te|}
+       {\sum_{\mathrm{leaf}} V\,\nelec\,\Te}.
+\end{equation}
+The volume measures fix two stall modes of these single-cell maxima:
+ionization-front jitter occupies little volume (the front shell is a few
+thousand cells against $\sim$$10^5$ ionized ones, so its Monte Carlo
+noise enters the $L_1$ norm suppressed by that ratio), and the $\nelec$
+weight removes the vacuum and no-heating cells whose floor-pinned
+oscillation dominates $\max|\Delta \Te|$ in FUV/PDR configurations.  On a
+FUV dusty Str\"omgren case at $8\times10^6$ packets, where these single-cell
+maxima stall at 0.1 and 6.4, the volume measures decay smoothly
+to Monte Carlo floors of $2.7\times10^{-3}$ and $6.6\times10^{-3}$ by
+iteration $\sim$27, and 30 further iterations leave the ionized volume
+unchanged to 0.014\%.  The floors scale as $1/\sqrt{N_{\mathrm{packets}}}$,
+and the volume criterion is the recommended production setting.
+
+\subsection{Explicit diffuse field}
+\label{sec:diffuse}
+
+When the explicit diffuse field is enabled, case-B OTS is replaced by
+case-A rates plus explicit emission of ground-recombination packets in
+three channels (\HII, \HeII, \HeIII) with rate $\alpha_1 = \alpha_A -
+\alpha_B$ and photon energies $E = E_{\mathrm{th}} + kT_e\,x$, $x \sim
+\mathrm{Exp}(1)$.  The emission table is rebuilt from the current state
+each iteration; packets are transported by the same edge walk.  The
+sampled photon energy is mapped to its bin by a binary search of the
+stored bin-edge array, correct on both the aligned and the plain
+logarithmic grids: an
+energy exactly on a threshold edge falls in the bin \emph{above} it, the
+physically correct side for a recombination photon emitted just above
+threshold.  An optional fourth channel adds the \HeI{} excited-level
+recombination radiation with the low-density branching of
+\citet{osterbrock2006}.  At HII40 the diffuse band luminosity converges to
+$\sim$$0.5\,L_\star$.
+
+\subsection{Quasi-random photon launching}
+\label{sec:qmc}
+
+Optionally the packet launch draws its variables --- source component,
+frequency bin, direction, and any entry-surface coordinates --- from an
+Owen-scrambled Sobol sequence \citep{joekuo2008,burley2020} instead of the
+Mersenne Twister, while every post-launch transport event stays
+pseudo-random.  The Sobol point is addressed by the \emph{global} photon
+number, so the launch set is independent of the MPI task count.  Because
+the ionizing band has no scattering, the direct field is an analytic
+function of the launch variables (Eq.~\ref{eq:edgewalk}), so a
+low-discrepancy launch set reduces its noise directly: on the fixed-state
+analytic-attenuation test the cell-wise $\Gamma_{\mathrm{HI}}$ error scales
+as $\sim$$1/N$ (Monte Carlo $1/\sqrt{N}$), with effective photon gains of
+$29\times$ at $N = 2^{17}$ and $222\times$ at $2^{20}$, at unchanged wall
+time and no significant bias.
+
+\subsection{Peel-off imaging}
+\label{sec:peel}
+
+After convergence, one extra transport pass runs with observer peeling
+(the \MoCafe{} convention adapted to the band).  Every emitted packet
+peels a direct contribution $L_{\mathrm{pkt}}\,w\,e^{-\tau}/(4\pi r^2)$
+toward each observer, and, when dust scattering is sampled, every
+interaction peels a scattered contribution with the Henyey--Greenstein
+phase function.  The optical depth to the box edge is integrated by a
+tally-free walk, so the images carry exactly the transport's extinction.
+Images are TAN projections written as surface brightness, split into
+direct/scattered and ionizing/FUV channels; with a spectral cube option
+the channel axis becomes the band bin for hardness maps.  Leaf-resolved
+line and continuum emissivities are also written, from which
+flux-conserving line and field maps are produced.
+
+%==========================================================================
+\section{Atomic data}
+\label{sec:atomic}
+
+The design principle for the atomic data is that adding an ion is a
+\emph{data operation, not a code operation}.  All rate coefficients are
+fitted offline by a Python pipeline from CHIANTI v11.0.2
+\citep{dere1997,delzanna_chianti} and the Strathclyde/Badnell tables, and
+are evaluated online by fixed analytic formulae.  Every coefficient file
+carries a provenance header (source, version, fit range, maximum fit
+error), so the coefficients are auditable and the Fortran only evaluates
+formulae.
+
+\subsection{Photoionization cross sections}
+\label{sec:xsec}
+
+The one-electron ions \HI{} ($Z=1$) and \HeII{} ($Z=2$) use the exact
+ground-state hydrogenic cross section \citep{osterbrock2006}
+\begin{gather}
+  \varepsilon = \sqrt{E/E_{\mathrm{th}}-1},
+  \nonumber\\
+  \sigma(E) = \frac{\sigma_0}{Z^2}\left(\frac{E_{\mathrm{th}}}{E}\right)^{4}
+  \frac{\exp\!\big(4 - 4\arctan\varepsilon/\varepsilon\big)}
+       {1 - e^{-2\pi/\varepsilon}},
+  \label{eq:sighyd}
+\end{gather}%
+with $\sigma_0 = 6.30\times10^{-18}\,\mathrm{cm^2}$ and $E_{\mathrm{th}}$
+the true ionization potential (13.598 and 54.416~eV), tied to the physical
+edge so it stays aligned with the band grid.  \HeI{} and every metal ion
+use the single-shell analytic fit of \citet{verner1996}:
+\begin{gather}
+  x = \frac{E}{E_0} - y_0,\qquad z = \sqrt{x^2 + y_1^2},
+  \nonumber\\
+  \sigma(E) = \sigma_0\left[(x-1)^2 + y_w^2\right]
+  z^{-Q}\left(1 + \sqrt{z/y_a}\right)^{-P},
+  \nonumber\\
+  Q = 5.5 - \tfrac{1}{2}P,
+  \label{eq:vfky}
+\end{gather}%
+with parameters parsed directly from the authors' \code{phfit2.f} table.
+For the elements absent from that table (P, Cl, K --- Opacity-Project
+gaps), the \citet{verner1995} outer-shell subshell fit is used instead,
+the same hybrid as \textsc{Mocassin}.  The cross sections are cross-checked
+against the independent implementation in the exoplanet-atmosphere code
+EXHALE.
+
+\subsection{Recombination}
+\label{sec:recomb}
+
+The default recombination model takes the total (case-A) radiative
+recombination $\alpha_A$ from the \citet{badnell2006} radiative
+recombination fit,
+\begin{gather}
+  \alpha_{\mathrm{RR}}(T) =
+  \frac{A}{\sqrt{T/T_0}\big(1+\sqrt{T/T_0}\big)^{1-b}
+           \big(1+\sqrt{T/T_1}\big)^{1+b}},
+  \nonumber\\
+  b = B + C\,e^{-T_2/T},
+  \label{eq:badnellrr}
+\end{gather}%
+the ground-level ($n=1$) direct-capture rate $\alpha_1$ from the
+level-resolved parameterization of \citet{mao2016}, and forms case B by
+removing the ground term, $\alpha_B = \alpha_A - \alpha_1$.  For the
+H-like ions this $\alpha_1$ is derived from the exact hydrogenic cross
+sections (Eq.~\ref{eq:sighyd}) under detailed balance, so it is exact; the
+$\HeII\to\HeI$ channel adds the Badnell three-term dielectronic sum.  This
+construction mirrors how \textsc{Cloudy} splits case A and case B (total
+minus resolved ground) and reuses the same modern data.  An alternative
+setting selects the \citet{huignedin1997} fits; the two agree to $<$0.6\% for
+\HII{} and \HeIII{}, the one substantive difference being
+$\HeII\to\HeI$, where the Badnell value ($4.37\times10^{-13}\,\cmc$ at
+$10^4$~K) is $\sim$7\% higher and coincides with \textsc{Cloudy}, while
+the older \citet{huignedin1997} value is low and the
+\textsc{Mocassin} Verner \& Ferland value ($4.84$) is the high outlier.
+For the metal cascade, total recombination is the \citet{badnell2006}
+radiative recombination plus the Badnell-group dielectronic fits
+$\alpha_{\mathrm{DR}}(T) = T^{-3/2}\sum_i c_i e^{-E_i/T}$
+\citep{badnell2003}, read from the Strathclyde tables (verified md5-identical
+to the copies \textsc{Cloudy} redistributes), with a CHIANTI fallback for
+the few ions Badnell does not tabulate.
+
+\subsection{Collisional ionization and charge exchange}
+\label{sec:ci}
+
+Collisional ionization uses the \citet{voronov1997} fit
+\begin{equation}
+  k(T) = A\,\frac{1 + P\sqrt{U}}{X + U}\,U^{K} e^{-U},
+  \qquad U = \frac{\Delta E}{kT},
+\end{equation}%
+with an optional hybrid that multiplies each rate by the constant
+\citet{dere2007}/Voronov ratio per (element, stage); the difference matters
+only in shielded, low-ionization zones where collisions are the sole
+metal-ionization channel.  Charge exchange with hydrogen uses
+\citet{huang2023} Table~4 for the first stages and the
+\citet{kingdon1996} fits $k = a\,T_4^{b}(1 + c\,e^{d\,T_4})$ for the higher
+stages (recombination direction).  The tabulated higher-stage rates are
+indexed by the \emph{product} ion of the reaction
+$\mathrm{X}^{i+} + \mathrm{H}^{0} \to \mathrm{X}^{(i-1)+}$, a convention worth
+stating explicitly because it is easy to misread by one ionization stage and
+because the doubly and triply ionized metal fractions are sensitive to it;
+the indexing used here is checked against \textsc{Mocassin}'s ionization loop
+and \textsc{CMacIonize}.
+
+\subsection{Cooling and $n$-level diagnostic data}
+\label{sec:cooldata}
+
+Collisional line cooling enters the code at two levels, both built from the
+same CHIANTI v11.0.2 model of each ion (level energies from the observed
+term structure, radiative $A$-values, and effective collision strengths
+descaled after \citealt{burgess1992}).  The thermal loop needs a cooling
+rate at every trial temperature of the bisection, and therefore uses a
+closed-form fit; the diagnostic output needs density-dependent
+emissivities, and therefore solves the level populations.
+
+The thermal-loop coefficient is a multi-exponential fit
+\begin{equation}
+  \Lambda_{\mathrm{ion}}(T) = T^{-1/2}\sum_{i=1}^{N} A_i\,e^{-T_i/T}
+  \quad [\mathrm{erg\,cm^3\,s^{-1}}],
+  \label{eq:cool}
+\end{equation}%
+a rate coefficient multiplying $\nelec n_{\mathrm{ion}}$, fitted over
+$10^3$--$10^5$~K to the $\nelec \to 0$ limit of that ion's own
+statistical-equilibrium solution --- all population in the lowest level,
+excitation at the observed level energies, and the full cascade energy
+radiated.  The maximum fit error over the temperatures that carry the
+cooling is $2.2\%$ across the default C/N/O/Ne/S set (the coefficients of
+every ion are distributed with the code, Appendix~\ref{app:atomic}; the
+heavily depleted Si/Cl/Ca ions have larger full-range fit errors, confined
+to the temperature tails where the cooling contribution is negligible).
+
+The zero-density limit is a deliberate approximation with a stated domain
+of validity: $\Lambda_{\mathrm{ion}}(T)$ carries no collisional
+de-excitation, so it is exact for lines whose critical density is far
+above the local $\nelec$ and increasingly too large for those below it.
+The affected lines are the far-infrared fine-structure transitions,
+[O\,\textsc{iii}] 52 and 88\,$\mu$m and [C\,\textsc{ii}] 158\,$\mu$m,
+whose electron critical densities are $10^{2}$--$10^{3.5}\,
+\mathrm{cm^{-3}}$, so at
+the $\nelec \sim 10^2\,\mathrm{cm^{-3}}$ of an \HII{} region the fit
+overestimates the line-cooling budget by about $12\%$
+(Section~\ref{sec:coolcheck}), while it is accurate in the diffuse gas the
+limit is written for.  A density-dependent $\Lambda(T, \nelec)$ table,
+which the same pipeline can produce and which the planetary-nebula
+densities of Section~\ref{sec:summary} require in any case, is the planned
+replacement.
+
+For the
+output-time diagnostics, the lowest $n$ levels, radiative $A$-values, and
+effective collision strengths $\Upsilon(T)$ (low-order Chebyshev fits in
+Burgess--Tully scaled space; worst transition 1.7\%,
+Table~\ref{tab:tier2}) are exported for the line-emitting ions of the
+eleven-element registry.  A statistical-equilibrium solve at output time
+(\code{nlevel\_mod}) uses these to compute the collisional emission-line
+luminosities exactly --- the density-dependent emissivities the
+low-density cooling fits cannot provide.  The fitted files reproduce direct
+CHIANTI spline evaluations of the classic diagnostic ratios to 0.05--0.5\%,
+and the Fortran solver matches an independent Python reference solver to
+four significant digits.  PyNeb cross-checks give [\textsc{O\,iii}]
+5007/4363 to 1.2\% and [\textsc{N\,ii}] 6584/5755 to 0.3\%; the density
+diagnostics and the iron lines differ by up to 6--16\% from PyNeb's
+independent collision data --- the well-known database spread, a
+data-vintage bracket rather than a code error.
+
+\subsection{Recombination lines and the nebular continuum}
+\label{sec:reclines}
+
+Hydrogen and \HeII{} recombination-line emissivities are interpolated from
+the \citet{storey1995} case-A/B tables (following \code{par\%case\_ab}),
+and \HeI{} lines from the \citet{porter2012,porter2013} case-B
+collisional-radiative emissivities.  The nebular continuum combines the
+free-bound plus free-free coefficients of the MOCASSIN
+\citep{ercolano2006} tables with a Milne extension above the edges and the
+three two-photon continua; the free-free Gaunt factor is the
+\citet{hummer1988} fit, with the \citet{vanhoof2014} table as a drop-in
+option (the two agree to a median $5\times10^{-5}$ in $\Te$).  A He\,\textsc{i}
+$2^3$S metastable diagnostic, including the 10830~\AA\ optical depth, is
+also available.
+
+%==========================================================================
+\section{Validation}
+\label{sec:validation}
+
+\MoCHII{} is validated against analytic solutions, an exact 1D reference
+solver, and the Lexington benchmark suite, in staged tests.  Each
+AMR result is required to reproduce the equivalent uniform-grid run.
+
+\subsection{Rate integrals and the Str\"omgren sphere}
+\label{sec:stromgren}
+
+The zero-variance edge walk (Eq.~\ref{eq:edgewalk}) is verified on a
+uniform sphere ($\nH = 1$, $R = 1$~pc, $\xHI = 0.1$) with a central
+$10^5$~K source.  Against the cell-volume-averaged analytic attenuation,
+$\Gamma_{\mathrm{HI}}$ has a mean bias of $+0.004\%$ and a median deviation
+of $0.38\%$ (pure Monte Carlo noise), and $\Gamma_{\mathrm{HeI}}$ a bias of
+$+0.011\%$ (Figure~\ref{fig:g0}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/g0_gamma_check.pdf}
+% source: tests/g0_gamma/g0_gamma_check.png (via docs/figures)
+\caption{Rate-integral test: $\Gamma(r)$ from the Monte Carlo tally
+(points) against the analytic point-source attenuation (lines); the lower
+panel shows the ratio.  Shaded regions are excluded (cell-size effects at
+the center, the voxelized sphere edge outside).}
+\label{fig:g0}
+\end{figure}
+
+The Str\"omgren test uses a uniform $\nH = 100$ sphere, $\QH =
+10^{49}\,\mathrm{s^{-1}}$ ($T_\star = 4\times10^4$~K), case B, and
+$\Te = 10^4$~K.  For the reference we solve the spherically symmetric
+ionization-equilibrium equations directly, with a deterministic radial
+marching over $2\times10^4$ shells that carries the same band bins,
+photoionization cross sections, and recombination and collisional rates as
+the code: each bin's photon flux is attenuated with the running optical
+depth evaluated at mid-shell, and the H/He ionization equilibrium is
+solved shell by shell.
+The sweeps must update opacities Gauss--Seidel style (a Jacobi sweep,
+using the previous sweep's opacities, advances the front only one
+absorption length in each pass); a few sweeps then converge.  ``Exact'' means
+free of Monte Carlo noise and grid-converged at this resolution --- in
+the sharp-edge limit it reproduces the analytic Str\"omgren radius
+$R_S = [3\QH/(4\pi \nH^2 \alpha_B)]^{1/3} = 3.153$~pc, from which the
+full solution differs physically (helium consumes photons; the front has
+a finite width).  The 1D reference
+gives an effective ionized radius $R_{\mathrm{eff}} = (3V_{\mathrm{ion}}/
+4\pi)^{1/3} = 3.0365$~pc; a uniform level-6 octree gives 3.0534~pc
+($+0.56\%$), and a front-refined octree with $3.5\times$ fewer cells
+reproduces it to four decimals, while a center-refined control (coarsest
+cells at the front) deviates by $+2.35\%$ --- the ionization front is the
+one place needing resolution (Figure~\ref{fig:g1}).  With the thermal
+balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.14\%$
+and a mean bias $+0.006\%$ (Figure~\ref{fig:g2a}); without metals the
+metal-free nebula runs at 19--24~kK, the known overshoot that motivates the
+trace-metal cooling.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/g1_stromgren_check.pdf}
+% source: tests/g1_stromgren/g1_stromgren_check.png
+\caption{Str\"omgren test: H and He ionization structure against the 1D
+exact reference (black); uniform level-6 (blue), center-refined (red),
+and front-refined (green, overlying blue).}
+\label{fig:g1}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/g2a_thermal_check.pdf}
+% source: tests/g2a_thermal/g2a_thermal_check.png
+\caption{Thermal test: $\Te(r)$ and $\xHI(r)$ with the thermal balance,
+against the 1D exact reference.}
+\label{fig:g2a}
+\end{figure*}
+
+\subsection{The Lexington benchmarks}
+\label{sec:hii}
+
+The HII20 and HII40 cases of the Lexington/Meudon comparison
+\citep{ferland1995,pequignot2001} use 20 and 40~kK blackbody sources
+($\QH = 1.0$ and $4.3\times10^{49}\,\mathrm{s^{-1}}$), $\nH = 100$ in a
+hollow shell, and the standard Lexington abundances (He 0.1, C
+$2.2\times10^{-4}$, N $4\times10^{-5}$, O $3.3\times10^{-4}$, Ne
+$5\times10^{-5}$, S $9\times10^{-6}$).  They are the natural reference for a
+new code because eight independent codes published results for the same two
+models, so the benchmark carries its own measure of how large a
+disagreement is significant.  Tables~\ref{tab:wood40} and~\ref{tab:wood20}
+place \MoCHII{} next to those eight, in the compilation of
+\citet{ercolano2003}, together with the Monte Carlo code of
+\citet{wood2004} that was added to the same tables afterwards.
+
+The \MoCHII{} runs compared here are configured to match the published
+calculations wherever the setup is a choice rather than a physical
+difference.  The ionizing luminosity is set from the benchmark blackbody
+luminosity so that $\QH$ reproduces the specified $4.265\times10^{49}$
+(HII40) and $1.004\times10^{49}\,\mathrm{s^{-1}}$ (HII20); the band carries
+32 threshold-aligned bins (Section~\ref{sec:band}); and the diffuse field is
+transported explicitly with case-A rates and the \HeI{} channels
+(Section~\ref{sec:diffuse}), the treatment the published codes use, so that
+the comparison is not confounded by the transfer treatment.
+The recombination-line emissivities
+stay on the case-B tables, because the Lyman lines are optically thick in
+these models whatever the continuum treatment is; the two cases are
+separate switches (\code{par\%case\_ab} for the ionization,
+\code{par\%line\_case} for the line tables).  The grid is a uniform level-6
+octree ($64^3$ leaves) run with $4\times10^{7}$ stellar packets to the
+volume-integrated convergence criterion.
+
+Those published columns are, however, a quarter of a century old, and one of
+them (GF) is an early version of a code that is still developed.  To separate
+what has changed in \MoCHII{} from what has changed in the reference itself,
+we also ran \textsc{Cloudy} c25.00 \citep{cloudy2025} on both benchmarks and
+carry it as the C25 column of the same two tables.  Its physics input is the
+unmodified regression deck that \textsc{Cloudy} distributes for each case,
+\code{tsuite/auto/hii\_paris.in} for HII40 and \code{hii\_coolstar.in} for
+HII20 --- the same source, density, inner radius, and Lexington abundances as
+above --- with only output commands appended; line luminosities are taken
+from a \code{save line list absolute} file and divided by the \textsc{Cloudy}
+H$\beta$ luminosity, and the averaged temperature is \textsc{Cloudy}'s own
+$n_{\mathrm{e}}n_{\mathrm{p}}$-weighted volume average, the same weighting
+used on both other sides.  The one geometric difference is that each deck
+runs to its own stopping criterion rather than to a prescribed outer radius
+--- an electron fraction of $10^{-2}$ at HII40, the 1000~K temperature floor
+at HII20 --- so it carries a little more of the partly neutral edge than a
+model truncated at $R_{\mathrm{out}}$ would.  The radii reached,
+$1.467\times10^{19}$ and $8.97\times10^{18}$~cm, sit at the top of the
+published $R_{\mathrm{out}}$ ranges (1.45--$1.47\times10^{19}$ and
+8.7--$9.01\times10^{18}$~cm), so the two geometries are comparable, but the
+low-ionization rows fed by that edge --- [O\,\textsc{i}], [S\,\textsc{ii}],
+[N\,\textsc{ii}] --- are the ones where the difference could matter.
+
+The temperature compared throughout this section is
+$\langle T[N_{\mathrm{p}}N_{\mathrm{e}}]\rangle$, the electron temperature
+averaged with the weight $n_{\mathrm{HII}}\nelec V$ --- the same definition
+on both sides, evaluated leaf by leaf in \MoCHII{} and cell by cell in the
+published models.  The inner-edge temperature $T_{\mathrm{inner}}$ that the
+published tables also list is quoted separately where it is used.  Ionic
+fractions are $\nelec V$-weighted means, the convention of MOCASSIN's own
+output.  As a further point of comparison we also ran MOCASSIN 2.02 itself,
+converged, on the HII40 model, and quote it below alongside the published
+columns.
+
+\emph{Ionization structure.}  The helium and metal ionization is sensitive
+to how the ionizing band is discretized at the \HeI{} edge.  On a plain
+logarithmic grid that edge is straddled and the He-ionizing photon budget is
+overdelivered (Section~\ref{sec:band}); pinning the bin edges on the
+thresholds returns that budget to the exact blackbody value and, with every
+other setting held fixed, moves the mean \HeI{} fraction from 0.058 to
+0.163 and C\,\textsc{iii} from 0.786 to 0.694, with O\,\textsc{iii} and
+N\,\textsc{iii} dropping correspondingly.  It is the single largest lever on
+the ionization structure of this model, and the benchmark runs use the
+aligned band throughout.  On it, the helium ratio
+$\langle\mathrm{He^{+}}\rangle/\langle\mathrm{H^{+}}\rangle$ is 0.715 at
+HII40, at the low end of the published 0.715--0.829 (median 0.767) and
+below a current \textsc{Cloudy} (C25 0.741, itself under the published
+median), and 0.047 at HII20, on the published median of 0.048 inside a
+spread of 0.034--0.077.
+
+\emph{Temperature.}  The weighted temperature is 7894~K at HII40, inside
+the published 7720--8199~K and $1.6\%$ below the eight-code median of
+8026~K, and 6376~K at HII20, $0.4\%$ below the published floor of 6402~K
+and $4.3\%$ below the median of 6662~K.  The inner-edge temperature behaves
+the same way: 7270~K at HII40 against a published 7370--8318~K and 6752~K
+at HII20 inside a published 6562--7224~K.  The converged MOCASSIN 2.02 run
+of the HII40 model gives 8176~K, also inside the published spread and $6\%$
+above MOCASSIN's own published entry.  \MoCHII{}
+therefore reproduces the published temperatures, and does so from the low
+side of the distribution in both cases.
+
+That the two benchmarks sit at the same edge is informative, because the
+published columns are not themselves a stationary target.  \textsc{Cloudy}
+c25.00 on the same two models gives 8210~K and 6910~K, in both cases
+\emph{above} the entire published spread; measured against a contemporary
+code rather than a 25-year-old table, \MoCHII{} is $3.8\%$ and $7.7\%$
+cooler.  The two modern calculations thus straddle the published set from
+opposite sides, and the offset between them agrees in sign and size with
+the one documented approximation in the \MoCHII{} thermal loop --- the
+zero-density cooling function of Section~\ref{sec:cooldata}, which
+overestimates the far-infrared line cooling at
+$\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so biases $\Te$ low.  The next
+subsection measures that overestimate directly.
+
+% Published columns: Tables 4 and 5 of Ercolano et al. (2003), transcribed
+% and checked value by value against the paper.
+% MoCHII column: the benchmark runs hii40_bench.in / hii20_bench.in
+% (aligned bins, explicit diffuse field, Q(H) matched to the specification,
+% 4e7 packets, conv_crit='vol'); line entries are the L/L(Hbeta) column of
+% tests/g2_hii/hii{40,20}_bench_lines.txt (doublets summed), temperatures
+% computed from tests/g2_hii/hii{40,20}_bench_rates.h5.
+% C25 column: tests/cloudy_c25/, Cloudy c25.00 on the distributed decks.
+
+\subsection{Cooling-budget verification at a fixed state}
+\label{sec:coolcheck}
+
+An emission-line comparison cannot by itself separate an error in the
+atomic data from an error in the temperature, because each code's
+temperature is the root of its own energy balance: too little cooling in
+one channel raises $\Te$, which raises every other channel, and the
+converged line ratios absorb part of the discrepancy.  The cooling data can
+be compared free of that feedback only at a \emph{fixed} state.
+\textsc{Cloudy} c25.00 writes such a decomposition --- its
+\code{save cooling each} output lists the cooling rate of every ion and
+every continuum channel zone by zone --- so the test is to take its
+converged $(\Te, \nelec$, ionic fractions$)$ zone by zone, evaluate the
+\MoCHII{} cooling terms on exactly that state, and integrate both over the
+model volume.  What this measures is the absolute scale of two independent
+atomic-data compilations, channel by channel, with nothing else in either
+code entering.  It is the comparison that isolates the cooling data from
+the temperature, which an equilibrium comparison cannot do, since the
+latter shows only the temperature at which each code's own heating and
+cooling cross.
+
+On the HII40 model the two agree within the accuracy of the underlying
+collision data.  With the $n$-level emissivities evaluated at the local
+$\nelec$, the ratio \MoCHII/\textsc{Cloudy} is 1.02 for [O\,\textsc{iii}],
+0.98 for [O\,\textsc{ii}], 1.00 for [S\,\textsc{iii}], 0.99 for
+[N\,\textsc{ii}], 1.00 for [S\,\textsc{ii}], 1.00 for [Ne\,\textsc{ii}],
+1.02 for [N\,\textsc{iii}], 1.02 for [S\,\textsc{iv}], 0.99 for
+C\,\textsc{iii}], 0.94 for [C\,\textsc{ii}] and 0.99 for the \HI{}
+collisional lines; summed over all line channels the two agree to $1.1\%$.
+Two channels fall outside $\pm$10\%, [Ne\,\textsc{iii}] (1.30) and
+[O\,\textsc{i}] (0.84), and they carry $1.9\%$ and $0.1\%$ of the budget.
+The free-free continuum, an independent
+check of the Gaunt factor and of the net ion charges entering it, agrees to
+$0.2\%$.  Recombination cooling differs by bookkeeping rather than by data:
+\textsc{Cloudy} reports the free-bound loss net of the escaping
+recombination continuum, $4.02\times10^{37}\,\mathrm{erg\,s^{-1}}$, which
+falls between the \MoCHII{} case-A and case-B sums ($6.61$ and
+$3.62\times10^{37}$), the difference being the ground-state term that the
+explicit diffuse field re-emits instead of losing.  The heating side of the
+same \textsc{Cloudy} model balances its cooling to $1.3\times10^{-4}$ and
+deposits 4.57~eV for each ionizing photon, so the comparison state is
+itself an equilibrium one.
+
+Replacing the $n$-level emissivities by the zero-density fit that the
+thermal loop uses (Eq.~\ref{eq:cool}) raises the same summed line cooling
+to $1.116$ times \textsc{Cloudy}'s.  The excess is not spread over the
+ions: it is 5.1 percentage points of the line budget in [O\,\textsc{iii}]
+and 3.9 in [C\,\textsc{ii}], and in both it sits entirely in the
+far-infrared fine-structure lines, whose critical densities are at or below
+the local $\nelec = 110\,\mathrm{cm^{-3}}$.  Since the line channels carry
+$79\%$ of the cooling budget, that is a $9\%$ excess in the total, and it
+accounts for the temperature bias quantitatively: scaling $\Te$ on the
+fixed state until the \MoCHII{} terms radiate the same total power ---
+\textsc{Cloudy} balances its own heating at the unscaled temperature, and
+the photoheating of the two codes agrees --- gives 7784~K against
+\textsc{Cloudy}'s 8210~K, a $5.2\%$ displacement, against the $3.8\%$ by
+which the converged \MoCHII{} run is cooler than C25.  A first-order
+estimate at fixed ionization is thus more than sufficient to explain the
+offset, and the remedy is the $\Lambda(T,\nelec)$ table of
+Section~\ref{sec:cooldata} rather than a change of atomic data.
+
+\emph{Sensitivity to the other ingredients.}  The remaining modeling
+choices are smaller levers than the cooling function, and each is measured
+by an in-code experiment.  The transport treatment is the largest of them:
+replacing the case-A explicit diffuse field by the case-B on-the-spot
+approximation, with every other setting fixed, gives 7570~K at HII40 and
+6216~K at HII20, so the explicit field used here raises $\Te$ by $4.3\%$
+and $2.6\%$ and moves the two benchmarks the same way.  Substituting
+MOCASSIN-style recombination
+(P\'equignot 1991 radiative plus Nussbaumer--Storey 1983 dielectronic) for
+the Badnell 2023 data, whose $\alpha(\mathrm{X\,\textsc{iii}} \to
+\mathrm{X\,\textsc{ii}})$ are systematically lower (ratios 0.72--0.84),
+moves $\Te$ by $0.15\%$ and the carbon, nitrogen and oxygen ionization
+fractions by about 0.02, so the recombination vintage is a minor lever on
+both.  The dominant
+[O\,\textsc{iii}] collision strengths are stable across database
+generations: the $^3\mathrm{P}$--$^1\mathrm{D}$ effective collision
+strength is 2.283 in the CHIANTI~v7 compilation behind the published
+MOCASSIN column and 2.262 in v11 at $10^4$~K, a $0.9\%$ difference worth
+less than 30~K.  The photoionization heating is standard, with mean
+photoelectron energies $\langle h\nu - 13.6\rangle_{\mathrm{H}} = 3.9$~eV
+and $\langle h\nu - 24.6\rangle_{\mathrm{He}} = 4.1$~eV.  Grid resolution
+is treated separately below.
+
+\emph{Line ratios.}  The line intensities follow from that temperature and
+ionization structure rather than from the emission calculation, which is
+exact to the accuracy of its input data (Section~\ref{sec:cooldata}: the
+$n$-level solver reproduces an independent reference solver to four digits,
+and the fitted collision data reproduce direct CHIANTI evaluations to
+0.05--0.5\%).  At HII40 the infrared fine-structure lines, whose excitation
+energies are small enough that they are nearly temperature-independent, sit
+with the published set ([Ne\,\textsc{iii}] 15.5\,$\mu$m 0.278 in a
+published 0.263--0.429; [Ne\,\textsc{ii}] 12.8\,$\mu$m 0.202 in
+0.177--0.217; [O\,\textsc{iii}] 52+88\,$\mu$m 2.41 in 2.10--2.42), and so
+do the temperature-sensitive optical lines of the same ion:
+[O\,\textsc{iii}] 5007+4959 is 2.06 against a published 1.64--3.27, and the
+auroral [O\,\textsc{iii}] 4363, the most temperature-sensitive entry in the
+tables, is 0.0033 against a published 0.0022--0.0070.  The lines that fall
+outside the published ranges are examined below.
+
+\emph{H$\beta$ and the photon budget.}  A recombination line is a photon
+counter, and $L(\mathrm{H}\beta)$ therefore tests whether the model is
+radiation-bounded: every ionizing photon absorbed by hydrogen returns as a
+recombination, and a fixed fraction of those recombinations produces
+H$\beta$.  Both models here are bounded.  At HII40 the ionization front is
+captured inside the prescribed sphere, at $1.43\times10^{19}$~cm against an
+outer radius of $1.46\times10^{19}$~cm, and the outermost shell is $86\%$
+neutral; at HII20 the outer shells are fully neutral.  The budget closes
+accordingly: summing the case-B recombinations over the converged solutions
+gives $0.953\,\QH$ and $0.971\,\QH$.  What hydrogen does not absorb is
+taken up by helium, which at HII40 absorbs $0.114\,\QH$ and returns most of
+it to hydrogen through the \HeI{} diffuse channels.  The predicted
+$L(\mathrm{H}\beta) = 1.95\times10^{37}$ and
+$4.70\times10^{36}\,\mathrm{erg\,s^{-1}}$ are $5\%$ and $4\%$ below the
+published medians ($3\%$ below the lowest published values), matching the
+$4.7\%$ and $2.9\%$ of $\QH$ that the recombination budget assigns to
+helium rather than to hydrogen.  The absolute H$\beta$ luminosity is thus
+reproduced by photon counting, and adds no discrepancy of its own.
+
+% Tables tab:wood40 / tab:wood20: generated by tables/make_wood_tables.py.
+% Published columns transcribed from the LaTeX source of Wood et al. (2004)
+% (arXiv:astro-ph/0311584, kwood.tex) and checked cell by cell against it;
+% the MoCHII column is computed from tests/g2_hii/hii{40,20}_bench_lines.txt.
+\input{tables/wood_hii40}
+\input{tables/wood_hii20}
+
+\emph{The complete published line list.}  Tables~\ref{tab:wood40} and
+\ref{tab:wood20} repeat the comparison over the full benchmark line list in
+the form used by \citet{wood2004}, whose Tables 1 and 2 add their own Monte
+Carlo code (WME) to the eight other codes of the comparison; the
+\MoCHII{} column is appended, and the C25 column runs beside its 1990s
+ancestor GF.  Of the twenty lines tabulated at HII40, thirteen fall inside
+the published spread, one above it, and six below; of the sixteen at HII20,
+nine fall inside and seven below.  The one line above the published range,
+[O\,\textsc{i}] 6300+6363 at HII40 (0.0158 against 0.0059--0.012), is fed
+by the thin partly neutral edge, where the published entries themselves
+span a factor two and where the cell size of a three-dimensional grid is a
+real limitation.  The rows below the range are largely the same in the two
+cases: \HeI{} 5876, [N\,\textsc{ii}] 6584+6548 and 5755, and both
+[S\,\textsc{iii}] entries.
+
+The clearest reading of the tables is the contrast between the
+temperature-sensitive and the temperature-insensitive lines of the same
+ion, measured against C25 rather than against the 25-year-old columns.  The
+far-infrared fine-structure lines, whose excitation energies are small
+enough that their emissivities barely depend on $\Te$, agree with C25 to a
+few percent at both benchmarks: [O\,\textsc{iii}] 52+88\,$\mu$m is
+$1.00\times$ and $1.12\times$ C25, [Ne\,\textsc{ii}] 12.8\,$\mu$m
+$1.01\times$ and $0.98\times$, [N\,\textsc{iii}] 57.3\,$\mu$m $0.98\times$
+and $0.95\times$, and [S\,\textsc{iii}] 18.7\,$\mu$m $0.98\times$ at both.
+The temperature-sensitive optical and ultraviolet lines run low by about
+what the temperature offset implies: at HII40, where \MoCHII{} is $3.8\%$
+cooler than C25, [O\,\textsc{iii}] 5007+4959 is $0.84\times$ C25 and the
+auroral 4363 $0.72\times$; at HII20, where the offset is twice as large,
+[N\,\textsc{ii}] 5755 is $0.56\times$, [O\,\textsc{ii}] 7320+7330
+$0.57\times$ and [O\,\textsc{ii}] 3726+3729 $0.63\times$.  At a given
+ionization structure, infrared lines flat and optical and auroral lines low
+is a temperature signature rather than an atomic-data one --- which is what
+the fixed-state comparison of Section~\ref{sec:coolcheck} establishes
+independently, since there the same emissivities agree with
+\textsc{Cloudy}'s to $1\%$ when both are evaluated on one state.
+
+The C25 column also shows how much of the disagreement with the published
+columns is a property of those columns.  [S\,\textsc{ii}] 6716+6731 at
+HII40 is the clearest case: the GF entry is 0.137, C25 gives 0.304 and
+\MoCHII{} 0.299, so what would be a $2.2\times$ excess against the 1990s
+column is a $2\%$ difference against the current one, and both modern
+values sit inside the published spread only because one 2000-era entry
+(TK, 0.315) is high.  Sulfur at HII20 is the same story in the other
+direction: [S\,\textsc{iii}] 18.7\,$\mu$m (0.204 against a published
+0.34--0.46) and [S\,\textsc{iii}] 9532+9069 (0.238 against 0.465--0.604)
+fall \emph{below} every published code, and so does C25 (0.209 and 0.293),
+while [S\,\textsc{ii}] 6716+6731 sits inside the published range for both
+(0.592 and 0.744).  Both modern calculations therefore move the same
+S\,\textsc{ii}/S\,\textsc{iii} split in the same direction relative to the
+2000-era compilation, which points at the sulfur data rather than at either
+code.  A band experiment bounds one further
+difference: \textsc{Cloudy} carries the full stellar spectrum, so photons
+below 13.6~eV ionize S$^{0}$ (10.36~eV) and C$^{0}$ (11.26~eV) in the
+partly neutral edge, while the benchmark band here starts at the hydrogen
+edge.  Extending the \MoCHII{} band down to 6~eV raises
+[S\,\textsc{ii}] 6716+6731 by 6\% at HII20 and by under 1\% at HII40, with
+the other low-ionization lines moving by at most a few percent --- a real
+ingredient of the low-ionization rows, but far too small to account for the
+[S\,\textsc{iii}] difference.
+
+A second, structural difference is worth naming here, because it affects
+sulfur specifically.  The published columns are not all built on the same
+set of ionization stages: the code of \citet{wood2004}, and
+\textsc{CMacIonize} after it, omit neutral sulfur and start the sulfur
+chain at S$^{+}$, so that in gas where the ionizing field has been absorbed
+all sulfur is S$^{+}$ by construction; oxygen and neon in the same codes do
+carry their neutral stages.  \textsc{Mocassin} instead solves the neutral
+stage of every element as an unknown, as \MoCHII{} and \textsc{Cloudy} do.
+The convention matters only outside the ionization front, where it fixes
+the S$^{+}$ reservoir that feeds [S\,\textsc{ii}] rather than letting it
+recombine to S$^{0}$; it is one of the ingredients of the scatter among the
+published sulfur entries, and it is worth keeping in view when a single
+[S\,\textsc{ii}] ratio is used to judge a code.
+
+\emph{Radial structure.}  Figures~\ref{fig:wood40} and \ref{fig:wood20}
+give the radial ionization and temperature structure in the panel layout of
+\citet{wood2004}, their Figures 1 and 2, so that the two can be read panel
+by panel.  The morphology is the published one throughout.  At HII40 the
+hydrogen and helium neutral fractions rise monotonically from
+$4\times10^{-5}$ and $2\times10^{-4}$ at the inner edge, the singly and
+doubly ionized fractions of carbon, nitrogen and oxygen cross within
+0.15~pc of one another near 3.9~pc, C$^{+3}$ stays below $0.05$ and is
+confined to the inner region, and the temperature falls slightly out to
+about 2.2~pc before climbing steeply toward the front.  At HII20 helium is
+essentially all neutral beyond
+1.4~pc while hydrogen stays ionized out to 2.8~pc, so the doubly ionized
+metals occupy only a thin inner shell.  Both models are radiation-bounded,
+so both outer radii are predictions.  The ionized-volume-equivalent radius
+$(3V_{\mathrm{ion}}/4\pi)^{1/3}$ and the shell-averaged
+$x_{\mathrm{HII}} = 0.5$ crossing that the tables carry as
+$R_{\mathrm{out}}$ are $1.428$ and $1.434\times10^{19}$~cm at HII40 against
+a published 1.45--$1.47\times10^{19}$, and $8.58$ and
+$8.69\times10^{18}$~cm at HII20 against a published
+8.7--$9.01\times10^{18}$: the two definitions of the outer boundary are not
+identical, but they locate the same front, and both sit $1$--$2\%$ below
+the published ranges, which is what the recombination budget of
+$0.95$--$0.97\,\QH$ and the slightly larger $\alpha_B$ of a cooler nebula
+together imply.  The temperature panels
+reproduce the published shape --- a shallow inward decline followed by a
+steep rise at the front, where the surviving radiation field is hardest.
+
+\emph{Grid resolution.}  The two three-dimensional codes of the comparison
+state what they used, and it is worth placing \MoCHII{} beside them, because
+a Monte Carlo photoionization calculation on a Cartesian grid has a
+resolution as well as a photon budget.  \citet{ercolano2003} ran the
+published \textsc{Mocassin} benchmark columns on $13\times13\times13$ cells
+with the source in a \emph{corner}, so that the grid covers one octant of the
+spherically symmetric model; in their words, ``although the number of
+sampling points along each orthogonal axis is only 13, this is the
+equivalent of a one-dimensional code with 273 radial points.''
+\citet{wood2004} used $65^3$ cells over the full box with the star at the
+center, which they describe as matching a $33^3$ \textsc{Mocassin} octant,
+i.e.\ a cell width of ``3\% of the radius,'' and $10^8$ photon packets.  The
+\MoCHII{} runs here use a uniform level-6 octree, $64^3 = 262\,144$ leaves
+over the full box with the source at the center, and $4\times10^7$ packets.
+\MoCHII{} and \citet{wood2004} are therefore at essentially the same
+resolution --- $4.6\times10^{17}$ against $4.4\times10^{17}$~cm on a side at
+HII40 --- and both are about $2.5\times$ finer per axis than the octant grid
+behind the published \textsc{Mocassin} column.  We did not repeat the
+benchmark on a deliberately coarsened grid, because the quantity at issue is
+already resolution-converged in the direction that matters: the front
+re-refinement test of Section~\ref{sec:refine} shows $R_{\mathrm{eff}}$
+changing by $+0.008\%$ between a native level-7 grid and a coarser
+re-refined equivalent, and \citet{ercolano2003} themselves attribute to grid
+coarseness only their inner-edge temperature $T_{\mathrm{inner}}$ --- which
+their coarse cells make too \emph{low}, since a cell carries the temperature
+of its center rather than of the illuminated face --- and not
+$\langle T[N_{\mathrm{p}}N_{\mathrm{e}}]\rangle$ or the line ratios compared
+here.  Grid resolution is thus not a candidate for the differences discussed
+above, with the exception of the thin partly neutral edge that feeds
+[O\,\textsc{i}] 6300+6363, which one cell width does not resolve in any of
+the three-dimensional codes.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/wood_hii40.pdf}
+% source: tests/g2_hii/hii40_bench_rates.h5 and the Cloudy c25.00 save files
+% tests/cloudy_c25/hii40_c25.{ovr,ele_h,ele_he,ele_c,ele_n,ele_o,ele_ne},
+% via paper/python/make_wood_benchmark.py
+\caption{Lexington HII40 benchmark: radial ionization and temperature
+structure of the \MoCHII{} solution, in the panel layout of
+\citet{wood2004}, their Figure 1.  Each point is one octree leaf inside the
+prescribed shell, thinned at random for legibility; the temperature panel
+shows the leaves that are less than 95\% neutral, the convention of
+\citet{wood2004}.  Nitrogen stops at N$^{+2}$ because the registry carries
+three nitrogen stages for this model.  This is the same run as the
+\MoCHII{} column of Table~\ref{tab:wood40}, on the threshold-aligned
+32-bin ionizing grid.  Black lines are \textsc{Cloudy}~c25.00 on the same
+model --- the run behind the C25 column of Table~\ref{tab:wood40}, whose
+input is the unmodified c25.00 test-suite deck
+\code{tsuite/auto/hii\_paris.in} --- drawn as a line as
+\citet{wood2004} draw \textsc{Cloudy} in their own figures.  The
+\textsc{Cloudy} profile is cut at the outer radius of the \MoCHII{} shell so
+that both codes cover one volume, and the 95\% cut is applied to its zones
+as well.  In the temperature panel the \MoCHII{} points run below the
+\textsc{Cloudy} curve through the interior and cross it at the front.}
+\label{fig:wood40}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/wood_hii20.pdf}
+% source: tests/g2_hii/hii20_bench_rates.h5 and the Cloudy c25.00 save files
+% tests/cloudy_c25/hii20_c25.{ovr,ele_h,ele_he,ele_c,ele_n,ele_o,ele_ne},
+% via paper/python/make_wood_benchmark.py
+\caption{Lexington HII20 benchmark, in the panel layout of
+\citet{wood2004}, their Figure 2; conventions as in
+Figure~\ref{fig:wood40}.  Ne$^{+2}$ is confined within 1.4~pc, and
+C$^{+3}$ stays below the plotted range and carries no series.  This is the
+same run as the \MoCHII{} column of Table~\ref{tab:wood20}.  At 20~kK the
+helium-ionizing photons are so few that helium is neutral beyond 1.4~pc,
+which is why the aligned ionizing grid matters much less here than at
+HII40.  Black lines are \textsc{Cloudy}~c25.00 on the same model, from the
+unmodified c25.00 deck \code{tsuite/auto/hii\_coolstar.in} behind the C25
+column of Table~\ref{tab:wood20}.  \textsc{Cloudy} stops on its own
+criterion at 2.91~pc, short of the outer radius of the \MoCHII{} shell, so
+its curves end there, and its final near-vertical fall is the recombination
+front itself, resolved in zones far finer than a \MoCHII{} cell.}
+\label{fig:wood20}
+\end{figure*}
+
+\emph{How far the reference itself has moved.}  Because the C25 column is a
+re-run of one of the participating codes on the same two models, the
+difference between it and the GF column measures the drift of the reference
+over a quarter of a century, at fixed input.  That drift is not small.  The
+absolute $L(\mathrm{H}\beta)$ is stable --- 2.06 against 2.06 at HII40, 4.99
+against 4.85 at HII20, in the units of the tables --- as it must be, since it
+is fixed mostly by the photon budget.  The temperature has risen by 270~K at
+HII40 and 230~K at HII20.  The line ratios have moved much further: at HII40
+[S\,\textsc{ii}] 6716+6731 is $2.2\times$ its GF value, [O\,\textsc{iii}]
+4363 $2.0\times$, and [Ne\,\textsc{iii}] 3869+3968 $0.69\times$; at HII20 the
+two [S\,\textsc{iii}] entries fall to $0.47$ and $0.58$ of their GF values
+while [S\,\textsc{ii}] 6716+6731 rises by $1.5\times$.  A benchmark column
+published in 2000 is therefore not a fixed target for a code written in 2026,
+and a modern code that reproduced the GF entries exactly would be
+reproducing superseded atomic data.  This is the reason the comparison above
+is made against the published \emph{spread} and against C25 rather than
+against any single published column.
+
+\emph{Where \MoCHII{} sits among the codes.}  \citet{pequignot2001} and
+\citet{ercolano2003} note that the eight codes do not scatter randomly:
+GF, HN, and DP agree more tightly with one another --- and, in the
+planetary-nebula cases, with \textsc{Mocassin} --- than with TK, PH, and RS,
+a coherence they attribute to more recently updated atomic data and to a
+more careful treatment of the diffuse radiation field.  A second grouping
+runs along the transfer treatment: the codes that solve the transfer exactly
+(RR, PH, and \textsc{Mocassin}) give systematically lower temperatures at
+the illuminated inner edge, because the radiation field there is softer than
+an approximate treatment makes it.  \MoCHII{} belongs with the first group on
+the data axis --- exact hydrogenic and Verner cross sections, Badnell 2023
+recombination, CHIANTI v11 collision strengths, the same vintage
+\textsc{Cloudy} uses --- and with the second on the transfer axis, since the
+analytic direct-field estimator and the explicit diffuse field used for
+these benchmarks are an exact treatment in three dimensions; its inner-edge
+temperature is correspondingly at or below the low end of the published
+$T_{\mathrm{inner}}$ range.  Its ionization structure, its outer radius,
+its H$\beta$ luminosity and most of its line ratios land inside the
+published spread, with helium at the low edge of it in the same direction
+as a current \textsc{Cloudy}, and its weighted temperature is inside the
+spread at HII40 and $0.4\%$ under it at HII20.  What remains is a coherent
+and quantified bias rather than an open discrepancy: \MoCHII{} runs
+$4$--$8\%$ cooler than a contemporary \textsc{Cloudy} on both models, in
+the direction and by about the amount that the zero-density cooling
+function of Section~\ref{sec:cooldata} implies, and the density-dependent
+$\Lambda(T,\nelec)$ that removes it is the next item for the thermal
+balance.
+
+%==========================================================================
+\section{Solution-driven front refinement}
+\label{sec:refine}
+
+A distinguishing capability of the octree grid is that the refinement can
+be driven by the ionization solution itself.  At a chosen iteration the
+octree is rebuilt: a leaf is flagged as ``front'' when
+$\epsilon < \xHI < 1-\epsilon$ or a face neighbor differs by more than a
+threshold; the new tree carries the maximum level wherever a cell overlaps
+a front-flagged leaf and a base level elsewhere.  The gas state and opacity
+map over by position, and every dependent array is recreated.  All ranks
+rebuild identically from the shared state, and the old grid's
+shared-memory windows are freed immediately after the position sampling, so
+repeated re-refinement neither leaks nor holds two grids in memory at
+once.
+
+On the Str\"omgren configuration, starting at level 5 and rebuilding to
+level 7 at iteration 15 (32\,768 $\to$ 464\,311 leaves), the re-refined
+grid gives $R_{\mathrm{eff}} = 3.0432$~pc against a native uniform level-7
+grid's 3.0430~pc (2\,097\,152 leaves) --- agreement to $+0.008\%$ with
+$4.5\times$ fewer cells, and both improve on level 6 ($+0.56\%$), as
+resolution convergence expects (Figure~\ref{fig:g4refine}).  The front
+profiles overlie exactly.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/g4_refine_check.pdf}
+% source: tests/g4_refine/g4_refine_check.png
+\caption{Re-refinement test: the front profiles of the re-refined
+$5\to7$ octree and the native uniform level-7 grid overlie exactly, at
+$4.5\times$ fewer cells.}
+\label{fig:g4refine}
+\end{figure}
+
+As a demonstration on a realistic geometry, \MoCHII{} was run on an
+Illustris-TNG 60-kpc cutout (density and neutral-fraction columns from the
+simulation), with a $\QH = 10^{53}\,\mathrm{s^{-1}}$, 40-kK source at the
+density peak and thermal balance, metals, and re-refinement enabled
+(Figure~\ref{fig:tng}).  Dense clumps cast sharp neutral shadows, the
+circumgalactic gas sits at $\xHI \sim 10^{-4}$ with an $\nelec$-weighted mean
+$\Te = 7502$~K, and the refinement (32\,768 $\to$ 617\,324 leaves) tracks
+the \emph{distributed} ionization topology of a turbulent medium --- clump
+skins and partially ionized gas rather than a single thin shell.  This is
+the regime for which the volume-integrated convergence criterion
+(Section~\ref{sec:iterate}) was designed.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/g4_tng_maps.pdf}
+% source: tests/g4_tng/g4_tng_maps.png
+\caption{\MoCHII{} on an Illustris-TNG cutout: gas density, converged
+neutral fraction (note the clump shadows), electron temperature, and the
+re-refined cell size, in the source plane.}
+\label{fig:tng}
+\end{figure*}
+
+%==========================================================================
+\section{Dust and PAH coupling}
+\label{sec:dust}
+
+Because \MoCHII{} is built on a dust radiative-transfer engine, the dust
+physics is a first-class part of the transport.  The coupling has four
+parts.
+
+\emph{Absorption competition.}  Each band bin adds a dust absorption
+opacity $\kappa_{\mathrm{d}} = \rho\kappa\,s_{\mathrm{abs}}(b)$ with
+$s_{\mathrm{abs}}(b) = (1-a(E_b))\,C_{\mathrm{ext}}(E_b)/
+C_{\mathrm{ext}}(\lambda_{\mathrm{ref}})$ from a WD01/D03 $R_V = 3.1$
+extinction table \citep{weingartner2001,draine2003} covering the EUV, where
+$C_{\mathrm{abs}}/\mathrm{H} = 1.83\times10^{-21}$ at 13.6~eV falls to
+$3.96\times10^{-22}\,\mathrm{cm^2}$ at 100~eV.  On the dusty Str\"omgren
+test, against a 1D reference carrying identical dust absorption, the full
+MW dust gives $R_{\mathrm{eff}} = 2.246$~pc versus the reference 2.231~pc
+($+0.69\%$), reproducing the classic dusty reduction $R/R_0 = 0.735$
+(Figure~\ref{fig:duststrom}); dust absorbs 59\% of the band luminosity
+there.
+
+\emph{Scattering.}  With scattering enabled the scattering opacity joins
+the extinction (in-band Henyey--Greenstein asymmetry $g = 0.67$--$0.99$,
+strongly forward), and interactions are sampled by a forced-first-flight
+scheme after the analytic direct walk, with an albedo weight at each
+interaction and Russian roulette.  The full-scattering Str\"omgren radius,
+2.237~pc, lands inside the analytic bracket (2.086~pc if the dust
+extinction is all absorption, 2.246~pc for absorption only) and close to
+the absorption-only bound, exactly as strong forward scattering predicts.
+
+\emph{Live ionization-dependent dust with a PAH split.}  Following
+\citet{laursen2009}, the dust content is traced by the metallicity-scaled
+hydrogen, with neutral gas carrying the full dust column and ionized gas
+only a survival fraction $f_{\mathrm{ion}}$ of it (grains are eroded where
+the hydrogen is ionized).  \MoCHII{} evaluates this on the \emph{computed}
+neutral fraction and refreshes it every iteration, and it splits the grains
+into a large-grain share $1 - f_{\mathrm{PAH}}$ and a PAH share
+$f_{\mathrm{PAH}}$ with independent ionized-gas survival, so the dust
+opacity of a leaf is
+\begin{multline}
+  \kappa_{\mathrm{d}} \propto \frac{Z}{Z_{\mathrm{ref}}}\,\nH
+  \big[(1 - f_{\mathrm{PAH}})(\xHI + f_{\mathrm{ion}}\,x_{\mathrm{HII}}) \\
+  + f_{\mathrm{PAH}}(\xHI + f_{\mathrm{ion,PAH}}\,x_{\mathrm{HII}})\big],
+\end{multline}%
+with $x_{\mathrm{HII}} = 1 - \xHI$ and $f_{\mathrm{ion,PAH}} = 0$ by
+default (PAHs destroyed in ionized gas).  Because this dust opacity is
+rebuilt from the ionization state each iteration while that state is in
+turn set by the dust-attenuated field, the dust--ionization feedback loop
+is solved self-consistently; it converges to a near dust-free interior
+($R/R_0 = 0.996$).
+
+Figure~\ref{fig:duststrom} contrasts the three treatments on the same
+Str\"omgren configuration.  Static full MW dust competes with hydrogen for
+the ionizing photons throughout the volume, so the ionization front is
+pushed inward to $R_{\mathrm{eff}} = 2.25$~pc, the classic dust-limited
+size ($R/R_0 = 0.736$).  Under \code{laursen09\_live}, by contrast, the
+interior dust vanishes together with the neutral fraction it is tied to ---
+once the gas is ionized it carries essentially no dust to absorb the
+ionizing field --- so the front profile overlies the dust-free case almost
+exactly ($R_{\mathrm{eff}} = 3.04$~pc, $R/R_0 = 0.996$).  The physical
+distinction is that only the neutral gas beyond the front and its thin skin
+retain dust, which is where the dust column that matters for the escaping
+radiation actually sits.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/dust_stromgren.pdf}
+% source: figures/make_dust_stromgren.py, from
+%   tests/g1_stromgren/g1_stromgren_rates.h5 (dust-free),
+%   tests/d_dusty/d_dust_full_rates.h5 (full MW dust),
+%   tests/d_dusty/d_dust_l09_rates.h5 (laursen09_live).
+\caption{H\,\textsc{ii} region size versus dust treatment: the radial
+neutral-fraction profile $\xHI(r)$ for the dust-free, full MW dust, and
+\code{laursen09\_live} runs of the same Str\"omgren configuration
+($\nH = 100\,\mathrm{cm^{-3}}$, $\QH = 10^{49}\,\mathrm{s^{-1}}$,
+$T_\star = 4\times10^4$~K, case B).  Dotted vertical lines mark each
+effective ionized radius $R_{\mathrm{eff}}$.  Full MW dust pushes the
+ionization front inward to $R/R_0 = 0.736$, while the live
+ionization-dependent dust vanishes in the ionized interior and recovers the
+dust-free size ($R/R_0 = 0.996$).}
+\label{fig:duststrom}
+\end{figure}
+
+\emph{Grain heating, equilibrium temperature, and IR emission.}  The
+transported grain heating drives the equilibrium dust temperature by
+balancing the absorbed power against $4\pi\int s_{\mathrm{abs}}(\nu)
+B_\nu(T)\,d\nu$; with the band widened to 6~eV, $T_{\mathrm{d}}$ runs from
+89~K at 0.3~pc to 28~K at the sphere edge (the canonical \HII-region
+gradient), and the IR spectrum integral closes on the absorbed power to
+$L_{\mathrm{IR}}/L_{\mathrm{abs}} = 1.000$.  A full stochastic dust
+emission solve (the \MoCafe{} SEDust module; astrodust, DL07, and Zubko
+grain models with PAH bands, after \citealt{drainel12007}) is available at
+output time: it uses the size-resolved stochastic-heating spectrum as a
+\emph{shape} normalized to the transported absorbed power, so the
+normalization is exact by construction.  With the live PAH share
+(Figure~\ref{fig:pah}), the PAH bands drop to 0.15--0.26 of the
+PAH-everywhere reference and the projected 8\,$\mu$m map turns from
+centrally peaked into a \emph{limb-brightened annulus} just inside the
+ionization front --- the classic Spitzer/JWST bubble morphology.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/pahlive_maps.pdf}
+% source: figures/make_dust_maps.py, from
+%   tests/d_dusty/dustemis_smoke_dustemis.h5 (PAHs everywhere) and
+%   tests/d_dusty/pahlive_smoke_dustemis.h5 (live PAH survival).
+\caption{Stochastic dust emission at 8\,$\mu$m with the
+ionization-dependent PAH share.  Both panels are two-dimensional projection
+maps --- the emissivity integrated along the line of sight into a surface
+brightness --- and share one brightness scale.  Left: PAHs surviving
+everywhere, giving a centrally peaked image.  Right: PAHs destroyed in the
+ionized interior ($x_{\mathrm{HII}}$-weighted survival).  The central peak
+disappears and the projected brightness instead rises outward to a broad
+limb-brightened annulus just inside the ionization front, a factor 1.9 above
+the depressed interior.}
+\label{fig:pah}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/dustemis_maps.pdf}
+% source: figures/make_dust_maps.py, from
+%   tests/d_dusty/dustemis_smoke_dustemis.h5.
+\caption{Dust emission at 8 and 160\,$\mu$m from the stochastic SEDust
+solve, as two-dimensional projection maps of the surface brightness.  The
+short wavelength is centrally peaked (warm inner dust) while the
+far-infrared is spatially broader, the projected signature of the dust
+temperature gradient.}
+\label{fig:dustemis}
+\end{figure*}
+
+%==========================================================================
+\section{The photodissociation-region skin}
+\label{sec:pdr}
+
+With the FUV band extension and three optional switches (all off by
+default), \MoCHII{} models the atomic photodissociation-region (PDR) skin
+just outside the ionization front.  The switches feed the metal-cascade
+electrons into the $\nelec$ closure, add metal photoheating to the thermal
+balance, and add grain photoelectric heating and grain recombination
+cooling with the \citet{bakes1994} fits driven by the local FUV field
+$G_0$, together with the H-impact fine-structure cooling of
+[C\,\textsc{ii}] 158\,$\mu$m and [O\,\textsc{i}] 63\,$\mu$m
+\citep{barinovs2005}.  The last is essential: the standard cooling fits are
+electron-impact only, and with $n_{\mathrm{HI}}/\nelec \sim 10^3$--$10^4$ in
+the PDR the hydrogen collisions are the coolant.  Two guards keep the
+photoelectric heating physical (evaluated at $\min(T, 10^4\,\mathrm{K})$ so
+the fits stay in range, and weighted by $\xHI$ so ionized gas, whose grains
+are EUV-charged and whose energy is already routed to the IR, is not
+overheated).  Both are necessary: without them the fits are evaluated
+outside their validity range and the zone runs away to a false
+12--35~kK.
+
+Figure~\ref{fig:pdr} shows the converged radial structure of a PDR test
+(a $\nH = 100$ octree sphere with a central source and all three switches
+on).  The interior is fully ionized with a sharp front; beyond the front,
+the C\,\textsc{ii} fraction is unity, the electron density falls to the
+carbon-dominated value $\nelec \simeq A_{\mathrm{C}}\nH$, and the electron
+temperature settles to a genuine PDR equilibrium (a $\sim$336~K to
+$\sim$211~K gradient, not pinned at the temperature floor).  This is the
+atomic PDR skin only: there is no H$_2$/CO chemistry or line transfer, so
+the PDR temperatures are first-order estimates, adequate for the ion
+structure and rough [C\,\textsc{ii}] emissivities.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/pdr_profiles.pdf}
+% source: generated by figures/make_pdr_profiles.py from tests/pdr/pdr_L5_rates.h5
+\caption{Radial structure of the PDR test: the neutral fraction, electron
+temperature, and electron density as a function of radius.  Inside the
+front the gas is fully ionized; beyond it the electron density drops to the
+carbon-dominated value and the temperature settles to a PDR equilibrium
+above the floor.}
+\label{fig:pdr}
+\end{figure}
+
+%==========================================================================
+\section{Summary and outlook}
+\label{sec:summary}
+
+\MoCHII{} is a three-dimensional Monte Carlo photoionization code for dusty
+nebulae on adaptive octree grids, built by adding a self-consistent
+gas-physics layer to a validated dust radiative-transfer engine.  Its
+design choices --- octree AMR with solution-driven front refinement, a
+zero-variance analytic direct-field estimator with a dedicated Cartesian
+DDA backend, an explicit optional Monte Carlo diffuse field, a
+data-driven trace-metal registry with modern atomic data, first-class dust
+absorption/scattering and equilibrium/stochastic emission with PAH physics,
+and peel-off synthetic imaging --- distinguish it from the uniform-grid and
+1D codes.  It reproduces analytic attenuation to $+0.004\%$, the Str\"omgren
+sphere to $+0.56\%$, and a thermal H/He nebula to $0.14\%$.  On the
+Lexington 2000 \HII{} region benchmarks, with the ionizing bins aligned on
+the ionization thresholds --- the discretization that controls the helium
+and metal ionization structure --- it lies inside the published multi-code
+spread: the $n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 7894~K
+at HII40 within a published 7720--8199~K and 6376~K at HII20 just under a
+published floor of 6402~K; both models are radiation-bounded, so both outer
+radii are predicted, and $L(\mathrm{H}\beta)$ follows the recombination
+budget to a few percent.  The line-cooling data are checked independently
+of the temperature by evaluating the \MoCHII{} cooling terms on a fixed
+state taken from a \textsc{Cloudy} c25.00 cooling decomposition: channel by
+channel the two compilations agree, and the summed line cooling agrees to
+$1\%$.  The one documented approximation left in the thermal loop is the
+zero-density cooling function, which through the far-infrared
+fine-structure lines overestimates the total line cooling by $12\%$ at
+$\nelec = 110\,\mathrm{cm^{-3}}$ and
+places both benchmarks at the cool edge of the published range, $4$--$8\%$
+below a \textsc{Cloudy} c25.00 run of the same two models carried as an
+extra column of both tables; a density-dependent $\Lambda(T,\nelec)$ is the
+planned replacement.  That comparison column also shows how far the
+reference has moved in a quarter of a century: c25.00 sits above every
+published entry in temperature, and it moves the same
+S\,\textsc{ii}/S\,\textsc{iii} rows in the same direction \MoCHII{} does.
+The solution-driven
+re-refinement reproduces a native high-resolution grid to $+0.008\%$ with
+$4.5\times$ fewer cells, the dust coupling closes energy exactly and
+reproduces the limb-brightened Spitzer/JWST PAH morphology, and the
+atomic PDR skin
+recovers the carbon-dominated electron density and a physical PDR
+temperature.
+
+Development is ongoing along several lines.  A plane-parallel
+(xy-periodic slab) illumination mode with an emergent $I(\mu)$ boundary
+tally extends the code to slab and grazing-illumination
+geometries.  A He\,\textsc{i} $2^3$S metastable diagnostic supports
+synthetic 10830~\AA\ absorption modeling.  A hard-spectrum extension for
+planetary nebulae and active galactic nuclei --- higher photon energies,
+extended ion stages, inner-shell/Auger processes, and density-dependent
+cooling tables --- is planned.  The trace-metal registry makes further
+ions a data operation as the science requires them.  Together these make
+\MoCHII{} a tool for modern three-dimensional synthetic observations of
+\HII{} regions, planetary nebulae, and the illuminated interstellar and
+circumgalactic medium.
+
+\begin{acknowledgments}
+% TODO: acknowledgments -- funding (KASI/NRF grant numbers), the MOCASSIN,
+% CHIANTI, Cloudy, PyNeb, and Illustris-TNG teams for public data and
+% comparison references, and computing resources.
+\end{acknowledgments}
+
+\software{MoCHII (\url{https://github.com/seoncafe/MoCHII}),
+          MoCafe (\url{https://github.com/seoncafe/MoCafe}),
+          CHIANTI \citep{dere1997,delzanna_chianti},
+          MOCASSIN \citep{ercolano2003},
+          Cloudy \citep{cloudy2023},
+          astropy,
+          matplotlib,
+          NumPy}
+% TODO: add astropy/matplotlib/numpy citations if desired, and PyNeb.
+
+\appendix
+
+\section{Fitted atomic-data coefficients}
+\label{app:atomic}
+
+The atomic data are fitted offline and evaluated online
+(Section~\ref{sec:cooldata}).  Table~\ref{tab:tier1err} gives the quality of
+the line-cooling fits of every ion and Table~\ref{tab:tier2} summarizes the
+$n$-level diagnostic models; it is generated mechanically from the data
+files by \code{paper/tables/make\_atomic\_tables.py}.  The coefficients
+themselves --- the amplitudes and excitation temperatures of the
+line-cooling fits, and the Burgess--Tully Chebyshev $\Upsilon(T)$ sets of
+the $n$-level models, several for each transition --- are distributed with
+the code rather than reproduced here.\footnote{The fitted line-cooling
+coefficients of every ion are provided as text in
+\code{data/atomic/cooling\_fit\_parameters.txt} (and, one file for each ion,
+in \code{data/atomic/cooling\_<ion>.txt}), with the fit form, units, fit
+range, and maximum fit error documented in \code{data/atomic/README.md};
+the $n$-level models are in \code{data/atomic/nlevel\_<ion>.txt}.  Every
+file carries a provenance header.}
+
+\clearpage
+\input{tables/tier1_maxerr}
+
+\input{tables/tier2_nlevel}
+
+\bibliographystyle{aasjournalv7.1}
+\bibliography{mochii}
+
+\end{document}
