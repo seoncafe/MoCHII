@@ -36,7 +36,7 @@
  par%dust_model      = 'global_dgr'
  par%ion_add_dust    = .true.       ! EUV dust absorption + grain heating
  par%ion_dust_scatter = .true.      ! forward scattering in the ionizing band
- par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust       = 4.868e-22    ! Milky Way C_ext(V) per H [cm^2]
  par%DGR             = 1.0
 

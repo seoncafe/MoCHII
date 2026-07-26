@@ -138,6 +138,12 @@ contains
         'ERROR: par%recomb_model must be ''badnell_mao'' (default) or ''hui_gnedin''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%cooling_model) /= 'low_density' .and. &
+      trim(par%cooling_model) /= 'local_ne') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%cooling_model must be ''low_density'' (default) or ''local_ne''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
 
   !--- Source model.  The ionizing band is fed by any number of internal point
   !--- sources (par%nsource, positions src_x/y/z, luminosities src_lum) plus,

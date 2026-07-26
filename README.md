@@ -39,7 +39,10 @@ infrared dust/PAH spectrum.
   Optional Shull & van Steenberg (1985) secondary ionization by fast
   photoelectrons (`use_sec_ion`, for hard fields and partially neutral gas),
   and net-charge-weighted metal free-free cooling (`metal_freefree`, on by
-  default).
+  default).  The thermal-balance line cooling is suppressed to the local
+  electron density from the same n-level populations that emit the diagnostic
+  lines (`cooling_model='local_ne'`, the default, matching the modern
+  reference codes).
 - **Diagnostics**: collisional line luminosities from n-level statistical
   equilibrium, Storey & Hummer (1995) H I recombination lines, the nebular
   continuum (free–bound, free–free, two-photon), the He I 2^3S metastable
@@ -118,4 +121,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-25 22:31 KST
+Last updated: 2026-07-26 10:27 KST

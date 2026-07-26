@@ -27,6 +27,11 @@ module nlevel_mod
 
   public :: nlevel_load, nlevel_emissivities, nlevel_atom_type
   public :: nlevel_nlines, nlevel_line_ident
+  !--- cooling-table siblings (nlevel_cooling_mod): the collisional line
+  !--- cooling Lambda_SE(T, ne) = sum_k n_u A dE, split by n_e-dependence so
+  !--- the Upsilon work is done once for each T across the whole n_e column.
+  public :: nlevel_cooling_prepT, nlevel_cooling_solve, nlevel_cooling_at
+  public :: MAXLEV
 
   integer, parameter :: MAXLEV = 40, MAXTR = 600
 
@@ -223,6 +228,118 @@ contains
        emis(k) = pop(atom%ru(k))*atom%A(k)*de_erg
     end do
   end subroutine nlevel_emissivities
+
+  !=========================================================================
+  ! Collisional line cooling COEFFICIENT
+  !   Lambda_SE(T, ne) = (sum_k n_u A_ul dE_ul) / ne   [erg cm^3 s^-1],
+  ! summed over the NRAD radiative transitions -- the same quantity as
+  ! cooling_eval, so the volume cooling is ne n_ion Lambda_SE and the n_e -> 0
+  ! limit is the low-density fit.  It decreases with n_e (the populations
+  ! saturate), which is the density suppression.  Split into two steps so the
+  ! n_e-independent rate matrices (and the Upsilon evaluations inside them)
+  ! are built once for each T and reused for the whole n_e column:
+  !   nlevel_cooling_prepT -> Rcoll (collisional rates without the n_e factor)
+  !                           and Rrad (radiative A-values), matching the rate
+  !                           assembly of nlevel_emissivities;
+  !   nlevel_cooling_solve -> R = ne*Rcoll + Rrad, statistical equilibrium,
+  !                           and the cooling sum.
+  ! nlevel_cooling_at combines both (no cache) as the direct reference.
+  !=========================================================================
+  subroutine nlevel_cooling_prepT(atom, T, Rcoll, Rrad)
+    implicit none
+    type(nlevel_atom_type), intent(in)  :: atom
+    real(kind=wp),          intent(in)  :: T
+    real(kind=wp),          intent(out) :: Rcoll(MAXLEV,MAXLEV)
+    real(kind=wp),          intent(out) :: Rrad(MAXLEV,MAXLEV)
+    real(kind=wp) :: q_ul, q_lu, de_erg, ups
+    integer :: k, l, u_
+
+    Rcoll = 0.0_wp
+    Rrad  = 0.0_wp
+    do k = 1, atom%nups
+       l = atom%ul_l(k);  u_ = atom%ul_u(k)
+       de_erg = (atom%e_cm1(u_) - atom%e_cm1(l))*HC_ERG_CM
+       ups  = ups_eval(atom, k, T)
+       q_ul = COLL_PREF/(atom%g(u_)*sqrt(T))*ups
+       q_lu = (atom%g(u_)/atom%g(l))*q_ul*exp(-de_erg/(kboltz_cgs*T))
+       Rcoll(u_,l) = Rcoll(u_,l) + q_lu
+       Rcoll(l,u_) = Rcoll(l,u_) + q_ul
+    end do
+    do k = 1, atom%nrad
+       Rrad(atom%rl(k), atom%ru(k)) = Rrad(atom%rl(k), atom%ru(k)) + atom%A(k)
+    end do
+  end subroutine nlevel_cooling_prepT
+
+  !=========================================================================
+  real(kind=wp) function nlevel_cooling_solve(atom, Rcoll, Rrad, ne) result(lam)
+    implicit none
+    type(nlevel_atom_type), intent(in) :: atom
+    real(kind=wp),          intent(in) :: Rcoll(MAXLEV,MAXLEV)
+    real(kind=wp),          intent(in) :: Rrad(MAXLEV,MAXLEV)
+    real(kind=wp),          intent(in) :: ne
+    real(kind=wp) :: R(MAXLEV,MAXLEV), M(MAXLEV,MAXLEV+1), pop(MAXLEV)
+    real(kind=wp) :: de_erg, fac
+    integer :: k, i, j, n, ip
+
+    n = atom%nlev
+    R = ne*Rcoll + Rrad
+
+    !--- M n = b with rate matrix (dn/dt = 0) + closure row.
+    M = 0.0_wp
+    do i = 1, n
+       do j = 1, n
+          if (i /= j) then
+             M(i,j) = R(i,j)              ! rate j -> i
+             M(i,i) = M(i,i) - R(j,i)     ! loss from i
+          end if
+       end do
+    end do
+    M(1,1:n) = 1.0_wp
+    M(1,n+1) = 1.0_wp
+    !--- Gaussian elimination with partial pivoting.
+    do i = 1, n-1
+       ip = i
+       do j = i+1, n
+          if (abs(M(j,i)) > abs(M(ip,i))) ip = j
+       end do
+       if (ip /= i) then
+          do j = i, n+1
+             fac = M(i,j);  M(i,j) = M(ip,j);  M(ip,j) = fac
+          end do
+       end if
+       do j = i+1, n
+          fac = M(j,i)/M(i,i)
+          M(j,i:n+1) = M(j,i:n+1) - fac*M(i,i:n+1)
+       end do
+    end do
+    do i = n, 1, -1
+       pop(i) = M(i,n+1)
+       do j = i+1, n
+          pop(i) = pop(i) - M(i,j)*pop(j)
+       end do
+       pop(i) = pop(i)/M(i,i)
+    end do
+
+    lam = 0.0_wp
+    do k = 1, atom%nrad
+       de_erg = (atom%e_cm1(atom%ru(k)) - atom%e_cm1(atom%rl(k)))*HC_ERG_CM
+       lam = lam + pop(atom%ru(k))*atom%A(k)*de_erg
+    end do
+    !--- cooling coefficient: divide the per-ion cooling by n_e so the volume
+    !--- cooling is ne n_ion Lambda_SE (matching cooling_eval).  ne > 0 always
+    !--- here (the table floor is 1e-6 cm^-3).
+    lam = lam/ne
+  end function nlevel_cooling_solve
+
+  !=========================================================================
+  real(kind=wp) function nlevel_cooling_at(atom, T, ne) result(lam)
+    implicit none
+    type(nlevel_atom_type), intent(in) :: atom
+    real(kind=wp),          intent(in) :: T, ne
+    real(kind=wp) :: Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV)
+    call nlevel_cooling_prepT(atom, T, Rcoll, Rrad)
+    lam = nlevel_cooling_solve(atom, Rcoll, Rrad, ne)
+  end function nlevel_cooling_at
 
   !=========================================================================
   integer function nlevel_nlines(atom)

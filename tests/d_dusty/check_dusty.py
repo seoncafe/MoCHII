@@ -27,7 +27,7 @@ TSTAR, LBAND    = 4.0e4, 3.177837e38
 NH, YHE, TE     = 100.0, 0.1, 1.0e4
 RSPH_PC         = 4.0
 CEXT_REF        = 4.868e-22       # D03 C_ext/H at 0.55 um (par%cext_dust)
-KEXT = "../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009"
+KEXT = "../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003"
 R_EFF_FREE_1D = 3.0365            # G1 1D reference, no dust
 
 

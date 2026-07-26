@@ -19,6 +19,7 @@ module cooling_mod
 !---------------------------------------------------------------------------
   use define
   use recomb_mod
+  use nlevel_cooling_mod, only : nlevel_cooling_add, nlevel_cooling_apply
   implicit none
   private
 
@@ -43,6 +44,10 @@ module cooling_mod
 
   type(cooling_fit_type) :: cool_HI_fit
 
+  !--- index into the nlevel_cooling_mod (T, n_e) table for H I line cooling
+  !--- (par%cooling_model = 'local_ne'); 0 = no table, keep the fit.
+  integer :: hi_cool_idx = 0
+
   !--- thermally averaged free-free Gaunt factor gbar(T,Z) for net ion
   !--- charge Z = 1..4 (max metal net charge is 4: the largest registry
   !--- element has 5 stages), tabulated on a log-T grid at setup.
@@ -61,6 +66,9 @@ contains
     !--- H I line cooling (Ly-alpha dominated).
     fname = trim(par%atomic_dir)//'/cooling_h_1.txt'
     call cooling_load(trim(fname), cool_HI_fit)
+
+    !--- (T, n_e) suppression table for H I under the local-n_e cooling model.
+    if (trim(par%cooling_model) == 'local_ne') hi_cool_idx = nlevel_cooling_add('h', 1)
 
     !--- gbar_ff(T, Z) tables over log T = 2..6, for net charge Z = 1..4.
     do i = 1, NGT
@@ -253,8 +261,11 @@ contains
     cool = cool + ne*( nHI*ci_HI(T)*eth_HI + nHeI*ci_HeI(T)*eth_HeI &
            + nHeII_n*ci_HeII(T)*eth_HeII )*ev2erg
 
-    !--- H I collisional-excitation line cooling (cooling fit)
-    cool = cool + ne*nHI*cooling_eval(cool_HI_fit, T)
+    !--- H I collisional-excitation line cooling (cooling fit, suppressed by
+    !--- the level populations at n_e when par%cooling_model = 'local_ne';
+    !--- hi_cool_idx = 0 otherwise -> the fit value returned unchanged).
+    cool = cool + ne*nHI*nlevel_cooling_apply(hi_cool_idx, &
+           cooling_eval(cool_HI_fit, T), T, ne)
   end function cooling_total
 
 end module cooling_mod

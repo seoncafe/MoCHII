@@ -389,6 +389,7 @@ parameter & default & meaning \\
 \code{te\_fixed} & 1e4 & fixed $T_e$ [K] when \code{solve\_te} is off \\
 \code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
 \code{gas\_tol\_te} & 1e-3 & convergence on $\max|\Delta T_e|/T_e$ \\
+\code{cooling\_model} & 'local\_ne' & line cooling in the thermal loop: 'local\_ne' (default) suppresses each ion's cooling fit to the local $n_e$ with a $(T, n_e)$ table built from its $n$-level solve, so the thermal balance and the emergent lines are one physics; 'low\_density' uses the $n_e\to0$ fits directly (the coronal limit, exact in diffuse gas; reproduces earlier gates) \\
 \code{atomic\_dir} & 'data/atomic' & coefficient files (relative to the run directory) \\
 \code{use\_metals} & F & registry cascade + metal line cooling \\
 \code{ci\_model} & 'voronov' & collisional ionization: 'voronov' (default) or 'dere\_hybrid' (Voronov $\times$ the Dere 2007/Voronov ratio; matters only in shielded low-ionization zones) \\
@@ -444,7 +445,7 @@ parameter & default & meaning \\
 parameter & default & meaning \\
 \midrule
 \code{ion\_add\_dust} & F & dust absorption in the band (dusty Str\"omgren) \\
-\code{ion\_dust\_kext} & '' & kext table with EUV coverage (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2009}); required \\
+\code{ion\_dust\_kext} & '' & kext table with EUV coverage (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2003}); required \\
 \code{ion\_dust\_scatter} & F & sample dust scattering (HG, albedo weights) \\
 \code{dust\_sed} & F & SEDust stochastic dust SED at output time \\
 \code{dust\_model\_sed} & 'astrodust' & 'astrodust'/'dl07'/'zubko' \\
@@ -808,7 +809,7 @@ A minimal thermal + metals + dust input (from \code{d\_dusty}):
  par%solve_te = .true.           par%atomic_dir = '../../data/atomic'
  par%use_metals = .true.
  par%ion_add_dust = .true.
- par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust = 4.868e-22       par%DGR = 1.0
  par%out_file = 'run.h5'         par%file_format = 'hdf5'
 /
@@ -851,10 +852,18 @@ Huang labels are adopted; see \code{make\_element\_data.py}).
   ionizing resolution is unaffected.
 \item \textbf{FUV and the PDR}: without \code{add\_fuv} there is no
   radiation beyond the I-front and the metals there recombine toward
-  neutral; with it, FUV penetrates the neutral gas (dust extinction
-  only) and produces the PDR-side C\,\textsc{ii} and Mg\,\textsc{ii}.
-  Metal photoheating and grain photoelectric heating are not in the
-  thermal balance, so PDR-zone temperatures are indicative only.
+  neutral; with it, FUV penetrates the I-front and photoionizes the metal
+  stages whose thresholds lie below 13.6\,eV (C\,\textsc{i} 11.3, S\,\textsc{i}
+  10.4, Si\,\textsc{i} 8.2, Fe\,\textsc{i} 7.9, Mg\,\textsc{i} 7.6\,eV,
+  \ldots), producing the PDR-side C\,\textsc{ii} and Mg\,\textsc{ii}.  In the
+  FUV band the gas opacity is exactly this low-threshold metal
+  photoionization (\code{ion\_metal\_abs}, on by default; H and He do not
+  absorb below 13.6\,eV), so the FUV is attenuated by that photoionization
+  together with dust --- only where those metals are already ionized does
+  dust extinction alone remain.  The metal stage fractions iterate with this
+  opacity self-consistently; the corresponding metal photoheating and the
+  grain photoelectric heating are not in the thermal balance, so PDR-zone
+  temperatures are indicative only.
 \item \textbf{Convergence}: use \code{conv\_crit = 'vol'} for
   production --- the cell-max criterion stalls at the front-cell noise
   floor (and, with \code{add\_fuv}, at no-heating cells where $T_e$

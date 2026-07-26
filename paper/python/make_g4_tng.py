@@ -1,3 +1,4 @@
+import sys
 #!/usr/bin/env python3
 """G4b demo maps: slice through the source plane of the TNG cutout.
 
@@ -55,6 +56,10 @@ size_map = (2*half[idx]).reshape(NPIX, NPIX)
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+_HERE_AX = _os.path.dirname(_os.path.abspath(__file__))
+sys.path.insert(0, _HERE_AX)
+from axis_style import square_ticks   # noqa: E402
+
 # Paper figures: axis, tick, and title fonts sized to ~85% of the body text.
 _S = 2.02
 _b = plt.rcParams["font.size"]
@@ -97,6 +102,7 @@ for ax in axes.flat:
     ax.plot(*SRC, "w*", ms=12, mec="k")
     ax.set_xlabel(r"$x$ [kpc]")
     ax.set_ylabel(r"$y$ [kpc]")
+    square_ticks(ax)
 fig.suptitle(r"MoCHII on an Illustris-TNG cutout: $Q_{\rm H}=10^{53}$"
              r" s$^{-1}$ source, $z = 4.7$ kpc plane", y=0.995)
 fig.tight_layout()

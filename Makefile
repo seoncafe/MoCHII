@@ -88,6 +88,8 @@ OBJS	= \
 	recomb_mod.o \
 	gaunt.o \
 	gaunt_vh14_mod.o \
+	nlevel_mod.o \
+	nlevel_cooling_mod.o \
 	cooling_mod.o \
 	gas_state_mod.o \
 	species_mod.o \
@@ -101,7 +103,6 @@ OBJS	= \
 	sedust_mod.o \
 	diffuse_mod.o \
 	nebcont_mod.o \
-	nlevel_mod.o \
 	sh95_mod.o \
 	lines_mod.o \
 	hei_metastable_mod.o \

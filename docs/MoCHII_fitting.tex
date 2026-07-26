@@ -23,11 +23,13 @@ MoCHII evaluates all metal-line atomic data from analytic fits; the raw
 CHIANTI database is never parsed at runtime.  The Python pipeline under
 \code{tools/fitting/} is the auditable source of every coefficient in
 \code{data/atomic/}.  This memo documents the pipeline and its two
-products: the cooling-function fits evaluated inside the thermal
-iteration, currently 28 ions of the eleven-element registry, and the
-$n$-level data files (level energies, $A$-values, and Chebyshev fits of
-the effective collision strengths in Burgess--Tully scaled space) that
-supply the output-time line emissivities.  Both are verified against the
+products: the cooling-function fits that carry the thermal-loop line
+cooling in the $n_e \to 0$ limit, currently 28 ions of the eleven-element
+registry --- suppressed to the local electron density at run time by a
+$(T, n_e)$ table built from the $n$-level solve --- and the $n$-level
+data files (level energies, $A$-values, and Chebyshev fits of the
+effective collision strengths in Burgess--Tully scaled space) that supply
+the output-time line emissivities.  Both are verified against the
 CHIANTI v11.0.2 source data and against PyNeb, and the cooling fits are
 additionally checked channel by channel against an independent
 photoionization code on a fixed gas state
@@ -50,7 +52,11 @@ error), of two kinds:
 \item \textbf{Cooling fits (thermal balance).}  A smooth closed-form
   cooling function $\Lam_{\rm ion}(T)$, cheap and Newton-friendly inside
   the thermal-balance iteration, in the $n_e \to 0$ limit of statistical
-  equilibrium.
+  equilibrium.  This is the low-density \emph{carrier}: at run time the
+  thermal loop suppresses it to the local electron density with a
+  $(T, n_e)$ table built from the same $n$-level solve
+  (\code{par\%cooling\_model = local\_ne}, the default), so the thermal
+  balance and the diagnostic line list are one physics.
 \item \textbf{$n$-level data (diagnostics).}  Level energies,
   statistical weights, radiative $A$-values, and fitted effective
   collision strengths $\Upsilon(T)$ feeding the generic $n$-level solver,
@@ -162,15 +168,19 @@ fine-structure IR lines, most sharply [C\,\textsc{ii}] $158\,\mu$m with
 $n_{\rm crit} \sim 50$~cm$^{-3}$ and the [O\,\textsc{iii}]
 $52,88\,\mu$m pair; [O\,\textsc{ii}] $\lambda\lambda 3726,3729$;
 [S\,\textsc{ii}] $\lambda\lambda 6717,6731$) saturate above
-$n_{\rm crit}$, where the cooling fit overestimates the cooling.  This
-is now the leading approximation of the thermal loop: on the Cloudy
-c25.00 state of the HII40 benchmark ($n_e \simeq 110$~cm$^{-3}$) the fitted
-line cooling exceeds the Cloudy inventory by 11.6\%, of which
-$+5.1$ points come from [O\,\textsc{iii}] and $+3.9$ from
-[C\,\textsc{ii}], while the same ions evaluated with the $n$-level solve
-at the local $n_e$ land within 2.4\% and 6\%.  A density-dependent
-$\Lam(T, n_e)$ is the natural next step; the emissivities themselves
-always come from the $n$-level data.
+$n_{\rm crit}$, where the fit overestimates the cooling.  The thermal
+loop therefore treats Eq.~(\ref{eq:cool}) as the $n_e \to 0$ carrier and
+suppresses it to the local density: on the Cloudy c25.00 state of the
+HII40 benchmark ($n_e \simeq 110$~cm$^{-3}$) the fitted line cooling
+exceeds the Cloudy inventory by 11.6\%, of which $+5.1$ points come from
+[O\,\textsc{iii}] and $+3.9$ from [C\,\textsc{ii}], while the same ions
+evaluated with the $n$-level solve at the local $n_e$ land within 2.4\%
+and 6\% and bring the summed line cooling to $1.01$ times Cloudy's.
+MoCHII therefore builds a $(T, n_e)$ suppression table from the same
+$n$-level solve at setup and applies it in the thermal loop by default
+(\code{par\%cooling\_model = local\_ne}); \code{low\_density} uses the
+fits directly.  The emissivities themselves always come from the
+$n$-level data.
 
 \section{$n$-level data with fitted collision strengths}
 \label{sec:nlevel}

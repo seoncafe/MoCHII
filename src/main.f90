@@ -28,6 +28,7 @@ program main
   use ion_balance_mod, only : gas_equilibrium_update
   use thermal_mod,     only : gas_thermal_update
   use cooling_mod,     only : cooling_setup
+  use nlevel_cooling_mod, only : nlevel_cooling_report
   use species_mod,     only : species_setup, species_gamma_compute, &
                               n_elements, elem_nstage, elem_abund, elem_eth
   use diffuse_mod,     only : diffuse_build, gen_diffuse_photon, &
@@ -93,6 +94,9 @@ program main
      end block
   end if
   if (par%solve_te) call cooling_setup()
+  !--- report the (T, n_e) cooling tables built by species_setup/cooling_setup
+  !--- (par%cooling_model = 'local_ne'); a no-op otherwise.
+  if (trim(par%cooling_model) == 'local_ne') call nlevel_cooling_report()
 
   !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
   !--- until max |delta x_HII| < par%gas_tol.  gas_niter = 0 = single

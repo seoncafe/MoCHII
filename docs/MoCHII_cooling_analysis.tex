@@ -100,10 +100,18 @@ $\nel \to 0$ limit of statistical equilibrium with observed transition energies
 moved HII40 to \textbf{7894~K, inside the published range}, and HII20 to
 6376~K, $0.4\%$ below the published floor; $L({\rm H}\beta)$, $R_{\rm out}$
 and the line ratios all moved into or next to the published spread at the same
-time.  The remaining known limitation is that $\Lambda(T)$ carries no density
-suppression.  A comparison of the cooling inventories of the other Monte Carlo
-photoionization codes is included; it turned up defects on their side as well,
-and one omission common to all five codes.
+time.  That zero-density limit still overcooled the low-critical-density lines
+at nebular densities, leaving both benchmarks at the cool edge of the range;
+suppressing the line cooling to the local $\nel$ with a $(T, \nel)$ table built
+from the same $n$-level solve --- now the default,
+\code{par\%cooling\_model = local\_ne} --- removes the far-infrared
+overestimate, brings the fixed-state line total from $1.116\times$ to
+$1.01\times$ \Cloudy{}'s, and raises the converged benchmarks to 8210 and
+7024~K, matching \Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are
+retained as the \code{low\_density} option.  A comparison of the cooling
+inventories of the other Monte Carlo photoionization codes is included; it
+turned up defects on their side as well, and one omission common to all five
+codes.
 \end{abstract}
 
 %==========================================================================
@@ -577,6 +585,9 @@ Section~\ref{sec:limit}.
 Table~\ref{tab:bench} is the before-and-after on the two benchmark models.
 HII40 moves from $9159$~K, above every published code, to $7894$~K, inside the
 published range.  HII20 moves to $6376$~K, $0.4\%$ below the published floor.
+These are the zero-density-limit (\code{low\_density}) temperatures; the
+density-suppressed default of Section~\ref{sec:limit} raises them further, to
+8210 and 7024~K, to match \Cloudy{} c25.00.
 
 \begin{table}[htbp]
 \centering
@@ -584,7 +595,9 @@ published range.  HII20 moves to $6376$~K, $0.4\%$ below the published floor.
 ``published'' is the range over the nine codes of the published compilation; C25 is \Cloudy{} c25.00 run on its own unmodified test-suite deck.
 \MoCHII{} runs use threshold-aligned 32 ionizing bins, the explicit Monte
 Carlo diffuse field with the \HeI{} channels, and case-B recombination-line
-tables.}
+tables.  The ``after'' column is the zero-density (\code{low\_density})
+cooling; the density-suppressed default raises $\langle T\rangle$ to 8210 and
+7024~K (Section~\ref{sec:limit}).}
 \label{tab:bench}
 \begin{tabular}{lcccc}
 \toprule
@@ -655,7 +668,7 @@ $[\SIV{}]$ 10.51\,$\mu$m    & 0.187  & 0.189  & --- \\
 \end{table}
 
 %==========================================================================
-\section{Remaining limitation: $\Lambda(T)$ carries no density suppression}
+\section{Density suppression of the line cooling at the local $\nel$}
 \label{sec:limit}
 
 The repaired fits are the $\nel \to 0$ limit, so they contain no collisional
@@ -690,23 +703,53 @@ both exceed \Cloudy{} by $30\%$ --- so that row is a collision-data difference
 between CHIANTI v11 and \Cloudy{}'s Ne\,\textsc{iii} data, and is noted here
 as a separate open item.
 
-The consequence for the benchmarks is a slight cooling bias at $\nH = 100$,
-and it is visible: both models now sit at the cool edge of the published
-range, and HII20 sits $0.4\%$ below its floor.  The fix is a Tier-1 table in
-$(T, \nel)$ rather than $T$ alone, which is already on the plan for the
-planetary-nebula densities where the effect is much larger.
+Run with the fits used directly, the consequence for the benchmarks was a
+slight cooling bias at $\nH = 100$: both models sat at the cool edge of the
+published range, and HII20 fell $0.4\%$ below its floor.  \MoCHII{} removes it
+by suppressing the line cooling to the local density.  A $(T, \nel)$ table,
+built once at setup (\code{nlevel\_cooling\_mod}) by solving the same
+$n$-level atom on a grid ($\log_{10}T = 2$--$6$, $\log_{10}\nel = -6$--$10$),
+stores for each ion the suppression ratio
+$S_{\rm sup}(T,\nel) = \Lambda_{\rm SE}(T,\nel)/\Lambda_{\rm SE}(T,\nel\!\to\!0)$
+and the low-density reference; the runtime coefficient is
+$\Lambda = \Lambda_{\rm fit}\,[\,f_{\rm cov}S_{\rm sup} + (1-f_{\rm cov})\,]$
+with $f_{\rm cov} = \min(1,\ \Lambda_{\rm SE}(T,\nel\!\to\!0)/\Lambda_{\rm fit})$
+the fraction of the low-density cooling the (often truncated) $n$-level model
+resolves, so a truncated model cannot bias the total and $\nel \to 0$ returns
+the fit exactly.  Because the table is built from the very solve that produces
+the diagnostic lines, the thermal balance and the emergent line list are now
+one physics.  This is the default (\code{par\%cooling\_model = local\_ne}); the
+pure zero-density fits are kept as the \code{low\_density} option, exact in
+diffuse gas and needed in any case for the planetary-nebula densities where the
+suppression is much larger.
 
-\paragraph{Consequence for the PDR path (needs re-baselining).}  The
-photodissociation-region test \code{tests/pdr/pdr\_L5.in} shows the expected
-signature.  The PDR shell itself is unchanged --- $\nel = A_{\rm C}\nH$ plus
-$6\%$ from S, Mg and Fe, $\Te = 258$~K, $\CII{} = 1.000$ --- because there
-$\nel \sim 2\times10^{-2}$~cm$^{-3}$ is far below $\ncrit$ and the low-density
-limit is the correct limit.  The \HII{} interior, however, is now about $17\%$
-cooler, because that is where $\CII{}$ dominates the carbon budget at
-$\nel \sim 110$ and the $[\CII{}]$ 158~$\mu$m overestimate bites.  The stored
-PDR gate references and the figures and examples built on them need
-refreshing, and \code{tests/g2a\_thermal/check\_g2a.py} still refers to a
-coefficient file under its former name.
+On the fixed \Cloudy{} state the default delivers the Tier-2 column of the
+table above, $1.011\times$ \Cloudy{}'s line total in place of $1.116\times$,
+and the converged benchmarks rise to \textbf{8210}~K at HII40 --- matching
+\Cloudy{} c25.00's 8210~K to $0.4$~K --- and 7024~K at HII20 ($+1.6\%$ against
+\Cloudy{}'s 6910~K), in place of the zero-density 7894 and 6376~K.  This
+confirms the fixed-state prediction quantitatively: removing the far-infrared
+overestimate --- the difference between the $1.116\times$ and $1.011\times$
+totals --- is what carries the converged temperature the remaining distance to
+the current-generation reference.  \NeIII{} remains the one channel still $30\%$
+above \Cloudy{}, a collision-data difference rather than a density effect.
+
+\paragraph{The H-collider term is still low-density (needs re-baselining).}
+One line-cooling term is not yet density-suppressed: the H-impact $[\CII{}]$
+158~$\mu$m / $[\OI{}]$ 63~$\mu$m fine-structure cooling of the
+photodissociation-region package (\code{metal\_cooling\_H}), a two-level
+low-density formula.  It is weighted by $x_{\rm HI}$, so it is $\sim$0 in the
+ionized benchmark zones (the \HII{} gates are unaffected), but it needs the
+same saturation in dense PDR gas ($\nH \sim 5\times10^3$ in the
+\code{isrf\_cloud} example) --- a separate follow-up.  The photodissociation-region
+test \code{tests/pdr/pdr\_L5.in} is otherwise unchanged: the PDR shell has
+$\nel = A_{\rm C}\nH$ plus $6\%$ from S, Mg and Fe, $\Te = 258$~K,
+$\CII{} = 1.000$, and there $\nel \sim 2\times10^{-2}$~cm$^{-3}$ is far below
+$\ncrit$ so the low-density limit is the correct limit.  The stored PDR gate
+references and the figures and examples built on the earlier cooling still need
+refreshing to the density-suppressed default, and
+\code{tests/g2a\_thermal/check\_g2a.py} still refers to a coefficient file
+under its former name.
 
 %==========================================================================
 \section{Cooling inventories of the other Monte Carlo codes}
@@ -923,13 +966,14 @@ $\nel q$ in both directions plus the $A$-values (:2063--2089), solves it by LU
 decomposition and normalizes the populations (:2091--2101), and returns
 $A_{ji}\Delta E_{ji}n_j$ for every transition with a nonzero $A$
 (:2104--2116).  Collisional de-excitation is therefore carried, and the
-far-infrared fine-structure lines saturate above their critical density.  This
-is precisely what \MoCHII{}'s thermal balance does not do
-(Section~\ref{sec:limit}): on the fixed \Cloudy{} state \MoCHII{}'s
-$\nel \to 0$ fits deliver $1.116\times$ \Cloudy{}'s line cooling where its own
-$n$-level solve at the local $\nel$ delivers $1.011\times$, a difference that
-is a factor $4.5$ on $[\CII{}]$ 158~$\mu$m alone.  \Mocassin{} has that
-suppression in the thermal balance; \MoCHII{} has it only in the line output.
+far-infrared fine-structure lines saturate above their critical density.
+\MoCHII{} now does the same (Section~\ref{sec:limit}): where its $\nel \to 0$
+fits deliver $1.116\times$ \Cloudy{}'s line cooling on the fixed \Cloudy{}
+state, the $(T, \nel)$ table built from its own $n$-level solve delivers the
+suppressed $1.011\times$ --- a difference that is a factor $4.5$ on $[\CII{}]$
+158~$\mu$m alone --- and that suppressed value is what the thermal balance uses
+by default.  Both codes therefore carry the density suppression in the thermal
+balance.
 
 The recombination-pumping term of the same routine is dormant.  It requires a
 trailing \code{br, z, a\_r(4), a\_d(5)} block in the ion file
@@ -1112,21 +1156,21 @@ photodissociation-region densities, and both benchmark models are dust-free.
 carries grain photoelectric heating with grain recombination cooling
 (\code{par\%grain\_pe}).
 
-\paragraph{Net comparison with \MoCHII{}.}  Two differences dominate, and
-within each code they work against each other.  \Mocassin{} solves the level
-populations at the local $\nel$ inside the thermal balance, which \MoCHII{}'s
-$\Lambda(T)$ cannot do and which removes about $10\%$ of the line cooling at
-$\nH = 100$~cm$^{-3}$ (Section~\ref{sec:limit}); but its collision strengths
-are $15$--$22\%$ higher than the current ones on three of the four largest
-metal coolants, which adds cooling.  \MoCHII{} has the current collision
-strengths and the missing suppression, the same two effects with the signs
-exchanged.  Neither code's temperature can therefore be attributed to a single
-data difference.  On channels rather than data, \MoCHII{} carries three that
-\Mocassin{} does not --- collisional-ionization cooling, metal free-free with
-the net ion charge, and H-impact fine-structure cooling for the
-photodissociation-region path (\Mocassin{}'s $\Upsilon$ tables are
-electron-impact only) --- and \Mocassin{} carries two that \MoCHII{} does not,
-the gas--grain collisional term and the density-dependent level populations.
+\paragraph{Net comparison with \MoCHII{}.}  The dominant difference is now
+the collision data.  Both codes suppress the metal line cooling to the local
+$\nel$ in the thermal balance --- \Mocassin{} by solving the level populations
+there, \MoCHII{} through the $(T, \nel)$ table built from its own $n$-level
+solve (Section~\ref{sec:limit}) --- so the $\sim$$10\%$ that the suppression
+removes at $\nH = 100$~cm$^{-3}$ is common to both.  What remains is that
+\Mocassin{}'s collision strengths are $15$--$22\%$ higher than the current ones
+on three of the four largest metal coolants, which adds cooling, while
+\MoCHII{} carries the current CHIANTI~v11 strengths.  Neither code's temperature
+can therefore be attributed to a single data difference.  On channels rather
+than data, \MoCHII{} carries three that \Mocassin{} does not ---
+collisional-ionization cooling, metal free-free with the net ion charge, and
+H-impact fine-structure cooling for the photodissociation-region path
+(\Mocassin{}'s $\Upsilon$ tables are electron-impact only) --- and \Mocassin{}
+carries one that \MoCHII{} does not, the gas--grain collisional term.
 
 \subsection{\Torus{}}
 
@@ -1273,9 +1317,9 @@ collisional rates are $q = 8.63\times10^{-6}\,\Upsilon/(g\sqrt{T})$ with the
 Boltzmann factor from the observed level energies (\code{getCollisionalRates}
 :999--1046), $\Upsilon$ linearly interpolated in $T$ and clamped at the table
 ends with a one-time warning (:1015--1027).  So \Torus{}, like \Mocassin{} and
-unlike \MoCHII{}'s $\Lambda(T)$, carries collisional de-excitation inside the
-thermal balance and saturates the far-infrared fine-structure lines above their
-critical density --- the limitation of Section~\ref{sec:limit}.  Two
+like \MoCHII{}'s density-suppressed $\Lambda(T,\nel)$ (Section~\ref{sec:limit}),
+carries collisional de-excitation inside the thermal balance and saturates the
+far-infrared fine-structure lines above their critical density.  Two
 qualifications.  Every caller passes a population array dimensioned
 \code{pops(10)} (\code{photoionAMR\_mod.F90}:7712, :7732, :8089;
 \code{photoion\_utils\_mod.F90}:1115), so no ion model may exceed ten levels;
@@ -1443,16 +1487,18 @@ used.  The dump starts at 1~pc, so the innermost parsec is not in the average;
 and it is a single stored run at whatever packet and iteration count produced
 it, not a converged reference in the sense of Section~\ref{sec:bench}.  Taken
 at face value it sits at the top of the $7720$--$8199$~K published range of
-Table~\ref{tab:bench}, above \MoCHII{}'s post-fix $7894$~K and just under
-\Cloudy{} c25.00's $8210$~K.  \code{benchmarks/HII\_region/} also holds a
+Table~\ref{tab:bench}, essentially at \MoCHII{}'s density-suppressed default
+$8210$~K and \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
+$7894$~K).  \code{benchmarks/HII\_region/} also holds a
 \code{lexington\_cloudy.txt} comparison profile.  Nothing here was re-run.
 
 \paragraph{Net comparison with \MoCHII{}.}  On channels \Torus{} is the closest
 of the four other codes to \MoCHII{} in what it solves and the farthest in what
 it omits.  It has the density-dependent level populations inside the thermal
-balance that \MoCHII{} lacks, on transition energies taken from observed levels
-as \MoCHII{}'s rebuilt fits now are, and from the same routine that makes its
-line output; it has the gas--grain collisional term as an option; and it puts
+balance, as \MoCHII{} now does through the $(T, \nel)$ table, on transition
+energies taken from observed levels as \MoCHII{}'s rebuilt fits are, and from
+the same routine that makes its line output; it has the gas--grain collisional
+term as an option; and it puts
 grain thermal emission into the gas balance and returns the metal line photons
 to the transport, neither of which \Mocassin{} or \MoCHII{} does.  Against that
 it omits five channels \MoCHII{} carries ---
@@ -1476,10 +1522,11 @@ what its data files supply for
 the HII40 composition (C, N, O, Ne, S) at the default \code{nstages = 7},
 reaching O\,\textsc{vi}; \MoCHII{}'s 28 are its cooling fits, \HI{} plus 27
 metal ions over 11 elements, reaching stage \textsc{iv} (\textsc{v} for Ca).  \MoCHII{} is a superset of the line and
-H/He channels except for the last three rows: the density-dependent level
-populations, which it has only in its Tier-2 line output; the gas--grain term,
+H/He channels except for the last two rows: the gas--grain term,
 which \Mocassin{} carries and \Torus{} carries as an option; and \HeI{}
-collisional excitation, which no code carries.}
+collisional excitation, which no code carries.  It now carries the
+density-dependent level populations in the thermal balance too, through the
+$(T, \nel)$ table of Section~\ref{sec:limit}.}
 \label{tab:codes}
 \footnotesize
 \begin{tabular}{lccccc}
@@ -1495,7 +1542,7 @@ collisional-ionization cooling & no & no & no & no & yes \\
 \HeIII{} recombination cooling & no & no & yes & no & yes \\
 free-free at $Z = 2$ (\HeIII{}) & no & no & yes & no & yes \\
 free-free from the metal ions & no & no & no & no & yes \\
-level populations at the local $\nel$ & yes & yes & yes & yes & Tier-2 only \\
+level populations at the local $\nel$ & yes & yes & yes & yes & yes (table) \\
 gas--grain collisional cooling & no & no & yes & optional & no \\
 \HeI{} collisional excitation & no & no & no & no & no \\
 \bottomrule
@@ -1542,21 +1589,26 @@ balance and hides the deficit; the decisive internal evidence was that
 on an identical state.  Rebuilding all 28 fits from the $\nel \to 0$ limit of
 statistical equilibrium with observed level energies, and adding $\SIV{}$,
 moved HII40 inside the published temperature range and closed the photon
-budget, the outer radius and the line ratios along with it.  The remaining
-known limitation is the absence of density suppression in $\Lambda(T)$, which
-now biases the benchmarks slightly cool and calls for a $(T, \nel)$ table.
+budget, the outer radius and the line ratios along with it.  That zero-density
+limit still overcooled the low-critical-density lines at $\nH = 100$;
+suppressing $\Lambda$ to the local $\nel$ with a $(T, \nel)$ table built from
+the same $n$-level solve --- now the default,
+\code{par\%cooling\_model = local\_ne} --- removes the far-infrared overestimate
+and raises the converged benchmarks to 8210 and 7024~K, matching \Cloudy{}
+c25.00 (8210, 6910~K); the zero-density fits are kept as the \code{low\_density}
+option.
 
 The same audit applied to the other Monte Carlo photoionization codes shows
 that \MoCHII{}'s inventory is now a superset of all four in the line and H/He
-channels, with three exceptions.  \HeI{} collisional-excitation line cooling is
+channels, with two exceptions.  \HeI{} collisional-excitation line cooling is
 absent from Wood's code, from \CMI{}, from \Mocassin{}, from \Torus{} and from
-\MoCHII{}, and is worth $0.062\%$ of the HII40 budget.  \Mocassin{} carries a
+\MoCHII{}, and is worth $0.062\%$ of the HII40 budget.  And \Mocassin{} carries a
 gas--grain collisional term and \Torus{} carries one as an option, of order
 $10^{-4}$ of the line cooling at
-$\nH = 100$~cm$^{-3}$.  And all four other codes solve their metal level
-populations at the local $\nel$ inside the thermal balance, which \MoCHII{}
-does only in its Tier-2 line output --- the limitation of
-Section~\ref{sec:limit}.  It also turned up defects on their side --- Wood's \NI{} and
+$\nH = 100$~cm$^{-3}$.  The metal level populations at the local $\nel$ that
+the other four codes solve inside the thermal balance \MoCHII{} now matches
+through the $(T, \nel)$ table (Section~\ref{sec:limit}), so that is no longer a
+difference.  It also turned up defects on their side --- Wood's \NI{} and
 \OI{} cooling is zeroed by an overwrite of the collision strengths, its cooling
 and diagnostic routines disagree by a factor $2.1$ on the $\NIII{}$
 57.3~$\mu$m collision strength (CHIANTI v11 supports the diagnostic value), its

@@ -22,6 +22,10 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+_HERE_AX = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE_AX)
+from axis_style import square_ticks   # noqa: E402
+
 
 plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = "serif"
@@ -49,7 +53,11 @@ DUSTEMIS = os.path.join(DDIR, "dustemis_smoke_dustemis.h5")
 PAHLIVE = os.path.join(DDIR, "pahlive_smoke_dustemis.h5")
 
 SLABEL = r"$\log_{10} S\ [\mathrm{erg\,s^{-1}\,cm^{-2}}]$"
-AXLABEL = r"(code units)"
+# LeafXYZ is in code length units; these runs set par%distance_unit = 'pc',
+# so DIST_CM = 3.0857e18 and one code unit is exactly 1 pc.
+XLABEL = r"$x$ [pc]"
+YLABEL = r"$y$ [pc]"
+RLABEL = r"$r$ [pc]"
 
 
 class _DustEmis(_LeafProjectable):
@@ -83,10 +91,40 @@ def _panel(ax, logS, extent, title, cmap="magma", vmin=None, vmax=None):
     im = ax.imshow(logS.T, origin="lower", extent=extent, cmap=cmap,
                    aspect="equal", vmin=vmin, vmax=vmax)
     ax.set_title(title)
-    ax.set_xlabel(AXLABEL)
-    ax.set_ylabel(AXLABEL)
+    ax.set_xlabel(XLABEL)
+    ax.set_ylabel(YLABEL)
+    square_ticks(ax)
     cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cb.set_label(SLABEL)
+
+
+def radial_profile(logS, extent, nbin=28):
+    """Azimuthally averaged surface brightness against projected radius.
+
+    The average is taken in linear S over the pixels of each annulus (the
+    physically meaningful mean), and returned as log10 S at the annulus
+    centers, so the profile is the radial cut of the map above.
+    """
+    ny, nx = logS.shape
+    x = np.linspace(extent[0], extent[1], nx)
+    y = np.linspace(extent[2], extent[3], ny)
+    # logS is indexed [ix, iy] (the maps are drawn with logS.T)
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+    r = np.sqrt(xx ** 2 + yy ** 2).ravel()
+    S = (10.0 ** logS).ravel()
+    good = np.isfinite(S)
+    r, S = r[good], S[good]
+    edges = np.linspace(0.0, r.max(), nbin + 1)
+    idx = np.digitize(r, edges) - 1
+    rc, Sc = [], []
+    for i in range(nbin):
+        m = idx == i
+        if m.sum():
+            rc.append(0.5 * (edges[i] + edges[i + 1]))
+            Sc.append(S[m].mean())
+    rc, Sc = np.asarray(rc), np.asarray(Sc)
+    with np.errstate(divide="ignore"):
+        return rc, np.log10(np.where(Sc > 0, Sc, np.nan))
 
 
 def make_dustemis():
@@ -94,12 +132,22 @@ def make_dustemis():
     # bands nearest 8 and 160 um
     b8 = int(np.argmin(np.abs(d.wl_um - 8.0)))
     b160 = int(np.argmin(np.abs(d.wl_um - 160.0)))
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
-    for ax, ib in zip(axes, (b8, b160)):
+    fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
+    prof = []
+    for ax, ib in zip(axes[:2], (b8, b160)):
         logS, extent = d.band_map(ib)
         wl = d.wl_um[ib]
         title = r"dust $%g\,\mu$m" % wl
         _panel(ax, logS, extent, title)
+        prof.append((radial_profile(logS, extent), wl))
+    ax = axes[2]
+    for (rc, lS), wl in prof:
+        ax.plot(rc, lS, lw=1.6, label=r"$%g\,\mu$m" % wl)
+    ax.set_xlabel(RLABEL)
+    ax.set_ylabel(SLABEL)
+    ax.set_title("azimuthally averaged profile")
+    ax.legend(frameon=False)
+    ax.grid(alpha=0.3, lw=0.4)
     fig.tight_layout()
     out = os.path.join(FIGDIR, "dustemis_maps.pdf")
     fig.savefig(out, bbox_inches="tight")
@@ -112,7 +160,7 @@ def make_pahlive():
     live = _DustEmis(PAHLIVE)     # x_HII-weighted PAH survival
     b8r = int(np.argmin(np.abs(ref.wl_um - 8.0)))
     b8l = int(np.argmin(np.abs(live.wl_um - 8.0)))
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
     logS_ref, extent = ref.band_map(b8r)
     logS_live, _ = live.band_map(b8l)
     # both panels are the same 8 um band, so they share one brightness scale:
@@ -125,6 +173,16 @@ def make_pahlive():
     _panel(axes[1], logS_live, extent,
            r"$8\,\mu$m: PAHs destroyed in ionized gas",
            vmin=vmin, vmax=vmax)
+    ax = axes[2]
+    for logS, lab in ((logS_ref, "PAHs everywhere"),
+                      (logS_live, "PAHs destroyed in ionized gas")):
+        rc, lS = radial_profile(logS, extent)
+        ax.plot(rc, lS, lw=1.6, label=lab)
+    ax.set_xlabel(RLABEL)
+    ax.set_ylabel(SLABEL)
+    ax.set_title(r"azimuthally averaged profile ($8\,\mu$m)")
+    ax.legend(frameon=False, fontsize="small")
+    ax.grid(alpha=0.3, lw=0.4)
     fig.tight_layout()
     out = os.path.join(FIGDIR, "pahlive_maps.pdf")
     fig.savefig(out, bbox_inches="tight")

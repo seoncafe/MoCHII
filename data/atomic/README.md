@@ -39,12 +39,17 @@ in their lowest level, collisional excitation happens out of it only, and
 each excitation radiates the full excitation energy through the cascade, so
 `Lambda_ion` is the excitation power out of the ground level.  Transition
 energies are the observed level differences, the same energies the n-level
-solve uses in both the Boltzmann factor and the emitted photon.  The fits
-therefore carry no density suppression above the critical density, and
-overestimate the cooling of the low-n_crit lines ([C II] 158 um, the
-[O III] 52/88 um pair, the [O II] and [S II] optical doublets) in dense
-gas; the density-dependent line emissivities used for the diagnostics come
-from the separate n-level solve (`nlevel_<ion>.txt`).
+solve uses in both the Boltzmann factor and the emitted photon.  The fits are
+therefore the n_e -> 0 (coronal) carrier: by themselves they carry no
+collisional de-excitation and overestimate the cooling of the low-n_crit lines
+([C II] 158 um, the [O III] 52/88 um pair, the [O II] and [S II] optical
+doublets) at nebular densities.  At run time (`par%cooling_model = 'local_ne'`,
+the default) MoCHII suppresses each fit to the local electron density with a
+(T, n_e) table built at setup from the same `nlevel_<ion>.txt` files that
+produce the line diagnostics, so the thermal-balance cooling is
+density-dependent and the cooling and the emergent lines are one physics;
+`par%cooling_model = 'low_density'` uses the fits directly (the coronal limit,
+exact in diffuse gas).
 
 Maximum fit errors are recorded in each header: at or below ~0.7% across
 the default C/N/O/Ne/S set except C III (5.5% full range, 0.50% where the

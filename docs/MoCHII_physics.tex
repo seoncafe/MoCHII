@@ -34,17 +34,19 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks (HII20 $T_e$(H\,\textsc{ii}) $+0.03\%$;
-HII40 $T_e$ $+9\%$ vs.\ a converged MOCASSIN re-run, with CX, convergence,
-resolution and O\,\textsc{iii} collision strengths all excluded as the
-dominant cause); case A/B bracketing; and the line-flux comparison
-(H$\beta$ absolute $-0.7\%$ at HII40).
+the MOCASSIN Lexington benchmarks ($T_e = 8210$~K at HII40 and 7024~K at
+HII20 with the density-suppressed cooling default, matching a current
+\textsc{Cloudy} c25.00 run to 0.4~K and 1.6\%; the zero-density limit
+gives 7894 and 6376~K, and both modern codes sit above the 2000-era
+published ranges); and the line-flux comparison (H$\beta$ within a few
+percent of the published values, the optical collisional lines within
+the published spread).
 Also documented: the solution-driven I-front re-refinement
 (re-refined vs.\ native high-resolution octree $+0.008\%$ in ionized
 volume with $4.5\times$ fewer cells) and an Illustris-TNG
 post-processing demonstration; the completed dust coupling
 (ionizing-band dust absorption with the dusty Str\"omgren reduction
-0.735 reproduced to $+0.69\%$; EUV/FUV dust \emph{scattering} with
+0.724 reproduced to $+0.34\%$; EUV/FUV dust \emph{scattering} with
 forced-first interaction sampling, validated by bracketing; live
 ionization-dependent dust with a PAH-specific survival factor; and the
 equilibrium dust temperature + IR spectrum consuming the transported
@@ -616,13 +618,51 @@ N\,\textsc{iii} & 5 & 0.70\% & Ne\,\textsc{ii}  & 5 & 0.40\% \\
 5.5\% at the negligible low-$T$ tail.
 $^b$at $10^4$~K; 3.9\% at the $10^5$-K endpoint.}
 \end{center}
-The caveat carried in every header: these are low-density-limit fits and
-carry no suppression above $n_{\rm crit}$, so the low-$n_{\rm crit}$
-lines ([C\,\textsc{ii}] 158\,$\mu$m, [O\,\textsc{iii}] 52/88\,$\mu$m,
-the [O\,\textsc{ii}] and [S\,\textsc{ii}] optical doublets) are
-overestimated in dense gas; this is now the leading approximation of the
-thermal loop (Section~\ref{sec:hii}).  Density-dependent emissivities
-come from the $n$-level data.
+By construction Eq.~(\ref{eq:cool}) carries no collisional de-excitation,
+so it is exact for lines whose critical density is far above the local
+$n_e$ and increasingly too large for those below it --- the
+low-$n_{\rm crit}$ lines [C\,\textsc{ii}] 158\,$\mu$m,
+[O\,\textsc{iii}] 52/88\,$\mu$m and the [O\,\textsc{ii}]/[S\,\textsc{ii}]
+optical doublets, whose electron critical densities are
+$10^2$--$10^{3.5}\,{\rm cm^{-3}}$, so at the $n_e\sim10^2\,{\rm cm^{-3}}$
+of an H\,\textsc{ii} region they overcool the line budget by $\sim$12\%
+(measured against a \textsc{Cloudy} c25.00 cooling decomposition on a
+fixed state).  The thermal loop therefore treats
+Eq.~(\ref{eq:cool}) as the $n_e\rightarrow0$ \emph{carrier} and
+suppresses it to the local density.  A $(T, n_e)$ table, built once at
+setup (\code{nlevel\_cooling\_mod}) by solving the same $n$-level atom
+over a grid ($\log_{10}T = 2$--$6$, $\log_{10}n_e = -6$--$10$), stores
+for each ion the suppression ratio
+\begin{equation}
+  S_{\rm sup}(T,n_e) = \frac{\Lambda_{\rm SE}(T,n_e)}
+       {\Lambda_{\rm SE}(T,n_e\!\to\!0)}\in(0,1],
+  \qquad
+  \Lambda_{\rm SE}(T,n_e) = \frac{1}{n_e}\sum_k n_u^{(k)}A_k\,\Delta E_k,
+\end{equation}
+and the low-density reference $\Lambda_{\rm SE}(T,n_e\!\to\!0)$; the
+runtime cooling coefficient combines the two as
+\begin{equation}
+  \Lambda(T,n_e) = \Lambda_{\rm fit}(T)\bigl[\,f_{\rm cov}(T)\,
+    S_{\rm sup}(T,n_e) + (1 - f_{\rm cov}(T))\,\bigr],
+  \qquad
+  f_{\rm cov} = \min\!\Bigl(1,\ \tfrac{\Lambda_{\rm SE}(T,n_e\to0)}
+       {\Lambda_{\rm fit}(T)}\Bigr).
+  \label{eq:coolcombine}
+\end{equation}
+Here $f_{\rm cov}$ is the fraction of the low-density cooling the (often
+truncated) $n$-level model resolves; the remainder $1-f_{\rm cov}$ ---
+the high-excitation resonance lines, of far higher critical density ---
+is left in its low-density limit, so a truncated model cannot bias the
+total.  As $n_e\rightarrow0$, $S_{\rm sup}\rightarrow1$ and
+$\Lambda\rightarrow\Lambda_{\rm fit}$ \emph{exactly}, and an ion with no
+$n$-level model (only C\,\textsc{i} and N\,\textsc{i}) has
+$f_{\rm cov}=0$ and keeps the plain fit.  This density-suppressed cooling
+(\code{par\%cooling\_model = local\_ne}, the default) is built from the
+very solve that produces the diagnostic lines (Section~\ref{sec:nlev}),
+so the thermal balance and the emergent line list are one physics; the
+pure zero-density fit is retained as the \code{low\_density} option,
+exact in the diffuse gas the limit is written for.  The
+density-dependent emissivities themselves come from the $n$-level data.
 
 \subsection{$n$-level (diagnostic) data}
 \label{sec:nlev}
@@ -1033,9 +1073,13 @@ not the nuclear $Z$, using $\bar g(T, Z_{\rm ion})$ tabulated for
 $Z=1$--$4$ --- singly-ionized metals dominate this small
 $\sim$$10^{-4}$-of-the-H/He term),
 collisional ionization ($k_{\rm ci}\times$ ionization potential),
-H\,\textsc{i} line cooling (the cooling fit), and the trace-metal sum
-$\sum n_e\,n_{\rm ion}\Lambda_{\rm ion}(T)$ with the cascade fractions
-(\S\ref{sec:cascade}) re-evaluated at each trial $T$.  PDR runs add three
+H\,\textsc{i} line cooling, and the trace-metal sum
+$\sum n_e\,n_{\rm ion}\Lambda_{\rm ion}(T,n_e)$ with the cascade fractions
+(\S\ref{sec:cascade}) re-evaluated at each trial $T$.  The line-cooling
+coefficient $\Lambda_{\rm ion}(T,n_e)$ is the density-suppressed value of
+Eq.~(\ref{eq:coolcombine}) by default (\code{par\%cooling\_model =
+local\_ne}), the plain fit $\Lambda_{\rm ion}(T)$ under
+\code{low\_density}.  PDR runs add three
 optional terms to $\mathcal{N}$: metal photoheating
 (\code{par\%metal\_heat}); grain photoelectric heating with grain
 recombination cooling (Bakes \& Tielens 1994, \code{par\%grain\_pe},
@@ -1596,68 +1640,76 @@ itself was re-run converged ($2{\times}10^6$ photons, 40 iterations,
 MoCHII with the \emph{corrected} charge exchange of
 Section~\ref{sec:cx}.
 
-\textbf{Temperatures.}  $T_e$ weighted by $n_{\rm HII} n_e$ (MoCHII
-with the aligned grid):
+\textbf{Temperatures.}  $T_e$ weighted by $n_{\rm HII} n_e$, MoCHII with
+its current defaults (threshold-aligned grid, corrected charge exchange
+of Section~\ref{sec:cx}, and the density-suppressed cooling of
+Section~\ref{sec:cool}); the benchmark inputs carry the ionizing-band
+luminosity that reproduces the specified $Q_{\rm H}$, transport the
+diffuse field, and use case-B recombination lines:
 
-\begin{center}
-\begin{tabular}{lccc}
+\begin{center}\small
+\begin{tabular}{lccccc}
 \toprule
- & MoCHII (aligned) & MOCASSIN 40-it & MOCASSIN 3-it \\
+ & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
+ & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 7251 K ($+0.03\%$) & --- & 7249 K \\
-HII40 & 8913 K & 8176 / 8195 K & 8404 K \\
+HII20 & 7024 K & 6376 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8210 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
-Converging MOCASSIN shifts it \emph{off} its own baseline (HII40
-$T_e$ $8404 \to 8176$~K, Ne\,\textsc{iii} $0.334 \to 0.401$), so every
-earlier comparison targeted a moving, non-equilibrium reference.  HII20
-is now essentially exact.  The HII40 residual separates cleanly into an
-ionization part and a temperature part.
+With the density-suppressed cooling default (\code{par\%cooling\_model =
+local\_ne}) MoCHII gives $T_e = 8210$~K (HII40) and 7024~K (HII20),
+matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to 0.4~K
+and 1.6\%.  Both modern codes sit a few hundred K \emph{above} the
+2000-era published ranges of Ercolano et al.\ (2003) ---
+$\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
+$6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
+older atomic data; the two modern codes now agree with each other far
+more closely than either does with the historical spread.
 
-The He and metal \emph{over-ionization} was mostly a spectrum-binning
-discretization at the He\,\textsc{i} edge, not a physics error: with
-\code{par\%ion\_align\_edges} on (or $\mathrm{nnu\_ion} \geq 128$) the
-He-ionizing photon budget returns to the exact blackbody value
-($Q_{\rm HeI}/Q_{\rm HI} = 0.108$ against 0.127 for the 32-bin log grid),
-and He\,\textsc{i} rises from 0.058 to 0.163 (MOCASSIN 0.207, closing
-most of the gap), C\,\textsc{iii} falls $0.786 \to 0.694$, and
-O\,\textsc{iii} and N\,\textsc{iii} drop correspondingly (O\,\textsc{iii}
-$0.653 \to 0.601$).  The recombination-coefficient vintage was tested as
-a separate cause by an in-code swap of MOCASSIN-style recombination
-(Pequignot 1991 RR + Nussbaumer--Storey 1983 DR) into MoCHII: MoCHII's
-Badnell 2023 $\alpha(\mathrm{X\,\textsc{iii}}\to\mathrm{X\,\textsc{ii}})$
-is systematically lower ($\alpha$ ratios MoCHII/MOCASSIN 0.82
-C\,\textsc{iii}, 0.72 N\,\textsc{iii}, 0.84 O\,\textsc{iii}), but the
-swap moved $T_e$ by only $+0.2\%$ and closed $\sim$17\% of the ionization
-gap, so recombination (direction right, magnitude far too small) is
-\emph{not} the dominant lever --- the aligned grid is.
+The $\sim$9\% HII40 excess reported in earlier revisions (a superseded
+$T_e = 8913$~K) is \emph{resolved}: it was two defects in the Tier-1
+cooling fits (Section~\ref{sec:cool}), compounded by the then-missing
+density suppression.  \textbf{(D1)} The ground-term fine-structure
+populations were distributed by Boltzmann factors --- the
+\emph{high}-density limit --- instead of the $n_e\rightarrow0$ limit,
+which suppressed the far-infrared fine-structure cooling
+([O\,\textsc{iii}] 52/88\,$\mu$m, [N\,\textsc{iii}] 57\,$\mu$m,
+[C\,\textsc{ii}] 158\,$\mu$m) by factors $1.6$--$2.9$.
+\textbf{(D2)} The \code{.scups} Burgess--Tully \emph{scaling} energy was
+used as the physical transition energy in both the Boltzmann factor and
+the radiated photon, in place of the observed \code{.elvlc} level
+difference (e.g.\ [O\,\textsc{ii}] cooling low by $0.58\times$ at 8~kK).
+Both were located by a fixed-state cooling-budget comparison against
+\textsc{Cloudy} c25.00 (its \code{save cooling each} output): D1 was
+23.9\% and D2 10.6\% of the HII40 cooling budget, while missing channels
+([S\,\textsc{iv}] 10.5\,$\mu$m at 1.2\%, now added; all others $<0.2\%$)
+and trace-species coupling ($n_e$ plus metal photoheating, together
+$+0.2\%$) were excluded.  Regenerating the fits from the
+$n_e\rightarrow0$ statistical-equilibrium limit with observed energies
+gives HII40 7894~K and HII20 6376~K (the \code{low\_density} option);
+restoring the density suppression at the local $n_e$ (the
+\code{local\_ne} default) raises them to 8210 and 7024~K.  The former
+``cooling-side residual'' was thus the low-density over-cooling of the
+low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
+discrepancy with the current reference code.
 
-The $T_e$ excess ($+9\%$) is \emph{separate} from binning (aligning the
-edges leaves $T_e$ unchanged at 8913~K) and is cooling-side.  It is
-\emph{not} the transport treatment (case-B OTS vs.\ case A + diffuse
-moves $T_e$ by $\sim$1.5\%), \emph{not} convergence or resolution
-($\mathrm{nx}{=}13$ and 25 agree to 20~K), and \emph{not} the
-O\,\textsc{iii} collision strengths: a direct CHIANTI v7 (MOCASSIN's
-\code{oiii.dat}, Burke \& Lennon 1994) vs.\ v11 comparison of the
-dominant 3P--1D coolant gives $\Upsilon = 2.283$ vs.\ $2.262$ at
-$10^4$~K ($0.9\%$, a $<30$~K contribution).  MoCHII's photoheating was
-checked and is physical: the mean excess energies are
-$\langle h\nu - 13.6\rangle_{\rm H} \simeq 3.9$~eV and
-$\langle h\nu - 24.6\rangle_{\rm He} \simeq 4.1$~eV (mild hardening,
-a standard $\alpha$).  The reframe is that MoCHII (8913~K) sits just
-\emph{above} the published Lexington-2000 HII40 spread
-($\sim$8300--8700~K) while converged MOCASSIN (8176~K) sits just
-\emph{below} it --- the two codes bracket the community range, so the
-$\sim$9\% is largely code-to-code thermal-balance spread and MoCHII's
-own excess over the published top is only $\sim$2--3\%.  A deeper
-attribution needs MOCASSIN's internal heating/cooling breakdown, which
-it does not output.
-
-\textbf{Ionization structure} ($n_e$-weighted means, HII40; corrected CX
-vs.\ the converged 40-iteration MOCASSIN).  The MoCHII column here was
-taken with the old 32-bin log grid and is the reference for the binning
-discussion above:
+\textbf{Ionization structure} ($n_e$-weighted means, HII40).  The He and
+metal ionization is set correctly once the ionizing grid resolves the
+He\,\textsc{i} edge.  With \code{par\%ion\_align\_edges} on (the default)
+or $\mathrm{nnu\_ion} \geq 128$ the He-ionizing photon budget returns to
+the exact blackbody value ($Q_{\rm HeI}/Q_{\rm HI} = 0.108$ against 0.127
+for a 32-bin log grid), He\,\textsc{i} rises from 0.058 to 0.163
+(MOCASSIN 0.207, closing most of the gap), and the metal 3+ fractions
+fall correspondingly.  A separate in-code swap of MOCASSIN-style
+recombination (Pequignot 1991 RR + Nussbaumer--Storey 1983 DR) showed the
+recombination-coefficient vintage to be a minor lever: MoCHII's Badnell
+2023 $\alpha(\mathrm{X\,\textsc{iii}}\to\mathrm{X\,\textsc{ii}})$ runs
+$\sim$0.8$\times$ MOCASSIN's, but the swap moved the fractions by only
+$\sim$0.026 and closed $\sim$17\% of the ionization gap.  The table below
+is the old 32-bin log grid, the reference point for the alignment
+discussion (corrected CX vs.\ the converged 40-iteration MOCASSIN):
 
 \begin{center}\small
 \begin{tabular}{lcc@{\qquad}lcc}
@@ -1672,28 +1724,30 @@ S\,\textsc{ii}   & 0.194 & 0.066 & S\,\textsc{iii} & 0.750 & 0.786 \\
 \bottomrule
 \end{tabular}
 \end{center}
-The corrected CX raises the 2+/3+ fractions relative to the buggy
-version; the earlier apparent agreement with the underconverged baseline
-(e.g.\ Ne\,\textsc{ii} 0.65 vs.\ 0.66) was partly fortuitous.  Switching
-on the aligned-grid default brings the He and metal fractions
+Switching on the aligned-grid default brings the He and metal fractions
 substantially closer to MOCASSIN --- He\,\textsc{i} $0.058 \to 0.163$,
 O\,\textsc{iii} $0.653 \to 0.601$, C\,\textsc{iii} $0.805 \to 0.694$ ---
 so most of the apparent over-ionization in the table is the log-grid
-discretization at the He\,\textsc{i} edge.  At HII20
+discretization at the He\,\textsc{i} edge, not a physics error.  At HII20
 the CX correction is negligible (low excitation): the structure matches
 everywhere except Ne\,\textsc{i}/\textsc{ii} (the 21.6-eV threshold at a
 20-kK source, a known code-spread hotspot) and the
 S\,\textsc{ii}/\textsc{iii} split.
 
-\textbf{Line fluxes} (ratios to H$\beta$; MoCHII from the diffuse-field runs):
-absolute $L({\rm H}\beta)$ agrees to $-0.7\%$ (HII40) and $-4.6\%$
-(HII20).  At HII40, [Ne\,\textsc{iii}] 15.5\,$\mu$m matches to 0.3\%
-and [Ne\,\textsc{ii}] 12.8\,$\mu$m to 9\%; every discrepant line is
-quantitatively the structure/$T_e$ difference above (the O\,\textsc{iii}
-and S\,\textsc{ii} fractions and the $e^{-E/kT}$ sensitivity of the
-optical lines); the line ratios are essentially unchanged by the CX
-correction.  The emissivity chain itself is exact
-(Section~\ref{sec:nlevel}).
+\textbf{Line fluxes} (ratios to H$\beta$).  With the corrected cooling
+the optical collisional lines --- formerly systematically high because
+$T_e$ ran $\sim$9\% hot --- now fall inside the published spread:
+[O\,\textsc{iii}] 5007 drops from $\sim$4.3 to $\sim$2 against the
+published 1.64--3.27, and the [N\,\textsc{ii}], [S\,\textsc{ii}] and
+[Ne\,\textsc{iii}] ratios move into range.  Absolute
+$L({\rm H}\beta) \approx 1.9 \times 10^{37}$ (HII40) and
+$4.7 \times 10^{36}\,{\rm erg\,s^{-1}}$ (HII20) sit $\sim$3\% below the
+published $2.01$--$2.10 \times 10^{37}$ and $4.83$--$5.04 \times 10^{36}$,
+consistent with helium absorption of the $>$24.6-eV photons and the weak
+temperature dependence of $\alpha_{\rm B}$; with the corrected cooling the
+HII40 front is captured within the prescribed sphere (outermost-shell
+$x_{\rm HII} = 0.11$, recombinations 95\% of $Q_{\rm H}$).  The emissivity
+chain itself is exact (Section~\ref{sec:nlevel}).
 
 \subsection{Re-refinement gate and the TNG demonstration}
 The re-refinement of Section~\ref{sec:refine} on the Str\"omgren
@@ -1749,12 +1803,12 @@ dust absorption in every bin:
 case & $R_{\rm eff}$(1D) [pc] & $R_{\rm eff}$(MC) [pc] & dev \\
 \midrule
 dust-free            & 3.0365 & 3.0534 & $+0.56\%$ \\
-full MW dust        & 2.2307 & 2.2461 & $+0.69\%$ \\
-\code{laursen09\_live} & 3.0229 & 3.0397 & $+0.55\%$ \\
+full MW dust        & 2.1983 & 2.2058 & $+0.34\%$ \\
+\code{laursen09\_live} & 3.0218 & 3.0425 & $+0.68\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The classic dusty reduction ($R/R_0 = 0.735$) is reproduced within the
+The classic dusty reduction ($R/R_0 = 0.724$) is reproduced within the
 gate tolerance; the live ionization-dependent dust drives itself to
 near dust-free ($R/R_0 = 0.996$: interior dust vanishes with the
 computed $x_{\rm HII}$), confirming the dust--ionization feedback loop
@@ -1777,7 +1831,7 @@ consistent.
 \textbf{Dust temperature and IR.}  With the band widened to 6~eV
 (the band luminosity rescaled by the exact blackbody ratio 2.0969 so
 $Q_{\rm H}$ is preserved) and scattering on, the equilibrium mixture
-temperature runs from $T_{\rm d} = 89$~K at 0.3~pc to 28~K at the
+temperature runs from $T_{\rm d} = 87$~K at 0.3~pc to 28~K at the
 sphere edge --- the canonical HII-region gradient --- and the IR
 spectrum integral closes on the absorbed power to
 $L_{\rm IR}/L_{\rm abs} = 1.000$.  (This demo predates the two-segment
@@ -2016,10 +2070,14 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
 \item The EUV part of the leaf field, below the SEDust optics grid, is
   folded into the shortest SEDust bin (energy-conserving; spike
   hardness slightly underestimated).
-\item The cooling fits are low-density-limit; density suppression above
-  $n_{\rm crit}$ enters only through the $n$-level solve at output time.
-  Ar\,\textsc{ii} carries no cooling or lines (no CHIANTI v11 level
-  data).
+\item The thermal-loop line cooling is suppressed to the local $n_e$ by
+  default (\code{cooling\_model = local\_ne}) through the $(T,n_e)$ table
+  of Section~\ref{sec:cool}; the one term still in its low-density limit
+  is the H-impact [C\,\textsc{ii}] 158\,$\mu$m / [O\,\textsc{i}]
+  63\,$\mu$m PDR cooling (\code{metal\_cooling\_H}, weighted by
+  $x_{\rm HI}$, so $\sim$0 in the ionized benchmark zones but not yet
+  saturated in dense PDR gas).  Ar\,\textsc{ii} carries no cooling or
+  lines (no CHIANTI v11 level data).
 \item PDR zones: with the Section~\ref{sec:pdr} switches off (the
   default), the FUV extension gives the PDR-side \emph{ion structure}
   only; with them on, $n_e$, metal photoheating, and photoelectric
@@ -2029,14 +2087,14 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   Carlo noise floor (and at clump-surface jitter in turbulent media);
   the volume-integrated criterion (\code{conv\_crit = 'vol'}) resolves
   this and is the recommended production setting.
-\item The HII40 residual $T_e$ excess ($\sim$2--3\% over the published
-  Lexington top, once the code-to-code spread is set aside) is
-  cooling-side; a deeper attribution would need MOCASSIN's internal
-  heating and cooling breakdown, which it does not output.
-  (The converged-MOCASSIN re-run and the CHIANTI v7-vs-v11
-  O\,\textsc{iii} $\Upsilon$ comparison are done, and the
-  recombination-coefficient vintage is refuted as the dominant cause;
-  Section~\ref{sec:hii}.)
+\item The MOCASSIN Lexington benchmark temperatures are resolved
+  (Section~\ref{sec:hii}): with the density-suppressed cooling default
+  MoCHII (HII40 8210~K, HII20 7024~K) matches a current \textsc{Cloudy}
+  c25.00 run to 0.4~K and 1.6\%, the earlier excess having been traced to
+  two Tier-1 cooling defects (D1/D2) and the missing density suppression,
+  all fixed.  The one remaining note is that both modern codes sit a few
+  hundred K above the 2000-era published Lexington temperatures --- a
+  data-vintage difference, not a code defect.
 \item Further metal ions as science needs them.
 \end{itemize}
 

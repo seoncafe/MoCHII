@@ -48,7 +48,7 @@
  !--- dust in the band (MW D03 EUV extinction + scattering)
  par%ion_add_dust  = .true.
  par%ion_dust_scatter = .true.
- par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2009'
+ par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0
 

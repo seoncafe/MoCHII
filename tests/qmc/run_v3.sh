@@ -43,7 +43,7 @@ EOF
 
 MC_SEEDS="11 22 33 44"
 QMC_SEEDS="101 202 303 404"
-for NPHOT_TAG in "131072 p17" "1048576 p20"; do
+for NPHOT_TAG in "131072 p17" "262144 p18" "524288 p19" "1048576 p20"; do
   set -- $NPHOT_TAG; NPHOT=$1; PT=$2
   for s in $MC_SEEDS; do
     tag="mc_${PT}_${s}"; gen_input "$tag" "$NPHOT" random "$s"

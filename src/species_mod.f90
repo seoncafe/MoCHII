@@ -24,6 +24,7 @@ module species_mod
   use photo_xsec, only : sigma_vfky96
   use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval, gbar_ff
   use recomb_mod,  only : ci_dere_ratio
+  use nlevel_cooling_mod, only : nlevel_cooling_add, nlevel_cooling_apply
   implicit none
   private
 
@@ -68,6 +69,9 @@ module species_mod
      !--- cooling fits per stage (loaded when the file exists)
      logical :: has_cool(MAX_ST) = .false.
      type(cooling_fit_type) :: cool(MAX_ST)
+     !--- index into the nlevel_cooling_mod (T, n_e) table for each stage
+     !--- (par%cooling_model = 'local_ne'); 0 = no table, keep the fit.
+     integer :: cool_idx(MAX_ST) = 0
   end type element_type
 
   integer :: n_elements = 0
@@ -139,6 +143,9 @@ contains
           if (exists) then
              call cooling_load(trim(fname), elems(ie)%cool(i))
              elems(ie)%has_cool(i) = .true.
+             !--- (T, n_e) suppression table for the local-n_e cooling model.
+             if (trim(par%cooling_model) == 'local_ne') &
+                elems(ie)%cool_idx(i) = nlevel_cooling_add(trim(names(k)), i)
           end if
        end do
        allocate(egam(ie)%g(elems(ie)%nstage-1, nleaf))
@@ -458,21 +465,30 @@ contains
   !=========================================================================
   ! H-impact fine-structure cooling [erg s^-1 cm^-3]: [C II] 158 um and
   ! [O I] 63 um excited by NEUTRAL HYDROGEN collisions — the dominant
-  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the cooling fits are
-  ! electron-impact only).  Two-level, low-density limit:
-  !   Lambda = n_ion n_HI (g_u/g_l) q_ul^H e^{-dE/kT} dE
-  ! with q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005)
-  ! and  q_ul^H([O I])  = 9.2e-11 (T/100)^0.67 cm^3/s.  Part of the
-  ! par%grain_pe PDR thermal package (without it the photoelectric
-  ! heating has no coolant below the Ly-alpha regime and the PDR zone
-  ! runs away to ~10^4 K).
+  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the n-level cooling table
+  ! is electron-impact only, so the H channel is added separately).  The
+  ! two-level population saturates above the H critical density
+  ! n_crit,H = A_ul / q_ul^H, so the cooling is the low-density excitation
+  ! power divided by the two-level saturation factor:
+  !   Lambda = n_ion n_HI (g_u/g_l) q_ul^H e^{-dE/kT} dE / (1 + n_HI q_ul^H/A_ul)
+  ! with q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005),
+  ! q_ul^H([O I]) = 9.2e-11 (T/100)^0.67 cm^3/s, A([C II] 158um) = 2.321e-6
+  ! and A([O I] 63um) = 8.865e-5 s^-1.  n_crit,H is ~3e3 for [C II] (so the
+  ! factor bites in dense PDR gas, nH ~ 5e3) and ~1e6 for [O I] (rarely
+  ! saturated); at low n_HI it reduces to the low-density limit.  The
+  ! electron channel is left to the density-suppressed n-level table
+  ! (its own saturation), so only n_HI enters the factor here (n_e << n_HI
+  ! in the PDR).  Part of the par%grain_pe PDR thermal package (without it
+  ! the photoelectric heating has no coolant below the Ly-alpha regime and
+  ! the PDR zone runs away to ~10^4 K).
   !=========================================================================
   real(kind=wp) function metal_cooling_H(il, T, nH, ne, nHI, nHII) result(cool)
     implicit none
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
     real(kind=wp), parameter :: kb = 1.380649e-16_wp
-    real(kind=wp) :: frac(MAX_ST), nion, qlu
+    real(kind=wp), parameter :: A_CII = 2.321e-6_wp, A_OI = 8.865e-5_wp
+    real(kind=wp) :: frac(MAX_ST), nion, qlu, qul
     integer :: ie
     cool = 0.0_wp
     do ie = 1, n_elements
@@ -481,15 +497,17 @@ contains
           if (elems(ie)%nstage < 2) cycle
           call species_fractions(ie, il, T, ne, nHI, nHII, frac)
           nion = elems(ie)%abund*nH*frac(2)                 ! C II
-          qlu  = 2.0_wp*7.6e-10_wp*(T/100.0_wp)**0.14_wp &  ! g_u/g_l = 4/2
-                 *exp(-91.25_wp/T)
-          cool = cool + nion*nHI*qlu*(91.25_wp*kb)
+          qul  = 7.6e-10_wp*(T/100.0_wp)**0.14_wp           ! H de-excitation
+          qlu  = 2.0_wp*qul*exp(-91.25_wp/T)                ! g_u/g_l = 4/2
+          cool = cool + nion*nHI*qlu*(91.25_wp*kb) &
+                 / (1.0_wp + nHI*qul/A_CII)
        case ('o')
           call species_fractions(ie, il, T, ne, nHI, nHII, frac)
           nion = elems(ie)%abund*nH*frac(1)                 ! O I
-          qlu  = 0.6_wp*9.2e-11_wp*(T/100.0_wp)**0.67_wp &  ! g_u/g_l = 3/5
-                 *exp(-227.7_wp/T)
-          cool = cool + nion*nHI*qlu*(227.7_wp*kb)
+          qul  = 9.2e-11_wp*(T/100.0_wp)**0.67_wp           ! H de-excitation
+          qlu  = 0.6_wp*qul*exp(-227.7_wp/T)                ! g_u/g_l = 3/5
+          cool = cool + nion*nHI*qlu*(227.7_wp*kb) &
+                 / (1.0_wp + nHI*qul/A_OI)
        end select
     end do
   end function metal_cooling_H
@@ -598,7 +616,8 @@ contains
        nel = elems(ie)%abund*nH
        do i = 1, elems(ie)%nstage
           if (elems(ie)%has_cool(i)) &
-             cool = cool + ne*nel*frac(i)*cooling_eval(elems(ie)%cool(i), T)
+             cool = cool + ne*nel*frac(i)*nlevel_cooling_apply(elems(ie)%cool_idx(i), &
+                    cooling_eval(elems(ie)%cool(i), T), T, ne)
        end do
     end do
   end function metal_cooling

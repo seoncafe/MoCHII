@@ -726,6 +726,14 @@ public
      !--- (+DR for He II) total alpha_A, Mao & Kaastra 2016 n=1 ground-level
      !--- alpha_1, case B = alpha_A - alpha_1; 'hui_gnedin' = Hui & Gnedin 1997.
      character(len=16)  :: recomb_model = 'badnell_mao'
+     !--- line cooling: 'local_ne' (default) = the Tier-1 line-cooling fits
+     !--- suppressed by the level populations at the leaf electron density via a
+     !--- precomputed (T, n_e) table built at setup from the n-level atom files
+     !--- (density suppression of the low-critical-density lines, the physical
+     !--- treatment the other photoionization codes carry); 'low_density' = the
+     !--- Tier-1 fits used directly (the n_e -> 0 statistical-equilibrium limit,
+     !--- retained to reproduce the earlier gates).  As n_e -> 0 the two coincide.
+     character(len=16)  :: cooling_model = 'local_ne'
      !--- thermal balance.  solve_te replaces the fixed-Te solve
      !--- with heating = cooling bisection in [te_min, te_max]; convergence
      !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling
