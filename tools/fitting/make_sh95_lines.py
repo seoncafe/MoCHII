@@ -82,7 +82,7 @@ OUT2 = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                     "..", "..", "data", "atomic", "sh95_heii_caseB.txt")
 
 # He II lines (n_upper, n_lower, label, vacuum wavelength [A])
-LINES2 = [(3, 2, "HeII1640", 1640.4), (4, 3, "HeII4686", 4687.0),
+LINES2 = [(3, 2, "HeII1640", 1640.4), (4, 3, "HeII4687", 4687.0),
           (5, 3, "HeII3204", 3204.0), (5, 4, "HeII10126", 10126.4),
           (7, 4, "HeII5413", 5413.0), (9, 4, "HeII4543", 4542.9)]
 
@@ -168,15 +168,15 @@ def read_cds(src, out, lines, want_case, Z, ion_label, norm, provenance,
         print(f"check: Halpha/Hbeta = "
               f"{E['Halpha'][ia, ib]/E['Hbeta'][ia, ib]:.4f} (expect ~2.8-2.9)")
     else:
-        # sanity at T = 1e4 K: alpha_eff(4686) ~ 3.57e-13 cm^3/s (AGN3), so
-        # 4 pi j(4686)/(ne nHeIII) = alpha_eff h nu ~ 1.51e-24 erg cm^3/s;
-        # and 1640/4686 ~ 6.6-7.
+        # sanity at T = 1e4 K: alpha_eff(4687) ~ 3.57e-13 cm^3/s (AGN3), so
+        # 4 pi j(4687)/(ne nHeIII) = alpha_eff h nu ~ 1.51e-24 erg cm^3/s;
+        # and 1640/4687 ~ 6.6-7.
         ia = np.argmin(abs(temps - 1e4)); ib = np.argmin(abs(denss - 1e4))
-        print(f"check: 4pi j(4686)/(ne nHeIII) at T={temps[ia]:.0f}, "
-              f"ne={denss[ib]:.0f} = {E['HeII4686'][ia, ib]:.4e} "
+        print(f"check: 4pi j(4687)/(ne nHeIII) at T={temps[ia]:.0f}, "
+              f"ne={denss[ib]:.0f} = {E['HeII4687'][ia, ib]:.4e} "
               f"(expect ~1.51e-24)")
-        print(f"check: 1640/4686 = "
-              f"{E['HeII1640'][ia, ib]/E['HeII4686'][ia, ib]:.3f} "
+        print(f"check: 1640/4687 = "
+              f"{E['HeII1640'][ia, ib]/E['HeII4687'][ia, ib]:.3f} "
               f"(expect ~6.6-7)")
 
 
@@ -225,15 +225,15 @@ def main_heii():
                 fh.write(" ".join(f"{E[lab][ia, ib]:.4e}"
                                   for ib in range(ndens)) + "\n")
     print(f"wrote {os.path.relpath(OUT2)} ({ntemp} T x {ndens} ne)")
-    # sanity at T = 1e4 K: alpha_eff(4686) ~ 3.57e-13 cm^3/s (AGN3), so
-    # 4 pi j(4686)/(ne nHeIII) = alpha_eff h nu ~ 1.51e-24 erg cm^3/s;
-    # and 1640/4686 ~ 6.6-7.
+    # sanity at T = 1e4 K: alpha_eff(4687) ~ 3.57e-13 cm^3/s (AGN3), so
+    # 4 pi j(4687)/(ne nHeIII) = alpha_eff h nu ~ 1.51e-24 erg cm^3/s;
+    # and 1640/4687 ~ 6.6-7.
     ia = np.argmin(abs(temps - 1e4)); ib = np.argmin(abs(denss - 1e4))
-    print(f"check: 4pi j(4686)/(ne nHeIII) at T={temps[ia]:.0f}, "
-          f"ne={denss[ib]:.0f} = {E['HeII4686'][ia, ib]:.4e} "
+    print(f"check: 4pi j(4687)/(ne nHeIII) at T={temps[ia]:.0f}, "
+          f"ne={denss[ib]:.0f} = {E['HeII4687'][ia, ib]:.4e} "
           f"(expect ~1.51e-24)")
-    print(f"check: 1640/4686 = "
-          f"{E['HeII1640'][ia, ib]/E['HeII4686'][ia, ib]:.3f} (expect ~6.6-7)")
+    print(f"check: 1640/4687 = "
+          f"{E['HeII1640'][ia, ib]/E['HeII4687'][ia, ib]:.3f} (expect ~6.6-7)")
 
 
 def main_hi_caseA():

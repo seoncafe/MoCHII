@@ -15,10 +15,11 @@ at runtime.
 | `make_cooling_table.py` | `data/atomic/cooling_fit_parameters.txt` | collects the Tier-1 coefficient files into one listing |
 | `verify_nlevel_pyneb.py` | (report) | end-to-end check: reads the fitted files, solves statistical equilibrium as the Fortran will, compares diagnostic ratios against PyNeb |
 
-## Current ion set (2026-07-25)
+## Current ion set (2026-07-26)
 
-28 Tier-1 cooling ions and 26 Tier-2 n-level models across the 11-element
-registry (H, C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca).
+28 Tier-1 cooling ions and 28 Tier-2 n-level models across the 11-element
+registry (H, C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) — every cooling ion has
+a model, so the runtime density suppression covers all of them.
 Adding an ion = add one entry to the `IONS` dict of each fit script and rerun.
 
 ## Tier-1 population model

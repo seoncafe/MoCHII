@@ -322,12 +322,16 @@ program main
        call ion_peel_write()
      end block
   end if
-  if (par%use_metals .and. par%solve_te) then
-     block
-       use lines_mod, only : lines_write
-       call lines_write()
-     end block
-  end if
+  !--- The H I / He II (SH95) and He I (Porter) recombination lines need only
+  !--- n_e, T_e and the He ionization state, so they are defined without the
+  !--- metal registry and with a fixed temperature; lines_write loads its own
+  !--- tables and its metal loop is empty when no element is active.  Gating
+  !--- this on use_metals + solve_te made par%emis_output silently produce
+  !--- nothing for an H/He run.
+  block
+    use lines_mod, only : lines_write
+    call lines_write()
+  end block
   if (par%hei_metastable) then
      block
        use hei_metastable_mod, only : hei_metastable_run

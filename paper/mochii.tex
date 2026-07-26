@@ -359,7 +359,8 @@ low-threshold metal stages, producing the neutral-zone \HeI-like species
 (e.g.\ Mg\,\textsc{ii}, C\,\textsc{ii}) that the ionizing-only band
 cannot.  The band is fed by any number of internal point sources
 (0--16) plus, independently, one isotropic external radiation field.  The
-external field is a band-integrated mean intensity $J$ entering through
+external field is a band-integrated mean intensity $J$
+[erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] entering through
 the box faces or a bounding sphere; the inward flux is the hemisphere
 integral of $J\cos\theta$, so the entering band power is $L = \pi J
 A_{\mathrm{surf}}$, and entry directions are cosine-weighted (Lambert),
@@ -599,9 +600,9 @@ extincted one.
 region with a central star, in the FUV channel.  Left: the direct stellar
 image, an attenuated point source.  Center: the dust-scattered halo, the
 observer-oriented contribution.  Right: their sum, the synthetic
-observation.  All three panels share one logarithmic surface-brightness
-scale, so the extended scattered halo is directly comparable to the compact
-direct source.}
+observation.  All three panels share one logarithmic scale of the specific
+intensity $I$ integrated over the channel's band, so the extended scattered
+halo is directly comparable to the compact direct source.}
 \label{fig:peel}
 \end{figure*}
 
@@ -695,7 +696,7 @@ Collisional ionization uses the \citet{voronov1997} fit
   \qquad U = \frac{\Delta E}{kT},
 \end{equation}%
 with an optional hybrid that multiplies each rate by the constant
-\citet{dere2007}/Voronov ratio per (element, stage); the difference matters
+\citet{dere2007}/Voronov ratio of that element and stage; the difference matters
 only in shielded, low-ionization zones where collisions are the sole
 metal-ionization channel.  Charge exchange with hydrogen uses
 \citet{huang2023} Table~4 for the first stages and the
@@ -753,7 +754,11 @@ multiplies Eq.~(\ref{eq:cool}) at each trial temperature; the fraction of the
 low-density cooling the (often truncated) $n$-level model does not resolve
 --- its high-excitation resonance lines, of far higher critical density ---
 is left unsuppressed, and as $\nelec\to0$ the suppression is unity and the
-coefficient returns to the fit exactly.  This density-suppressed cooling
+coefficient returns to the fit exactly.  Every ion carrying a cooling fit
+also carries an $n$-level model, so none is left in the zero-density limit;
+the two neutrals C\,\textsc{i} and N\,\textsc{i} are the most strongly
+suppressed of all, their far-infrared fine-structure lines having
+$n_{\rm crit}$ of only a few $\mathrm{cm^{-3}}$.  This density-suppressed cooling
 (\code{cooling\_model = local\_ne}, the default) is built from the very
 solve that produces the diagnostic lines, so the two are one physics; the
 pure zero-density fit is retained as the \code{low\_density} option, exact
@@ -794,39 +799,73 @@ option (the two agree to a median $5\times10^{-5}$ in $\Te$).
 \label{sec:heimeta}
 
 The metastable $2^3$S level of neutral helium is the lower level of the
-10830~\AA\ triplet, whose absorption traces the extended atmospheres of
-close-in exoplanets and the neutral gas of nebulae.  \MoCHII{} solves its
+10833~\AA\ triplet, whose absorption traces the extended atmospheres of
+close-in exoplanets and the neutral gas of nebulae.  In \HII{} regions the
+triplet is seen in emission, and near-infrared spectrographs such as
+NIRSPEC, CARMENES, and X-Shooter resolve its profile in Galactic regions
+like M17-B and NGC 3603 and in extragalactic star-forming regions
+\citep{draine2026}.  \MoCHII{} solves its
 population leaf by leaf on the converged state, following the balance of
 \citet{oklopcic2018}: recombination into the triplet ladder and collisional
 feeding from the ground state populate $2^3$S, while radiative decay,
 collisional de-excitation, Penning ionization by neutral hydrogen, and
 photoionization by the transported radiation field depopulate it.  From the
-resulting density the line-center optical depth of the 10830~\AA\ doublet is
+resulting density the line-center optical depth of the 10833~\AA\ doublet is
 formed.  The diagnostic is pure post-processing, with no feedback on the
 ionization or thermal balance.
 
-Figure~\ref{fig:hei10830} shows the two observables for a dense compact
-example ($\nH = 10^4\,\mathrm{cm^{-3}}$, $R = 0.15$~pc, $\Te$ fixed at
-$10^4$~K): the $2^3$S column density, which peaks at
-$N = 3.68\times10^{15}\,\mathrm{cm^{-2}}$, and the line-center optical depth
-$\tau_0$ of the blended $J' = 1, 2$ doublet, with the $\tau_0 = 1$ contour
-marked.  In the core $\tau_0$ reaches $4.4\times10^{3}$, so the region is
-optically thick at 10830~\AA\ and the optically-thin diagnostic
-underestimates the true absorption there; for the full line profile the
-converged $2^3$S density is instead handed to a resonant-scattering
-Lyman-$\alpha$/10830 transfer code.
+Figure~\ref{fig:hei10833} shows both sides of the transition for a dense
+compact example ($\nH = 10^4\,\mathrm{cm^{-3}}$, $R = 0.15$~pc, $\Te$ fixed
+at $10^4$~K).  On the absorption side, the $2^3$S column density reaches
+$N = 3.4\times10^{15}\,\mathrm{cm^{-2}}$ and the line-center optical depth of
+the blended $J' = 1, 2$ doublet reaches $4.1\times10^{3}$ on the central
+sightline, falling through $\tau_0 = 1$ only at a projected radius of
+$0.139$~pc, so all but the outermost rim of the projected disk is optically
+thick at 10833~\AA.  Such a column makes the line resonantly scatter, as
+\citet{draine2026} shows for \HII{} regions: repeated scattering broadens the
+emergent profile into a multipeaked feature whose width can exceed
+$100\,\mathrm{km\,s^{-1}}$ and whose centroid is blueshifted by up to
+$\sim$$14\,\mathrm{km\,s^{-1}}$ relative to other lines, while the extended
+path length lets dust absorb a larger share of the photons and so weakens the
+line.  The He\,\textsc{i} 10833/Pa$\gamma$ ratio therefore stops being a clean
+He$^{+}$/H$^{+}$ measure once the metastable column is large.  The
+optically-thin diagnostic likewise underestimates the true absorption over
+most of the region, which is what makes the $2^3$S output of
+Figure~\ref{fig:hei10833} the input to a scattering calculation rather than an
+observable in itself.  That calculation is within reach: the converged $2^3$S
+density is handed to \textsc{LaRT}
+\citep{seon2020,seon2022,seon2024}, a Monte Carlo resonant-line transfer code
+that already carries a 10833~\AA\ module and has been applied to the line in
+an exoplanet atmosphere \citep{yan2022}.  The coupling is in place --- a
+converter writes the \MoCHII{} metastable grid in \textsc{LaRT}'s input
+format, and the two codes agree on the line-center optical depth of the
+example above to $0.5\%$ --- and the resonant-scattering profiles will be
+presented in a forthcoming paper.  On the
+emission side, the same
+transition radiates the 10833~\AA\ line, and the code writes its emissivity
+from the \citet{porter2012} recombination table --- a collisional-radiative
+total, so it is used as tabulated and nothing is added to it.  Integrated, the
+line carries $1.34\,L(\mathrm{H}\beta)$ here, and its emissivity falls at
+$r \simeq 0.13$~pc, inside the ionized sphere: the He$^{+}$ zone ends where
+the $>$24.6-eV photons run out, while hydrogen stays ionized to $0.15$~pc.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/hei10830.pdf}
-% source: paper/python/make_hei10830.py, from examples/hei_metastable/hei_high_density
+\includegraphics[width=0.95\textwidth]{figures/hei10833.pdf}
+% source: paper/python/make_hei10833.py, from examples/hei_metastable/hei_high_density
 \caption{The \HeI{} $2^3$S metastable diagnostic for a dense compact
-example ($\nH = 10^4\,\mathrm{cm^{-3}}$, $R = 0.15$~pc, $\Te = 10^4$~K),
-as line-of-sight projection maps.  Left: the $2^3$S column density.  Right:
-the 10830~\AA\ line-center optical depth $\tau_0$ of the blended $J' = 1, 2$
-doublet, with the $\tau_0 = 1$ contour (cyan); the core is optically thick,
-where the optically-thin diagnostic breaks down.}
-\label{fig:hei10830}
+example ($\nH = 10^4\,\mathrm{cm^{-3}}$, $R = 0.15$~pc, $\Te = 10^4$~K), as
+radial profiles of the two sides of the same $2^3{\rm S}$--$2^3{\rm P}$
+transition.  Left, absorption: the 10833~\AA\ line-center optical depth
+$\tau_0$ of the blended $J' = 1, 2$ doublet against projected radius (left
+axis) with the $2^3$S column density on the right axis.  Both are
+line-of-sight integrals, and at the fixed $\Te$ of this run the Doppler width
+is constant, so the two are strictly proportional and the right axis is the
+conversion of the left; the curves overlie.  The region is optically thick
+inside $b = 0.139$~pc, where the optically-thin diagnostic breaks down.
+Right, emission: the 10833~\AA\ emissivity against radius, from the
+\citet{porter2012} He\,\textsc{i} block of the emissivity file.}
+\label{fig:hei10833}
 \end{figure*}
 
 %==========================================================================
@@ -988,13 +1027,13 @@ HII40, just below the published 0.715--0.829 (median 0.767) and the current
 0.046 at HII20, near the published median of 0.048 inside a spread of
 0.034--0.077.
 
-\emph{Temperature.}  The weighted temperature is 8210~K at HII40 and
-7024~K at HII20.  Both match a current \textsc{Cloudy} c25.00 run of the
-same two models --- 8210~K and 6910~K --- to $0.4$~K and $1.6\%$, and both
+\emph{Temperature.}  The weighted temperature is 8211~K at HII40 and
+7025~K at HII20.  Both match a current \textsc{Cloudy} c25.00 run of the
+same two models --- 8210~K and 6910~K --- to $0.7$~K and $1.7\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
-published spread at both, 7562~K at HII40 against a published 7370--8318~K
-and 7048~K at HII20 against a published 6562--7224~K.  The converged
+published spread at both, 7569~K at HII40 against a published 7370--8318~K
+and 7045~K at HII20 against a published 6562--7224~K.  The converged
 MOCASSIN 2.02 run of the HII40 model gives 8176~K, inside the published
 spread and $6\%$ above MOCASSIN's own published entry.  The two contemporary
 codes therefore agree closely and both sit above the quarter-century-old
@@ -1003,7 +1042,7 @@ published temperatures, whose columns carry the atomic data of their time.
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
 density-suppressed cooling used above --- the level populations at the local
-$\nelec$, Section~\ref{sec:cooldata} --- gives the 8210 and 7024~K that
+$\nelec$, Section~\ref{sec:cooldata} --- gives the 8211 and 7025~K that
 track \textsc{Cloudy}; the zero-density limit of the same fits, retained as
 an option, overestimates the far-infrared line cooling at
 $\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so places \MoCHII{} instead at
@@ -1081,7 +1120,7 @@ power --- \textsc{Cloudy} balances its own heating at the unscaled
 temperature, and the photoheating of the two codes agrees --- gives 7784~K
 against \textsc{Cloudy}'s 8210~K, close to the 7894~K the converged
 zero-density run reaches.  Removing the overestimate, the density-suppressed
-default reaches 8210~K, matching \textsc{Cloudy} to $0.4$~K
+default reaches 8211~K, matching \textsc{Cloudy} to $0.7$~K
 (Section~\ref{sec:hii}).  The far-infrared overestimate, not the atomic
 data, is thus what separates the two limits, and the $(\Te,\nelec)$ table of
 Section~\ref{sec:cooldata} removes it.
@@ -1116,13 +1155,13 @@ $n$-level solver reproduces an independent reference solver to four digits,
 and the fitted collision data reproduce direct CHIANTI evaluations to
 0.05--0.5\%).  At HII40 the infrared fine-structure lines, whose excitation
 energies are small enough that they are nearly temperature-independent, sit
-with the published set ([Ne\,\textsc{iii}] 15.5\,$\mu$m 0.278 in a
-published 0.263--0.429; [Ne\,\textsc{ii}] 12.8\,$\mu$m 0.202 in
-0.177--0.217; [O\,\textsc{iii}] 52+88\,$\mu$m 2.41 in 2.10--2.42), and so
-do the temperature-sensitive optical lines of the same ion:
-[O\,\textsc{iii}] 5007+4959 is 2.06 against a published 1.64--3.27, and the
+with the published set ([Ne\,\textsc{iii}] 15.5\,$\mu$m 0.282 in a
+published 0.263--0.429; [Ne\,\textsc{ii}] 12.8\,$\mu$m 0.207 in
+0.177--0.217; [O\,\textsc{iii}] 52+88\,$\mu$m 2.45 just above 2.10--2.42),
+and so do the temperature-sensitive optical lines of the same ion:
+[O\,\textsc{iii}] 5007+4959 is 2.40 against a published 1.64--3.27, and the
 auroral [O\,\textsc{iii}] 4363, the most temperature-sensitive entry in the
-tables, is 0.0033 against a published 0.0022--0.0070.  The lines that fall
+tables, is 0.0045 against a published 0.0022--0.0070.  The lines that fall
 outside the published ranges are examined below.
 
 \emph{H$\beta$ and the photon budget.}  A recombination line is a photon
@@ -1130,17 +1169,17 @@ counter, and $L(\mathrm{H}\beta)$ therefore tests whether the model is
 radiation-bounded: every ionizing photon absorbed by hydrogen returns as a
 recombination, and a fixed fraction of those recombinations produces
 H$\beta$.  Both models here are bounded.  At HII40 the ionization front is
-captured inside the prescribed sphere, at $1.43\times10^{19}$~cm against an
-outer radius of $1.46\times10^{19}$~cm, and the outermost shell is $86\%$
+captured inside the prescribed sphere, at $1.45\times10^{19}$~cm against an
+outer radius of $1.46\times10^{19}$~cm, and the outermost shell is $57\%$
 neutral; at HII20 the outer shells are fully neutral.  The budget closes
 accordingly: summing the case-B recombinations over the converged solutions
-gives $0.953\,\QH$ and $0.971\,\QH$.  What hydrogen does not absorb is
-taken up by helium, which at HII40 absorbs $0.114\,\QH$ and returns most of
+gives $0.950\,\QH$ and $0.970\,\QH$.  What hydrogen does not absorb is
+taken up by helium, which at HII40 absorbs $0.112\,\QH$ and returns most of
 it to hydrogen through the \HeI{} diffuse channels.  The predicted
 $L(\mathrm{H}\beta) = 1.94\times10^{37}$ and
 $4.68\times10^{36}\,\mathrm{erg\,s^{-1}}$ are about $5\%$ below the
 published medians (some $4\%$ below the lowest published values),
-consistent with the $4.7\%$ and $2.9\%$ of $\QH$ that the recombination
+consistent with the $5.0\%$ and $3.0\%$ of $\QH$ that the recombination
 budget assigns to helium rather than to hydrogen, together with the weak
 temperature dependence of the effective H$\beta$ emissivity at the higher
 benchmark temperature.  The absolute H$\beta$ luminosity is thus set by the
@@ -1161,7 +1200,7 @@ the range are the temperature-sensitive optical and ultraviolet ones, raised
 with the temperature that both modern codes share ([O\,\textsc{ii}]
 3726+3729, [O\,\textsc{iii}] 52+88\,$\mu$m and C\,\textsc{ii}] 2325 at
 HII40; several optical lines at HII20), together with [O\,\textsc{i}]
-6300+6363 at HII40 (0.0169 against 0.0059--0.012), which is fed by the thin
+6300+6363 at HII40 (0.0170 against 0.0059--0.012), which is fed by the thin
 partly neutral edge, where the published entries themselves span a factor
 two and where the cell size of a three-dimensional grid is a real
 limitation.  The rows below the range are the same in the two cases:
@@ -1185,20 +1224,20 @@ hotter than C25, the same optical lines run correspondingly high,
 [O\,\textsc{iii}] 5007+4959 $1.13\times$ and [O\,\textsc{ii}] 3726+3729
 $1.10\times$.  The residual outliers at HII40 are not temperature:
 [Ne\,\textsc{iii}] 15.5\,$\mu$m ($1.31\times$) and 3869+3968 ($1.24\times$),
-[O\,\textsc{i}] 6300+6363 ($1.51\times$, on a line the thin neutral edge and
+[O\,\textsc{i}] 6300+6363 ($1.52\times$, on a line the thin neutral edge and
 the grid resolution govern), and C\,\textsc{iii}] 1907+1909 ($0.66\times$),
 each an ionization or collision-strength difference in a single ion.
 
 The C25 column also shows how much of the disagreement with the published
 columns is a property of those columns.  [S\,\textsc{ii}] 6716+6731 at
 HII40 is the clearest case: the GF entry is 0.137, C25 gives 0.304 and
-\MoCHII{} 0.328, so what would be a $2.4\times$ excess against the 1990s
+\MoCHII{} 0.329, so what would be a $2.4\times$ excess against the 1990s
 column is an $8\%$ difference against the current one.  Sulfur at HII20 is
 the same story in the other direction: [S\,\textsc{iii}] 18.7\,$\mu$m
 (0.221 against a published 0.34--0.46) and [S\,\textsc{iii}] 9532+9069
-(0.321 against 0.465--0.604) fall \emph{below} every published code, and so
+(0.322 against 0.465--0.604) fall \emph{below} every published code, and so
 does C25 (0.209 and 0.293), while [S\,\textsc{ii}] 6716+6731 sits inside the
-published range for both (0.808 and 0.744).  Both modern calculations
+published range for both (0.809 and 0.744).  Both modern calculations
 therefore move the same S\,\textsc{ii}/S\,\textsc{iii} split in the same
 direction relative to the 2000-era compilation, which points at the sulfur
 data rather than at either code.  A band experiment bounds one further
@@ -1232,23 +1271,22 @@ by panel.  The morphology is the published one throughout.  At HII40 the
 hydrogen and helium neutral fractions rise monotonically from
 $4\times10^{-5}$ and $2\times10^{-4}$ at the inner edge, the singly and
 doubly ionized fractions of carbon, nitrogen and oxygen cross within
-0.15~pc of one another near 3.9~pc, C$^{+3}$ stays below $0.05$ and is
+0.15~pc of one another near 4.0~pc, C$^{+3}$ peaks at $0.05$ and is
 confined to the inner region, and the temperature falls slightly out to
 about 2.2~pc before climbing steeply toward the front.  At HII20 helium is
 essentially all neutral beyond
-1.4~pc while hydrogen stays ionized out to 2.8~pc, so the doubly ionized
+1.3~pc while hydrogen stays ionized out to 2.9~pc, so the doubly ionized
 metals occupy only a thin inner shell.  Both models are radiation-bounded,
 so both outer radii are predictions.  The ionized-volume-equivalent radius
 $(3V_{\mathrm{ion}}/4\pi)^{1/3}$ and the shell-averaged
 $x_{\mathrm{HII}} = 0.5$ crossing that the tables carry as
-$R_{\mathrm{out}}$ are $1.428$ and $1.434\times10^{19}$~cm at HII40 against
-a published 1.45--$1.47\times10^{19}$, and $8.58$ and
-$8.69\times10^{18}$~cm at HII20 against a published
+$R_{\mathrm{out}}$ are $1.441$ and $1.447\times10^{19}$~cm at HII40 against
+a published 1.45--$1.47\times10^{19}$, and $8.80$ and
+$8.91\times10^{18}$~cm at HII20 against a published
 8.7--$9.01\times10^{18}$: the two definitions of the outer boundary are not
-identical, but they locate the same front, and both sit $1$--$2\%$ below
-the published ranges, which is what the recombination budget of
-$0.95$--$0.97\,\QH$ and the slightly larger $\alpha_B$ of a cooler nebula
-together imply.  The temperature panels
+identical, but they locate the same front, and both fall inside the
+published range at HII20 and within $0.6\%$ of its lower end at HII40,
+consistent with a recombination budget of $0.95$--$0.97\,\QH$.  The temperature panels
 reproduce the published shape --- a shallow inward decline followed by a
 steep rise at the front, where the surviving radiation field is hardest.
 
@@ -1376,7 +1414,7 @@ simulation), with a $\QH = 10^{53}\,\mathrm{s^{-1}}$, 40-kK source at the
 density peak and thermal balance, metals, and re-refinement enabled
 (Figure~\ref{fig:tng}).  Dense clumps cast sharp neutral shadows, the
 circumgalactic gas sits at $\xHI \sim 10^{-4}$ with an $\nelec$-weighted mean
-$\Te = 7502$~K, and the refinement (32\,768 $\to$ 617\,324 leaves) tracks
+$\Te = 7502$~K, and the refinement (32\,768 $\to$ 617\,135 leaves) tracks
 the \emph{distributed} ionization topology of a turbulent medium --- clump
 skins and partially ionized gas rather than a single thin shell.  This is
 the regime for which the volume-integrated convergence criterion
@@ -1409,7 +1447,7 @@ $C_{\mathrm{abs}}/\mathrm{H} = 1.75\times10^{-21}$ at 13.6~eV falls to
 $3.96\times10^{-22}\,\mathrm{cm^2}$ at 100~eV.  On the dusty Str\"omgren
 test, against a 1D reference carrying identical dust absorption, the full
 MW dust gives $R_{\mathrm{eff}} = 2.206$~pc versus the reference 2.198~pc
-($+0.34\%$), reproducing the classic dusty reduction $R/R_0 = 0.724$
+($+0.34\%$), reproducing the classic dusty reduction $R/R_0 = 0.722$
 (Figure~\ref{fig:duststrom}); dust absorbs $\sim$60\% of the band luminosity
 there.
 
@@ -1418,7 +1456,7 @@ the extinction (in-band Henyey--Greenstein asymmetry $g = 0.67$--$0.99$,
 strongly forward), and interactions are sampled by a forced-first-flight
 scheme after the analytic direct walk, with an albedo weight at each
 interaction and Russian roulette.  The full-scattering Str\"omgren radius,
-2.206~pc, is indistinguishable from the absorption-only value: the in-band
+2.197~pc, is within $0.4\%$ of the absorption-only 2.206~pc: the in-band
 dust is strongly forward-throwing, so a scattered photon is barely deflected
 and scattering acts almost as pure transmission, exactly as expected.
 
@@ -1446,8 +1484,8 @@ is solved self-consistently; it converges to a near dust-free interior
 Figure~\ref{fig:duststrom} contrasts the three treatments on the same
 Str\"omgren configuration.  Static full MW dust competes with hydrogen for
 the ionizing photons throughout the volume, so the ionization front is
-pushed inward to $R_{\mathrm{eff}} = 2.25$~pc, the classic dust-limited
-size ($R/R_0 = 0.736$).  Under \code{laursen09\_live}, by contrast, the
+pushed inward to $R_{\mathrm{eff}} = 2.21$~pc, the classic dust-limited
+size ($R/R_0 = 0.722$).  Under \code{laursen09\_live}, by contrast, the
 interior dust vanishes together with the neutral fraction it is tied to ---
 once the gas is ionized it carries essentially no dust to absorb the
 ionizing field --- so the front profile overlies the dust-free case almost
@@ -1469,7 +1507,7 @@ neutral-fraction profile $\xHI(r)$ for the dust-free, full MW dust, and
 ($\nH = 100\,\mathrm{cm^{-3}}$, $\QH = 10^{49}\,\mathrm{s^{-1}}$,
 $T_\star = 4\times10^4$~K, case B).  Dotted vertical lines mark each
 effective ionized radius $R_{\mathrm{eff}}$.  Full MW dust pushes the
-ionization front inward to $R/R_0 = 0.736$, while the live
+ionization front inward to $R/R_0 = 0.722$, while the live
 ionization-dependent dust vanishes in the ionized interior and recovers the
 dust-free size ($R/R_0 = 0.996$).}
 \label{fig:duststrom}
@@ -1500,8 +1538,11 @@ ionization front --- the classic Spitzer/JWST bubble morphology.
 %   tests/d_dusty/pahlive_smoke_dustemis.h5 (live PAH survival).
 \caption{Stochastic dust emission at 8\,$\mu$m with the
 ionization-dependent PAH share.  The first two panels are two-dimensional
-projection maps (the emissivity integrated along the line of sight into a
-surface brightness) sharing one brightness scale.  Left: PAHs surviving
+projection maps sharing one brightness scale: the band emissivity, which
+\MoCHII{} writes as the power radiated per unit volume and per unit
+wavelength into $4\pi$~sr, integrated along the line of sight and divided by
+$4\pi$, so the panels show the specific intensity $I_\lambda$ of an
+infrared-thin nebula.  Left: PAHs surviving
 everywhere, giving a centrally peaked image.  Middle: PAHs destroyed in the
 ionized interior ($x_{\mathrm{HII}}$-weighted survival).  Right: the
 azimuthally averaged radial profiles of both maps.  Destroying the PAHs
@@ -1517,8 +1558,12 @@ a local maximum a factor 1.9 above the depressed interior.}
 % source: figures/make_dust_maps.py, from
 %   tests/d_dusty/dustemis_smoke_dustemis.h5.
 \caption{Dust emission at 8 and 160\,$\mu$m from the stochastic SEDust
-solve, as two-dimensional projection maps of the surface brightness (left,
-middle) with their azimuthally averaged radial profiles (right).  The short
+solve, as two-dimensional projection maps of the specific intensity
+$I_\lambda$ (left, middle) with their azimuthally averaged radial profiles
+(right).  The band emissivity is written as the power radiated per unit
+volume and per unit wavelength into $4\pi$~sr, so $I_\lambda$ is that
+emissivity integrated along the line of sight and divided by $4\pi$.  The
+short
 wavelength is centrally peaked (warm inner dust), falling by 3.5~dex across
 the sphere, while the far-infrared profile is far flatter (1.6~dex), the
 projected signature of the dust temperature gradient.}
@@ -1589,9 +1634,9 @@ Lexington 2000 \HII{} region benchmarks, with the ionizing bins aligned on
 the ionization thresholds --- the discretization that controls the helium
 and metal ionization structure --- and the line cooling taken from the
 level populations at the local electron density, the
-$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8210~K at HII40 and
-7024~K at HII20, matching a current \textsc{Cloudy} c25.00 run of the same
-two models (8210 and 6910~K) to $0.4$~K and $1.6\%$; both models are
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8211~K at HII40 and
+7025~K at HII20, matching a current \textsc{Cloudy} c25.00 run of the same
+two models (8210 and 6910~K) to $0.7$~K and $1.7\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
 $L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  Both
 modern codes run above the 2000-era published temperatures (7720--8199 and
@@ -1620,7 +1665,7 @@ Development is ongoing along several lines.  A plane-parallel
 (xy-periodic slab) illumination mode with an emergent $I(\mu)$ boundary
 tally extends the code to slab and grazing-illumination
 geometries.  A He\,\textsc{i} $2^3$S metastable diagnostic supports
-synthetic 10830~\AA\ absorption modeling.  A hard-spectrum extension for
+synthetic 10833~\AA\ absorption modeling.  A hard-spectrum extension for
 planetary nebulae and active galactic nuclei --- higher photon energies,
 extended ion stages, and inner-shell/Auger processes --- is planned; the
 density-suppressed cooling introduced here already covers the high electron
@@ -1631,9 +1676,12 @@ ions a data operation as the science requires them.  Together these make
 circumgalactic medium.
 
 \begin{acknowledgments}
-% TODO: acknowledgments -- funding (KASI/NRF grant numbers), the MOCASSIN,
-% CHIANTI, Cloudy, PyNeb, and Illustris-TNG teams for public data and
-% comparison references, and computing resources.
+K.-I.\ Seon was supported by the Korea Astronomy and Space Science
+Institute under the R\&D program (Project No.\ 2026-1-831-02) supervised by
+the Korea AeroSpace Administration.
+% TODO: acknowledgments -- the MOCASSIN, CHIANTI, Cloudy, PyNeb, and
+% Illustris-TNG teams for public data and comparison references, and
+% computing resources.
 \end{acknowledgments}
 
 \software{MoCHII (\url{https://github.com/seoncafe/MoCHII}),

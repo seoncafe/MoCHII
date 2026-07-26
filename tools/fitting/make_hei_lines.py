@@ -3,7 +3,7 @@
 
 These are full case-B collisional-radiative totals, not pure recombination
 cascades: the tabulated 4 pi j / (n_e n_He+) is density-dependent because it
-already includes collisional excitation out of the 2^3S metastable (the 10830
+already includes collisional excitation out of the 2^3S metastable (the 10833
 coefficient rises 6.6x from n_e=10 to n_e=1e4 cm^-3 at 1e4 K).
 
 Parse Cloudy c23.01's data/he1_case_b.dat (the Porter grid: log10 of
@@ -22,17 +22,36 @@ ATOM = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 SRC = os.path.join(ATOM, "he1_case_b.dat")
 OUT = os.path.join(ATOM, "hei_porter_caseB.txt")
 
-# principal He I diagnostics (air wavelengths, Cloudy convention); label <= 12
+# Principal He I diagnostics.  The keys are the AIR wavelengths that index
+# the Cloudy source file; the written wavelength and the label are VACUUM, the
+# convention of every other block of the MoCHII line table (the SH95 H I/He II
+# tables carry vacuum values and the n-level wavelengths come from level energy
+# differences, which are vacuum by construction).  Label <= 12 characters.
 WANT = {
-    "3888.63": ("HeI3889", 3, 2),
-    "4026.20": ("HeI4026", 5, 2),
-    "4471.49": ("HeI4471", 4, 2),
-    "5875.64": ("HeI5876", 3, 2),
-    "6678.15": ("HeI6678", 3, 2),
-    "7065.22": ("HeI7065", 3, 2),
-    "7281.35": ("HeI7281", 3, 2),
-    "10830.25": ("HeI10830", 2, 2),
+    "3888.63": ("HeI3890", 3, 2),
+    "4026.20": ("HeI4027", 5, 2),
+    "4471.49": ("HeI4473", 4, 2),
+    "5875.64": ("HeI5877", 3, 2),
+    "6678.15": ("HeI6680", 3, 2),
+    "7065.22": ("HeI7067", 3, 2),
+    "7281.35": ("HeI7283", 3, 2),
+    "10830.25": ("HeI10833", 2, 2),
 }
+
+
+def air_to_vacuum(lam_air):
+    """Vacuum wavelength [A] of an air wavelength [A].
+
+    Inverse of the IAU standard dispersion of air (Morton 2000, ApJS 130,
+    403); accurate well below the 0.01 A the tabulated values carry.  Check:
+    10830.25 -> 10833.217, matching the NIST fine-structure components stored
+    in data/atomic/hei_metastable.txt (10833.22 for the J = 1 line).
+    """
+    s2 = (1.0e4/lam_air)**2
+    n = (1.0 + 0.00008336624212083
+         + 0.02408926869968/(130.1065924800 - s2)
+         + 0.0001599740894897/(38.92568793293 - s2))
+    return lam_air*n
 
 
 def main():
@@ -78,9 +97,15 @@ def main():
         fh.write("# Porter et al. (2012 ApJL 756 L14; 2013 erratum), from "
                  "Cloudy c23.01 data/he1_case_b.dat; parsed by "
                  "tools/fitting/make_hei_lines.py\n")
-        fh.write("# air wavelengths (Cloudy convention); grid: NT temperatures "
-                 "[K], ND densities [cm^-3]; then LINE label nu nl lambda[A], "
-                 "NT x ND values (T rows, n_e columns)\n")
+        fh.write("# VACUUM wavelengths (the source file is indexed by air "
+                 "wavelength, Cloudy convention; converted here so this block "
+                 "matches the rest of the MoCHII line table).  Air -> vacuum: "
+                 "3888.63->3889.73, 4026.20->4027.34, 4471.49->4472.75, "
+                 "5875.64->5877.27, 6678.15->6679.99, 7065.22->7067.17, "
+                 "7281.35->7283.36, 10830.25->10833.22\n")
+        fh.write("# grid: NT temperatures [K], ND densities [cm^-3]; then "
+                 "LINE label nu nl lambda[A], NT x ND values "
+                 "(T rows, n_e columns)\n")
         fh.write(f"GRID {nT} {nD}\n")
         fh.write("T  " + " ".join(f"{t:.4e}" for t in temps) + "\n")
         fh.write("NE " + " ".join(f"{10.0**d:.4e}" for d in dens) + "\n")
@@ -89,7 +114,8 @@ def main():
             if wl not in blocks:
                 continue
             label, nu, nl = WANT[wl]
-            fh.write(f"LINE {label} {nu} {nl} {wl}\n")
+            fh.write(f"LINE {label} {nu} {nl} "
+                     f"{air_to_vacuum(float(wl)):.2f}\n")
             g = blocks[wl]                     # [density][temperature]
             for it in range(nT):               # transpose -> T rows, n_e cols
                 fh.write(" ".join(f"{10.0**g[idn][it]:.4e}" for idn in range(nD))

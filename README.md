@@ -46,7 +46,7 @@ infrared dust/PAH spectrum.
 - **Diagnostics**: collisional line luminosities from n-level statistical
   equilibrium, Storey & Hummer (1995) H I recombination lines, the nebular
   continuum (free–bound, free–free, two-photon), the He I 2^3S metastable
-  population with the 10830 A absorption opacity and column-density maps
+  population with the 10833 A absorption opacity and column-density maps
   (`hei_metastable`), and leaf-by-leaf line emissivity output for map making.
 - **Dust and PAHs**: grain absorption/scattering competing with the gas for
   ionizing photons, ionization-dependent dust survival with a PAH split,
@@ -121,4 +121,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-26 10:27 KST
+Last updated: 2026-07-26 19:48 KST

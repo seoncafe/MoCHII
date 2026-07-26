@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""He I 2^3S metastable diagnostic gate (docs/HEI_10830_PLAN.md H2).
+"""He I 2^3S metastable diagnostic gate (docs/HEI_10833_PLAN.md H2).
 
 Independently recomputes the module's n_2s3 (and Phi_3) from the data-file
 coefficients on each run's OWN converged state, and checks the OH18 analytic
@@ -28,7 +28,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "python"))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "fitting"))
-from mochii_output import (read_sections, HeiMetaData, read_line10830,  # noqa
+from mochii_output import (read_sections, HeiMetaData, read_line10833,  # noqa
                            SQRTPI_E2_MEC, M_HE_G, KB_CGS)                # noqa
 import make_hei_metastable as M                        # noqa: E402
 
@@ -182,15 +182,15 @@ def kappa0_hand(n3, Te, rows, v_turb=0.0):
 
 
 def stage2_gate():
-    """docs/HEI_10830_PLAN.md H5: 10830 absorption column / tau diagnostic."""
+    """docs/HEI_10833_PLAN.md H5: 10833 absorption column / tau diagnostic."""
     import tempfile
-    print("\n[Stage 2: 10830 absorption diagnostic]")
-    rows = read_line10830(ATOM)
+    print("\n[Stage 2: 10833 absorption diagnostic]")
+    rows = read_line10833(ATOM)
     # component f-values sum 1:3:5, ratios exact.
     f = rows[:, 1]
-    check("LINE10830 f-values 1:3:5 (%.4f:%.4f:%.4f)" % tuple(f),
+    check("LINE10833 f-values 1:3:5 (%.4f:%.4f:%.4f)" % tuple(f),
           abs(f[1] / f[0] - 3.0) < 0.01 and abs(f[2] / f[0] - 5.0) < 0.01)
-    check("LINE10830 A = 1.0216e7 s^-1 each (NIST/p-winds, not CHIANTI 1.15e7)",
+    check("LINE10833 A = 1.0216e7 s^-1 each (NIST/p-winds, not CHIANTI 1.15e7)",
           np.all(np.abs(rows[:, 2] / 1.0216e7 - 1.0) < 1e-3))
 
     tmp = tempfile.mkdtemp()
@@ -220,7 +220,7 @@ def stage2_gate():
 
     # tau_0 interior vs hand kappa * depth, for each component and the doublet.
     for comp, sel in (("doublet", [1, 2]), (0, [0]), ("all", [0, 1, 2])):
-        tau, _ = d.tau10830_map(component=comp, npix=64, warn=False)
+        tau, _ = d.tau10833_map(component=comp, npix=64, warn=False)
         khand = kappa0_hand(n3, Te, rows[sel, :])
         thand = khand * depth_cm
         rel = abs(tau[mid, mid] / thand - 1.0)
@@ -229,7 +229,7 @@ def stage2_gate():
               rel < 1e-6)
 
     # thin case must NOT warn (tau << 1 everywhere).
-    tau_thin, _ = d.tau10830_map(component="doublet", npix=64, warn=False)
+    tau_thin, _ = d.tau10833_map(component="doublet", npix=64, warn=False)
     check("synthetic thin case tau_0 max = %.2e < 1 (no warning expected)"
           % np.nanmax(tau_thin), np.nanmax(tau_thin) < 1.0)
 
@@ -241,8 +241,8 @@ def stage2_gate():
     d2 = HeiMetaData(syn2, atomic_dir=ATOM)
     buf = io.StringIO()
     with redirect_stdout(buf):
-        tau_thick, _ = d2.tau10830_map(component="doublet", npix=64, warn=True)
-    fired = "tau_10830 > 1" in buf.getvalue()
+        tau_thick, _ = d2.tau10833_map(component="doublet", npix=64, warn=True)
+    fired = "tau_10833 > 1" in buf.getvalue()
     check("synthetic thick case (n3 x 1e5): tau_0 max = %.2e > 1 and warning "
           "fires" % np.nanmax(tau_thick),
           np.nanmax(tau_thick) > 1.0 and fired)
@@ -256,8 +256,8 @@ def stage2_gate():
     rhs = float((dh.fields["n_2s3"] * dh.vol_cm3).sum())
     check("hei_highd column conservation: rel %.2e" % (abs(lhs - rhs) / rhs),
           abs(lhs - rhs) / rhs < 1e-10)
-    tau_d, _ = dh.tau10830_map(component="doublet", npix=256, warn=False)
-    tau_0, _ = dh.tau10830_map(component=0, npix=256, warn=False)
+    tau_d, _ = dh.tau10833_map(component="doublet", npix=256, warn=False)
+    tau_0, _ = dh.tau10833_map(component=0, npix=256, warn=False)
     ratio = np.nanmax(tau_d) / np.nanmax(tau_0)
     fexp = (rows[1, 1] + rows[2, 1]) / rows[0, 1]        # doublet/J0 f-ratio
     check("hei_highd tau doublet/J0 = %.3f = f-ratio %.3f (blended lines)"
@@ -362,7 +362,7 @@ def main():
     # full-chain agreement WITH Phi_3 (exercises sigma_3 in the module).
     agreement_gate("hei_fuv", df)
 
-    # ---- Stage 2: 10830 absorption diagnostic -------------------------------
+    # ---- Stage 2: 10833 absorption diagnostic -------------------------------
     stage2_gate()
 
     # ---- verdict ------------------------------------------------------------

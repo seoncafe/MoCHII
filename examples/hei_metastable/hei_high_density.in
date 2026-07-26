@@ -15,8 +15,8 @@
  !    n_3/n_HeII  ->  alpha_3/(q_31a+q_31b)  ~ 6.5e-6.
  ! The plot script overlays both limits on the radial profile: the core sits
  ! at ~0.7 of the plateau, the signature of collisional suppression.  Because
- ! n_3 is large here, the 10830 line-center optical depth through the core is
- ! >> 1 (the tau10830 map fires the optically-thick warning, which is
+ ! n_3 is large here, the 10833 line-center optical depth through the core is
+ ! >> 1 (the tau10833 map fires the optically-thick warning, which is
  ! physically correct -- line transfer is out of the diagnostic's scope).
  par%no_photons    = 2.0e6
  par%iseed         = 1234
@@ -48,6 +48,9 @@
 
  par%atomic_dir      = '../../data/atomic'   ! for hei_metastable.txt
  par%hei_metastable  = .true.                ! 2^3S diagnostic (no physics change)
+ par%emis_output     = .true.                ! leaf emissivities: the Porter He I
+                                             ! block carries 10833 A, the emission
+                                             ! side of the same 2^3S-2^3P transition
 
  par%source_geometry = 'point'
  par%out_file        = 'hei_high_density.h5'

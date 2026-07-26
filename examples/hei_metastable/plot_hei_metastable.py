@@ -7,7 +7,7 @@ Reads the three runs' <base>_heimeta.h5 (n_2s3, Phi_3, n_e, T_e) and
   hei_profiles.png  radial n_3/n_HeII: low-density run in the radiative limit
                     alpha_3 n_e/A_31, high-density run pushed below it toward the
                     collisional plateau alpha_3/(q_31a+q_31b).
-  hei_maps.png      high-density run: the 2^3S column density and the 10830 A
+  hei_maps.png      high-density run: the 2^3S column density and the 10833 A
                     doublet line-center optical depth (tau_0 >> 1 in the core --
                     the optically-thin warning is physically correct).
   hei_phi3.png      soft-UV depletion: n_3^fuv/n_3^noFUV and Phi_3/A_31 vs radius.
@@ -155,13 +155,13 @@ def fig_maps(dh):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.4))
 
     col, ext = hm.column_map("n_2s3", npix=256)
-    tau, _ = hm.tau10830_map(component="doublet", npix=256, warn=True)
+    tau, _ = hm.tau10833_map(component="doublet", npix=256, warn=True)
 
     for ax, img, lbl, title in (
             (axes[0], col, r"$\log_{10} N(2^3{\rm S})$ [cm$^{-2}$]",
              r"2$^3$S column density"),
-            (axes[1], tau, r"$\log_{10}\tau_0$(10830 doublet)",
-             r"10830 \AA\ line-center $\tau_0$")):
+            (axes[1], tau, r"$\log_{10}\tau_0$(10833 doublet)",
+             r"10833 \AA\ line-center $\tau_0$")):
         show = np.log10(np.where(img > 0, img, np.nan))
         im = ax.imshow(show.T, origin="lower", extent=ext, cmap="inferno")
         fig.colorbar(im, ax=ax, label=lbl)
@@ -171,7 +171,7 @@ def fig_maps(dh):
     # mark the tau=1 contour: the optically-thin diagnostic breaks down inside
     axes[1].contour(np.log10(np.where(tau > 0, tau, np.nan)).T, levels=[0.0],
                     colors="cyan", linewidths=1.2, extent=ext)
-    fig.suptitle(r"High-density run: the core is optically THICK at 10830 "
+    fig.suptitle(r"High-density run: the core is optically THICK at 10833 "
                  r"($\tau_0 \gg 1$, cyan = $\tau_0 = 1$)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     out = os.path.join(HERE, "hei_maps.png")
@@ -261,7 +261,7 @@ def main():
     print("  core n_3/n_HeII = %.3f of the radiative limit alpha_3 n_e/A_31 "
           "(factor %.1f suppression)" % (below_rad, 1.0 / below_rad))
     print("  core n_3/n_HeII = %.3f of the plateau alpha_3/(q31a+q31b)" % frac)
-    print("  max 10830 doublet tau_0 through the core = %.2e (optically THICK)"
+    print("  max 10833 doublet tau_0 through the core = %.2e (optically THICK)"
           % tau_max)
 
     # FUV: soft-UV depletion near the star

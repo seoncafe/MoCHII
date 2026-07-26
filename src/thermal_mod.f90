@@ -22,7 +22,7 @@ module thermal_mod
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             sec_dgamma_HI, sec_dgamma_HeI, &
                             sec_heat_HI, sec_heat_HeI, sec_heat_HeII
-  use ion_balance_mod, only : solve_ion_cell
+  use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne
   use cooling_mod,     only : cooling_total
   implicit none
   private
@@ -193,13 +193,15 @@ contains
        !--- metal electrons in the WRITTEN state too (the solve already
        !--- had them in its closure; the state n_e drives the n-level
        !--- excitation and the outputs — in the PDR zone it IS the
-       !--- metal contribution, n_e ~ A_C n_H).
+       !--- metal contribution, n_e ~ A_C n_H).  Charge neutrality is
+       !--- re-solved at the under-relaxed H/He fractions and at the newly
+       !--- solved te (the temperature the state is written at), seeded
+       !--- from the n_e the cell solve converged to.
        if (par%metal_ne .and. par%use_metals) then
           block
-            use species_mod, only : species_ne, n_elements
-            if (n_elements > 0) ne_new(il) = ne_new(il) &
-               + species_ne(il, te, ne_new(il), nH*xHI_new(il), &
-                            nH*(1.0_wp - xHI_new(il)))
+            use species_mod, only : n_elements
+            if (n_elements > 0) ne_new(il) = &
+               charge_neutrality_ne(il, te, nH, ne_new(il), xHI_new(il), ne)
           end block
        end if
        te_new(il) = te

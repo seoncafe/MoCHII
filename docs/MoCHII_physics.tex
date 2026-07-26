@@ -34,9 +34,9 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8210$~K at HII40 and 7024~K at
+the MOCASSIN Lexington benchmarks ($T_e = 8211$~K at HII40 and 7025~K at
 HII20 with the density-suppressed cooling default, matching a current
-\textsc{Cloudy} c25.00 run to 0.4~K and 1.6\%; the zero-density limit
+\textsc{Cloudy} c25.00 run to 0.7~K and 1.7\%; the zero-density limit
 gives 7894 and 6376~K, and both modern codes sit above the 2000-era
 published ranges); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
@@ -655,8 +655,12 @@ the high-excitation resonance lines, of far higher critical density ---
 is left in its low-density limit, so a truncated model cannot bias the
 total.  As $n_e\rightarrow0$, $S_{\rm sup}\rightarrow1$ and
 $\Lambda\rightarrow\Lambda_{\rm fit}$ \emph{exactly}, and an ion with no
-$n$-level model (only C\,\textsc{i} and N\,\textsc{i}) has
-$f_{\rm cov}=0$ and keeps the plain fit.  This density-suppressed cooling
+$n$-level model would keep the plain fit --- there is none left, since
+C\,\textsc{i} and N\,\textsc{i}, the last two gaps, now carry models of
+their own (their far-infrared fine-structure lines have
+$n_{\rm crit} \sim 2$--$10\,{\rm cm^{-3}}$, so the suppression is severe:
+$S_{\rm sup} = 0.43$ at $10^4$~K and $n_e = 10^4\,{\rm cm^{-3}}$).
+This density-suppressed cooling
 (\code{par\%cooling\_model = local\_ne}, the default) is built from the
 very solve that produces the diagnostic lines (Section~\ref{sec:nlev}),
 so the thermal balance and the emergent line list are one physics; the
@@ -754,6 +758,7 @@ carry no line block because CHIANTI v11 has no level/collision data for them:
 Ar\,\textsc{ii}, Cl\,\textsc{v}, Ca\,\textsc{iii}, Ca\,\textsc{iv}.\normalsize
 
 \subsection{Free-free Gaunt factors and continuum data}
+\label{sec:contdata}
 \code{gaunt.f90} is the verbatim MOCASSIN copy of the Hummer (1988)
 two-dimensional Chebyshev fit of the Karzas \& Latter (1961) free-free
 Gaunt factor ($\leq 0.7\%$; interface
@@ -810,13 +815,13 @@ He\,\textsc{ii} ($Z = 2$) comes from the \emph{original} CDS file
 (six-token block headers; index
 $k = (n_{\rm cut}-n_u)(n_{\rm cut}+n_u-1)/2 + n_l$ with
 $n_{\rm cut} = 25$, from the SH95 \code{intrat.f} reader): six lines
-(1640, 4686, 3204, 10126, 5413, 4543~\AA) on a $12 \times 13$ grid in
+(1640, 4687, 3204, 10126, 5413, 4543~\AA) on a $12 \times 13$ grid in
 \code{data/atomic/sh95\_heii\_caseB.txt}, weighted in the line table by
 $n_e n_{\rm HeIII}$.  Checks:
-$4\pi j_{4686}/(n_e n_{\rm HeIII}) = 1.495{\times}10^{-24}$ at
+$4\pi j_{4687}/(n_e n_{\rm HeIII}) = 1.495{\times}10^{-24}$ at
 $(10^4\,{\rm K}, 10^4\,{\rm cm^{-3}})$
-$= \alpha^{\rm eff}_{4686}(3.57{\times}10^{-13})\,h\nu$, and
-$1640/4686 = 6.56$ there.
+$= \alpha^{\rm eff}_{4687}(3.57{\times}10^{-13})\,h\nu$, and
+$1640/4687 = 6.56$ there.
 
 He\,\textsc{i} lines use the same interpolator (a third
 table in \code{sh95\_mod}) but a different source: the Porter et al.\
@@ -825,14 +830,14 @@ from Cloudy c23.01's \code{he1\_case\_b.dat} (copied into
 \code{data/atomic}) onto a $21 \times 14$ $(T, n_e)$ grid.  Unlike the
 H\,\textsc{i} and He\,\textsc{ii} tables, these are case-B
 collisional-radiative TOTALS, not pure recombination cascades: the
-tabulated $4\pi j/(n_e n_{\rm He^+})$ is density-dependent (the 10830~\AA\
+tabulated $4\pi j/(n_e n_{\rm He^+})$ is density-dependent (the 10833~\AA\
 coefficient rises 6.6x from $n_e = 10$ to $10^4$~cm$^{-3}$ at $10^4$~K)
 because it already includes collisional excitation out of the 2$^3$S
 metastable.  Eight H\,\textsc{ii}-region diagnostics are exported
-(3889, 4026, 4471, 5876, 6678, 7065, 7281, 10830~\AA, air), weighted in
+(3890, 4027, 4473, 5877, 6680, 7067, 7283, 10833~\AA, vacuum), weighted in
 the line table by $n_e n_{\rm HeII}$ (He$^+$ recombining).  Emergent
-ratios are physical: $5876/4471 = 2.88$, $6678/4471 = 0.82$,
-$7065/4471 = 0.49$ at $\sim$7~kK.
+ratios are physical: $5877/4473 = 2.88$, $6680/4473 = 0.82$,
+$7067/4473 = 0.49$ at $\sim$7~kK.
 
 The H\,\textsc{i} and He\,\textsc{ii} tables follow \code{par\%case\_ab}:
 case-A tables (\code{sh95\_\{hi,heii\}\_caseA.txt}, parsed from the
@@ -850,17 +855,17 @@ for the front and hot-cell bias, kept apart from the recombination lines.
 
 \subsection{He\,\textsc{i} 2$^3$S metastable diagnostic}
 \label{sec:heimeta}
-The Porter case-B 10830~\AA\ table above is a collisional-radiative
+The Porter case-B 10833~\AA\ table above is a collisional-radiative
 \emph{total} emissivity, correct in the dense, optically-thin,
 recombination-dominated H\,\textsc{ii} regime it was built for.  It does
 \emph{not} give the 2$^3$S population $n_3$, its line-of-sight column, or
-the 10830~\AA\ \emph{absorption} opacity --- the observables of exoplanet
-transit, chromospheric, and PDR 10830 work, where the line is seen against
+the 10833~\AA\ \emph{absorption} opacity --- the observables of exoplanet
+transit, chromospheric, and PDR 10833 work, where the line is seen against
 a background.  \code{hei\_metastable\_mod} (\code{par\%hei\_metastable})
 adds these as a separate diagnostic; it does not add or modify any emission
-row, and in particular \emph{nothing is summed onto} the Porter 10830 line
+row, and in particular \emph{nothing is summed onto} the Porter 10833 line
 (which already carries the metastable-collisional term --- summing an
-explicit collisional 10830 would double-count).
+explicit collisional 10833 would double-count).
 
 \paragraph{The 2$^3$S balance (Oklopcic \& Hirata 2018).}  OH18 track the
 neutral singlet ground 1$^1$S, the metastable triplet 2$^3$S, and the ion.
@@ -905,7 +910,7 @@ gives $\Phi_3 > 0$ wherever a field exists; \code{add\_fuv} with
 fires when the band floor sits above 4.78~eV).  $\sigma_3(E)$ is two VFKY96
 wings joined by a log-linear bridge, a $\sim$4\% fit to Norcross (1971)\,+\,TOPbase.
 
-\paragraph{10830~\AA\ absorption (Stage 2).}  From $n_3$ the line-center
+\paragraph{10833~\AA\ absorption (Stage 2).}  From $n_3$ the line-center
 opacity of each fine-structure component is
 \begin{equation}
 \kappa_{0,i} = \frac{\sqrt{\pi}\,e^2}{m_e c}\,f_i\,\frac{\lambda_i}{b}\,n_3,
@@ -930,7 +935,7 @@ The module runs once at output time (no hot-loop cost, no feedback --- $n_3$
 is a $\sim$10$^{-7}$ trace of He).  Caveats recorded at the code site:
 (i)~\emph{local equilibrium} --- the advection term $v\,{\rm d}f_3/{\rm d}r$
 is absent, valid where the 2$^3$S destruction time is short against any flow
-time (dense H\,\textsc{ii}), not a faithful outflow benchmark; (ii)~10830 can
+time (dense H\,\textsc{ii}), not a faithful outflow benchmark; (ii)~10833 can
 be optically thick in dense metastable columns, where the optically-thin
 $\tau_0$ diagnostic breaks down (line transfer is out of scope).
 
@@ -1136,6 +1141,7 @@ tally.  Adding an ion is one entry in the data generators plus its
 cooling and $n$-level files.
 
 \subsection{Explicit diffuse field}
+\label{sec:diffuse}
 Case B on the spot is replaced by case A rates plus explicit emission of
 ground-recombination packets: three channels with rates
 $\alpha_1 = \alpha_A - \alpha_B$ and photon energies
@@ -1552,6 +1558,88 @@ together with \code{n\_H}, $n_e$, $T_e$, the H/He fractions, and the
 metal stage fractions --- a self-contained input for line maps and
 position--velocity work.
 
+\subsection{The two-photon continuum: emission, cooling, transport}
+\label{sec:twophoton}
+The metastable $2s$ ($2^1{\rm S}$ in He\,\textsc{i}) levels decay by
+simultaneous emission of two photons sharing the transition energy.  That
+one channel enters the code in three separate places, and the three
+treatments are deliberately \emph{not} the same; they are collected here
+because the differences are easy to mistake for inconsistencies.
+
+\textbf{Emission} (\code{nebcont\_mod}, Section~\ref{sec:contdata}).  The
+emission coefficient is written per $n_e n_{\rm ion}$ and is fed by the
+\emph{recombination} cascade, one term for each of the three ions:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+ion & weight & $\nu_0$ [Ryd] & $\alpha_{\rm eff}(2s)$ \\
+\midrule
+H\,\textsc{i}   & $n_e n_{\rm HII}$   & 0.7496 &
+  $0.8368{\times}10^{-13}(T_4)^{-0.723}$ (Pengelly 1964) \\
+He\,\textsc{i}  & $n_e n_{\rm HeII}$  & 1.514  &
+  $6.23{\times}10^{-14}(T_4)^{-0.827}$ (BSS99) \\
+He\,\textsc{ii} & $n_e n_{\rm HeIII}$ & 3.00   &
+  SH95 table, $6.16 \rightarrow 2.04{\times}10^{-13}$ over 5--30~kK \\
+\bottomrule
+\end{tabular}
+\end{center}
+with the Nussbaumer \& Schmutz (1984) shape $A(y)$, $y = \nu/\nu_0$, for
+H\,\textsc{i} and (scaled by $Z^6 = 64$ in both $A$ and $A_{2q}$) for
+He\,\textsc{ii}, and the Almog \& Netzer (1989) tabulated shape for
+He\,\textsc{i}.  Only H\,\textsc{i} carries the collisional suppression
+\begin{equation}
+  \gamma_{2q} \rightarrow \frac{\gamma_{2q}}
+       {1 + n_e q_{2s\text{-}2p}/A_{2q}},
+  \qquad A_{2q} = 8.2249\ {\rm s^{-1}},
+\end{equation}
+with $q_{2s\text{-}2p} = 5.31{\times}10^{-4}$ (at $T \le 10^4$~K) falling to
+$4.71{\times}10^{-4}\,{\rm cm^3\,s^{-1}}$ (at $T \ge 2{\times}10^4$~K), so
+the continuum is quenched above
+$n_{\rm crit} \simeq 1.6{\times}10^4\,{\rm cm^{-3}}$.  No factor is applied
+to the helium terms: $A_{2q}$ is $51.3\,{\rm s^{-1}}$ for
+He\,\textsc{i} $2^1{\rm S}$ and $526\,{\rm s^{-1}}$ for He\,\textsc{ii}
+$2s$, putting their critical densities one to two orders of magnitude
+higher.  The three terms are summed into the total $L_\nu$ of
+\code{\_nebcont.txt} and also written separately as its last column.
+Because the population is the recombination cascade alone, collisional
+excitation of $2s$ contributes nothing to the emitted continuum, which is
+therefore a lower bound in the partly neutral gas of an ionization front.
+
+\textbf{Cooling} (\code{cooling\_mod}, Section~\ref{sec:cool}).  The
+H\,\textsc{i} line-cooling fit is the $n_e \rightarrow 0$
+statistical-equilibrium limit of the 25-level CHIANTI atom, and level 2 of
+that atom \emph{is} $2s$ ($82258.956\,{\rm cm^{-1}}$, $A = 8.229\,{\rm
+s^{-1}}$, the two-photon rate) with the $1s \rightarrow 2s$ collision
+strength present.  Collisional excitation of $2s$ therefore cools with its
+full 10.2~eV, and the leading term of the fit,
+$A_1 = 4.4262{\times}10^{-17}$ at $T_1 = 1.1844{\times}10^{5}$~K, is exactly
+that excitation temperature.
+
+The cooling must \emph{not} carry the density quenching the continuum
+does, and does not: proton and electron $l$-mixing converts $2s$ to $2p$
+and the two-photon continuum into Ly$\alpha$, but the gas loses the same
+10.2~eV on either route.  (CHIANTI \code{h\_1} tabulates no
+$2s \leftrightarrow 2p$ collision strength, so the equilibrium solve leaves
+$2s$ unquenched --- harmless for the same reason.  Nor does the level
+produce a spurious line: \code{lines\_mod} extracts only the
+H$\alpha$/H$\beta$/H$\gamma$ windows of the collisional component, so
+nothing is double counted against the continuum.)  Helium has no
+collisional-excitation line cooling at all --- \code{cooling\_total} carries
+recombination, free-free, collisional ionization and the H\,\textsc{i} line
+term only --- so collisional two-photon cooling of He\,\textsc{i}
+$2^1{\rm S}$ and He\,\textsc{ii} $2s$ is absent, as it is in \textsc{Mocassin},
+\textsc{Torus}, Wood et al., and \textsc{CMacIonize}.
+
+\textbf{Transport} (\code{diffuse\_mod}, Section~\ref{sec:diffuse}).  Only
+helium two-photon photons can ionize anything: the H\,\textsc{i} continuum
+stops at 10.2~eV, so omitting it costs nothing.  The He\,\textsc{i}
+$2^1{\rm S}$ branch is one of the four diffuse channels and carries its
+H-ionizing fraction 0.56.  The He\,\textsc{ii} continuum, which extends to
+40.8~eV and can ionize both H and He\,\textsc{i}, is \emph{not} transported,
+and neither is He\,\textsc{ii} Ly$\alpha$ --- of no consequence wherever
+He$^{2+}$ is absent (both Lexington benchmarks), an omission to close for
+the hard planetary-nebula and AGN spectra of Section~\ref{sec:limits}.
+
 %==========================================================================
 \section{Validation gates and results}
 \label{sec:validation}
@@ -1653,15 +1741,15 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 7024 K & 6376 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8210 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 7025 K & 6376 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8211 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8210$~K (HII40) and 7024~K (HII20),
-matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to 0.4~K
-and 1.6\%.  Both modern codes sit a few hundred K \emph{above} the
+local\_ne}) MoCHII gives $T_e = 8211$~K (HII40) and 7025~K (HII20),
+matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to 0.7~K
+and 1.7\%.  Both modern codes sit a few hundred K \emph{above} the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
 $6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
@@ -1690,7 +1778,7 @@ $+0.2\%$) were excluded.  Regenerating the fits from the
 $n_e\rightarrow0$ statistical-equilibrium limit with observed energies
 gives HII40 7894~K and HII20 6376~K (the \code{low\_density} option);
 restoring the density suppression at the local $n_e$ (the
-\code{local\_ne} default) raises them to 8210 and 7024~K.  The former
+\code{local\_ne} default) raises them to 8211 and 7025~K.  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -1775,8 +1863,8 @@ columns from the simulation) with a $Q_{\rm H} = 10^{53}\,{\rm s^{-1}}$,
 40-kK source at the density peak, thermal balance + metals +
 re-refinement (Figure~\ref{fig:tng}): dense clumps cast sharp neutral
 shadows, the circumgalactic gas sits at $\xHI \sim 10^{-4}$ with
-$n_e$-weighted mean $T_e = 8916$~K, and the refinement (32\,768
-$\rightarrow$ 599\,614 leaves) tracks the \emph{distributed} ionization
+$n_e$-weighted mean $T_e = 7502$~K, and the refinement (32\,768
+$\rightarrow$ 617\,135 leaves) tracks the \emph{distributed} ionization
 topology of a turbulent medium --- clump skins and partially ionized
 gas, not a single thin shell.  The run also demonstrates why the
 max-cell convergence test stalls in such media (clump-surface jitter);
@@ -1808,19 +1896,21 @@ full MW dust        & 2.1983 & 2.2058 & $+0.34\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The classic dusty reduction ($R/R_0 = 0.724$) is reproduced within the
-gate tolerance; the live ionization-dependent dust drives itself to
-near dust-free ($R/R_0 = 0.996$: interior dust vanishes with the
-computed $x_{\rm HII}$), confirming the dust--ionization feedback loop
-converges self-consistently.  Energy budget: dust absorbs 59\% of the
-band luminosity in the full-dust case.
+The classic dusty reduction ($R/R_0 = 0.724$ in 1D, 0.722 between the two
+MC runs) is reproduced within the gate tolerance; the live
+ionization-dependent dust drives itself to near dust-free
+($R/R_0 = 0.996$: interior dust vanishes with the computed
+$x_{\rm HII}$), confirming the dust--ionization feedback loop converges
+self-consistently.  Energy budget: dust absorbs 61\% of the band
+luminosity in the full-dust case
+($L_{\rm abs} = 1.933\times10^{38}$ of $3.178\times10^{38}$ erg\,s$^{-1}$).
 
 \textbf{Scattering bracket.}  Turning the scattering on must land the
 sphere between two analytically defined bounds: treating the dust
 extinction entirely as absorption (scattered photons destroyed; 1D
-$R_{\rm eff} = 2.086$~pc) and the absorption-only treatment (scattered
-photons never interact; 2.231~pc, MC counterpart 2.246~pc).  The
-full-scattering run gives $R_{\rm eff} = 2.237$~pc --- inside the
+$R_{\rm eff} = 2.059$~pc) and the absorption-only treatment (scattered
+photons never interact; 2.198~pc, MC counterpart 2.206~pc).  The
+full-scattering run gives $R_{\rm eff} = 2.197$~pc --- inside the
 bracket and close to the absorption-only bound, exactly as the strong
 forward scattering ($g = 0.67$--$0.99$) predicts: forward-scattered
 photons continue nearly radially, and only the small diffused fraction
@@ -2029,7 +2119,7 @@ the Milne extension above the edges, plus the three two-photon
 continua), written on a 400-point log-$\nu$ grid from 11.4\,$\mu$m to
 217\,\AA.
 
-\subsection{He\,\textsc{i} 2$^3$S metastable and 10830~\AA\ absorption}
+\subsection{He\,\textsc{i} 2$^3$S metastable and 10833~\AA\ absorption}
 The 2$^3$S diagnostic (Section~\ref{sec:heimeta}) is gated in
 \code{tests/hei\_meta/} on three runs (low/high density and an
 \code{add\_fuv} run).  \textbf{Stage 1}: the data-file analytic limits
@@ -2044,8 +2134,8 @@ high-density run ($n_e = 1.1{\times}10^4 > n_{\rm crit}$) at 0.676 of the
 plateau; $\Phi_3$ from the band tally matches an independent $J_\nu$
 integration to $1.5{\times}10^{-9}$ (max $9.07{\times}10^{-5}$~s$^{-1}$); and
 $\alpha_3(10^4\,{\rm K}) = 0.998\times0.75\,\alpha_B({\rm He\,II})$, the
-diffuse \code{HEI\_F3S} consistency.  \textbf{Stage 2 (10830 absorption)}:
-the LINE10830 constants carry the $f$ ratio 1:3:5 and $A =
+diffuse \code{HEI\_F3S} consistency.  \textbf{Stage 2 (10833 absorption)}:
+the LINE10833 constants carry the $f$ ratio 1:3:5 and $A =
 1.0216{\times}10^7$~s$^{-1}$ each (NIST/p-winds, not the CHIANTI
 $1.15{\times}10^7$); a synthetic uniform cube reproduces the column
 conservation $\sum N A_{\rm pix} = \sum n V$ and the interior column
@@ -2061,23 +2151,34 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
 
 %==========================================================================
 \section{Known limitations and next steps}
+\label{sec:limits}
 \begin{itemize}
 \item By default He recombination emits only the three ground continua;
   the He\,\textsc{i} excited-channel ionizing photons ($\sim$60\% of He
   recombinations) are re-emitted only when \code{par\%hei\_diffuse} is
   set --- their effect on the He\,\textsc{i}/\textsc{ii} split against
   MOCASSIN is small (the split is set by the $>$24.6-eV budget).
+  The He\,\textsc{ii} excited cascade has no such channel: its
+  Ly$\alpha$ (40.8~eV) and two-photon continuum can ionize H and
+  He\,\textsc{i} but are not transported (Section~\ref{sec:twophoton}).
+  Immaterial wherever He$^{2+}$ is absent, as in both Lexington
+  benchmarks; it belongs to the hard-spectrum track.
 \item The EUV part of the leaf field, below the SEDust optics grid, is
   folded into the shortest SEDust bin (energy-conserving; spike
   hardness slightly underestimated).
 \item The thermal-loop line cooling is suppressed to the local $n_e$ by
   default (\code{cooling\_model = local\_ne}) through the $(T,n_e)$ table
-  of Section~\ref{sec:cool}; the one term still in its low-density limit
-  is the H-impact [C\,\textsc{ii}] 158\,$\mu$m / [O\,\textsc{i}]
-  63\,$\mu$m PDR cooling (\code{metal\_cooling\_H}, weighted by
-  $x_{\rm HI}$, so $\sim$0 in the ionized benchmark zones but not yet
-  saturated in dense PDR gas).  Ar\,\textsc{ii} carries no cooling or
-  lines (no CHIANTI v11 level data).
+  of Section~\ref{sec:cool}, and the H-impact [C\,\textsc{ii}]
+  158\,$\mu$m / [O\,\textsc{i}] 63\,$\mu$m term (\code{metal\_cooling\_H},
+  weighted by $x_{\rm HI}$) carries its own two-level saturation.  What
+  remains is the \emph{cold} limit: the cooling fits hold over
+  $10^3$--$10^5$~K and collapse below that floor (their lowest excitation
+  temperature is 2054~K for C\,\textsc{i}, far above the 23.6~K of
+  [C\,\textsc{i}] 609.1\,$\mu$m), and no H-collider term exists for the
+  [C\,\textsc{i}] fine-structure lines --- so gas colder than
+  $\sim$$10^3$~K, where hydrogen is the collider, is outside the cooling
+  model.  Ar\,\textsc{ii} carries no cooling or lines (no CHIANTI v11
+  level data).
 \item PDR zones: with the Section~\ref{sec:pdr} switches off (the
   default), the FUV extension gives the PDR-side \emph{ion structure}
   only; with them on, $n_e$, metal photoheating, and photoelectric
@@ -2089,8 +2190,8 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8210~K, HII20 7024~K) matches a current \textsc{Cloudy}
-  c25.00 run to 0.4~K and 1.6\%, the earlier excess having been traced to
+  MoCHII (HII40 8211~K, HII20 7025~K) matches a current \textsc{Cloudy}
+  c25.00 run to 0.7~K and 1.7\%, the earlier excess having been traced to
   two Tier-1 cooling defects (D1/D2) and the missing density suppression,
   all fixed.  The one remaining note is that both modern codes sit a few
   hundred K above the 2000-era published Lexington temperatures --- a

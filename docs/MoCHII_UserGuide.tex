@@ -406,7 +406,7 @@ parameter & default & meaning \\
 parameter & default & meaning \\
 \midrule
 \code{emis\_output} & F & write \code{\_emis} (HDF5/FITS): leaf-by-leaf line emissivities + the state needed for maps (Section~\ref{sec:outputs}) \\
-\code{hei\_metastable} & F & write \code{\_heimeta} (HDF5/FITS): the He\,\textsc{i} 2$^3$S metastable density $n_3$, its photoionization rate $\Phi_3$, plus $n_{\rm H}$, $n_e$, $T_e$, and leaf geometry (the 10830~\AA\ absorption diagnostic; Section~\ref{sec:outputs}).  With \code{add\_fuv} and \code{efuv\_min}=4.78 the soft-UV part of $\Phi_3$ is included \\
+\code{hei\_metastable} & F & write \code{\_heimeta} (HDF5/FITS): the He\,\textsc{i} 2$^3$S metastable density $n_3$, its photoionization rate $\Phi_3$, plus $n_{\rm H}$, $n_e$, $T_e$, and leaf geometry (the 10833~\AA\ absorption diagnostic; Section~\ref{sec:outputs}).  With \code{add\_fuv} and \code{efuv\_min}=4.78 the soft-UV part of $\Phi_3$ is included \\
 \code{h\_coll\_effects} & F & add the collisional H\,\textsc{i} Balmer component (excitation of neutral H) as separate \code{hc} rows/blocks; matters at fronts and hot cells \\
 \code{fe\_levels\_full} & F & load the expanded Fe\,\textsc{ii}/\textsc{iii} models (\code{nlevel\_fe\_\{2,3\}\_full.txt}, 16/34 levels) instead of the compact 13/14 for iron-line studies \\
 \code{diffuse\_field} & F & explicit ground-recombination packets \\
@@ -517,7 +517,10 @@ iteration: \code{CONVERGD} (did it converge), \code{NITERDON}
 \label{sec:lineout}
 \code{<base>\_lines.txt} is a text table of integrated line luminosities on
 the converged state, one row for each line: element, ionization stage,
-wavelength [\AA], $L$ [erg\,s$^{-1}$], and $L/L({\rm H}\beta)$.  With
+wavelength [\AA], $L$ [erg\,s$^{-1}$], and $L/L({\rm H}\beta)$.  It is
+written by every run: the H and He recombination lines need only $n_e$,
+$T_e$ and the He ionization state, so an H/He model at fixed temperature
+gets its table too, with the metal blocks simply absent.  With
 \code{emis\_output} the same line set is also written leaf-by-leaf to
 \code{<base>\_emis} (HDF5, or FITS with \code{file\_format='fits'}) as
 emissivity blocks in erg\,s$^{-1}$\,cm$^{-3}$, where
@@ -540,11 +543,11 @@ block & source & lines & weighting, when present \\
   H$\delta$ 4103, Pa$\alpha$ 1.876\,$\mu$m, Pa$\beta$ 1.282\,$\mu$m,
   Br$\gamma$ 2.166\,$\mu$m & always; $n_e\,n_{\rm HII}$ \\
 \code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{line\_case}) &
-  1640, 3204, 4543, 4686, 5413, 10126 & only where an He\,\textsc{iii}
+  1640, 3204, 4543, 4687, 5413, 10126 & only where an He\,\textsc{iii}
   zone exists; $n_e\,n_{\rm HeIII}$ \\
 \code{emis\_hei} & Porter et al.\ (2012/2013) He\,\textsc{i}, case-B
   collisional-radiative (density-dependent) &
-  3889, 4026, 4471, 5876, 6678, 7065, 7281, 10830 & where He\,\textsc{ii}
+  3890, 4027, 4473, 5877, 6680, 7067, 7283, 10833 & where He\,\textsc{ii}
   is present; $n_e\,n_{\rm HeII}$ \\
 \code{emis\_hc} & 25-level H\,\textsc{i} collisional solve &
   H$\alpha$/H$\beta$/H$\gamma$ collisional component (separate \code{hc}
@@ -633,7 +636,7 @@ file & content \\
 \code{\_dustir.txt} & equilibrium-mixture dust IR spectrum (1--1000 $\mu$m) with the energy-closure header \\
 \code{\_dustsed.txt} & SEDust stochastic dust SED with PAH bands (when \code{dust\_sed}) \\
 \code{\_dustemis.h5} & (with \code{dust\_emis\_bands}) SEDust band emissivities of each leaf, same block layout as \code{\_emis} --- readable by \code{EmisData} for dust-band maps \\
-\code{\_heimeta.h5} & (with \code{hei\_metastable}) the He\,\textsc{i} 2$^3$S diagnostic: \code{n\_2s3} [cm$^{-3}$] (with the \code{DIST\_CM} and \code{A31} keywords), \code{Phi\_3} [s$^{-1}$], \code{n\_H}, \code{n\_e}, \code{T\_e}, \code{LeafXYZ}, \code{LeafSize} --- read by the Python \code{HeiMetaData} class for column and 10830~\AA\ optical-depth maps, and convertible to a LaRT scattering-medium input by \code{heimeta\_to\_lart.py} \\
+\code{\_heimeta.h5} & (with \code{hei\_metastable}) the He\,\textsc{i} 2$^3$S diagnostic: \code{n\_2s3} [cm$^{-3}$] (with the \code{DIST\_CM} and \code{A31} keywords), \code{Phi\_3} [s$^{-1}$], \code{n\_H}, \code{n\_e}, \code{T\_e}, \code{LeafXYZ}, \code{LeafSize} --- read by the Python \code{HeiMetaData} class for column and 10833~\AA\ optical-depth maps, and convertible to a LaRT scattering-medium input by \code{heimeta\_to\_lart.py} \\
 \code{\_image.h5} & (with \code{ion\_peel}) peel-off images for each observer: \code{direct\_ion}/\code{scatt\_ion} (+\code{\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$], suffix \code{\_obs<k>} when several observers; with \code{peel\_bins}, \code{direct\_cube}/\code{scatt\_cube} $(n_x,n_y,n_\nu)$ and the \code{E\_bin}/\code{dE\_bin}/\code{wl\_bin} bin-grid arrays; with \code{save\_direc0}, the unattenuated \code{direc0\_ion}/\code{\_fuv} (or \code{direc0\_cube}) \\
 \code{\_slab\_Imu.txt} & (with \code{source\_geometry\,=\,'slab'}) the emergent intensity $I(\mu)$ at the two z-boundaries: columns $\mu$, $I_{\rm top}$, $I_{\rm bot}$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] on \code{slab\_nmu} bins ($F=2\pi\!\int\! I\mu\,{\rm d}\mu$), with the reflected / transmitted / absorbed energy budget (fractions of the entering $L$) in the header \\
 \bottomrule
@@ -717,23 +720,23 @@ written before \code{LeafSize} existed falls back to a nearest-leaf
 slice (a one-time note is printed).  The command line takes
 \code{--slice FIELD --axis z --coord 0} on either file.
 
-\subsection{He\,\textsc{i} 2$^3$S metastable and 10830~\AA\ absorption}
+\subsection{He\,\textsc{i} 2$^3$S metastable and 10833~\AA\ absorption}
 The \code{\_heimeta} file (\code{hei\_metastable}) is read by the
 \code{HeiMetaData} class, which adds a line-of-sight column map and the
-10830~\AA\ line-center optical depth:
+10833~\AA\ line-center optical depth:
 \begin{verbatim}
 from mochii_output import HeiMetaData
 d = HeiMetaData("run_heimeta.h5")
 d.info()                                   # n_2s3, Phi_3, line constants
 img, ext = d.column_map("n_2s3")           # LOS column [cm^-2]
-img, ext = d.tau10830_map(v_turb=0.0,      # tau_0 map (km/s turbulence)
+img, ext = d.tau10833_map(v_turb=0.0,      # tau_0 map (km/s turbulence)
                           component="doublet")  # blended J'=1,2 pair
 fig, ax = d.plot_column("n_2s3", log=True)
-fig, ax = d.plot_tau10830(component="all")
+fig, ax = d.plot_tau10833(component="all")
 \end{verbatim}
 \code{column\_map} is the same flux-conserving deposit as the line maps
 with weight $n\,V$, so $\sum N\,A_{\rm pix} = \sum n\,V$ to machine
-precision.  \code{tau10830\_map} deposits the line-center opacity
+precision.  \code{tau10833\_map} deposits the line-center opacity
 $\kappa_0 = \frac{\sqrt{\pi}\,e^2}{m_e c} f\,\frac{\lambda}{b}\,n_3$,
 $b = \sqrt{2 k T_e/m_{\rm He} + v_{\rm turb}^2}$, so a pixel value is
 $\int\!\kappa_0\,{\rm d}l$.  \code{component} selects the resolved
@@ -741,9 +744,9 @@ $J'=0$ line (10832.06~\AA), the blended $J'=1,2$ \code{'doublet'}
 (10833.22/10833.31~\AA, 0.089~\AA\ apart, inside the thermal Doppler
 width), or \code{'all'}; the constants ($\lambda$, $f$, $A$) come from
 \code{data/atomic/hei\_metastable.txt}.  The map warns when line-center
-$\tau_0 > 1$: the diagnostic assumes optically thin 10830 (line transfer
+$\tau_0 > 1$: the diagnostic assumes optically thin 10833 (line transfer
 is out of scope).  The command line takes \code{--column n\_2s3} or
-\code{--tau10830 --component doublet --vturb 5}.
+\code{--tau10833 --component doublet --vturb 5}.
 
 Where line transfer \emph{is} wanted (resonant-scattering emission
 profiles from the metastable medium), \code{heimeta\_to\_lart.py} (in
@@ -791,7 +794,7 @@ directory & what it demonstrates / gate \\
 \code{multi\_src} & multiple point sources: superposition, spectrum resolution, one-file spectra \\
 \code{peel\_ext} & external-field peel: silhouette flux vs.\ $J A_{\rm proj}/d^2$, chord $\tau$ spectrum \\
 \code{qmc} & quasi-random launch: Sobol generator vs.\ \code{scipy} + Owen-net balance; the fixed-state variance gate (cell-wise $\Gamma_{\rm HI}$ gain $29\times$ at $2^{17}$, $222\times$ at $2^{20}$) \\
-\code{hei\_meta} & He\,\textsc{i} 2$^3$S metastable: OH18 analytic limits, module $n_3$ vs.\ the Python closed form, $\Phi_3$ from the band tally, and the 10830~\AA\ column/optical-depth diagnostic (conservation + hand integral) \\
+\code{hei\_meta} & He\,\textsc{i} 2$^3$S metastable: OH18 analytic limits, module $n_3$ vs.\ the Python closed form, $\Phi_3$ from the band tally, and the 10833~\AA\ column/optical-depth diagnostic (conservation + hand integral) \\
 \bottomrule
 \end{tabular}
 \end{center}

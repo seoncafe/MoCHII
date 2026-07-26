@@ -49,13 +49,37 @@ the default) MoCHII suppresses each fit to the local electron density with a
 produce the line diagnostics, so the thermal-balance cooling is
 density-dependent and the cooling and the emergent lines are one physics;
 `par%cooling_model = 'low_density'` uses the fits directly (the coronal limit,
-exact in diffuse gas).
+exact in diffuse gas).  Every ion that carries a cooling fit now also carries
+an `nlevel_<ion>.txt` model, so the suppression covers the whole registry.
+
+The fits hold over their stated range, 10^3-10^5 K, and must not be
+extrapolated below it: the fitted exponentials (the lowest is
+`T_i = 2054 K` for C I) collapse well before the true excitation temperatures
+of the far-infrared fine-structure lines ([C I] 609.1 um is 23.6 K), so in
+cold neutral gas the metal line cooling from these fits goes to zero.  That
+gas is also where hydrogen, not electrons, is the collider, and only
+[C II] 158 um and [O I] 63 um have an H-impact term
+(`species_mod::metal_cooling_H`).
 
 Maximum fit errors are recorded in each header: at or below ~0.7% across
 the default C/N/O/Ne/S set except C III (5.5% full range, 0.50% where the
 ion cools) and S II (2.2%), with larger errors (up to ~28% for Si III, 7–9%
 for the Cl ions) for the heavily depleted Si, Cl, and Ca ions, whose
 contribution to the thermal balance is ~10^-4 at their abundances.
+
+## Wavelengths
+
+Every wavelength written by MoCHII is a **vacuum** wavelength. The SH95 H I and
+He II tables carry vacuum values directly, and the n-level wavelengths follow
+from observed level energy differences, which are vacuum by construction. The
+one table whose source uses air wavelengths is the Porter He I set (indexed by
+air wavelength in the Cloudy file it is parsed from); `make_hei_lines.py`
+converts those to vacuum on the way out with the inverse of the IAU standard
+dispersion of air, so the emitted line table has one convention throughout. The
+He I triplet line is therefore 10833 A here, not the 10830 A of the air-based
+literature, and the identifiers that name it follow: the `LINE10833` keyword of
+`hei_metastable.txt`, the `tau10833_map` reader, and the `HeI10833` label of
+the Porter table.
 
 ## Other files
 
@@ -65,5 +89,5 @@ contribution to the thermal balance is ~10^-4 at their abundances.
 | `element_<el>.txt` | photoionization, recombination, collisional-ionization, and charge-exchange data of one element |
 | `badnell_rr.dat`, `badnell_dr.dat` | Badnell radiative and dielectronic recombination fit parameters |
 | `sh95_*.txt`, `hei_porter_caseB.txt` | recombination-line emissivity tables |
-| `hei_metastable.txt` | He I 2^3S metastable rate coefficients and the 10830 A line constants |
+| `hei_metastable.txt` | He I 2^3S metastable rate coefficients and the 10833 A line constants |
 | `gauntff_vh14.dat`, `gamma*.dat` | free-free Gaunt factors and free-bound emission tables |

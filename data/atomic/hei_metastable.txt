@@ -27,10 +27,10 @@
 #  sigma_3(E) : He 2^3S photoionization, two VFKY96 wings + a log-linear
 #     bridge; ~4%% fit to Norcross (1971) + TOPbase (EXHALE sigma_HeI23S);
 #     threshold 4.78 eV.  Cross-checked vs p-winds (same Norcross data).
-#  q_10830 : 2^3S->2^3P collisional excitation (Stage 2 emission source,
+#  q_10833 : 2^3S->2^3P collisional excitation (Stage 2 emission source,
 #     recorded only; Black 1981 form).
-#  LINE10830 : 2^3S->2^3P_{0,1,2} fine-structure line constants for the
-#     10830 A line-center absorption opacity (Stage 2).  Vacuum
+#  LINE10833 : 2^3S->2^3P_{0,1,2} fine-structure line constants for the
+#     10833 A line-center absorption opacity (Stage 2).  Vacuum
 #     wavelength [A], oscillator strength f, Einstein A [s^-1].  NIST
 #     ASD (Drake 2007) values, via p-winds (p_winds/lines.py).  A-value
 #     RESOLUTION: NIST/p-winds give A=1.0216e7 s^-1 for each component; the
@@ -49,8 +49,8 @@
 #     Q = A_lo (300/T)^p_lo (T<=Tsplit) else A_hi (300/T)^p_hi
 #  SIGMA3A/SIGMA3B  E_th E_0 s_0 y_a P y_w y_0 y_1   (VFKY96; s_0 in Mb)
 #  SIGBRIDGE  E3 E4          - bridge boundaries [eV] (log-linear join)
-#  Q10830  A E0              - q = A sqrt(T) exp(-E0/T)  (Stage 2)
-#  LINE10830  lambda_vac_A f A   - 10830 fine-structure component
+#  Q10833  A E0              - q = A sqrt(T) exp(-E0/T)  (Stage 2)
+#  LINE10833  lambda_vac_A f A   - 10833 fine-structure component
 #     (one line for each 2^3P_J component; kappa_0 = sqrt(pi) e^2/(m_e c)
 #      f (lambda/b) n_3, b = sqrt(2 k T_e/m_He + v_turb^2))
 #
@@ -65,7 +65,7 @@ PENNING     4.000000e+03   1.900000e-09   7.000000e-02   9.100000e-09   5.000000
 SIGMA3A     4.780000e+00   2.645000e+00   2.080000e+01   1.000000e+12   3.420000e+00   2.681000e+00   1.956000e+00   2.603000e+00
 SIGMA3B     4.559000e+01   4.968000e+01   1.052000e+03   4.393000e-02   2.941000e+00   1.717000e+00   5.488000e-05   1.118000e+00
 SIGBRIDGE   3.469642e+01   4.559248e+01
-Q10830      1.160000e-20   1.317900e+04
-LINE10830   1.083206e+04   5.990200e-02   1.021600e+07
-LINE10830   1.083322e+04   1.797400e-01   1.021600e+07
-LINE10830   1.083331e+04   2.995800e-01   1.021600e+07
+Q10833      1.160000e-20   1.317900e+04
+LINE10833   1.083206e+04   5.990200e-02   1.021600e+07
+LINE10833   1.083322e+04   1.797400e-01   1.021600e+07
+LINE10833   1.083331e+04   2.995800e-01   1.021600e+07

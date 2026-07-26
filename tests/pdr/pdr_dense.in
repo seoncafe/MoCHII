@@ -1,0 +1,65 @@
+&parameters
+ ! Dense PDR thermal balance: the isrf_cloud geometry (nH = 5e3 clump in the
+ ! Draine ISRF preset) with the thermal solve ON, so the metal line cooling
+ ! actually enters.  This is the case where the [C I] 609.1/370.4um and
+ ! [N I] 5198/5200 critical densities matter: n_e comes from the metals only
+ ! (H stays neutral under an FUV-only field), grain photoelectric heating
+ ! balances the line cooling.  The equilibrium lands at T_e = 19-40 K, BELOW
+ ! the 1e3 K floor of the Tier-1 cooling fits, where the fitted exponentials
+ ! (lowest T_i = 2054 K for C I) have collapsed: the metal line cooling is
+ ! then ~0 whatever the density suppression does, and the [C I] 609.1/370.4um
+ ! cooling of such gas would have to come from an H-collider term the code
+ ! does not yet carry.  This case exists to mark that boundary.
+ par%no_photons    = 4.0e6
+ par%iseed         = 1234
+
+ par%grid_type     = 'car'
+ par%nx = 48
+ par%ny = 48
+ par%nz = 48
+ par%xmax = 0.5
+ par%ymax = 0.5
+ par%zmax = 0.5
+ par%nH_const      = 5.0e3
+ par%rmax          = 0.45
+ par%distance_unit = 'pc'
+ par%dust_model    = 'global_dgr'
+
+ par%use_ion_band  = .true.
+ par%nnu_ion       = 16
+ par%add_fuv       = .true.
+ par%efuv_min      = 6.0
+ par%nnu_fuv       = 16
+ par%He_abund      = 0.1
+ par%xHI_init      = 1.0
+
+ par%nsource       = 0
+ par%ext_spectrum  = 'draine'
+ par%ext_scale     = 1.0
+
+ par%use_metals    = .true.
+ par%atomic_dir    = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%abund_Mg      = 3.0e-6
+ par%abund_Fe      = 3.0e-7
+ par%ion_metal_abs = .true.
+ par%metal_ne      = .true.
+ par%metal_heat    = .true.
+ par%grain_pe      = .true.
+
+ par%ion_add_dust  = .true.
+ par%ion_dust_kext = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
+ par%cext_dust     = 4.868e-22
+ par%DGR           = 1.0
+
+ par%gas_niter     = 30
+ par%conv_crit     = 'cell'
+ par%gas_tol       = 5.0e-3
+ par%gas_tol_te    = 1.0e-2
+ par%case_ab       = 'B'
+ par%solve_te      = .true.
+ par%te_min        = 10.0
+ par%te_max        = 3.0e4
+
+ par%file_format   = 'hdf5'
+ par%out_file      = 'pdr_dense.h5'
+/

@@ -71,31 +71,45 @@ plt.rcParams.update({
     "figure.titlesize": _b * 1.2 * _S,
 })
 from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 fig, axes = plt.subplots(2, 2, figsize=(12, 11), sharex=True, sharey=True)
 ext = [-BOX/2, BOX/2, -BOX/2, BOX/2]
 
+
+def cbar(im, ax, label):
+    """Colorbar of exactly the drawn image height.
+
+    The panels have a fixed data aspect, so the axes box is taller than the
+    square image and a plain colorbar overshoots it top and bottom.  The
+    axes divider tracks the aspect-adjusted box instead.
+    """
+    cax = make_axes_locatable(ax).append_axes("right", size="4%", pad=0.06)
+    cb = plt.colorbar(im, cax=cax)
+    cb.set_label(label)
+    return cb
+
 im = axes[0, 0].imshow(nH_map.T, origin="lower", extent=ext,
                        norm=LogNorm(vmin=1e-5, vmax=1.0), cmap="viridis",
                        rasterized=True)
-plt.colorbar(im, ax=axes[0, 0], label=r"$n_{\rm H}$ [cm$^{-3}$]")
+cbar(im, axes[0, 0], r"$n_{\rm H}$ [cm$^{-3}$]")
 axes[0, 0].set_title("gas density (TNG cutout)")
 
 im = axes[0, 1].imshow(xhi_map.T, origin="lower", extent=ext,
                        norm=LogNorm(vmin=1e-5, vmax=1.0), cmap="magma_r",
                        rasterized=True)
-plt.colorbar(im, ax=axes[0, 1], label=r"$x_{\rm HI}$")
+cbar(im, axes[0, 1], r"$x_{\rm HI}$")
 axes[0, 1].set_title(r"neutral fraction (converged)")
 
 im = axes[1, 0].imshow(te_map.T, origin="lower", extent=ext,
                        vmin=3e3, vmax=3e4, cmap="inferno",
                        rasterized=True)
-plt.colorbar(im, ax=axes[1, 0], label=r"$T_e$ [K]")
+cbar(im, axes[1, 0], r"$T_e$ [K]")
 axes[1, 0].set_title(r"electron temperature")
 
 im = axes[1, 1].imshow(size_map.T, origin="lower", extent=ext,
                        cmap="cividis_r", rasterized=True)
-plt.colorbar(im, ax=axes[1, 1], label=r"cell size [kpc]")
+cbar(im, axes[1, 1], r"cell size [kpc]")
 axes[1, 1].set_title("cell size (I-front re-refinement)")
 
 for ax in axes.flat:

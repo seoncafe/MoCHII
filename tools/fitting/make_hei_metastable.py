@@ -25,7 +25,7 @@ Sources (see the data-file header for the full provenance):
   sigma_3(E): two VFKY96 wings + a log-linear bridge, a ~4% fit to
               Norcross (1971) + TOPbase (EXHALE cross_sec.f90::sigma_HeI23S).
 
-Stage 2 (10830 A absorption) adds the three fine-structure line constants
+Stage 2 (10833 A absorption) adds the three fine-structure line constants
 (2^3S -> 2^3P_{0,1,2}) needed for the line-center opacity kappa_0 =
 sqrt(pi) e^2/(m_e c) f (lambda/b) n_3.  The wavelengths, oscillator strengths,
 and Einstein A are the NIST ASD values (Drake 2007), taken through the p-winds
@@ -35,7 +35,7 @@ cross-check.  See the file header for the NIST-vs-CHIANTI resolution.
 EXHALE source routines (do not modify there):
   radiation/Cool_coeff.f90::{rec_HeII_23S, rec_HeII_11S, coex_HeI_1S_23S,
       coex_HeI_23S_21S, coex_HeI_23S_21P, penning_HeI_23S,
-      coex_rate_HeI23S_10830}
+      coex_rate_HeI23S_10833}
   util_ion_eq.f90::HeITR_coeffs (A_31)
   functions/cross_sec.f90::sigma_HeI23S
 """
@@ -80,11 +80,11 @@ PENNING = dict(Tsplit=4.0e3, A_lo=1.9e-9, p_lo=0.07, A_hi=9.1e-9, p_hi=0.50)
 # d3=-5.73001e-3 (<2% over 200-1e4 K).
 GM25 = dict(c=-8.64804e1, d1=-2.86766e-1, d2=8.68445e-2, d3=-5.73001e-3)
 
-# 2^3S -> 2^3P collisional excitation (10830 emission, Stage 2, recorded only):
+# 2^3S -> 2^3P collisional excitation (10833 emission, Stage 2, recorded only):
 # q(T) = 1.16e-20 sqrt(T) exp(-13179/T)  [cm^3 s^-1].
-Q10830 = (1.16e-20, 13179.0)
+Q10833 = (1.16e-20, 13179.0)
 
-# --- Stage 2: 10830 A fine-structure absorption constants (2^3S -> 2^3P_J).
+# --- Stage 2: 10833 A fine-structure absorption constants (2^3S -> 2^3P_J).
 # NIST ASD values (Drake 2007), via p-winds (p_winds/lines.py::he_3_properties).
 # Vacuum wavelengths [A]; oscillator strengths f (absorption); Einstein A [s^-1].
 # The three components carry EQUAL A: A_ul = (8 pi^2 e^2 / m_e c lambda^2)
@@ -97,9 +97,9 @@ Q10830 = (1.16e-20, 13179.0)
 # A(2^3S-2^3P) = 1.0216e7 s^-1 for each fine-structure component, and the public
 # OH18 code p-winds adopts the same value.  The CHIANTI he_1.wgfa entry of
 # ~1.15e7 s^-1 is ~13% higher and is NOT used; the NIST/p-winds value is
-# adopted here.  (This is the 10830 EMISSION rate 2^3S->2^3P; it is distinct
+# adopted here.  (This is the 10833 EMISSION rate 2^3S->2^3P; it is distinct
 # from A_31 = 1.272e-4 s^-1, the forbidden 2^3S->1^1S decay above.)
-LINE10830 = (
+LINE10833 = (
     #  lambda_vac [A]   f          A [s^-1]     (J' = 0, 1, 2)
     (10832.057, 5.9902e-2, 1.0216e7),
     (10833.217, 1.7974e-1, 1.0216e7),
@@ -219,10 +219,10 @@ def write_file():
         w("#  sigma_3(E) : He 2^3S photoionization, two VFKY96 wings + a log-linear")
         w("#     bridge; ~4%% fit to Norcross (1971) + TOPbase (EXHALE sigma_HeI23S);")
         w("#     threshold 4.78 eV.  Cross-checked vs p-winds (same Norcross data).")
-        w("#  q_10830 : 2^3S->2^3P collisional excitation (Stage 2 emission source,")
+        w("#  q_10833 : 2^3S->2^3P collisional excitation (Stage 2 emission source,")
         w("#     recorded only; Black 1981 form).")
-        w("#  LINE10830 : 2^3S->2^3P_{0,1,2} fine-structure line constants for the")
-        w("#     10830 A line-center absorption opacity (Stage 2).  Vacuum")
+        w("#  LINE10833 : 2^3S->2^3P_{0,1,2} fine-structure line constants for the")
+        w("#     10833 A line-center absorption opacity (Stage 2).  Vacuum")
         w("#     wavelength [A], oscillator strength f, Einstein A [s^-1].  NIST")
         w("#     ASD (Drake 2007) values, via p-winds (p_winds/lines.py).  A-value")
         w("#     RESOLUTION: NIST/p-winds give A=1.0216e7 s^-1 for each component; the")
@@ -241,8 +241,8 @@ def write_file():
         w("#     Q = A_lo (300/T)^p_lo (T<=Tsplit) else A_hi (300/T)^p_hi")
         w("#  SIGMA3A/SIGMA3B  E_th E_0 s_0 y_a P y_w y_0 y_1   (VFKY96; s_0 in Mb)")
         w("#  SIGBRIDGE  E3 E4          - bridge boundaries [eV] (log-linear join)")
-        w("#  Q10830  A E0              - q = A sqrt(T) exp(-E0/T)  (Stage 2)")
-        w("#  LINE10830  lambda_vac_A f A   - 10830 fine-structure component")
+        w("#  Q10833  A E0              - q = A sqrt(T) exp(-E0/T)  (Stage 2)")
+        w("#  LINE10833  lambda_vac_A f A   - 10833 fine-structure component")
         w("#     (one line for each 2^3P_J component; kappa_0 = sqrt(pi) e^2/(m_e c)")
         w("#      f (lambda/b) n_3, b = sqrt(2 k T_e/m_He + v_turb^2))")
         w("#")
@@ -261,9 +261,9 @@ def write_file():
         w("SIGMA3A    " + "  ".join("% .6e" % v for v in SIG3A))
         w("SIGMA3B    " + "  ".join("% .6e" % v for v in SIG3B))
         w("SIGBRIDGE  % .6e  % .6e" % (SIG3_E3, SIG3_E4))
-        w("Q10830     % .6e  % .6e" % Q10830)
-        for lam, fval, a in LINE10830:
-            w("LINE10830  % .6e  % .6e  % .6e" % (lam, fval, a))
+        w("Q10833     % .6e  % .6e" % Q10833)
+        for lam, fval, a in LINE10833:
+            w("LINE10833  % .6e  % .6e  % .6e" % (lam, fval, a))
     print("wrote", OUT)
 
 

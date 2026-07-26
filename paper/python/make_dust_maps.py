@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Regenerate the dust-emission surface-brightness maps for the paper.
 
-Reads the SEDust dust-band emissivity files (emis_dust [erg/s/cm^3] per band,
-with wl_dust in Angstrom) and projects each band, flux-conservingly, to a
-surface-brightness map S [erg/s/cm^2] with the same leaf deposit the paper's
-line maps use.  Wavelengths are labeled in micron; all text is TeX.
+Reads the SEDust dust-band emissivity files (emis_dust [erg/s/cm^3/um] per
+band, with wl_dust in Angstrom) and projects each band, flux-conservingly,
+with the same leaf deposit the paper's line maps use.
+
+Units: emis_dust is the power radiated per unit volume and per unit
+wavelength into the full 4 pi sr.  The deposit therefore gives L_lambda per
+pixel; dividing by the pixel area and by 4 pi turns it into the specific
+intensity I_lambda [erg/s/cm^2/sr/um], which is what the panels show (the
+nebula is optically thin in the infrared and the emission is isotropic, so
+I_lambda is just the emissivity integrated along the line of sight).
+Wavelengths are labeled in micron; all text is TeX.
 
 Outputs (PDF, vector):
   dustemis_maps.pdf : two dust-emission bands (8 and 160 um) of the standard
@@ -52,7 +59,8 @@ DDIR = os.path.join(HERE, "..", "..", "tests", "d_dusty")
 DUSTEMIS = os.path.join(DDIR, "dustemis_smoke_dustemis.h5")
 PAHLIVE = os.path.join(DDIR, "pahlive_smoke_dustemis.h5")
 
-SLABEL = r"$\log_{10} S\ [\mathrm{erg\,s^{-1}\,cm^{-2}}]$"
+SLABEL = (r"$\log_{10} I_\lambda\ "
+          r"[\mathrm{erg\,s^{-1}\,cm^{-2}\,sr^{-1}}\,\mu\mathrm{m}^{-1}]$")
 # LeafXYZ is in code length units; these runs set par%distance_unit = 'pc',
 # so DIST_CM = 3.0857e18 and one code unit is exactly 1 pc.
 XLABEL = r"$x$ [pc]"
@@ -78,10 +86,14 @@ class _DustEmis(_LeafProjectable):
         self.vol_cm3 = (self.size * self.dist_cm) ** 3
 
     def band_map(self, iband, npix=64):
-        """Surface brightness S [erg/s/cm^2] of band iband, log10, + extent."""
-        lum = self.emis[:, iband] * self.vol_cm3          # erg/s per leaf
+        """Specific intensity I_lambda of band iband, log10, + extent.
+
+        [erg/s/cm^2/sr/um]: the deposited L_lambda per pixel divided by the
+        pixel area and by the 4 pi sr the emissivity is integrated over.
+        """
+        lum = self.emis[:, iband] * self.vol_cm3          # erg/s/um per leaf
         img, extent, apix = self._deposit(lum, "z", npix, None)
-        S = img / apix                                    # erg/s/cm^2
+        S = img / apix / (4.0 * np.pi)                    # erg/s/cm^2/sr/um
         with np.errstate(divide="ignore"):
             logS = np.log10(np.where(S > 0, S, np.nan))
         return logS, extent
@@ -127,8 +139,22 @@ def radial_profile(logS, extent, nbin=28):
         return rc, np.log10(np.where(Sc > 0, Sc, np.nan))
 
 
-def make_dustemis():
-    d = _DustEmis(DUSTEMIS)
+def pah_scale(ref, live):
+    """The common 8 um brightness scale of the PAH-survival comparison.
+
+    Returned so the 8 um panel of the two-band figure carries the same
+    scale, making the two figures directly comparable.
+    """
+    b8r = int(np.argmin(np.abs(ref.wl_um - 8.0)))
+    b8l = int(np.argmin(np.abs(live.wl_um - 8.0)))
+    a, _ = ref.band_map(b8r)
+    b, _ = live.band_map(b8l)
+    both = np.concatenate([a[np.isfinite(a)].ravel(),
+                           b[np.isfinite(b)].ravel()])
+    return np.percentile(both, 1.0), both.max()
+
+
+def make_dustemis(d, vlim8=None):
     # bands nearest 8 and 160 um
     b8 = int(np.argmin(np.abs(d.wl_um - 8.0)))
     b160 = int(np.argmin(np.abs(d.wl_um - 160.0)))
@@ -138,7 +164,8 @@ def make_dustemis():
         logS, extent = d.band_map(ib)
         wl = d.wl_um[ib]
         title = r"dust $%g\,\mu$m" % wl
-        _panel(ax, logS, extent, title)
+        vmin, vmax = vlim8 if (ib == b8 and vlim8 is not None) else (None, None)
+        _panel(ax, logS, extent, title, vmin=vmin, vmax=vmax)
         prof.append((radial_profile(logS, extent), wl))
     ax = axes[2]
     for (rc, lS), wl in prof:
@@ -155,9 +182,7 @@ def make_dustemis():
     print("wrote", out, "bands (um):", d.wl_um[b8], d.wl_um[b160])
 
 
-def make_pahlive():
-    ref = _DustEmis(DUSTEMIS)     # PAHs everywhere
-    live = _DustEmis(PAHLIVE)     # x_HII-weighted PAH survival
+def make_pahlive(ref, live, vlim8):
     b8r = int(np.argmin(np.abs(ref.wl_um - 8.0)))
     b8l = int(np.argmin(np.abs(live.wl_um - 8.0)))
     fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
@@ -165,9 +190,7 @@ def make_pahlive():
     logS_live, _ = live.band_map(b8l)
     # both panels are the same 8 um band, so they share one brightness scale:
     # the comparison is between the two morphologies, not between two scales.
-    both = np.concatenate([logS_ref[np.isfinite(logS_ref)].ravel(),
-                           logS_live[np.isfinite(logS_live)].ravel()])
-    vmin, vmax = np.percentile(both, 1.0), both.max()
+    vmin, vmax = vlim8
     _panel(axes[0], logS_ref, extent, r"$8\,\mu$m: PAHs everywhere",
            vmin=vmin, vmax=vmax)
     _panel(axes[1], logS_live, extent,
@@ -191,5 +214,8 @@ def make_pahlive():
 
 
 if __name__ == "__main__":
-    make_dustemis()
-    make_pahlive()
+    ref = _DustEmis(DUSTEMIS)     # PAHs everywhere
+    live = _DustEmis(PAHLIVE)     # x_HII-weighted PAH survival
+    vlim8 = pah_scale(ref, live)
+    make_dustemis(ref, vlim8)
+    make_pahlive(ref, live, vlim8)

@@ -18,6 +18,8 @@ module nlevel_mod
 ! (de-excitation q_ul = 8.629e-6 Ups/(g_u sqrt T), excitation by detailed
 ! balance) + radiative A; closure sum(n_i) = 1 (Gaussian elimination).
 ! Line emissivity: j_ul = n_u A_ul dE_ul [erg/s per ion].
+! Every transition is oriented by ENERGY (emitting_level), never by the order
+! of its two index columns -- CHIANTI does not order them consistently.
 !
 ! Evaluated per leaf only at output time on the converged state.
 !---------------------------------------------------------------------------
@@ -160,6 +162,33 @@ contains
   end function ups_eval
 
   !=========================================================================
+  ! Orient a transition by ENERGY.  Spontaneous emission goes downward, so the
+  ! emitting level of a radiative row is the one with the higher term energy;
+  ! the collisional de-excitation rate q_ul = 8.629e-6 Ups/(g_u sqrt T) is the
+  ! rate out of that same level, and the Boltzmann factor of the excitation
+  ! rate needs dE >= 0.  The two index columns of the CHIANTI .wgfa/.scups
+  ! rows are NOT consistently ordered (O II lists 2D3/2 - 2D5/2, i.e. the
+  ! upper level first; N I lists 2D5/2 - 2D3/2, i.e. the lower level first),
+  ! so the pair is ordered here instead of being assumed.
+  ! Exactly degenerate levels (dE = 0) radiate no energy: the pair is then
+  ! ordered by the index arguments so the result stays deterministic, dE = 0
+  ! leaves the Boltzmann factor at unity, and the line emissivity vanishes.
+  !=========================================================================
+  subroutine emitting_level(atom, i1, i2, lo, hi, de_erg)
+    implicit none
+    type(nlevel_atom_type), intent(in)  :: atom
+    integer,                intent(in)  :: i1, i2
+    integer,                intent(out) :: lo, hi
+    real(kind=wp),          intent(out) :: de_erg
+    if (atom%e_cm1(i2) >= atom%e_cm1(i1)) then
+       lo = i1;  hi = i2
+    else
+       lo = i2;  hi = i1
+    end if
+    de_erg = (atom%e_cm1(hi) - atom%e_cm1(lo))*HC_ERG_CM
+  end subroutine emitting_level
+
+  !=========================================================================
   ! Level populations and line emissivities at (T, ne).
   ! emis(k) [erg/s per ion] for each NRAD transition k.
   !=========================================================================
@@ -175,16 +204,16 @@ contains
     n = atom%nlev
     R = 0.0_wp
     do k = 1, atom%nups
-       l = atom%ul_l(k);  u_ = atom%ul_u(k)
-       de_erg = (atom%e_cm1(u_) - atom%e_cm1(l))*HC_ERG_CM
+       call emitting_level(atom, atom%ul_l(k), atom%ul_u(k), l, u_, de_erg)
        ups  = ups_eval(atom, k, T)
        q_ul = COLL_PREF/(atom%g(u_)*sqrt(T))*ups
        q_lu = (atom%g(u_)/atom%g(l))*q_ul*exp(-de_erg/(kboltz_cgs*T))
-       R(u_,l) = R(u_,l) + ne*q_lu
-       R(l,u_) = R(l,u_) + ne*q_ul
+       R(u_,l) = R(u_,l) + ne*q_lu    ! excitation    l -> u
+       R(l,u_) = R(l,u_) + ne*q_ul    ! de-excitation u -> l
     end do
     do k = 1, atom%nrad
-       R(atom%rl(k), atom%ru(k)) = R(atom%rl(k), atom%ru(k)) + atom%A(k)
+       call emitting_level(atom, atom%rl(k), atom%ru(k), l, u_, de_erg)
+       R(l,u_) = R(l,u_) + atom%A(k)  ! radiative decay u -> l
     end do
 
     !--- M n = b with rate matrix (dn/dt = 0) + closure row.
@@ -224,8 +253,8 @@ contains
     end do
 
     do k = 1, atom%nrad
-       de_erg = (atom%e_cm1(atom%ru(k)) - atom%e_cm1(atom%rl(k)))*HC_ERG_CM
-       emis(k) = pop(atom%ru(k))*atom%A(k)*de_erg
+       call emitting_level(atom, atom%rl(k), atom%ru(k), l, u_, de_erg)
+       emis(k) = pop(u_)*atom%A(k)*de_erg
     end do
   end subroutine nlevel_emissivities
 
@@ -257,16 +286,16 @@ contains
     Rcoll = 0.0_wp
     Rrad  = 0.0_wp
     do k = 1, atom%nups
-       l = atom%ul_l(k);  u_ = atom%ul_u(k)
-       de_erg = (atom%e_cm1(u_) - atom%e_cm1(l))*HC_ERG_CM
+       call emitting_level(atom, atom%ul_l(k), atom%ul_u(k), l, u_, de_erg)
        ups  = ups_eval(atom, k, T)
        q_ul = COLL_PREF/(atom%g(u_)*sqrt(T))*ups
        q_lu = (atom%g(u_)/atom%g(l))*q_ul*exp(-de_erg/(kboltz_cgs*T))
-       Rcoll(u_,l) = Rcoll(u_,l) + q_lu
-       Rcoll(l,u_) = Rcoll(l,u_) + q_ul
+       Rcoll(u_,l) = Rcoll(u_,l) + q_lu   ! excitation    l -> u
+       Rcoll(l,u_) = Rcoll(l,u_) + q_ul   ! de-excitation u -> l
     end do
     do k = 1, atom%nrad
-       Rrad(atom%rl(k), atom%ru(k)) = Rrad(atom%rl(k), atom%ru(k)) + atom%A(k)
+       call emitting_level(atom, atom%rl(k), atom%ru(k), l, u_, de_erg)
+       Rrad(l,u_) = Rrad(l,u_) + atom%A(k)   ! radiative decay u -> l
     end do
   end subroutine nlevel_cooling_prepT
 
@@ -279,7 +308,7 @@ contains
     real(kind=wp),          intent(in) :: ne
     real(kind=wp) :: R(MAXLEV,MAXLEV), M(MAXLEV,MAXLEV+1), pop(MAXLEV)
     real(kind=wp) :: de_erg, fac
-    integer :: k, i, j, n, ip
+    integer :: k, i, j, n, ip, lo, hi
 
     n = atom%nlev
     R = ne*Rcoll + Rrad
@@ -322,10 +351,10 @@ contains
 
     lam = 0.0_wp
     do k = 1, atom%nrad
-       de_erg = (atom%e_cm1(atom%ru(k)) - atom%e_cm1(atom%rl(k)))*HC_ERG_CM
-       lam = lam + pop(atom%ru(k))*atom%A(k)*de_erg
+       call emitting_level(atom, atom%rl(k), atom%ru(k), lo, hi, de_erg)
+       lam = lam + pop(hi)*atom%A(k)*de_erg
     end do
-    !--- cooling coefficient: divide the per-ion cooling by n_e so the volume
+    !--- cooling coefficient: divide the cooling of one ion by n_e so the volume
     !--- cooling is ne n_ion Lambda_SE (matching cooling_eval).  ne > 0 always
     !--- here (the table floor is 1e-6 cm^-3).
     lam = lam/ne
@@ -348,12 +377,21 @@ contains
   end function nlevel_nlines
 
   !=========================================================================
-  ! Line identification: vacuum wavelength [Angstrom] of NRAD transition k.
+  ! Line identification: vacuum wavelength [Angstrom] of NRAD transition k,
+  ! from |E_u - E_l| so the two index columns may come in either order.
+  ! Exactly degenerate levels emit no photon; wl_A = 0 flags that row (its
+  ! emissivity is 0 as well) instead of dividing by zero.
   !=========================================================================
   real(kind=wp) function nlevel_line_ident(atom, k) result(wl_A)
     type(nlevel_atom_type), intent(in) :: atom
     integer,                intent(in) :: k
-    wl_A = 1.0e8_wp/(atom%e_cm1(atom%ru(k)) - atom%e_cm1(atom%rl(k)))
+    real(kind=wp) :: dcm
+    dcm = abs(atom%e_cm1(atom%ru(k)) - atom%e_cm1(atom%rl(k)))
+    if (dcm > 0.0_wp) then
+       wl_A = 1.0e8_wp/dcm
+    else
+       wl_A = 0.0_wp
+    end if
   end function nlevel_line_ident
 
 end module nlevel_mod

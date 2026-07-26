@@ -14,7 +14,7 @@ program test_cool_table
                                  nlevel_cooling_apply
   implicit none
 
-  integer, parameter :: NION = 7, NPT = 200, NTC = 40
+  integer, parameter :: NION = 9, NPT = 200, NTC = 40
   character(len=8) :: names(NION)
   integer :: stages(NION), idx(NION)
   type(nlevel_atom_type) :: atom
@@ -34,8 +34,10 @@ program test_cool_table
   par%fe_levels_full = .false.
   mpar%p_rank        = 0
 
-  names  = [character(len=8) :: 'o', 'o', 'n', 's', 'ne', 'c', 'fe']
-  stages = [3, 2, 2, 2, 3, 2, 3]
+  !--- C I and N I close the neutral-gas gap: their FIR/optical lines
+  !--- ([C I] 609.1/370.4um, [N I] 5198/5200) have low critical densities.
+  names  = [character(len=8) :: 'o', 'o', 'n', 's', 'ne', 'c', 'fe', 'c', 'n']
+  stages = [3, 2, 2, 2, 3, 2, 3, 1, 1]
 
   write(*,'(a)') '=== register ions (nlevel_cooling_add) ==='
   do k = 1, NION

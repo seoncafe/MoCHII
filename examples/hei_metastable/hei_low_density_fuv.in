@@ -15,7 +15,7 @@
  ! Phi_3/A_31 profile.  Without add_fuv (hei_low_density) only the EUV band
  ! (>= 13.6 eV) photoionizes 2^3S, and Phi_3 stays << A_31 in the core; the
  ! soft-UV segment [4.78, 13.6) eV is what makes Phi_3 matter.  This is the
- ! regime relevant to exoplanet-transit and chromospheric 10830 absorption,
+ ! regime relevant to exoplanet-transit and chromospheric 10833 absorption,
  ! where the soft-UV field controls the metastable reservoir.
  par%no_photons    = 2.0e6
  par%iseed         = 1234

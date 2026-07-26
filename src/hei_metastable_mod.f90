@@ -26,11 +26,11 @@ module hei_metastable_mod
 ! is a ~1e-7 trace of He, its energy budget negligible).  Output section file
 ! '<base>_heimeta' carries n_2s3, Phi_3, n_H, n_e, T_e + leaf geometry.
 !
-! CAVEATS (see docs/HEI_10830_PLAN.md sec. 8):
+! CAVEATS (see docs/HEI_10833_PLAN.md sec. 8):
 !  (i)   local equilibrium: the advection term (v df_3/dr) is absent - valid
 !        in dense H II regions (2^3S destruction time short vs any flow time),
 !        not a faithful reproduction of an outflow benchmark;
-!  (ii)  10830 can be optically thick in dense metastable regions (a line-
+!  (ii)  10833 can be optically thick in dense metastable regions (a line-
 !        transfer treatment of the absorption is out of scope here - this
 !        module gives n_3, not tau);
 !  (iii) the n_HI Q_31 sink is the neutral/PDR channel (Penning ionization
@@ -246,7 +246,7 @@ contains
        case ('SIGMA3A');   read(line,*) key, hm_sigA
        case ('SIGMA3B');   read(line,*) key, hm_sigB
        case ('SIGBRIDGE'); read(line,*) key, hm_E3, hm_E4
-       case ('Q10830');    ! Stage 2 emission source; recorded, not used here
+       case ('Q10833');    ! Stage 2 emission source; recorded, not used here
        end select
     end do
     close(unit)

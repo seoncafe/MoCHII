@@ -40,7 +40,7 @@ from leaf_field import leaf_slice, leaf_slice_nn, plot_slice, leaf_box_mask
 
 HC_ERG_A = 1.9864458571489287e-08     # h*c [erg Angstrom]
 
-# Line-center absorption (He I 10830 diagnostic): the Doppler line-center
+# Line-center absorption (He I 10833 diagnostic): the Doppler line-center
 # opacity is kappa_0 = sqrt(pi) e^2/(m_e c) f (lambda/b) n_l, with the classical
 # integrated cross section pi e^2/(m_e c) = 0.02654 cm^2 Hz divided by
 # sqrt(pi) b for the Gaussian peak.  Constants below in CGS (e, m_e, c) and the
@@ -555,8 +555,8 @@ def _default_atomic_dir():
                         "..", "..", "data", "atomic")
 
 
-def read_line10830(atomic_dir=None):
-    """Read the LINE10830 fine-structure constants from hei_metastable.txt.
+def read_line10833(atomic_dir=None):
+    """Read the LINE10833 fine-structure constants from hei_metastable.txt.
 
     Returns a (3, 3) array of rows (vacuum wavelength [A], oscillator strength
     f, Einstein A [s^-1]) for the 2^3S -> 2^3P_{0,1,2} components, in file
@@ -571,10 +571,10 @@ def read_line10830(atomic_dir=None):
             if ln.startswith("#") or not ln:
                 continue
             t = ln.split()
-            if t[0] == "LINE10830":
+            if t[0] == "LINE10833":
                 rows.append([float(x) for x in t[1:4]])
     if len(rows) != 3:
-        raise ValueError("expected 3 LINE10830 rows in hei_metastable.txt, "
+        raise ValueError("expected 3 LINE10833 rows in hei_metastable.txt, "
                          f"found {len(rows)}")
     return np.asarray(rows, float)
 
@@ -584,9 +584,9 @@ class HeiMetaData(_LeafProjectable):
 
     Carries the 2^3S density n_2s3 [cm^-3], the 2^3S photoionization rate Phi_3
     [s^-1], n_e, T_e, and the leaf geometry.  Adds a line-of-sight ``column_map``
-    (from _LeafProjectable) and a ``tau10830_map`` for the 10830 A line-center
+    (from _LeafProjectable) and a ``tau10833_map`` for the 10833 A line-center
     optical depth, using the fine-structure constants from
-    data/atomic/hei_metastable.txt (Stage 2 of docs/HEI_10830_PLAN.md).
+    data/atomic/hei_metastable.txt (Stage 2 of docs/HEI_10833_PLAN.md).
     """
 
     def __init__(self, fname, atomic_dir=None):
@@ -607,7 +607,7 @@ class HeiMetaData(_LeafProjectable):
             if name in sec and sec[name]["data"] is not None:
                 self.fields[name] = np.asarray(sec[name]["data"], float).ravel()
         self.vol_cm3 = (self.size * self.dist_cm)**3
-        self.lines10830 = read_line10830(atomic_dir)     # (3, 3): lam[A], f, A
+        self.lines10833 = read_line10833(atomic_dir)     # (3, 3): lam[A], f, A
 
     def info(self):
         n3 = self.fields["n_2s3"]
@@ -615,29 +615,29 @@ class HeiMetaData(_LeafProjectable):
               f"max n_2s3 = {n3.max():.3e} cm^-3, "
               f"max Phi_3 = {self.fields['Phi_3'].max():.3e} s^-1")
         print("fields:", ", ".join(sorted(self.fields)))
-        print("10830 components (vac A, f, A s^-1):",
+        print("10833 components (vac A, f, A s^-1):",
               ", ".join("%.3f/%.4f/%.3e" % (r[0], r[1], r[2])
-                        for r in self.lines10830))
+                        for r in self.lines10833))
 
     def __repr__(self):
         return (f"HeiMetaData('{self.fname}', nleaf={self.nleaf})")
 
-    # -- 10830 line-center opacity ------------------------------------------
+    # -- 10833 line-center opacity ------------------------------------------
     def _component_rows(self, component):
-        """Rows of self.lines10830 selected by ``component``:
+        """Rows of self.lines10833 selected by ``component``:
         'doublet' -> the blended J'=1,2 pair; 'all' -> all three; an int
         0/1/2 -> that single fine-structure component."""
         if component == "doublet":
-            return self.lines10830[[1, 2], :]
+            return self.lines10833[[1, 2], :]
         if component == "all":
-            return self.lines10830
+            return self.lines10833
         i = int(component)
         if i not in (0, 1, 2):
             raise ValueError("component must be 'doublet', 'all', or 0/1/2")
-        return self.lines10830[[i], :]
+        return self.lines10833[[i], :]
 
-    def kappa0_10830(self, v_turb=0.0, component="doublet"):
-        """Leaf line-center absorption coefficient [cm^-1] of the 10830 line.
+    def kappa0_10833(self, v_turb=0.0, component="doublet"):
+        """Leaf line-center absorption coefficient [cm^-1] of the 10833 line.
 
         kappa_0 = sqrt(pi) e^2/(m_e c) sum_i f_i (lambda_i/b) n_3, with the
         Doppler b-parameter b = sqrt(2 k T_e/m_He + v_turb^2).  ``v_turb`` is
@@ -655,27 +655,27 @@ class HeiMetaData(_LeafProjectable):
         f_lam = np.sum(rows[:, 1] * rows[:, 0] * 1.0e-8)
         return SQRTPI_E2_MEC * f_lam * n3 / b                 # cm^-1
 
-    def tau10830_map(self, v_turb=0.0, component="doublet", axis="z",
+    def tau10833_map(self, v_turb=0.0, component="doublet", axis="z",
                      npix=256, slab=None, warn=True):
         """Line-center optical depth map tau_0 = integral kappa_0 dl of the
-        10830 A line.
+        10833 A line.
 
         Uses the same flux-conserving deposit as ``column_map`` on the leaf
         opacity kappa_0 [cm^-1] (kappa_0 * V summed along the LOS, divided by
         the pixel area = integral kappa_0 dl).  ``component`` = 'doublet'
         (default; the blended J'=1,2 pair), 'all', or 0/1/2; ``v_turb`` [km/s].
         When ``warn`` and any pixel has line-center tau > 1, prints a warning:
-        the diagnostic assumes optically thin 10830 (line transfer is out of
-        scope; see docs/HEI_10830_PLAN.md sec. 5).  Returns (image, extent).
+        the diagnostic assumes optically thin 10833 (line transfer is out of
+        scope; see docs/HEI_10833_PLAN.md sec. 5).  Returns (image, extent).
         """
-        kappa = self.kappa0_10830(v_turb=v_turb, component=component)
+        kappa = self.kappa0_10833(v_turb=v_turb, component=component)
         img, extent, apix = self._deposit(kappa * self.vol_cm3, axis, npix,
                                            slab)
         tau = img / apix
         if warn and np.nanmax(tau) > 1.0:
-            print("warning: line-center tau_10830 > 1 (max = %.2f) in %d "
+            print("warning: line-center tau_10833 > 1 (max = %.2f) in %d "
                   "pixel(s) -- the optically-thin assumption fails there; "
-                  "line transfer is out of scope (see HEI_10830_PLAN sec. 5)"
+                  "line transfer is out of scope (see HEI_10833_PLAN sec. 5)"
                   % (np.nanmax(tau), int(np.count_nonzero(tau > 1.0))))
         return tau, extent
 
@@ -689,14 +689,14 @@ class HeiMetaData(_LeafProjectable):
                           cbar_label=lbl, title=field.replace("_", r"\_")
                           + " column", axis=axis)
 
-    def plot_tau10830(self, v_turb=0.0, component="doublet", axis="z",
+    def plot_tau10833(self, v_turb=0.0, component="doublet", axis="z",
                       npix=256, slab=None, log=True, ax=None, cmap="inferno"):
-        """10830 optical-depth map as a matplotlib figure; returns (fig, ax)."""
-        img, ext = self.tau10830_map(v_turb=v_turb, component=component,
+        """10833 optical-depth map as a matplotlib figure; returns (fig, ax)."""
+        img, ext = self.tau10833_map(v_turb=v_turb, component=component,
                                      axis=axis, npix=npix, slab=slab)
         return plot_slice(img, ext, ax=ax, log=log, cmap=cmap,
-                          cbar_label=r"$\tau_0$(10830)",
-                          title=r"He\,\textsc{i} 10830 " + str(component)
+                          cbar_label=r"$\tau_0$(10833)",
+                          title=r"He\,\textsc{i} 10833 " + str(component)
                           + r" $\tau_0$", axis=axis)
 
 
@@ -732,13 +732,13 @@ def _main():
     ap.add_argument("--column", metavar="FIELD",
                     help="line-of-sight column-density map of a leaf field "
                          "(n_2s3, n_e, ...) from a <base>_heimeta file")
-    ap.add_argument("--tau10830", action="store_true",
-                    help="10830 A line-center optical-depth map "
+    ap.add_argument("--tau10833", action="store_true",
+                    help="10833 A line-center optical-depth map "
                          "(<base>_heimeta file)")
     ap.add_argument("--component", default="doublet",
-                    help="10830 component: doublet (default), all, 0, 1, 2")
+                    help="10833 component: doublet (default), all, 0, 1, 2")
     ap.add_argument("--vturb", type=float, default=0.0,
-                    help="turbulent velocity [km/s] for the 10830 b-parameter")
+                    help="turbulent velocity [km/s] for the 10833 b-parameter")
     ap.add_argument("--axis", default="z", choices=["x", "y", "z"])
     ap.add_argument("--npix", type=int, default=256)
     ap.add_argument("--log", action="store_true", help="log10 color scale")
@@ -754,11 +754,11 @@ def _main():
         fig, ax = d.plot_column(args.column, axis=args.axis, npix=args.npix,
                                 log=args.log)
         base = f"column_{args.column}_{args.axis}"
-    elif args.tau10830:
+    elif args.tau10833:
         d = HeiMetaData(args.infile)
-        fig, ax = d.plot_tau10830(v_turb=args.vturb, component=args.component,
+        fig, ax = d.plot_tau10833(v_turb=args.vturb, component=args.component,
                                   axis=args.axis, npix=args.npix, log=args.log)
-        base = f"tau10830_{args.component}_{args.axis}"
+        base = f"tau10833_{args.component}_{args.axis}"
     elif args.slice:
         d = EmisData(args.infile) if is_emis else RatesData(args.infile)
         fig, ax = d.plot_field_slice(args.slice, axis=args.axis,

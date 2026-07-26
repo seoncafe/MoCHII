@@ -76,7 +76,9 @@ RIN_CM = 3.0e18
 # element, ionization stage, and the MoCHII vacuum wavelengths [A] that make
 # up each published blend.
 BLEND = {
-    "He I 5876":        ("he", 1, [5875.64]),
+    # the published label of the He I line is its air wavelength, 5876; the
+    # MoCHII table lists the vacuum value of the same line
+    "He I 5876":        ("he", 1, [5877.27]),
     "C II 2325+":       ("c",  2, [2322.70, 2324.27, 2325.41, 2326.12,
                                    2327.70, 2328.84]),
     "C III 1907+1909":  ("c",  3, [1906.68, 1908.73]),

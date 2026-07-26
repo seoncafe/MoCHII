@@ -106,8 +106,8 @@ suppressing the line cooling to the local $\nel$ with a $(T, \nel)$ table built
 from the same $n$-level solve --- now the default,
 \code{par\%cooling\_model = local\_ne} --- removes the far-infrared
 overestimate, brings the fixed-state line total from $1.116\times$ to
-$1.01\times$ \Cloudy{}'s, and raises the converged benchmarks to 8210 and
-7024~K, matching \Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are
+$1.01\times$ \Cloudy{}'s, and raises the converged benchmarks to 8211 and
+7025~K, matching \Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are
 retained as the \code{low\_density} option.  A comparison of the cooling
 inventories of the other Monte Carlo photoionization codes is included; it
 turned up defects on their side as well, and one omission common to all five
@@ -587,7 +587,7 @@ HII40 moves from $9159$~K, above every published code, to $7894$~K, inside the
 published range.  HII20 moves to $6376$~K, $0.4\%$ below the published floor.
 These are the zero-density-limit (\code{low\_density}) temperatures; the
 density-suppressed default of Section~\ref{sec:limit} raises them further, to
-8210 and 7024~K, to match \Cloudy{} c25.00.
+8211 and 7025~K, to match \Cloudy{} c25.00.
 
 \begin{table}[htbp]
 \centering
@@ -596,8 +596,8 @@ density-suppressed default of Section~\ref{sec:limit} raises them further, to
 \MoCHII{} runs use threshold-aligned 32 ionizing bins, the explicit Monte
 Carlo diffuse field with the \HeI{} channels, and case-B recombination-line
 tables.  The ``after'' column is the zero-density (\code{low\_density})
-cooling; the density-suppressed default raises $\langle T\rangle$ to 8210 and
-7024~K (Section~\ref{sec:limit}).}
+cooling; the density-suppressed default raises $\langle T\rangle$ to 8211 and
+7025~K (Section~\ref{sec:limit}).}
 \label{tab:bench}
 \begin{tabular}{lcccc}
 \toprule
@@ -725,8 +725,8 @@ suppression is much larger.
 
 On the fixed \Cloudy{} state the default delivers the Tier-2 column of the
 table above, $1.011\times$ \Cloudy{}'s line total in place of $1.116\times$,
-and the converged benchmarks rise to \textbf{8210}~K at HII40 --- matching
-\Cloudy{} c25.00's 8210~K to $0.4$~K --- and 7024~K at HII20 ($+1.6\%$ against
+and the converged benchmarks rise to \textbf{8211}~K at HII40 --- matching
+\Cloudy{} c25.00's 8210~K to $0.7$~K --- and 7025~K at HII20 ($+1.7\%$ against
 \Cloudy{}'s 6910~K), in place of the zero-density 7894 and 6376~K.  This
 confirms the fixed-state prediction quantitatively: removing the far-infrared
 overestimate --- the difference between the $1.116\times$ and $1.011\times$
@@ -1488,7 +1488,7 @@ and it is a single stored run at whatever packet and iteration count produced
 it, not a converged reference in the sense of Section~\ref{sec:bench}.  Taken
 at face value it sits at the top of the $7720$--$8199$~K published range of
 Table~\ref{tab:bench}, essentially at \MoCHII{}'s density-suppressed default
-$8210$~K and \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
+$8211$~K and \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
 $7894$~K).  \code{benchmarks/HII\_region/} also holds a
 \code{lexington\_cloudy.txt} comparison profile.  Nothing here was re-run.
 
@@ -1594,7 +1594,7 @@ limit still overcooled the low-critical-density lines at $\nH = 100$;
 suppressing $\Lambda$ to the local $\nel$ with a $(T, \nel)$ table built from
 the same $n$-level solve --- now the default,
 \code{par\%cooling\_model = local\_ne} --- removes the far-infrared overestimate
-and raises the converged benchmarks to 8210 and 7024~K, matching \Cloudy{}
+and raises the converged benchmarks to 8211 and 7025~K, matching \Cloudy{}
 c25.00 (8210, 6910~K); the zero-density fits are kept as the \code{low\_density}
 option.
 

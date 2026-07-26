@@ -27,7 +27,7 @@ module ion_balance_mod
   implicit none
   private
 
-  public :: gas_equilibrium_update, solve_ion_cell
+  public :: gas_equilibrium_update, solve_ion_cell, charge_neutrality_ne
 
 contains
 
@@ -96,6 +96,51 @@ contains
   end subroutine solve_ion_cell
 
   !=========================================================================
+  ! Electron density of a state whose H/He fractions are already fixed, from
+  ! charge neutrality including the metal cascade (par%metal_ne):
+  !     n_e = n_e(H,He) + sum_el n_H A_el sum_i (i-1) f_i(n_e)
+  ! The metal stage fractions f_i depend on n_e themselves (recombination
+  ! goes as n_e alpha), so this is a scalar fixed point, solved with the
+  ! same damped iteration and tolerance solve_ion_cell uses for its own
+  ! n_e closure.  A single evaluation of the metal term at the H/He-only
+  ! electron density is NOT the solution: beyond the ionization front the
+  ! H/He term vanishes, so that argument is the n_e -> 0 limit in which
+  ! nothing can recombine and every low-IP metal comes out fully ionized.
+  !
+  ! Its purpose is the WRITTEN state: the under-relaxed H/He fractions are
+  ! not the ones solve_ion_cell converged with, and the stage fractions
+  ! written alongside (species_write) are evaluated at the written n_e and
+  ! T_e — so n_e must satisfy charge neutrality at exactly those fractions
+  ! or the output describes two different gases.
+  !
+  ! ne_seed is the electron density the cell solve converged to; starting
+  ! there keeps the iteration on the branch the physics solve selected.
+  ! T is the temperature the state is WRITTEN at (par%te_fixed, or the
+  ! newly solved T_e), which is not in general the last trial temperature
+  ! of the thermal bisection, so the (leaf, T) rate cache is refilled here
+  ! rather than inherited.
+  !=========================================================================
+  real(kind=wp) function charge_neutrality_ne(il, T, nH, ne_HHe, xHI, ne_seed) &
+                                             result(ne)
+    use species_mod, only : species_ne_prepare, species_ne_cached
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, ne_HHe, xHI, ne_seed
+    real(kind=wp) :: ne_old, nHI, nHII
+    integer :: it
+
+    call species_ne_prepare(il, T)
+    nHI  = nH*xHI
+    nHII = nH*(1.0_wp - xHI)
+    ne   = max(ne_seed, 1.0e-12_wp*nH)
+    do it = 1, 200
+       ne_old = ne
+       ne = ne_HHe + species_ne_cached(nH, ne_old, nHI, nHII)
+       ne = max(0.5_wp*(ne + ne_old), 1.0e-12_wp*nH)
+       if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
+    end do
+  end function charge_neutrality_ne
+
+  !=========================================================================
   ! Returns both convergence measures (par%conv_crit picks which gates the
   ! iteration): max_dx = max leaf |delta x_HII| (stalls at the front-cell
   ! Monte Carlo noise floor); dx_vol = sum V |delta x_HII| / sum V x_HII,
@@ -151,13 +196,15 @@ contains
        xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
        ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
                     + yHe*(xHeII_new(il) + 2.0_wp*xHeIII))
-       !--- metal electrons in the written state (par%metal_ne).
+       !--- metal electrons in the written state (par%metal_ne), solved
+       !--- self-consistently: the stage fractions depend on n_e, so the
+       !--- closure has to be iterated at the under-relaxed H/He state, not
+       !--- evaluated once at the H/He-only electron density.
        if (par%metal_ne .and. par%use_metals) then
           block
-            use species_mod, only : species_ne, n_elements
-            if (n_elements > 0) ne_new(il) = ne_new(il) &
-               + species_ne(il, T, ne_new(il), nH*xHI_new(il), &
-                            nH*(1.0_wp - xHI_new(il)))
+            use species_mod, only : n_elements
+            if (n_elements > 0) ne_new(il) = &
+               charge_neutrality_ne(il, T, nH, ne_new(il), xHI_new(il), ne)
           end block
        end if
        max_dx = max(max_dx, abs(xHI_new(il) - gas_xHI(il)))

@@ -7,8 +7,16 @@ data/atomic/nlevel_<ion>.txt file containing
      preferred, else theoretical),
   2. radiative A-values among those levels (.wgfa; duplicate (l,u) rows
      summed),
-  3. per-transition effective collision strengths Upsilon(T) as low-order
-     Chebyshev fits in Burgess-Tully (1992) scaled space (.scups).
+  3. effective collision strengths Upsilon(T) as low-order Chebyshev fits in
+     Burgess-Tully (1992) scaled space, one for each transition (.scups).
+
+Transitions are written ORIENTED BY ENERGY: the first index is the
+lower-energy level, the second the upper (emitting) level.  CHIANTI does not
+order the two index columns consistently -- o_2.wgfa lists 2D3/2 - 2D5/2
+(upper level first, because 2D3/2 is the higher term), n_1.wgfa lists
+2D5/2 - 2D3/2 (lower level first), and fe_3.scups has nine index-ordered but
+energy-inverted rows -- so the level energies, not the column order, decide
+which level emits and which one is de-excited collisionally.
 
 The Chebyshev fit replaces the cubic-spline-through-table evaluation:
 Fortran stays table-free and evaluates
@@ -35,12 +43,12 @@ from numpy.polynomial import chebyshev as C
 from chianti_cooling import (ion_dir, read_elvlc, read_wgfa, read_scups,
                              upsilon, DBASE, KB_OVER_RY)
 
-DATE = "2026-07-25"
+DATE = "2026-07-26"
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "..", "data", "atomic")
 TMIN, TMAX = 1.0e3, 1.0e5
 TGRID = np.logspace(np.log10(TMIN), np.log10(TMAX), 201)
-ERR_TARGET = 2.0e-3   # per-transition max relative error target
+ERR_TARGET = 2.0e-3   # max relative error target of one transition
 DEG_MAX = 12
 
 # (element, stage, NLEV) — lowest levels needed for the optical/IR
@@ -66,6 +74,13 @@ IONS = {
     "CIII":  ("c", 3, 5),
     "NIII":  ("n", 3, 5),
     "OI":    ("o", 1, 5),
+    # Neutral C and N: 5 levels are exactly the 2p^2 / 2p^3 ground
+    # configurations, so the FIR/optical coolants of neutral gas are complete.
+    # C I: 3P_0,1,2 + 1D_2 + 1S_0 -> [C I] 609.1/370.4um fine structure,
+    # 9850/9827/9811 A and 8727 A.  N I: 4S_3/2 + 2D_3/2,5/2 + 2P_1/2,3/2 ->
+    # [N I] 5197.9/5200.3 A, 10398-10408 A and 3466 A.
+    "CI":    ("c", 1, 5),
+    "NI":    ("n", 1, 5),
     # G5: argon ([Ar III] 7136/8.99um; [Ar IV] 4711/4740 density pair).
     # Ar II has no CHIANTI level data (stage tracked without lines).
     "ArIII": ("ar", 3, 5),
@@ -94,6 +109,7 @@ SPEC_LABEL = {
     "SII": "[S II]", "SIII": "[S III]", "SIV": "[S IV]", "NeII": "[Ne II]",
     "NeIII": "[Ne III]", "CII": "[C II]", "CIII": "C III]",
     "NIII": "[N III]", "OI": "[O I]",
+    "CI": "[C I]", "NI": "[N I]",
     "ArIII": "[Ar III]", "ArIV": "[Ar IV]",
     "MgII": "Mg II", "FeII": "[Fe II]", "FeIII": "[Fe III]",
     "SiII": "[Si II]", "SiIII": "Si III]", "SiIV": "Si IV",
@@ -200,10 +216,15 @@ def build_ion(name, elem, stage, nlev, suffix=""):
         e = e_obs if (e_obs > 0.0 or i == 1) else e_th
         levels[i] = (g, e)
 
+    def by_energy(i, j):
+        """(lower-energy level, upper-energy level) of an index pair."""
+        return (i, j) if levels[j][1] >= levels[i][1] else (j, i)
+
     arad = {}
     for ll, ul, wl, gf, a in read_wgfa(os.path.join(d, f"{elem}_{stage}.wgfa")):
-        if ll in levels and ul in levels and ll < ul and a > 0.0:
-            arad[(ll, ul)] = arad.get((ll, ul), 0.0) + a
+        if ll not in levels or ul not in levels or ll == ul or a <= 0.0:
+            continue
+        arad[by_energy(ll, ul)] = arad.get(by_energy(ll, ul), 0.0) + a
 
     ups_rows, worst = [], 0.0
     for tr in read_scups(os.path.join(d, f"{elem}_{stage}.scups")):
@@ -211,7 +232,10 @@ def build_ion(name, elem, stage, nlev, suffix=""):
             continue
         st_lo, st_hi, cf, logf, err = fit_transition(tr)
         worst = max(worst, err)
-        ups_rows.append((tr, st_lo, st_hi, cf, logf, err))
+        # Upsilon is symmetric in the two levels; the orientation matters
+        # because the de-excitation rate carries g of the upper level.
+        lo, up = by_energy(tr["ll"], tr["ul"])
+        ups_rows.append((tr, lo, up, st_lo, st_hi, cf, logf, err))
 
     path = os.path.join(OUTDIR, f"nlevel_{elem}_{stage}{suffix}.txt")
     with open(path, "w") as fh:
@@ -220,6 +244,8 @@ def build_ion(name, elem, stage, nlev, suffix=""):
         fh.write(f"# source: CHIANTI v{CHIANTI_VERSION} .elvlc/.wgfa/.scups"
                  " (tools/fitting/fit_nlevel.py)\n")
         fh.write("# levels: index  g  E[cm^-1] (observed preferred)\n")
+        fh.write("# transitions: l = lower-energy level, u = upper (emitting)"
+                 " level; the CHIANTI column order is not used\n")
         fh.write("# rad: l u A[s^-1] (duplicate rows summed)\n")
         fh.write("# ups: l u type C dE[Ry] st_lo st_hi logf ncheb"
                  " c_0..c_{n-1} maxerr\n")
@@ -237,9 +263,9 @@ def build_ion(name, elem, stage, nlev, suffix=""):
         for (ll, ul), a in sorted(arad.items()):
             fh.write(f"  {ll:3d} {ul:3d}  {a:.6e}\n")
         fh.write(f"NUPS {len(ups_rows)}\n")
-        for tr, st_lo, st_hi, cf, logf, err in ups_rows:
+        for tr, lo, up, st_lo, st_hi, cf, logf, err in ups_rows:
             cs = " ".join(f"{c:.8e}" for c in cf)
-            fh.write(f"  {tr['ll']:3d} {tr['ul']:3d}  {tr['ttype']:1d}"
+            fh.write(f"  {lo:3d} {up:3d}  {tr['ttype']:1d}"
                      f" {tr['cups']:.6e} {tr['de']:.6e}"
                      f" {st_lo:.8e} {st_hi:.8e} {logf:1d} {len(cf):2d}  {cs}"
                      f"  {err*100:.3f}%\n")
