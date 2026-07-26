@@ -1,4 +1,5 @@
-%% MoCHII, M3, and MAPPINGS V 5.2.1: algorithmic and physical comparison.
+%% MoCHII against the Monte Carlo photoionization codes closest to it in
+%% method: algorithmic and physical comparison.
 %% Author: Kwang-Il Seon
 %% Written for my_memo.cls.
 \documentclass[english,a4paper]{my_memo}
@@ -16,6 +17,10 @@
 \newcommand{\MoCHII}{\textsc{MoCHII}}
 \newcommand{\Mthree}{M$^3$}
 \newcommand{\Mappings}{MAPPINGS V 5.2.1}
+\newcommand{\Wood}{\textsc{ionize}}
+\newcommand{\CMI}{\textsc{CMacIonize}}
+\newcommand{\Torus}{\textsc{Torus}}
+\newcommand{\Mocassin}{\textsc{Mocassin}}
 \newcommand{\HII}{H\,\textsc{ii}}
 \newcommand{\HI}{H\,\textsc{i}}
 \newcommand{\HeI}{He\,\textsc{i}}
@@ -27,51 +32,74 @@
 
 \begin{document}
 
-\title{MoCHII, M$^3$, and MAPPINGS V 5.2.1:\\
-An Algorithmic and Physical Comparison}
+\title{MoCHII Among the Monte Carlo Photoionization Codes:\\
+An Algorithmic and Physical Comparison with M$^3$, MAPPINGS V 5.2.1,\\
+\textsc{ionize}, \textsc{CMacIonize}, \textsc{Torus}, and \textsc{Mocassin}}
 \author{Kwang-Il Seon}
 \date{\docmoddate}
 \maketitle
 
 \begin{abstract}
-This memo compares \MoCHII{} (MOnte Carlo for \HII{} regions), the public
-\Mthree{} (Messenger Monte Carlo MAPPINGS V) tree at
-\code{\char`~/RT\_Codes/MAPPINGS/M3-main}, and the independent public
-\Mappings{} release at
-\code{\char`~/RT\_Codes/MAPPINGS/mappings\_V-521}.  The comparison is
-based on connected execution paths and quantitative tests rather than on
-routine names alone.  \MoCHII{} is strongest as a modern
-three-dimensional transport and synthetic-observation engine: octree AMR,
-an analytic absorption estimator, a dedicated Cartesian DDA backend,
-solution-driven ionization-front refinement, dust absorption and
-scattering, stochastic dust/PAH emission, and observer peel-off imaging.
-\Mappings{} is strongest as a deterministic one-dimensional general
-plasma engine: a 30-element option, density-dependent multilevel cooling,
+This memo compares \MoCHII{} (MOnte Carlo for \HII{} regions) with the
+Monte Carlo photoionization codes closest to it in method, and with the
+deterministic one-dimensional plasma code two of them descend from.  The
+principal pairwise comparison is with \Mthree{} (Messenger Monte Carlo
+MAPPINGS V) and its parent \Mappings{}, whose local trees are
+\code{\char`~/RT\_Codes/MAPPINGS/M3-main} and
+\code{\char`~/RT\_Codes/MAPPINGS/mappings\_V-521}.
+Section~\ref{sec:others} adds three further three-dimensional codes:
+\Wood{}, the code of Wood, Mathis \& Ercolano (2004) that supplies the WME
+column of the Lexington benchmark tables; \CMI{}, which its own source
+describes as the C++ version of that code; and \Torus{}, a
+radiation-hydrodynamics code whose photoionization loop borrows from both
+\Wood{} and \Mocassin{}.  \Mocassin{} is \MoCHII{}'s quantitative validation
+reference and appears throughout.  Section~\ref{sec:hlines} compares the one
+emission process all six compute, the hydrogen recombination lines, and finds
+three distinct method classes and no two codes agreeing on how the case A/B
+question should be posed.
+
+The comparison rests on connected execution paths and quantitative tests
+rather than on routine names.  \MoCHII{} is strongest as a modern
+three-dimensional transport and synthetic-observation engine: octree AMR, an
+analytic absorption estimator, a dedicated Cartesian DDA backend,
+solution-driven ionization-front refinement, dust absorption and scattering,
+stochastic dust/PAH emission, and observer peel-off imaging; and it is the
+only code here whose thermal balance and emergent line list come from the
+same level populations at the same electron density.  \Mappings{} is
+strongest as a deterministic one-dimensional general plasma engine: a
+30-element option, density-dependent multilevel cooling,
 finite-source-age photoionization, non-equilibrium cooling, radiation
-pressure, and steady radiative MHD shocks with an iterated precursor.
-Its 1D photoionization path also connects detailed grain/PAH physics to a
-stochastic infrared solver.  \Mthree{} occupies a distinct middle ground:
-it grafts three-dimensional Monte Carlo transport onto an older MAPPINGS
-V 5.1.13-era physics tree and therefore combines broad MAPPINGS
-microphysics with arbitrary Cartesian geometry, but it does not inherit
-all later 5.2.1 changes or expose all parent modes through its public 3D
-driver.  The principal limitations are correspondingly different.
-\MoCHII{} presently uses low-density-limit metal cooling fits in its hot
-thermal loop and has an \HII-region-centered ion inventory; \Mthree{} has
-no AMR and a communication-heavy uniform-grid packet algorithm; and
-\Mappings{} is restricted to spherical or plane-parallel 1D structures,
-uses an outward-only diffuse-field approximation, and retains a legacy
-interactive global-state architecture.  The recommended strategy is to
-retain the \MoCHII{} transport architecture, use \Mappings{} as the
-current microphysics and 1D shock/time-dependence reference, and use
-\Mthree{} specifically to study how MAPPINGS physics behaves after being
-mapped into three dimensions.
+pressure, and steady radiative MHD shocks with an iterated precursor.  It
+also has the most physical hydrogen-line treatment of the six, a case
+parameter computed from the local Lyman-line escape probability rather than
+chosen.  \Mthree{} occupies a distinct middle ground: it grafts
+three-dimensional Monte Carlo transport onto an older MAPPINGS V
+5.1.13-era physics tree, so it combines broad MAPPINGS microphysics with
+arbitrary Cartesian geometry, but it does not inherit all later 5.2.1
+changes or expose all parent modes through its public 3D driver.
+
+The limitations are correspondingly different.  \MoCHII{} has an
+\HII-region-centered ion inventory; \Mthree{} has no AMR, a
+communication-heavy uniform-grid packet algorithm, and a 3D driver that
+hardcodes pure case B; \Mappings{} is restricted to spherical or
+plane-parallel 1D structures and uses an outward-only diffuse field;
+\Wood{} is serial, dust-free, and has no convergence test; \CMI{} has no
+global convergence criterion, no dust in the photoionization path, and a
+temperature solve that is off by default; and \Torus{} has the strongest
+transport and parallelism of the family alongside the least complete gas
+microphysics, missing \HeII{} photoheating and emitting no helium line at
+all.  The recommended strategy is to retain the \MoCHII{} transport
+architecture, use \Mappings{} as the current microphysics and 1D
+shock/time-dependence reference, use \Mthree{} to study how MAPPINGS physics
+behaves after being mapped into three dimensions, and read \Torus{} for
+transport and parallel design rather than for gas physics.
 \end{abstract}
 
 \tableofcontents
 
 %==============================================================================
 \section{Purpose, scope, and basis of the comparison}
+\label{sec:purpose}
 
 \MoCHII{} and \Mthree{} are self-consistent three-dimensional Monte Carlo
 photoionization codes, whereas \Mappings{} is a deterministic one-dimensional
@@ -353,6 +381,326 @@ the physical question. \\
 \end{longtable}
 
 %==============================================================================
+\section{The Monte Carlo photoionization codes closest in method}
+\label{sec:others}
+
+\Mthree{} is not the only three-dimensional Monte Carlo photoionization code
+this comparison has to account for.  Three others are close enough in method
+that \MoCHII{}'s choices are best read against them: \Wood{}, the code of
+Wood, Mathis \& Ercolano (2004) that supplies the WME column of the Lexington
+benchmark tables; \CMI{}, which its own source calls ``the C++ version of
+Kenny Wood's photoionization code'' (\code{src/CMacIonize.cpp}:392--393); and
+\Torus{}, a radiation-hydrodynamics code whose photoionization loop borrows
+from both \Wood{} and \Mocassin{}.  \Mocassin{} itself is \MoCHII{}'s
+quantitative validation reference and appears throughout this memo rather
+than as a separate subsection.
+
+The evidence standard of Section~\ref{sec:purpose} applies unchanged: every
+statement below was read in the source, and where a capability exists in a
+tree but is not reached from the photoionization driver it is labeled as
+such.  The \emph{cooling} inventories of these same four codes were audited
+separately and are not repeated here; that audit, with its file and line
+references and the defects it found on each side, is
+\code{docs/MoCHII\_cooling\_analysis.pdf}.  This section covers the other
+axes.
+
+\subsection{\Wood{}: the reference implementation of the method}
+
+\Wood{} is the ancestor of this family and the most instructive comparison
+precisely because it is small: 33 fixed-form Fortran files, one executable,
+no libraries.
+
+Packets carry photon number rather than energy, and the band is
+13.6--54.4~eV only (\code{planckset.f}:19--21).  The estimator is
+Lucy's path-length form, but \emph{frequency-unresolved}: as a packet crosses
+a cell, the code accumulates the rate integrals themselves --- one
+accumulator for each species it knows about, \code{jmeanH},
+\code{jmeanHe}, \code{jmeanN(...,1:3)} and so on
+(\code{tauint.f}:184--268) --- and never stores a mean intensity.  There is
+no $J_\nu(\nu,\mathrm{cell})$ array anywhere in the code.  The consequence
+is structural rather than numerical: a rate integral for any species not in
+that hardcoded list cannot be recovered after the run, so adding an ion is a
+code operation.  \MoCHII{}'s \code{jt\_ion(nnu,nleaf)} band tally is the
+opposite choice, and it is what makes its registry a data operation.
+
+The opacity is hydrogen and helium only
+(\code{tauint.f}:159--161); the metals are tallied but never attenuate.  The
+diffuse field, by contrast, is fully explicit and physically consistent: the
+balance uses the Verner \& Ferland case-A total recombination coefficient
+(\code{recomb.f}:13--15, $4.19\times10^{-13}$~cm$^3$\,s$^{-1}$ at
+$10^4$~K), and after each absorption the packet is re-emitted as a
+ground-state continuum photon with probability $\alpha_1/\alpha_A$, sampled
+from a Saha--Milne emissivity distribution, with four helium channels and
+\HeI{} Lyman~$\alpha$ handled on the spot
+(\code{probset.f}:28--60, \code{mcionize.f}:278--339).
+
+The grid is a uniform Cartesian mesh with $65^3$ compiled in
+(\code{grid.txt}:3), and the density is a hardcoded analytic function of
+position evaluated on cell centers (\code{density.f}:15--20); there is no
+grid-file reader, so a simulation-derived density field cannot be read at
+all.  The code is \emph{serial}: no MPI and no OpenMP appear in any source
+file.  Seven elements and 21 stages are followed, without He$^{++}$, and
+with C$^0$ and S$^0$ assumed absent; $\nelec$ comes from ionized hydrogen and
+helium only, which the source states outright (\code{tbal1.f}:39--40).
+
+Two properties of its iteration are worth recording because \MoCHII{} spent
+real effort on both.  There is \emph{no convergence test} --- the manual
+prescribes running many iterations and comparing successive ones by eye ---
+and the ionization is iterated alone for the first four iterations, the
+thermal balance starting only at the fifth (\code{itbal.f}:27--41).  The
+temperature solve is a logarithmic secant on the gain/loss ratio
+(\code{tbal1.f}:78--107); below 4000~K the cell is declared neutral and
+pinned at 500~K.
+
+There is no dust.  The only grain-related term is a scalar gas-heating
+factor $3\times10^{-25}\,n\,\nelec$ scaled by an input parameter that the
+shipped deck sets to zero (\code{ioneng.f}:56--68).  Outputs are a
+direction-binned escaping spectrum on a $20\times20$ grid of
+$(\theta,\phi)$ and an emissivity cube; there is no imaging, and the manual's
+recipe for a map is to sum the cube along an axis.  The sibling directory
+\code{diffuse/} in the same distribution is a different code, a
+dust-scattering polarization Monte Carlo with Stokes peel-off imaging and no
+gas physics; it shares only utility routines and should not be read as
+\Wood{}'s imaging stage.
+
+\subsection{\CMI{}: the same method, modernized}
+
+\CMI{} inherits \Wood{}'s physics and rewrites its software.  The transport
+is a random optical depth with the Lucy path-length estimator
+(\code{src/IonizationPhotonShootJob.hpp}:135,
+\code{src/DensityGrid.hpp}:150--197), the diffuse re-emission is the
+Wood--Mathis--Ercolano scheme reimplemented term by term
+(\code{src/PhysicalDiffuse\-Reemission\-Handler.cpp}:52--203), and the
+hydrogen
+line coefficients are numerically identical to \Wood{}'s
+(Section~\ref{sec:hlines}).  What changed is everything around the physics.
+
+Frequencies are continuous: a packet's cross sections are evaluated once at
+emission (\code{src/PhotonSource.cpp}:230--244) and there is no band grid in
+transport at all.  This removes the discretization question that
+Section~\ref{sec:specdisc} shows to be the largest single lever on \MoCHII{}'s
+helium and metal ionization, and replaces it with sampling noise in the rate
+integrals.  Three grid types are offered --- uniform Cartesian (the
+default), an octree AMR with Morton-style keys, and a Voronoi mesh that can
+move with the fluid --- plus a fourth structure, a subgrid decomposition used
+by the task-based mode.  Refinement can be static or solution-driven, on
+either cell opacity or O\,\textsc{i} content
+(\code{src/OpacityAMRRefinementScheme.hpp}:90--99,
+\code{src/OIAMRRefinementScheme.hpp}:87--94).  Two gaps are visible in the
+source: \code{AMRRefinementScheme::coarsen} is declared and
+has no caller anywhere, so the mesh can only ever get finer, and the MPI
+branch of the refinement carries the comment \code{///~WE HAVE TO DO SPECIAL
+THINGS FOR MPI HERE!} (\code{src/AMRDensityGrid.hpp}:337).
+
+Parallelism is OpenMP through a job market plus MPI as a photon-count
+decomposition over a \emph{fully replicated} grid, with the accumulators
+reduced across ranks and the cell solve split by contiguous cell block
+(\code{src/IonizationSimulation.cpp}:395--397, 458--617).  That is the same
+division of labor as \MoCHII{}'s, which also replicates the grid and
+distributes packets; \Torus{} is the one code here that decomposes the grid
+itself.  MPI is refused at startup for the dust, hydrodynamic,
+emissivity and task-based modes.
+
+Three properties bear directly on the comparisons this memo makes elsewhere.
+The metal line emissivities are solved from level populations at the local
+electron density (\code{src/LineCoolingData.cpp}:1785--1798), which is the
+axis \MoCHII{} closed with \code{par\%cooling\_model = 'local\_ne'}.  The
+temperature solve is \emph{off by default} and, when on, is capped at
+30\,000~K for a stated reason --- ``helium charge transfer rates are only
+valid until 30,000~K'' (\code{src/TemperatureCalculator.cpp}:831--833).  And
+there is \emph{no global convergence criterion of any kind}: the iteration is
+\code{while (loop < \_number\_of\_iterations)}
+(\code{src/IonizationSimulation.cpp}:359), with a plain input count, no
+cell-maximum test, no integrated measure and no early exit.  Metals carry
+neither opacity nor free electrons, there is no collisional ionization
+anywhere in the tree, and He$^{++}$ does not exist as a species.
+
+Dust is absent from the photoionization path --- a case-insensitive search of
+the ionization, temperature and state-calculator sources returns nothing.  It
+exists instead as a separate hardwired mode whose own documentation calls it
+a first-year lab project (\code{src/CMacIonize.cpp}:50--53), with grey
+per-band constants, a forced first interaction, single-observer peel-off and
+Stokes imaging.  There is no dust temperature and no infrared emission
+anywhere in the tree.
+
+Synthetic observations are the weakest axis.  The ionization mode offers
+point ``trackers'' that record the absorption or the spectrum inside a named
+cell, and grid dumps whose field list contains no emission-line entries.  A
+line-of-sight emission integrator, \code{get\_total\_emission}, is
+implemented for all three grid types and \emph{has no caller}; the
+emissivities it would integrate are themselves produced only by a separate
+post-processing mode, which is Cartesian-only and rejects MPI.  Two
+statements in the tree's own documentation are stale and should not be quoted
+from it: the claim that the code is parallelized with OpenMP only
+(\code{src/CMacIonize.cpp}:416--420), contradicted by the working MPI code,
+and a comment implying a Python library replaced the in-run emissivity
+calculation when the compiled mode is the fuller route.
+
+\subsection{\Torus{}: photoionization inside a radiation-hydrodynamics code}
+
+\Torus{} is the most capable of the three in transport and the least
+specialized to photoionization, which shows in both directions.
+
+The estimator is again Lucy's, with the path length weighted by
+$\ell w/(h\nu)$ and accumulated for each ion
+(\code{photoionAMR\_mod.F90}:6679--6692); a modified random walk handles the
+optically thick regime.  Dust scattering uses real Mie phase matrices rather
+than a Henyey--Greenstein approximation (\code{:3283}).  The diffuse field is
+transported by default, and the switch that turns it off removes only the
+ionizing continuum from the redraw spectrum (\code{:3347--3349}), leaving the
+sub-Lyman lines and the dust continuum in place --- so ``on the spot'' means
+something narrower here than in \MoCHII{}.  Independently of that, a
+\code{caseB} flag replaces the hydrogen recombination coefficient with the
+\emph{constant} $2.7\times10^{-13}$~cm$^3$\,s$^{-1}$, with no temperature
+dependence (\code{photoion\_utils\_mod.F90}:305--310); setup only warns if it
+is combined with a transported diffuse field.  This is exactly the conflation
+\MoCHII{} separated into \code{par\%case\_ab} and \code{par\%line\_case}, left
+here as a warning rather than as two parameters.
+
+The frequency grid is 1000 logarithmic bins from 1~mm to about 124~eV with
+four extra points pinned at $\pm1\%$ around the helium edges
+(\code{:2124--2151}) --- threshold \emph{bracketing}, the same concern as
+\MoCHII{}'s threshold alignment, addressed by refining around the edge rather
+than by placing a bin boundary on it.
+
+The grid is an AMR tree that can be one-, two- or three-dimensional (binary,
+quad, octree), with a cylindrical option and a two-dimensional Cartesian slab
+whose missing third dimension is compensated by re-weighting the emission
+direction.  Solution-driven refinement is live and physically the same
+criterion \MoCHII{} uses: a relative neutral-hydrogen-fraction jump across
+each face against a tolerance
+(\code{hydrodynamics\_mod.F90}:14582--14618).  One switch is dead and should
+not be cited as a capability: \code{doPhotoRefine} is read from the input file
+and its only use site is \code{if (doPhotoRefine .and. 0 == 1)}
+(\code{:4428}).
+
+Parallelism is the most developed of the four: MPI decomposes the grid
+itself, with packets shipped between ranks in batched stacks, plus extra
+ranks assigned as duplicates of busy domains apportioned by measured packet
+crossings (\code{loadbalance\_mod.F90}:16--219), and OpenMP threads the
+per-cell equilibrium solve (\code{:3855--3864}).  \MoCHII{} distributes only
+transport and keeps one grid copy per node; \Torus{} distributes the state.
+
+Convergence is a nested pair: an inner alternation of ionization and thermal
+solves until both change by less than $1\%$ in every subcell, and an outer
+test on the \emph{cell-maximum} fractional temperature change below $0.05$
+(\code{:4324--4339}).  There is no volume-integrated measure.  What \Torus{}
+does instead, when the outer test stalls, is diagnose the cause: cells the
+Monte Carlo has undersampled are counted, and finding any of them doubles the
+packet count and continues (\code{:4344--4347}).  That is an answer to the
+same noise-floor problem \MoCHII{} solved with \code{par\%conv\_crit =
+'vol'}, from the other end --- raise the photon budget until the cell-maximum
+test becomes meaningful, rather than change the measure.
+
+The heating inventory is exactly three terms: \HI{} photoionization, \HeI{}
+photoionization, and dust (\code{:7810--7823}).  \HeII{} photoheating is
+absent although He$^{++}$ is tracked, and there is no metal photoheating and
+no grain photoelectric heating in this balance.  Recombination data are
+Verner \& Ferland for H and He and Pequignot et al.\ (1991) plus Nussbaumer
+\& Storey (1983) for the metals --- \emph{the \Mocassin{} set}, so the
+in-code swap experiment reported in Section~\ref{sec:recombdata} transfers to
+\Torus{} unchanged.  Its H$^+$ and He$^{++}$ coefficients agree with
+\MoCHII{}'s default $\alpha_A$ to four digits; only He$^+ + e$ differs, and
+there \Torus{} sits $4.7\%$ \emph{above} \MoCHII{}, the opposite side from
+\Mocassin{}'s low value.  One provenance curiosity: the free-bound $\gamma$
+tables \Torus{} reads are byte-identical to \Mocassin{}'s and \MoCHII{}'s
+copies, but its own comment attributes them to Ferland (1980) where the other
+two carry the Ercolano \& Storey compact format.  The numbers are not in
+question, only the citation.
+
+Dust is coupled to the gas in both directions, which no other code in this
+comparison does: grain emission enters the gas cooling side and grain heating
+the gas heating side of the same balance, or, decoupled, a gas--grain
+collisional exchange term carries the energy between them
+(\code{:6604--6628}, \code{:6253--6271}).  The infrared emission is a single
+equilibrium temperature per cell; there is no stochastic single-photon
+heating and no PAH channel on this path, so \MoCHII{}'s SEDust coupling and
+its $x_{\mathrm{HII}}$-weighted PAH share have no counterpart.
+
+Imaging is genuine peel-off with the full Stokes vector and $e^{-\tau}$ to
+the boundary, cloned at emission and after every scattering
+(\code{:9109--9113}, \code{image\_mod.F90}:187--188), for one of four image
+types (free-free, forbidden line, recombination line, dust).  It is
+monochromatic: the photoionization image path carries a fixed wavelength and
+applies no Doppler shift.  \Torus{} does have a velocity-resolved image
+adder, but it belongs to the atomic and molecular line transfer modes and is
+not wired to the photoionization loop --- present in the tree, not connected.
+There is no emergent SED and no datacube from this loop.
+
+\subsection{What the four have in common, and where \MoCHII{} sits}
+
+\begingroup\small\setlength{\tabcolsep}{4pt}
+\begin{longtable}{P{0.135\textwidth}P{0.185\textwidth}P{0.185\textwidth}P{0.185\textwidth}P{0.185\textwidth}}
+\caption{The Monte Carlo photoionization codes closest to \MoCHII{} in
+method, on the axes not covered by the cooling audit.  Entries are what the
+photoionization path does, not what exists in the tree.}
+\label{tab:others}\\
+\toprule
+Topic & \Wood{} & \CMI{} & \Torus{} & \MoCHII{} \\
+\midrule
+\endfirsthead
+\multicolumn{5}{l}{\small\itshape Table~\ref{tab:others} continued.}\\
+\toprule
+Topic & \Wood{} & \CMI{} & \Torus{} & \MoCHII{} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Estimator & Lucy path length, rate integrals accumulated directly; no
+$J_\nu$ stored & Lucy path length, continuous frequency & Lucy path length,
+1000-bin grid & Analytic edge walk without scattering, band-resolved
+$J_\nu$ tally \\
+
+Grid & Uniform Cartesian, size compiled in; analytic density only & Cartesian
+/ octree AMR / Voronoi / subgrid & AMR in 1D, 2D or 3D, cylindrical option &
+Octree AMR or raster Cartesian with a DDA walk \\
+
+Solution-driven refinement & none & opacity or O\,\textsc{i} criterion;
+no coarsening & $x_{\rm HI}$ gradient across faces & $x_{\rm HI}$ front flags
+plus face-neighbor jump \\
+
+Parallel model & serial & OpenMP + MPI over packets, grid replicated &
+MPI over the grid with load-balancing ranks, OpenMP over cells & MPI over
+packets, shared-memory grid per node \\
+
+Diffuse field & explicit, case A, four He channels & the same scheme,
+opt-in, default off & transported by default; \code{caseB} is a constant
+coefficient & explicit H/He channels plus the \HeI{} excited channel; case-B
+OTS available \\
+
+Global convergence & none (compare iterations by eye) & none (fixed
+iteration count) & cell-maximum $\Delta\Te$, packet doubling on undersampling
+& cell-maximum or volume-integrated, tolerance-gated \\
+
+Metals & tallied, no opacity, no electrons & tallied, no opacity, no
+electrons; no collisional ionization & 22 ions with charge exchange, no
+collisional ionization & registry with opacity, optional electrons and
+heating, two collisional-ionization models \\
+
+Dust & none & none on this path & absorption, Mie scattering, equilibrium
+$T_{\rm dust}$, gas--grain exchange & absorption, scattering, live survival,
+$T_{\rm dust}$, stochastic PAH emission \\
+
+Images & escaping spectrum by direction bin; emissivity cube & trackers only;
+the line-of-sight integrator is never called & Stokes peel-off,
+monochromatic, four image types & multi-observer peel-off, direct/scattered
+split, bin-resolved cubes, flux-conserving line maps \\
+\end{longtable}
+\endgroup
+
+Read across that table, the family divides on one line.  \Wood{} and \CMI{}
+are photoionization codes in which the radiation field is a means to the
+ionization state, and their synthetic-observation layer is correspondingly
+thin.  \Torus{} is a transport code with photoionization added, which is why
+its imaging and parallelism are the strongest here and its gas microphysics
+the most incomplete --- missing \HeII{} photoheating and, as
+Section~\ref{sec:hlines} shows, missing helium lines entirely.  \MoCHII{}
+sits with \Torus{} on transport and observation and with \Mocassin{} on gas
+microphysics, and it is the only one of the five whose thermal balance and
+emergent line list are computed from the same level populations at the same
+electron density.
+
+%==============================================================================
 \section{Radiative-transfer algorithms}
 
 \subsection{Radiation-field estimators}
@@ -430,6 +778,7 @@ split makes case-A/case-B bracketing and energy accounting transparent,
 but it is not yet the full local emissivity inventory sampled by \Mthree{}.
 
 \subsection{Spectral discretization}
+\label{sec:specdisc}
 
 The public \Mthree{} compile-time ceiling is 10,240 frequency entries.
 The Monte Carlo loop launches $N$ packets for every frequency interval;
@@ -549,6 +898,7 @@ easier to audit and extend than the global MAPPINGS tables, but the present
 inventory is less suitable for hard PN, X-ray, or coronal-ion problems.
 
 \subsection{Photoionization, recombination, and charge exchange}
+\label{sec:recombdata}
 
 \MoCHII{} uses exact hydrogenic ground-state cross sections for \HI{} and
 \HeII{}, and Verner et al.\ \cite{verner1996} fits for \HeI{} and metals.
@@ -757,6 +1107,220 @@ plus free-free and two-photon components.  On an identical state, the
 Fortran line luminosities match the independent Python solver to at least
 four significant figures.  The limitation is coverage, not the internal
 emissivity algebra.
+
+\subsection{Hydrogen recombination lines}
+\label{sec:hlines}
+
+Hydrogen recombination lines deserve their own comparison, for two reasons.
+They are the normalization of every published line list, so an error in
+H$\beta$ propagates into every ratio quoted against it; and they are the one
+emission process all six codes compute, which makes them the cleanest
+available cross-section through the design choices of the family.  The six
+implementations fall into three method classes.
+
+\emph{Table interpolation in $(\Te,\nelec)$.}  \MoCHII{} reads the Storey \&
+Hummer (1995) case-A and case-B tables (11 temperatures $\times$ 13 densities
+for case B, 10 $\times$ 9 for case A) and interpolates bilinearly in
+$(\log \Te, \log \nelec)$, clamped at the grid edges, for seven lines
+(H$\alpha$, H$\beta$, H$\gamma$, H$\delta$, Pa$\alpha$, Pa$\beta$,
+Br$\gamma$).  \Mappings{} and \Mthree{} read the same Storey--Hummer
+calculation in a richer layout: an absolute H$\beta$ emissivity on 12
+temperatures $\times$ 9 densities for \emph{each} case, spline-interpolated in
+$\log \Te$, times 90 line ratios (15 lines $\times$ 6 series) on their own
+$10 \times 9$ grid (\code{HRECDAT.txt}, \code{HRECRATA.txt},
+\code{HRECRATB.txt}; \code{hydro.f}:378--459).  The density grid reaches
+$10^{10}\,\mathrm{cm^{-3}}$, against $10^{14}$ in \MoCHII{}'s case-B file and
+$10^{10}$ in its case-A file.  \Mocassin{}'s \emph{output} path is also a
+table interpolation, of \code{e1bx.d} --- the same Storey--Hummer file
+\MoCHII{} parses --- by fourth-order Lagrange in $\log \nelec$ and
+$\sqrt{\Te}$, up to $n_{\rm up} = 30$.
+
+\emph{Fixed ratios times a fitted H$\beta$.}  \Mocassin{}'s \emph{iteration}
+path reads \code{r1b0100.dat}, whose footer records what it is:
+\code{!Te=1.e4 Ne=1.e2 Case B}.  The ratios carry no temperature or density
+axis, so H$\alpha$/H$\beta$ is fixed at the tabulated 2.86 whatever the local
+state, and the only temperature dependence of any H line is the H$\beta$
+normalization.  \Torus{} does the same thing with the same numbers: a ratio
+table stated in its own comment to be ``for $T = 10^4$~K and
+$n = 10^2\,\mathrm{cm^{-3}}$'' times an H$\beta$ power law
+(\code{photoionAMR\_mod.F90}:8022--8043).  The consequence is worth naming,
+because it is a physical one: in both codes \emph{the Balmer decrement cannot
+respond to temperature at all}.  Against Storey--Hummer at
+$\nelec = 100\,\mathrm{cm^{-3}}$ the frozen 2.86 is $-5.9\%$ at 5000~K, right
+at $10^4$~K, $+4.1\%$ at $2\times10^4$~K and $+5.9\%$ at $3\times10^4$~K.
+
+\emph{Analytic power-law fits.}  \Wood{} and \CMI{} carry
+\emph{numerically identical} coefficients --- \CMI{} is the C++ rewrite, and
+this is where that shows most plainly:
+\begin{equation}
+  \frac{4\pi j(\mathrm{H}\beta)}{\nelec n_{\rm p}}
+    = 1.24\times10^{-25}\,T_4^{-0.878},
+  \qquad
+  \frac{4\pi j(\mathrm{H}\alpha)}{\nelec n_{\rm p}}
+    = 2.87 \times 1.24\times10^{-25}\,T_4^{-0.938}
+  \label{eq:woodfit}
+\end{equation}
+in erg\,cm$^3$\,s$^{-1}$ (\code{lines.f}:219--221;
+\code{src/EmissivityCalculator.cpp}:224--229), the H$\beta$ coefficient
+attributed in both to Storey \& Hummer (1995) and the 2.87 to Osterbrock's
+case-B table.  Since the two exponents differ, the ratio drifts as
+$T_4^{-0.060}$ rather than staying at 2.87, which is what makes the fit work
+as well as it does.
+
+The three families can be compared against one common standard, because
+\MoCHII{}'s parse of \code{e1bx.d} is the same Storey--Hummer case-B table
+that four of the six codes ultimately cite.  Table~\ref{tab:hbetafits}
+evaluates each H$\beta$ prescription against it.
+
+\begin{table}[htbp]
+\centering
+\caption{Each code's H$\beta$ emissivity divided by the Storey \& Hummer
+(1995) case-B table value at $\nelec = 100\,\mathrm{cm^{-3}}$, computed from
+the coefficients in the sources.  \Wood{} and \CMI{} share
+Eq.~(\ref{eq:woodfit}); \Torus{} and \Mocassin{}'s iteration path share
+$10^{-0.870\log_{10}\Te + 3.57}$; \Mocassin{}'s output path uses
+$2530\,\Te^{-0.833}$ while the accurate fit sits commented out one line above
+it (\code{output\_mod.f90}:2060--2063).  \MoCHII{}, \Mappings{} and
+\Mthree{} interpolate the table itself and are exact by construction.}
+\label{tab:hbetafits}
+\begin{tabular}{lccc}
+\toprule
+$\Te$ / K & \Wood{}, \CMI{} & \Torus{}, \Mocassin{} (iter.) &
+\Mocassin{} (output) \\
+\midrule
+ 5\,000 & 1.036 & 1.022 & 0.954 \\
+ 7\,500 & 1.011 & 1.001 & 0.948 \\
+10\,000 & 1.004 & 0.996 & 0.954 \\
+15\,000 & 1.010 & 1.005 & 0.977 \\
+20\,000 & 1.026 & 1.023 & 1.005 \\
+30\,000 & 1.065 & 1.065 & 1.062 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two readings follow.  The fits are good: over the range an \HII{} region
+actually occupies, both fit families reproduce the table they are fitted to
+within a few percent, so the analytic route is a representational choice
+rather than an accuracy defect.  And \Mocassin{}'s reported absolute
+H$\beta$ is systematically $4.6$--$5.2\%$ below the very table the same
+routine interpolates for its ratios, across the whole nebular range.  That
+matters for this project specifically: \MoCHII{} takes H$\beta$ from the
+table and \Mocassin{} from a fit below it, so a few percentage points of any
+$L(\mathrm{H}\beta)$ comparison between the two codes is a coefficient
+artifact rather than physics.  Line \emph{ratios} are immune, because
+\Mocassin{} divides by its own H$\beta$ before writing them.
+
+\paragraph{Case A and case B.}  This is where the six differ most, and where
+the ordering is not the one the codes' ages would suggest.  \Mappings{} has
+the most physical treatment of any code here: the case parameter is not a
+switch but a \emph{continuous} quantity computed zone by zone from the
+Lyman-$\gamma$ escape probability,
+$\mathrm{casab} = 1 - e^{-0.8597\,x}$ with $x$ the line-transfer path
+multiplier (\code{functions.f}:21--71), and the code interpolates
+logarithmically between the case-A and case-B tables at that value.  The same
+escape quantity that sets the parameter also attenuates the lines in the
+diffuse field, so the treatment is self-consistent.  \Mthree{} inherits the
+routine and the data but not the logic: its three-dimensional driver
+hardcodes \code{caseab(1)=1.0d0} with the escape-probability call commented
+out one line below (\code{calpdf.f}:45--46, 54--55), so the connected path is
+pure case B everywhere and the Lyman series above Ly$\alpha$ is identically
+zero even in optically thin gas.  \MoCHII{} sits between the two: two
+explicit parameters, \code{par\%case\_ab} for the ionizing continuum and
+\code{par\%line\_case} for the line tables, both defaulting to B, with the
+second added precisely because tying them together silently loaded case-A
+line tables whenever the diffuse field was switched on.
+
+The other three each conflate the two questions in a different way.  \Wood{}
+has it right by convention and says nothing about it: its lines are case B
+(hardcoded, no switch) while its continuum uses the case-A total
+recombination coefficient with an explicitly transported diffuse field --- the
+same pairing \MoCHII{} arrived at, with no parameter and no comment marking
+the distinction.  \CMI{} hardwires case-B line coefficients while the
+continuum case follows from two uncoordinated defaults, a diffuse handler
+that is off and a recombination coefficient that is the case-A total.
+\Torus{} exposes a \code{caseB} flag that changes neither the lines nor the
+transport but replaces the hydrogen recombination coefficient with a
+temperature-independent constant $2.7\times10^{-13}\,\mathrm{cm^3\,s^{-1}}$,
+and warns rather than refuses when it is combined with a transported diffuse
+field.  \Mocassin{} offers case B only.
+
+\paragraph{Density dependence.}  \MoCHII{}, \Mappings{}, \Mthree{} and
+\Mocassin{}'s output ratios carry it; \Wood{}, \CMI{}, \Torus{} and
+\Mocassin{}'s iteration path do not.  The cost is small in an \HII{} region
+and not small in a planetary nebula: from the same table, $j(\mathrm{H}\beta)$
+rises $0.4\%$ from $\nelec = 10^2$ to $10^4\,\mathrm{cm^{-3}}$ at $10^4$~K
+and $1.6\%$ to $10^6$, while H$\alpha$/H$\beta$ falls $2.0\%$ by $10^6$ and
+$5.7\%$ by $10^8$.  This is the same axis as the metal-line one of
+Section~\ref{sec:densitycool}, and two codes are internally inconsistent
+across it: \CMI{} and \Wood{} both solve their metal lines from level
+populations at the local $\nelec$ while leaving the hydrogen lines
+density-independent.
+
+\paragraph{Collisional excitation.}  \Mappings{} and \Mthree{} are the only
+codes that add a collisional term inside the line calculation itself, and
+they do it carefully: the excitation rate to each level (Anderson et al.\
+2000 collision strengths for $n \le 5$, Giovanardi et al.\ fits for
+$6 \le n \le 16$) times case-dependent cascade branching fractions read from
+their own data file, added to the recombination brightness
+(\code{hydro.f}:756--812), with the same energy booked as cooling and not
+double counted.  \MoCHII{} has the equivalent as an option
+(\code{par\%h\_coll\_effects}: a 25-level H\,\textsc{i} atom solved
+collisionally, its Balmer output written as separate rows so the
+recombination row stays a pure recombination quantity).  \Wood{}, \CMI{},
+\Mocassin{} and \Torus{} add nothing --- consistent with the fact, recorded in
+the cooling audit, that none of them carries H\,\textsc{i}
+collisional-excitation cooling either.
+
+\paragraph{Transport.}  The lines are diagnostics in \MoCHII{}, \Wood{} and
+\CMI{}: nothing re-emits a Balmer photon, and in \CMI{} the in-run
+emissivity call is commented out altogether, leaving a separate
+post-processing mode as the only route.  \Mocassin{} occupies a middle
+position that is easy to misread: the recombination-line energy is summed
+into the diffuse budget so that it correctly leaves the ionizing field, but a
+packet that lands in the line channel is given $\nu = 0$ and returns without
+being propagated --- the energy is removed, the photon is not transported.
+\Torus{} genuinely transports them, writing the lines into the diffuse redraw
+spectrum so an absorbed ionizing packet can re-emerge as an H$\alpha$ photon.
+\Mappings{} transports all of them into its outward-only diffuse field with
+escape and dust-retention factors.  \Mthree{} transports the subset that
+falls in its hardcoded 5--200~eV Monte Carlo band, which admits the Lyman
+series and excludes every Balmer and redder line, and it applies no escape
+factor to them.
+
+\paragraph{What each code refuses to compute.}  \Wood{} and \CMI{} return
+zero emissivity unless $x_{\rm HI} < 0.2$ and $\Te > 3000$~K, so their
+emissivity maps are blank across the ionization front and through the neutral
+gas by construction; \CMI{}'s Python twin uses $0.25$ where the compiled code
+uses $0.2$.  \MoCHII{} warns once when a cell exceeds the 30\,000~K table
+edge and clamps rather than extrapolating.  \Mappings{} zeroes all hydrogen
+lines outside $10 < \Te < 10^6$~K and extrapolates its ratio tables above
+$3\times10^4$~K, where they end.
+
+\paragraph{Helium, for contrast.}  The same audit on helium separates the
+codes further.  \MoCHII{} carries Storey--Hummer He\,\textsc{ii} tables in
+both cases and Porter et al.\ (2012/2013) He\,\textsc{i} emissivities;
+\Mappings{} and \Mthree{} carry the same He\,\textsc{ii} calculation and
+Porter et al.\ (2007), an earlier release from the same group;
+\Mocassin{} uses a case-A He\,\textsc{ii} table for the transported channel,
+which is the correct use of a case-A table for photons that ionize hydrogen.
+\Torus{} loads three helium tables at startup --- Storey--Hummer
+He\,\textsc{ii}, Benjamin et al.\ (1999) He\,\textsc{i}, and a
+Storey--Hummer H\,\textsc{i} table it never uses --- and the routine that
+would consume them is commented out in its entirety along with both of its
+call sites, so \Torus{} emits no helium recombination line of any kind.
+
+\paragraph{Two small findings, recorded for completeness.}  \Mocassin{} adds
+its Lyman-$\alpha$ luminosity onto an existing slot of the H\,\textsc{i}
+array rather than a spare one, in both of its paths, and in the output path
+that slot reaches the user: the shipped HII40 result reports a row at
+$24.93\,L(\mathrm{H}\beta)$ carrying the $30\rightarrow8$ wavelength of
+62\,802~\AA{}, which is Lyman $\alpha$ under a mid-infrared label.  And in
+both \Mappings{} and \Mthree{} the He\,\textsc{ii} collisional add-on is
+evaluated with hydrogen's nuclear charge (\code{atom=2} followed by
+\code{nz=mapz(1)}, \code{hydro.f}:789--791), so its transition energy carries
+$Z^2 = 1$ instead of $4$.  The practical effect is negligible, since He$^+$
+ground-state excitation is Boltzmann-suppressed at nebular temperatures, but
+it would matter in coronal gas.
 
 \subsection{Images and observing geometry}
 

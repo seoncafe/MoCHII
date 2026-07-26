@@ -112,8 +112,10 @@ without setting `par%sed_workdir`.
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
 data, algorithms, and validation results; `docs/MoCHII_fitting.pdf` for
-the CHIANTI fitting pipeline; and `docs/MoCHII_cooling_analysis.pdf` for the
-line-cooling verification against other photoionization codes.
+the CHIANTI fitting pipeline; `docs/MoCHII_cooling_analysis.pdf` for the
+line-cooling verification against other photoionization codes; and
+`docs/MoCHII_code_comparison.pdf` for the algorithmic and physical comparison
+with M^3, MAPPINGS V, ionize, CMacIonize, Torus, and MOCASSIN.
 
 ## Author
 
@@ -121,4 +123,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-26 19:48 KST
+Last updated: 2026-07-26 22:20 KST
