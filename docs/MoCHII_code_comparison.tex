@@ -28,6 +28,7 @@
 \newcommand{\HeIII}{He\,\textsc{iii}}
 \newcommand{\Te}{T_{\rm e}}
 \newcommand{\nelec}{n_{\rm e}}
+\newcommand{\QH}{Q_{\rm H}}
 \newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
 
 \begin{document}
@@ -1180,20 +1181,23 @@ the coefficients in the sources.  \Wood{} and \CMI{} share
 Eq.~(\ref{eq:woodfit}); \Torus{} and \Mocassin{}'s iteration path share
 $10^{-0.870\log_{10}\Te + 3.57}$; \Mocassin{}'s output path uses
 $2530\,\Te^{-0.833}$ while the accurate fit sits commented out one line above
-it (\code{output\_mod.f90}:2060--2063).  \MoCHII{}, \Mappings{} and
-\Mthree{} interpolate the table itself and are exact by construction.}
+it (\code{output\_mod.f90}:2060--2063).  All six temperatures listed are
+nodes of the table, so the three codes that interpolate it return the table
+value there and the interpolation scheme does not enter; what it costs between
+nodes is measured in Table~\ref{tab:interp}.}
 \label{tab:hbetafits}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-$\Te$ / K & \Wood{}, \CMI{} & \Torus{}, \Mocassin{} (iter.) &
-\Mocassin{} (output) \\
+$\Te$ / K & \MoCHII{}, \Mappings{}, & \Wood{}, \CMI{} &
+\Torus{}, \Mocassin{} & \Mocassin{} \\
+ & \Mthree{} & & (iteration) & (output) \\
 \midrule
- 5\,000 & 1.036 & 1.022 & 0.954 \\
- 7\,500 & 1.011 & 1.001 & 0.948 \\
-10\,000 & 1.004 & 0.996 & 0.954 \\
-15\,000 & 1.010 & 1.005 & 0.977 \\
-20\,000 & 1.026 & 1.023 & 1.005 \\
-30\,000 & 1.065 & 1.065 & 1.062 \\
+ 5\,000 & 1.000 & 1.036 & 1.022 & 0.954 \\
+ 7\,500 & 1.000 & 1.011 & 1.001 & 0.948 \\
+10\,000 & 1.000 & 1.004 & 0.996 & 0.954 \\
+15\,000 & 1.000 & 1.010 & 1.005 & 0.977 \\
+20\,000 & 1.000 & 1.026 & 1.023 & 1.005 \\
+30\,000 & 1.000 & 1.065 & 1.065 & 1.062 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1209,6 +1213,87 @@ table and \Mocassin{} from a fit below it, so a few percentage points of any
 $L(\mathrm{H}\beta)$ comparison between the two codes is a coefficient
 artifact rather than physics.  Line \emph{ratios} are immune, because
 \Mocassin{} divides by its own H$\beta$ before writing them.
+
+\paragraph{What the interpolation scheme costs.}  Reading a table exactly at
+its nodes is not the same as agreeing between them, and the three codes that
+interpolate the Storey--Hummer grid do it three different ways.  \MoCHII{} is
+bilinear in $(\log \Te, \log \nelec)$ on $\log j$, i.e.\ a power law within
+each cell (\code{sh95\_mod.f90}:162--175).  \Mappings{} and \Mthree{} take a
+natural cubic spline in $\log_{10}\Te$ of $\log_{10} j$ and interpolate
+linearly in $\log \nelec$ (\code{hydro.f}:255--265, 435--459).  \Mocassin{}'s
+output path uses a five-point Lagrange polynomial in $\sqrt{\Te}$ and
+$\log_{10}\nelec$ applied to $\log(j\sqrt{\Te})$, dividing the smoothing
+factor out afterwards (\code{output\_mod.f90}:2234--2366,
+\code{data maxv/4/ ni/2,3,4,5,6/}) --- the scheme Storey \& Hummer's own
+interpolation program uses.
+
+Table~\ref{tab:interp} evaluates the three on the same case-B table.  The
+spread is identically zero at the grid nodes and reaches a few tenths of a
+percent between them, largest where the grid is coarsest and at the high
+densities where the emissivity turns over.  Two observations follow.  The
+choice of scheme is not a material source of disagreement between these codes:
+at $0.1$--$0.3\%$ it is an order of magnitude below the offset of
+\Mocassin{}'s fitted H$\beta$ (Table~\ref{tab:hbetafits}) and below the
+$0.4$--$3.6\%$ of the analytic fits.  But the error of the low-order scheme is
+\emph{one-sided}, which is the property that matters: the chord lies below the
+curve, so \MoCHII{}'s bilinear form is low at every off-node point rather than
+scattering about zero, and integrating over a model cannot average it away.
+
+Because \MoCHII{}'s $L(\mathrm{H}\beta)$ sits below the published benchmark
+values, that bias is the natural suspect, and it can be measured on the
+converged models rather than estimated.  Re-evaluating the same converged state
+--- leaf by leaf, at each leaf's own $(\Te,\nelec)$ --- with the two
+higher-order schemes in place of the bilinear one changes the
+volume-integrated $L(\mathrm{H}\beta)$ by
+\begin{equation}
+  -0.061\%\ \ (\mathrm{HII40}), \qquad -0.126\%\ \ (\mathrm{HII20}),
+  \label{eq:interpbias}
+\end{equation}
+identically against the spline and against the Lagrange form.  The bias is
+indeed systematic and not statistical: of the 136\,168 emitting leaves at
+HII40 \emph{every one} is biased in the same direction, with a median of
+$-0.065\%$ and a worst case of $-0.217\%$; at HII20, $93.5\%$ are, with a
+median of $-0.130\%$.  HII20 carries twice the bias of HII40 because its
+temperature falls in the wider $5000$--$7500$~K cell of the table where the
+chord error is largest.  The Balmer decrement is less sensitive still,
+$\le 0.05\%$, since the bias is common to the two lines and divides out of the
+ratio.
+
+Set against a deficit of $3$--$5\%$ (Section~\ref{sec:validation}), the
+interpolation algorithm therefore accounts for one part in fifty at HII40 and
+one part in thirty at HII20.  The remainder is the photon budget: the
+converged models return $0.950$ and $0.970$ of $\QH$ as hydrogen
+recombinations, with helium taking $0.112\,\QH$ at HII40, and
+$L(\mathrm{H}\beta)$ follows that budget rather than the emissivity table.
+Removing the one-sided bias --- a spline or the Storey--Hummer
+$\sqrt{\Te}$-smoothed form in place of the chord --- is worth doing because a
+systematic error should not be left in a normalization quantity, but it will
+not move $L(\mathrm{H}\beta)$ perceptibly.
+
+\begin{table}[htbp]
+\centering
+\caption{Spread among the three table-interpolation schemes: the largest of
+the three $j(\mathrm{H}\beta)$ values divided by the smallest, in percent, on
+the Storey \& Hummer (1995) case-B table.  Rows at 5\,000, 10\,000 and
+20\,000~K and the column at $\nelec = 10^2\,\mathrm{cm^{-3}}$ are grid nodes,
+where all three schemes return the tabulated number and the spread vanishes by
+construction.  7024 and 8211~K are the converged benchmark temperatures.}
+\label{tab:interp}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{4}{c}{$\nelec$ / cm$^{-3}$} \\
+\cmidrule(l){2-5}
+$\Te$ / K & $10^{2}$ & $3\times10^{3}$ & $10^{5}$ & $3\times10^{6}$ \\
+\midrule
+ 5\,000 & 0.000 & 0.043 & 0.000 & 0.279 \\
+ 7\,024 & 0.114 & 0.105 & 0.092 & 0.205 \\
+ 8\,211 & 0.100 & 0.096 & 0.082 & 0.172 \\
+10\,000 & 0.000 & 0.024 & 0.000 & 0.145 \\
+13\,693 & 0.042 & 0.040 & 0.047 & 0.112 \\
+20\,000 & 0.000 & 0.006 & 0.000 & 0.074 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Case A and case B.}  This is where the six differ most, and where
 the ordering is not the one the codes' ages would suggest.  \Mappings{} has
@@ -1380,6 +1465,7 @@ diagnostic for turbulent, clumpy grids, provided the tolerance is set just
 above the packet-noise floor.
 
 \subsection{Validation evidence}
+\label{sec:validation}
 
 The MAPPINGS lineage has the stronger external maturity record.  \Mthree{}
 inherits decades of MAPPINGS development and has been published against the HII20, HII40,
