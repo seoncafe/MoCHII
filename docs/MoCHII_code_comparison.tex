@@ -21,6 +21,7 @@
 \newcommand{\CMI}{\textsc{CMacIonize}}
 \newcommand{\Torus}{\textsc{Torus}}
 \newcommand{\Mocassin}{\textsc{Mocassin}}
+\newcommand{\Cloudy}{\textsc{Cloudy}}
 \newcommand{\HII}{H\,\textsc{ii}}
 \newcommand{\HI}{H\,\textsc{i}}
 \newcommand{\HeI}{He\,\textsc{i}}
@@ -55,9 +56,11 @@ describes as the C++ version of that code; and \Torus{}, a
 radiation-hydrodynamics code whose photoionization loop borrows from both
 \Wood{} and \Mocassin{}.  \Mocassin{} is \MoCHII{}'s quantitative validation
 reference and appears throughout.  Section~\ref{sec:hlines} compares the one
-emission process all six compute, the hydrogen recombination lines, and finds
-three distinct method classes and no two codes agreeing on how the case A/B
-question should be posed.
+emission process all of them compute, the hydrogen recombination lines,
+together with \Cloudy{} c25.00, which is the one code in reach that solves the
+hydrogen atom instead of reading a table.  There are four method classes among
+the seven, and no two codes agree on how the case A/B question should even be
+posed.
 
 The comparison rests on connected execution paths and quantitative tests
 rather than on routine names.  \MoCHII{} is strongest as a modern
@@ -71,7 +74,8 @@ strongest as a deterministic one-dimensional general plasma engine: a
 30-element option, density-dependent multilevel cooling,
 finite-source-age photoionization, non-equilibrium cooling, radiation
 pressure, and steady radiative MHD shocks with an iterated precursor.  It
-also has the most physical hydrogen-line treatment of the six, a case
+also has the most physical hydrogen-line treatment of the six
+three-dimensional and one-dimensional nebular codes compared here, a case
 parameter computed from the local Lyman-line escape probability rather than
 chosen.  \Mthree{} occupies a distinct middle ground: it grafts
 three-dimensional Monte Carlo transport onto an older MAPPINGS V
@@ -1115,9 +1119,11 @@ emissivity algebra.
 Hydrogen recombination lines deserve their own comparison, for two reasons.
 They are the normalization of every published line list, so an error in
 H$\beta$ propagates into every ratio quoted against it; and they are the one
-emission process all six codes compute, which makes them the cleanest
-available cross-section through the design choices of the family.  The six
-implementations fall into three method classes.
+emission process every code here computes, which makes them the cleanest
+available cross-section through the design choices of the family.  \Cloudy{}
+c25.00 is carried in this subsection as well, because it answers the question
+in a different category from the other six.  The seven implementations fall
+into four method classes.
 
 \emph{Table interpolation in $(\Te,\nelec)$.}  \MoCHII{} reads the Storey \&
 Hummer (1995) case-A and case-B tables (11 temperatures $\times$ 13 densities
@@ -1168,9 +1174,23 @@ case-B table.  Since the two exponents differ, the ratio drifts as
 $T_4^{-0.060}$ rather than staying at 2.87, which is what makes the fit work
 as well as it does.
 
-The three families can be compared against one common standard, because
-\MoCHII{}'s parse of \code{e1bx.d} is the same Storey--Hummer case-B table
-that four of the six codes ultimately cite.  Table~\ref{tab:hbetafits}
+\emph{A solved level population.}  \Cloudy{} has no emissivity table for
+hydrogen at all.  Its hydrogen line data are reduced Einstein $A$ coefficients
+for $n' \rightarrow n$ transitions (\code{data/hydro\_tpn\_n100.dat}, to
+$n = 100$ by default, with an $n = 2000$ set shipped alongside), and the line
+emission is whatever the solved H-like iso-sequence level populations give.
+The default structure is ten resolved levels (\code{iso.cpp}:192), raised by
+the \code{database h-like resolved/collapsed levels} command.  Nothing is
+interpolated, so the low-density limit is a result of the solve rather than the
+edge of a grid, and the same applies at the top: \Cloudy{} computes through
+$\nelec = 10^{13}\,\mathrm{cm^{-3}}$, where a table-reading code has left its
+data behind.  The price is that the answer is only as good as the level
+structure, which its own test suite states explicitly (below).
+
+The three tabulation-derived families can be compared against one common
+standard, because \MoCHII{}'s parse of \code{e1bx.d} is the same
+Storey--Hummer case-B table that four of the six table- or fit-based codes
+ultimately cite.  Table~\ref{tab:hbetafits}
 evaluates each H$\beta$ prescription against it.
 
 \begin{table}[htbp]
@@ -1295,6 +1315,47 @@ $\Te$ / K & $10^{2}$ & $3\times10^{3}$ & $10^{5}$ & $3\times10^{6}$ \\
 \end{tabular}
 \end{table}
 
+\paragraph{What a solved atom says about the tables.}  Having one code in the
+comparison that does not read the tables makes it possible to ask how good the
+tables are, which is otherwise unanswerable from inside this family.  Two
+measurements were made with \Cloudy{} c25.00 for this memo, both single-zone,
+constant-temperature, hydrogen-only models with 30 resolved and 70 collapsed
+levels, run in the configuration of its own case-B reference test
+(\code{case b hummer no photoionization no pdest}, \code{no scattering escape},
+\code{no induced processes}).
+
+First, at the table's own grid point, $\Te = 10^4$~K and
+$\nelec = 10^2\,\mathrm{cm^{-3}}$, the solved populations sit slightly
+\emph{below} the tabulated case-B values, and by an amount that grows along the
+series:
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+& H$\beta$ & H$\alpha$/H$\beta$ & Pa$\alpha$/H$\beta$ \\
+\midrule
+Storey \& Hummer (1995) & $1.2350\times10^{-25}$ & 2.8640 & 0.3387 \\
+\Cloudy{} c25.00        & $1.2321\times10^{-25}$ & 2.8452 & 0.3319 \\
+difference              & $-0.23\%$ & $-0.65\%$ & $-2.00\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+This is the quantitative version of the statement its test deck makes in words:
+the deviation is attributed there to the principal quantum number
+specification, 30/70 in the run against 100/1 in the table.  The practical
+reading for a table-based code is reassuring in the abstract and cautionary in
+the detail --- the normalization line agrees to a quarter of a percent, while a
+ratio between widely separated series does not, at the level a Balmer/Paschen
+decrement measurement would notice.
+
+Second, and this is what settles the question the table cannot answer, the same
+model run down to $\nelec = 10^0\,\mathrm{cm^{-3}}$ shows the hydrogen
+coefficients essentially flat, which is the measurement quoted in the
+density paragraph above.  Its own validation suite tests
+$\log \nelec = 2, 4, 5, 8, 10$ and $13$; the lowest is the Storey--Hummer floor,
+because below it there is nothing tabulated to validate against.  A code that
+solves the populations does not need the floor, and a code that reads the table
+needs a defensible rule at it.
+
 \paragraph{Case A and case B.}  This is where the six differ most, and where
 the ordering is not the one the codes' ages would suggest.  \Mappings{} has
 the most physical treatment of any code here: the case parameter is not a
@@ -1323,15 +1384,119 @@ same pairing \MoCHII{} arrived at, with no parameter and no comment marking
 the distinction.  \CMI{} hardwires case-B line coefficients while the
 continuum case follows from two uncoordinated defaults, a diffuse handler
 that is off and a recombination coefficient that is the case-A total.
+\Cloudy{} is in a category of its own here, and it is the cleanest of the
+seven: the case is neither a table nor a flag on the data but a \emph{transfer
+condition}.  \code{case b} sets the minimum Lyman-line optical depth to
+$10^{5}$ and case A or C to $10^{-5}$ (\code{parse\_caseb.cpp}:19--41), and
+\code{rt\_tau\_reset.cpp}:137--144 then clobbers the Ly$\alpha$ optical depth
+to that value while every other line is transferred normally.  The command also
+carries three options whose only purpose is to \emph{emulate} the tabulated
+assumptions --- \code{hummer} (``no collisions from n=1, 2''),
+\code{no photoionization} and \code{no pdest} --- and its own case-B
+reference test uses all three, plus \code{no scattering escape} and
+\code{no induced processes}, with 30 resolved and 70 collapsed levels.  The
+test's closing comment is the honest summary of what a case-B table is:
+``This is close to the best and most complete model of H I that the code can
+do.  The predicted results still deviate from the tabulated `Ca B' results
+because of the principal quantum number specifications (30/70 here; 100/1 in
+table).''  In other words \Cloudy{} has to switch physics off to approach the
+tables, and the same test finds departure coefficients of $0.46$--$1.79$ for
+levels $n = 30$ to $530$ at $\nelec = 10^{2}\,\mathrm{cm^{-3}}$, which is why
+the solved populations are the more general statement.
+
 \Torus{} exposes a \code{caseB} flag that changes neither the lines nor the
 transport but replaces the hydrogen recombination coefficient with a
 temperature-independent constant $2.7\times10^{-13}\,\mathrm{cm^3\,s^{-1}}$,
 and warns rather than refuses when it is combined with a transported diffuse
 field.  \Mocassin{} offers case B only.
 
-\paragraph{Density dependence.}  \MoCHII{}, \Mappings{}, \Mthree{} and
-\Mocassin{}'s output ratios carry it; \Wood{}, \CMI{}, \Torus{} and
-\Mocassin{}'s iteration path do not.  The cost is small in an \HII{} region
+\paragraph{Density dependence, and what happens below the table.}
+\MoCHII{}, \Mappings{}, \Mthree{} and \Mocassin{}'s output ratios carry it;
+\Wood{}, \CMI{}, \Torus{} and \Mocassin{}'s iteration path do not;
+\Cloudy{} carries it inherently, since the populations are solved rather than
+read.  That difference has a consequence the table-based codes have to answer
+for: the Storey--Hummer grids begin at
+$\nelec = 10^{2}\,\mathrm{cm^{-3}}$ (the original CDS files as well as the
+repackaged ones), so every code that reads them needs a rule below that
+density, and \MoCHII{}'s rule is to clamp
+(\code{sh95\_mod.f90}:163).  Two measurements bound what the clamp costs.
+From the bottom slope of the table itself, extrapolating the collisional term
+linearly in $\nelec$, the $\nelec \rightarrow 0$ error is $\le 0.08\%$ for
+every H\,\textsc{i} and He\,\textsc{ii} line in it.  Independently,
+\Cloudy{} --- which has no floor --- gives $+0.065\%$ for H$\beta$,
+$+0.108\%$ for H$\alpha$ and $+0.03$ to $+0.05\%$ for the members up to
+$n = 17 \rightarrow 2$ between $\nelec = 10^{2}$ and $10^{0}\,
+\mathrm{cm^{-3}}$ at $10^{4}$~K.  The two agree that for hydrogen the
+low-density limit is already reached at the table's first column, and the cost
+of the clamp on an integrated luminosity is smaller still: replacing it with
+the $\nelec \rightarrow 0$ limit moves $L(\mathrm{H}\beta)$ by $-0.0002\%$
+at HII40, $-0.0003\%$ at HII20 and $-0.031\%$ in the low-density
+circumgalactic demonstration where every emitting cell is below the floor.
+
+\begingroup\small\setlength{\tabcolsep}{4pt}
+\begin{longtable}{P{0.115\textwidth}P{0.20\textwidth}P{0.18\textwidth}P{0.10\textwidth}P{0.10\textwidth}P{0.14\textwidth}}
+\caption{Hydrogen recombination lines, one row per code.  ``Case mechanism''
+is how the code decides between case A and case B, which is the axis on which
+no two of them agree.}
+\label{tab:hlines}\\
+\toprule
+Code & Emissivity source & Case mechanism & $\nelec$ depend. & H collis.\ term & Transported \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\small\itshape Table~\ref{tab:hlines} continued.}\\
+\toprule
+Code & Emissivity source & Case mechanism & $\nelec$ depend. & H collis.\ term & Transported \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\MoCHII{} & SH95 case-A/B tables, bilinear in $(\log\Te,\log\nelec)$ &
+\code{line\_case}, separate from the continuum \code{case\_ab} & yes &
+optional, 25-level atom & no \\
+
+\Mappings{} & SH95 absolute H$\beta$ + 90 ratios, spline in $\log\Te$ &
+continuous, from the Ly$\gamma$ escape probability & yes & yes, with
+case-dependent cascade & yes, outward-only with escape factors \\
+
+\Mthree{} & the same routine and data & hardcoded case B in the 3D driver &
+yes & yes, as above & 5--200 eV band only, so Lyman lines only \\
+
+\Mocassin{} & ratios frozen at $(10^4$~K, $10^2)$ in the iteration; SH95
+interpolated at output & case B only, no switch & output ratios only & no &
+energy removed, photon not propagated \\
+
+\Wood{} & analytic fits to SH95, Eq.~(\ref{eq:woodfit}) & case B hardcoded,
+continuum case A & no & no & no \\
+
+\CMI{} & the same coefficients & case B hardwired; continuum case from two
+uncoordinated defaults & no & no & no \\
+
+\Torus{} & ratios frozen at $(10^4$~K, $10^2)$ times a fitted H$\beta$ &
+\code{caseB} changes only the recombination coefficient & no & no & yes, into
+the diffuse redraw spectrum \\
+
+\Cloudy{} & none: solved H-like level populations, $n \le 100$ by default &
+a Lyman-line optical depth, $10^{5}$ against $10^{-5}$ & inherent & inherent &
+1D line transfer \\
+\end{longtable}
+\endgroup
+
+\emph{Helium is the exception, and it is not a small one.}  The
+Porter et al.\ (2012/2013) He\,\textsc{i} table starts one decade lower,
+$\nelec = 10^{1}\,\mathrm{cm^{-3}}$, and its 10833~\AA{} line does not
+flatten there: across the lowest decade of its own grid the coefficient moves
+$+19.1\%$, against $\le 0.8\%$ for the five singlet lines in the same table.
+\Cloudy{} confirms the effect independently, $+10.5\%$ from
+$\nelec = 10^{1}$ to $10^{2}\,\mathrm{cm^{-3}}$ and a further $+1.1\%$ from
+$10^{0}$ to $10^{1}$, against $\le 0.04\%$ for 5876~\AA{}.  The reason is
+structural rather than numerical: the lower level of 10830 is the metastable
+$2^3$S, whose population is set collisionally, so this line has no
+density-independent limit in the regime the table covers --- which is precisely
+why the $2^3$S population is computed explicitly elsewhere in \MoCHII{} rather
+than inferred from a case-B emissivity.  Clamping it is therefore a real error
+in diffuse gas, at the ten-percent level for $\nelec < 10\,\mathrm{cm^{-3}}$,
+and the honest statement is that the tabulated 10833 emissivity should not be
+used below the Porter floor at all.  The cost is small in an \HII{} region
 and not small in a planetary nebula: from the same table, $j(\mathrm{H}\beta)$
 rises $0.4\%$ from $\nelec = 10^2$ to $10^4\,\mathrm{cm^{-3}}$ at $10^4$~K
 and $1.6\%$ to $10^6$, while H$\alpha$/H$\beta$ falls $2.0\%$ by $10^6$ and
@@ -1351,7 +1516,9 @@ their own data file, added to the recombination brightness
 double counted.  \MoCHII{} has the equivalent as an option
 (\code{par\%h\_coll\_effects}: a 25-level H\,\textsc{i} atom solved
 collisionally, its Balmer output written as separate rows so the
-recombination row stays a pure recombination quantity).  \Wood{}, \CMI{},
+recombination row stays a pure recombination quantity).  \Cloudy{} needs no such term as an addition: collisional excitation is one
+of the rates in the level solve, which is what makes its Balmer emission
+depart from case B at all.  \Wood{}, \CMI{},
 \Mocassin{} and \Torus{} add nothing --- consistent with the fact, recorded in
 the cooling audit, that none of them carries H\,\textsc{i}
 collisional-excitation cooling either.
