@@ -22,6 +22,7 @@ Also: (a) cross-section values vs the independent EXHALE implementations
 (hydrogenic H formula; VFKY96 He I), (b) the 16-bin rate integral vs a
 2048-bin quasi-continuous integral (PLAN: 10-20 bins -> percent level).
 """
+import sys
 import numpy as np
 import h5py
 
@@ -197,3 +198,7 @@ fig.tight_layout()
 fig.savefig("g0_gamma_check.png", dpi=140)
 print("\nwrote g0_gamma_check.png")
 print("GATE:", "PASS" if ok else "FAIL")
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if ok else 1)
+

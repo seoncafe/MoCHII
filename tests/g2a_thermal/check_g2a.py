@@ -18,6 +18,7 @@ Expected physics: without metal cooling Te ~ 13-20 kK (the known pure-H/He
 overshoot, docs/PLAN.md section 8).  Gate: median |Te_MC/Te_1D - 1| < 1%
 over the ionized interior (0.3 < r < 2.8 pc).
 """
+import sys
 import numpy as np
 import h5py
 
@@ -246,6 +247,7 @@ print(f"median |dev| = {np.median(np.abs(dev))*100:.3f}%   "
       f"mean bias = {dev.mean()*100:+.3f}%   max |dev| = {np.abs(dev).max()*100:.3f}%")
 stat = "PASS" if np.median(np.abs(dev)) < 0.01 else "FAIL"
 print(f"GATE: {stat}")
+gate_ok = stat == "PASS"
 
 # --- plot ---
 import matplotlib
@@ -270,3 +272,6 @@ ax2.set_title(r"H ionization with thermal balance")
 fig.tight_layout()
 fig.savefig("g2a_thermal_check.png", dpi=140)
 print("wrote g2a_thermal_check.png")
+
+#--- The gate must fail the PROCESS, not just print.
+sys.exit(0 if gate_ok else 1)

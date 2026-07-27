@@ -81,3 +81,7 @@ print(f"scattered image total = {sca.sum():.3e} (must be 0 without dust)")
 ok = abs(F_img/F_ref - 1) < 0.005 and img.max()/img.sum() > 0.999 \
      and sca.sum() == 0.0
 print("GATE:", "PASS" if ok else "FAIL")
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if ok else 1)
+

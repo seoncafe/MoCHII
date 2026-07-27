@@ -10,6 +10,7 @@ R_eff = 3.0365 pc (computed in tests/g1_stromgren).
 Criteria: |R_eff(refined) - R_eff(uniform7)| < 0.5%, both within ~1% of
 the 1D reference, with the refined run using far fewer leaves.
 """
+import sys
 import numpy as np
 import h5py
 
@@ -43,14 +44,20 @@ def r_eff(run, half):
     return (3.0*vion/(4.0*np.pi))**(1.0/3.0)
 
 
+gate_ok = False
 TAG_A = "re-refined 5$\\rightarrow$7"
 runs = {}
+#--- A missing result file used to be printed and skipped, and the script
+#--- still exited 0 with the gate never evaluated.  A gate that cannot run is
+#--- not a gate that passed.
+missing = []
 for tag, fn in ((TAG_A, "g4_refine_rates.h5"),
                 ("uniform 7", "g4_uniform7_rates.h5")):
     try:
         run = load(fn)
     except FileNotFoundError:
-        print(f"[{tag}] {fn} not found; skipped")
+        print(f"[{tag}] {fn} NOT FOUND")
+        missing.append(fn)
         continue
     half = half_cells(run["xyz"])
     assert (half > 0).all(), "level inference failed"
@@ -67,6 +74,7 @@ if len(runs) == 2:
           f"leaf ratio {ratio:.1f}x")
     ok = abs(Ra/Rb - 1.0) < 0.005
     print("GATE:", "PASS" if ok else "FAIL")
+    gate_ok = ok
 
     import matplotlib
     matplotlib.use("Agg")
@@ -84,3 +92,8 @@ if len(runs) == 2:
     fig.tight_layout()
     fig.savefig("g4_refine_check.png", dpi=140)
     print("wrote g4_refine_check.png")
+
+#--- The gate must fail the PROCESS, not just print.
+if missing:
+    print(f"GATE: FAIL (missing input: {', '.join(missing)})")
+sys.exit(0 if (gate_ok and not missing) else 1)
