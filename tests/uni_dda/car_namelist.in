@@ -10,7 +10,7 @@
  par%iseed         = 1234
 
  par%grid_type     = 'car'
- par%car_walk      = 'shared'
+ par%car_walk      = 'amr'
  par%nx            = 64
  par%ny            = 64
  par%nz            = 64

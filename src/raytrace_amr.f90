@@ -353,7 +353,7 @@ contains
     real(wp) :: tau, t_exit, d_step, kap, wl
     logical  :: do_tally
 
-    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+    if (amr_grid%car .and. trim(par%car_walk) /= 'amr') then
        call raytrace_ion_to_tau_car(photon, tau_in)
        return
     end if
@@ -427,7 +427,7 @@ contains
     real(wp) :: x, y, z, kx, ky, kz, t_exit, kap
     real(wp) :: tau, expo, expo_out, wl
 
-    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+    if (amr_grid%car .and. trim(par%car_walk) /= 'amr') then
        call raytrace_ion_to_edge_car(photon0, tau_edge_out)
        return
     end if
@@ -487,7 +487,7 @@ contains
   ! Incremental Amanatides-Woo walks for the Cartesian (car) grid
   ! (par%car_walk = 'dda'): per-ray tMax/tDelta per axis, the inner loop
   ! advances by comparisons and additions only — no cell-geometry reads.
-  ! The tally expressions are identical to the shared walks; only the
+  ! The tally expressions are identical to the octree walks; only the
   ! step computation differs (results agree statistically, not bitwise).
   !=========================================================================
   subroutine dda_init(x, y, z, kx, ky, kz, ix, iy, iz, stp, tmax, tdel, ok)
@@ -734,7 +734,7 @@ contains
     integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz, t_exit, tau
 
-    if (amr_grid%car .and. trim(par%car_walk) /= 'shared') then
+    if (amr_grid%car .and. trim(par%car_walk) /= 'amr') then
        call raytrace_ion_tau_only_car(photon0, tau_out)
        return
     end if

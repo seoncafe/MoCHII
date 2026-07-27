@@ -622,7 +622,7 @@ public
      !--- car-grid walk: 'dda' (default) = dedicated incremental
      !--- Amanatides-Woo walks (per-ray tMax/tDelta, no cell-geometry
      !--- reads in the inner loop — the natural, fastest car traversal);
-     !--- 'shared' = the octree walks with integer index arithmetic
+     !--- 'amr' = the octree walks with integer index arithmetic
      !--- replacing the neighbor table, a verification mode that is
      !--- bit-identical to the single-level octree run (the cross-check
      !--- DDA cannot provide — it differs at rounding by design).

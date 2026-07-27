@@ -100,7 +100,7 @@ parameter & default & meaning \\
 parameter & default & meaning \\
 \midrule
 \code{grid\_type} & 'car' & \code{'amr'} (octree) or \code{'car'} (single-level Cartesian, leaf list in raster order; no tree and no geometry arrays in memory --- cell centers and half-widths are computed analytically from the raster index; \code{refine\_front} unavailable).  \code{'uniform'} is accepted as an alias for \code{'car'} \\
-\code{car\_walk}  & 'dda' & car-grid traversal: \code{'dda'} (default) = dedicated incremental Amanatides--Woo walks ($t_{\rm max}$/$t_\Delta$ per axis, comparisons and additions only --- the fastest car walk); \code{'shared'} = the octree walks with integer index arithmetic replacing the neighbor table, a verification mode that is bit-identical to \code{'amr'} \\
+\code{car\_walk}  & 'dda' & car-grid traversal: \code{'dda'} (default) = dedicated incremental Amanatides--Woo walks ($t_{\rm max}$/$t_\Delta$ per axis, comparisons and additions only --- the fastest car walk); \code{'amr'} = the octree walks with integer index arithmetic replacing the neighbor table, a verification mode that is bit-identical to the single-level octree (\code{grid\_type\,=\,'amr'}) \\
 \code{amr\_file}  & ''    & generic AMR leaf file (FITS/HDF5/text): columns x, y, z, level, nH [, metallicity, xHI, ndust].  If empty, a \code{'car'} grid is built from the namelist instead (\code{'amr'} requires the file) \\
 \code{nx, ny, nz} & 1, 1, 11 & \code{'car'}-from-namelist cell counts (cubic cells required: $2\,x_{\max}/n_x = 2\,y_{\max}/n_y = 2\,z_{\max}/n_z$) \\
 \code{xmax, ymax, zmax} & 1, 1, 1 & \code{'car'}-from-namelist box half-extents [\code{distance\_unit}]; box is $[-x_{\max},x_{\max}]$ etc. \\
@@ -788,7 +788,7 @@ directory & what it demonstrates / gate \\
 \code{g4\_tng} & Illustris-TNG post-processing demo (shadows, maps) \\
 \code{d\_dusty} & dusty Str\"omgren; scattering bracket; $T_{\rm d}$/IR \\
 \code{peel} & peel-off images vs.\ the optically thin analytic flux ($+0.017\%$); bin cubes \\
-\code{uni\_dda} & uniform grid: shared walk $\equiv$ octree (bit-identical); DDA walk to rounding \\
+\code{uni\_dda} & uniform grid: \code{'amr'} walk $\equiv$ octree (bit-identical); DDA walk to rounding \\
 \code{pdr} & FUV/PDR switches: carbon-electron shell, photoelectric $T_e$ \\
 \code{ext\_field} & isotropic external field: interior $J = J_{\rm ext}$ to 0.2\% (rec and sph) \\
 \code{multi\_src} & multiple point sources: superposition, spectrum resolution, one-file spectra \\

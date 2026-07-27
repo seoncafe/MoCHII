@@ -11,7 +11,7 @@ run's '<base>_slab_Imu.txt' boundary output:
   G-beam-oblique  the SAME slab, beam at theta=60 (mu = cos60 = 0.5): the
                   transmission through the slab is exp(-tau/mu) = T_normal^(1/mu),
                   so ln(T_oblique)/ln(T_normal) = 1/mu = 2 (no hardcoded tau).
-  G-dda-vs-shared the DDA and 'shared' car walks give the same transmission.
+  G-dda-vs-amr    the DDA and 'amr' car walks give the same transmission.
   G-nx1-vs-nx2    nx=1 and nx=2 periodic tiles give the same transmission
                   (the result is invariant under the tile size).
   G-budget        for every run (reflected + transmitted + absorbed)/L_in = 1.
@@ -108,11 +108,11 @@ def main():
     print(f"  ln(T60)/ln(T0) = {ratio:.4f}   expect 1/mu = {1.0/MU_OBLIQUE:.4f}")
     print(f"  --> {'PASS' if ok else 'FAIL'} (|ratio-2|<0.02)")
 
-    # ---- G-dda-vs-shared -----------------------------------------------------
+    # ---- G-dda-vs-amr --------------------------------------------------------
     ok = abs(T60d - T60s) < 1e-4
     passed &= ok
-    print(f"\n=== G-dda-vs-shared (car_walk) ===")
-    print(f"  T(dda) = {T60d:.6f}   T(shared) = {T60s:.6f}   |diff| = {abs(T60d-T60s):.2e}")
+    print(f"\n=== G-dda-vs-amr (car_walk) ===")
+    print(f"  T(dda) = {T60d:.6f}   T(amr) = {T60s:.6f}   |diff| = {abs(T60d-T60s):.2e}")
     print(f"  --> {'PASS' if ok else 'FAIL'} (|diff|<1e-4)")
 
     # ---- G-nx1-vs-nx2 --------------------------------------------------------

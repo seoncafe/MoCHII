@@ -121,9 +121,9 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%grid_type) == 'car' .and. &
-      trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'shared') then
+      trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'amr') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%car_walk must be ''dda'' (default) or ''shared''.'
+        'ERROR: par%car_walk must be ''dda'' (default) or ''amr''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%ci_model) /= 'voronov' .and. &
