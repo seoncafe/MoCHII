@@ -14,6 +14,7 @@ Cases: full dust (global_dgr) — gate |R_eff(MC)/R_eff(1D) - 1| < 1%;
 laursen09_live (dust ~ n_HI + 0.01 n_HII) — must land near the
 dust-free radius (interior dust vanishes with the computed x_HII).
 """
+import sys
 import numpy as np
 import h5py
 import os
@@ -187,12 +188,22 @@ print(f"dust-free : R_eff = {R_EFF_FREE_1D:.4f} pc (G1)")
 print(f"full dust : R_eff = {Re_full:.4f} pc  (reduction {Re_full/R_EFF_FREE_1D:.3f})")
 print(f"l09-live  : R_eff = {Re_l09:.4f} pc  (reduction {Re_l09/R_EFF_FREE_1D:.3f})")
 
+gate_ok = True
 print("\n=== MoCHII runs ===")
 for tag, fn, ref in (("full dust", "d_dust_full_rates.h5", Re_full),
                      ("l09-live", "d_dust_l09_rates.h5", Re_l09)):
     if not os.path.exists(fn):
-        print(f"[{tag}] {fn} not found; skipped")
+        #--- a gate that could not run is not a gate that passed.
+        print(f"[{tag}] {fn} NOT FOUND")
+        gate_ok = False
         continue
     Re = r_eff_mc(fn)
+    case_ok = abs(Re/ref-1) < 0.01
+    gate_ok = gate_ok and case_ok
     print(f"[{tag:10s}] R_eff = {Re:.4f} pc   vs 1D {Re/ref-1:+.2%}   "
-          f"{'PASS' if abs(Re/ref-1) < 0.01 else 'FAIL'}")
+          f"{'PASS' if case_ok else 'FAIL'}")
+
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+print("GATE:", "PASS" if gate_ok else "FAIL")
+sys.exit(0 if gate_ok else 1)

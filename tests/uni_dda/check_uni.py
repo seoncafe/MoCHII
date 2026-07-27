@@ -6,6 +6,7 @@ positions; and the timing comparison measures what the DDA path buys.
 Run:  python3 check_uni.py
 """
 
+import sys
 import re
 import numpy as np
 import h5py
@@ -64,6 +65,8 @@ print("GATE (amr-walk vs octree):", "PASS" if ok else "FAIL")
 # --- differs from the amr-walk, so bit-identity is NOT expected;
 # --- compare statistically against the amr-walk run.
 import os
+#--- the dda comparison is genuinely optional: it needs a second run.
+ok_w = True
 if os.path.exists("uni_ddaw_rates.h5"):
     xyz_w, xhi_w, ne_w = load("uni_ddaw")
     kw = np.argsort(keys(xyz_w))
@@ -82,3 +85,7 @@ if os.path.exists("uni_ddaw_rates.h5"):
     # V_ion is the converged volume-integrated measure.
     ok_w = abs(vion_w/vion_d - 1) < 2e-3 and np.median(dxw) < 1e-6
     print("GATE (dda vs amr-walk):", "PASS" if ok_w else "FAIL")
+
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if (ok and ok_w) else 1)

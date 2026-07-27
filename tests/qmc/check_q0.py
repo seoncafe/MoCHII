@@ -21,6 +21,7 @@
 
 (c) Repeat (b) for several seeds; the point sets must differ.
 """
+import sys
 import numpy as np
 from scipy.stats import qmc
 
@@ -109,4 +110,8 @@ for (a1, a2) in [(0, 1), (0, 2), (1, 2)]:
                for j1 in range(0, M + 1))
     print(f"    dims({a1},{a2}): one-point-per-elementary-box = {onep}")
 
-print("\nQ0 GATE:", "PASS" if (a_ok and b_ok and c_ok) else "FAIL")
+gate_ok = a_ok and b_ok and c_ok
+print("\nQ0 GATE:", "PASS" if gate_ok else "FAIL")
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if gate_ok else 1)

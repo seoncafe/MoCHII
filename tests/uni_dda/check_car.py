@@ -11,6 +11,7 @@ Two checks on the same R=4 pc, nH=100 Stromgren sphere:
 Run:  python3 check_car.py
 """
 
+import sys
 import numpy as np
 import h5py
 
@@ -44,4 +45,8 @@ ok1 = compare("namelist-car vs file-car", "car_namelist", "uni_dda", 0.0)
 # 2. amr density override vs plain octree -> bit-identical
 ok2 = compare("amr-override vs octree", "car_amr_ovr", "uni_amr", 0.0)
 
-print("\nOVERALL:", "PASS" if (ok1 and ok2) else "FAIL")
+gate_ok = ok1 and ok2
+print("\nOVERALL:", "PASS" if gate_ok else "FAIL")
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if gate_ok else 1)

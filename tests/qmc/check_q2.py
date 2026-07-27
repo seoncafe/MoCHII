@@ -15,6 +15,7 @@
     scrambles of the same net, so their dim-1 sequences differ by O(1), while
     each stream individually stays balanced.
 """
+import sys
 import numpy as np
 from scipy.stats import qmc
 
@@ -109,4 +110,8 @@ for s in (12345, 777, 2024):
           f"mean|du|={dmean:.3f}  (corr={corr:+.4f}, matches baseline) "
           f"-> {'PASS' if ok else 'FAIL'}")
 
-print("\nQ2 GATE:", "PASS" if (a_ok and b_ok and c_ok) else "FAIL")
+gate_ok = a_ok and b_ok and c_ok
+print("\nQ2 GATE:", "PASS" if gate_ok else "FAIL")
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+sys.exit(0 if gate_ok else 1)

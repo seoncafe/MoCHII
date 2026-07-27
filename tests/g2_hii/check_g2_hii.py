@@ -13,6 +13,7 @@ the two codes use different atomic-data compilations; and the stored
 baselines are reduced runs (1e5 photons, 3 iterations, convergence flag
 0.09).  Gate criterion: |Te(H II) - reference| / reference < 5%.
 """
+import sys
 import numpy as np
 import h5py
 import re, os
@@ -39,11 +40,14 @@ def read_mocassin_table(path):
     return out
 
 
+gate_ok = True
 for label, fname, mdir in CASES:
     try:
         f = h5py.File(fname, "r")
     except FileNotFoundError:
-        print(f"[{label}] {fname} not found; skipped\n")
+        #--- a case that could not run is not a case that passed.
+        print(f"[{label}] {fname} NOT FOUND\n")
+        gate_ok = False
         continue
     te = f["T_e"]["data"][:]
     ne = f["n_e"]["data"][:]
@@ -69,6 +73,7 @@ for label, fname, mdir in CASES:
           f"   dev {te_HII/ref2-1:+.2%}")
     dev2 = te_HII/ref2 - 1.0
     gate = abs(dev2) < 0.05
+    gate_ok = gate_ok and gate
     print(f"GATE (Te(H II) within 5% of MOCASSIN row (1,2)): "
           f"{'PASS' if gate else 'FAIL'} ({dev2:+.2%})")
 
@@ -94,3 +99,8 @@ for label, fname, mdir in CASES:
             print(f"{el.upper()+' '+('I'*(i+1) if i<3 else 'IV'):10s} "
                   f"{v:10.4f} {ref:10.4f}")
     print()
+
+#--- The gate must fail the PROCESS, not just print: a CI runner (and a
+#--- human skimming a log) otherwise reads a FAIL as a successful run.
+print("OVERALL GATE:", "PASS" if gate_ok else "FAIL")
+sys.exit(0 if gate_ok else 1)
