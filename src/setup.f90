@@ -137,6 +137,26 @@ contains
         'ERROR: refine_front needs the octree (par%grid_type = ''amr'').'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (par%refine_front) then
+     if (par%refine_lbase > par%refine_lmax) then
+        if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a)') &
+           'ERROR: par%refine_lbase (', par%refine_lbase, &
+           ') must not exceed par%refine_lmax (', par%refine_lmax, ').'
+        call MPI_FINALIZE(ierr);  stop
+     endif
+     if (par%refine_lbase < 1 .or. par%refine_lmax < 1) then
+        if (mpar%p_rank == 0) write(*,'(a)') &
+           'ERROR: par%refine_lbase and par%refine_lmax must be >= 1.'
+        call MPI_FINALIZE(ierr);  stop
+     endif
+     if (par%refine_iter < 1 .or. par%refine_iter >= par%gas_niter) then
+        if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a)') &
+           'ERROR: par%refine_iter (', par%refine_iter, &
+           ') must be in [1, par%gas_niter-1] so the new grid is iterated '// &
+           'on; par%gas_niter = ', par%gas_niter, '.'
+        call MPI_FINALIZE(ierr);  stop
+     endif
+  endif
   if (trim(par%grid_type) == 'car' .and. &
       trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'amr') then
      if (mpar%p_rank == 0) write(*,'(a)') &
