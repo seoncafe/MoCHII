@@ -661,18 +661,19 @@ implicit none
   !=========================================================================
   ! Converged stage fractions of every element -> output file blocks.
   !=========================================================================
-  subroutine species_write(file)
+  subroutine species_write(file, status)
     use iofile_mod
     use octree_mod,    only : amr_grid
     use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
     implicit none
     type(io_file_type), intent(inout) :: file
+    integer, intent(inout) :: status
     real(kind=wp), allocatable :: fr(:,:)
     real(kind=wp) :: frac(MAX_ST), nHI, nHII
     character(len=64) :: extname
-    integer :: ie, il, i, status, nleaf
+    integer :: ie, il, i, nleaf
 
-    status = 0
+    if (status /= 0) return
     nleaf = amr_grid%nleaf
     do ie = 1, n_elements
        allocate(fr(elems(ie)%nstage, nleaf))

@@ -363,7 +363,7 @@ contains
   subroutine ion_peel_write()
     use mpi
     use iofile_mod
-    use utility, only : get_base_name
+    use utility, only : get_base_name, fatal_error
     implicit none
     type(io_file_type) :: file
     character(len=192) :: outname
@@ -511,6 +511,7 @@ contains
        end if
     end do
     call io_close(file, status)
+    if (status /= 0) call fatal_error('failed to write peel-off image file: '//trim(outname))
     write(*,'(2a)') ' PEEL: images written to: ', trim(outname)
     write(*,'(a,es12.4,a,es12.4)') ' PEEL: sum(direct) = ', sum(img_dir), &
        ',  sum(scatt) = ', sum(img_sca)

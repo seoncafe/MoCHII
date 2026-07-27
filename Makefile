@@ -46,9 +46,11 @@ endif
 ifeq ($(FC), $(filter $(FC), mpiifort mpiifx))
     FFLAGS  = -ipo -O3 -no-prec-div -fp-model fast=2 $(FLAGS) $(Fextra)
     MODFLAG = -module $(SRCDIR)
+    OMPFLAG = -qopenmp
 else ifeq ($(FC), mpif90)
     FFLAGS  = -O3 -ffpe-summary=none $(FLAGS) $(EXTRAFLAG)
     MODFLAG = -J$(SRCDIR) -I$(SRCDIR)
+    OMPFLAG = -fopenmp
 endif
 
 ifeq ($(DEBUG), 1)
@@ -59,7 +61,7 @@ ifeq ($(DEBUG), 1)
    endif
 endif
 
-LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(HDF5_LIBS) $(SEDUST_LIB) -qopenmp
+LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(HDF5_LIBS) $(SEDUST_LIB) $(OMPFLAG)
 #*********************************************************************
 .SUFFIXES: .f .f90 .o
 

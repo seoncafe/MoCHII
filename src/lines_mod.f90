@@ -35,7 +35,7 @@ contains
 
   !=========================================================================
   subroutine lines_write()
-    use utility, only : get_base_name
+    use utility, only : get_base_name, fatal_error
     use iofile_mod
     implicit none
     type(nlevel_atom_type) :: atom
@@ -69,7 +69,7 @@ contains
     if (do_emis) then
        call io_open_new(efile, trim(get_base_name(par%out_file))//'_emis'// &
                         trim(io_file_extension(par%file_format)), status)
-       call emis_write_state(efile)
+       call emis_write_state(efile, status)
     end if
 
     !--- H I recombination lines (Storey & Hummer 1995 case B).
@@ -344,6 +344,7 @@ contains
     write(*,'(2a)') ' LINE: line luminosities written to: ', trim(outname)
     if (do_emis) then
        call io_close(efile, status)
+       if (status /= 0) call fatal_error('failed to write emissivity file')
        write(*,'(2a)') ' LINE: leaf emissivities + state written to: ', &
           trim(get_base_name(par%out_file))//'_emis'// &
           trim(io_file_extension(par%file_format))
@@ -354,14 +355,15 @@ contains
   ! State blocks of the emissivity file: everything a map needs without
   ! opening the rates file (positions, densities, temperature, fractions).
   !=========================================================================
-  subroutine emis_write_state(efile)
+  subroutine emis_write_state(efile, status)
     use iofile_mod
     implicit none
     type(io_file_type), intent(inout) :: efile
+    integer, intent(inout) :: status
     real(kind=wp), allocatable :: tmp(:), lxyz(:,:)
-    integer :: il, ic, status
+    integer :: il, ic
 
-    status = 0
+    if (status /= 0) return
     allocate(lxyz(gas_nleaf,3))
     do il = 1, gas_nleaf
        lxyz(il,1) = leaf_cx(il)
@@ -403,7 +405,7 @@ contains
     deallocate(tmp)
 
     !--- metal stage fractions (same blocks as the rates file).
-    if (par%use_metals) call species_write(efile)
+    if (par%use_metals) call species_write(efile, status)
   end subroutine emis_write_state
 
   !=========================================================================

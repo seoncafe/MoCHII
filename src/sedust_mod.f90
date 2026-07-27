@@ -271,7 +271,7 @@ contains
   subroutine dustemis_write(em_band, band_wl, nband)
     use octree_mod, only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
     use iofile_mod
-    use utility,    only : get_base_name
+    use utility,    only : get_base_name, fatal_error
     implicit none
     real(kind=wp), intent(in) :: em_band(:,:), band_wl(:)
     integer,       intent(in) :: nband
@@ -311,6 +311,7 @@ contains
          'band wavelengths [A]',status)
     call io_close(file, status)
     deallocate(lxyz, tmp)
+    if (status /= 0) call fatal_error('failed to write dust-emissivity file: '//trim(outname))
     write(*,'(2a)') ' SEDU: dust band emissivities written to: ', trim(outname)
   end subroutine dustemis_write
 

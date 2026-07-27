@@ -246,7 +246,7 @@ contains
   use sed_mod,      only : sed_nlam, sed_wave, sed_dwave, sed_sext, sed_albedo, sed_cext_ref
   use cellinfo_mod, only : cell_rhokap, cell_volume, cell_center, car_ijk
   use iofile_mod
-  use utility,      only : get_base_name
+  use utility,      only : get_base_name, fatal_error
   implicit none
   type(grid_type), intent(in) :: grid
   type(io_file_type) :: file
@@ -292,7 +292,7 @@ contains
      call io_append_image(file, jt_sum, status, bitpix=-64)
      call io_put_keyword(file,'EXTNAME','J_lambda','J(lambda,leaf) mean intensity (AMR)',status)
      call io_put_keyword(file,'J_UNIT','luminosity/dist_cm^2/um/sr','J_lambda unit',status)
-     call write_jlam_keys(file, sed_cext_ref, eabs_A, eabs_B)
+     call write_jlam_keys(file, sed_cext_ref, eabs_A, eabs_B, status)
      call io_append_image(file, jbol, status, bitpix=-64)
      call io_put_keyword(file,'EXTNAME','J_bol','wavelength-integrated J per leaf',status)
      allocate(leafxyz(jt_ncell,3))
@@ -313,7 +313,7 @@ contains
      call io_append_image(file, jcube, status, bitpix=-64)
      call io_put_keyword(file,'EXTNAME','J_lambda','J(lambda,x,y,z) mean intensity',status)
      call io_put_keyword(file,'J_UNIT','luminosity/dist_cm^2/um/sr','J_lambda unit',status)
-     call write_jlam_keys(file, sed_cext_ref, eabs_A, eabs_B)
+     call write_jlam_keys(file, sed_cext_ref, eabs_A, eabs_B, status)
      call io_append_image(file, jbolc, status, bitpix=-64)
      call io_put_keyword(file,'EXTNAME','J_bol','wavelength-integrated J(x,y,z)',status)
      call io_put_keyword(file,'J_UNIT','luminosity/dist_cm^2/sr','J_bol unit',status)
@@ -324,19 +324,20 @@ contains
   call io_append_image(file, sed_dwave, status, bitpix=-64)
   call io_put_keyword(file,'EXTNAME','Dwavelength','bin widths [um]',status)
   call io_close(file, status)
+  if (status /= 0) call fatal_error('failed to write J_lambda file: '//trim(filename))
   write(*,'(2a)') 'J_lambda written to: ', trim(filename)
   deallocate(jbol)
   end subroutine jtally_write
 
   !---------------------------------------------------------------
-  subroutine write_jlam_keys(file, cext_ref, eabs_A, eabs_B)
+  subroutine write_jlam_keys(file, cext_ref, eabs_A, eabs_B, status)
   use sed_mod,   only : sed_nlam
   use iofile_mod
   implicit none
   type(io_file_type), intent(inout) :: file
   real(kind=wp),      intent(in)    :: cext_ref, eabs_A, eabs_B
-  integer :: status
-  status = 0
+  integer, intent(inout) :: status
+  if (status /= 0) return
   call io_put_keyword(file,'SED_NLAM', sed_nlam,       'number of wavelength bins',     status)
   call io_put_keyword(file,'SED_LREF', par%lambda_ref, 'reference wavelength [um]',     status)
   call io_put_keyword(file,'SED_CREF', cext_ref,       'C_ext/H at lambda_ref [cm^2/H]',status)

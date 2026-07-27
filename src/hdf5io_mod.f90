@@ -75,19 +75,25 @@ module hdf5io_mod
 contains
 
 #ifdef HDF5
+  ! Preserve the first HDF5 error.  Cleanup calls use their own ierr and may
+  ! add an error only when no earlier operation has failed.
+  subroutine record_hdf5_error(status, ierr)
+    integer, intent(inout) :: status
+    integer, intent(in)    :: ierr
+    if (ierr /= 0 .and. status == 0) status = HDF5_ERR_BACKEND
+  end subroutine record_hdf5_error
+
 !=============================================================================
 !  Lifecycle
 !=============================================================================
   subroutine hdf5_init(status)
     integer, intent(inout) :: status
     integer :: ierr
-    integer(hid_t), parameter :: H5E_DEFAULT_ID = 0_hid_t
+    if (status /= 0) return
     if (.not. hdf5_initialized) then
        call h5open_f(ierr)
-       if (ierr /= 0) then
-          status = HDF5_ERR_BACKEND
-          return
-       endif
+       call record_hdf5_error(status, ierr)
+       if (status /= 0) return
        !-- Silence HDF5's automatic stack-trace dumps on errors.  We check
        !   the Fortran ierr from every call ourselves and either recover
        !   (e.g. fall back from CRT_ORDER iteration to NAME iteration when
@@ -95,9 +101,13 @@ contains
        !   HDF5_ERR_BACKEND to the caller.  Without this, every miss spews
        !   a 6-line H5E diagnostic to stderr.
        call h5eset_auto_f(0, ierr)
+       call record_hdf5_error(status, ierr)
+       if (status /= 0) then
+          call h5close_f(ierr)
+          return
+       endif
        hdf5_initialized = .true.
     endif
-    status = 0
   end subroutine hdf5_init
 
   subroutine hdf5_finalize(status)
@@ -106,7 +116,7 @@ contains
     if (hdf5_initialized) then
        call h5close_f(ierr)
        hdf5_initialized = .false.
-       if (ierr /= 0) status = HDF5_ERR_BACKEND
+       call record_hdf5_error(status, ierr)
     endif
   end subroutine hdf5_finalize
 
@@ -131,18 +141,24 @@ contains
     integer(hid_t),    intent(out) :: gid
     integer,           intent(out) :: ierr
     integer(hid_t) :: gcpl
-    integer :: ierr_aux
+    integer :: ierr_close
+    gid = -1_hid_t
+    gcpl = -1_hid_t
     call h5pcreate_f(H5P_GROUP_CREATE_F, gcpl, ierr)
     if (ierr == 0) then
        call h5pset_link_creation_order_f(gcpl, &
-            ior(H5P_CRT_ORDER_TRACKED_F, H5P_CRT_ORDER_INDEXED_F), ierr_aux)
+            ior(H5P_CRT_ORDER_TRACKED_F, H5P_CRT_ORDER_INDEXED_F), ierr)
     endif
     if (ierr == 0) then
        call h5gcreate_f(parent_id, trim(path), gid, ierr, gcpl_id=gcpl)
     else
+       ! Creation-order tracking is optional; retry with default properties.
        call h5gcreate_f(parent_id, trim(path), gid, ierr)
     endif
-    call h5pclose_f(gcpl, ierr_aux)
+    if (gcpl >= 0_hid_t) then
+       call h5pclose_f(gcpl, ierr_close)
+       if (ierr == 0 .and. ierr_close /= 0) ierr = ierr_close
+    endif
   end subroutine create_group_tracked
 
   subroutine begin_new_section(state, status, group_id_out, name_out)
@@ -154,10 +170,11 @@ contains
     integer, intent(inout) :: status
     integer(hid_t), intent(out), optional :: group_id_out
     character(len=*), intent(out), optional :: name_out
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer(hid_t) :: gid
     character(len=HDF5_NAME_LEN) :: nm
 
+    if (status /= 0) return
     if (state%nsections >= HDF5_MAX_SECTIONS) then
        status = HDF5_ERR_TOO_MANY
        return
@@ -172,7 +189,12 @@ contains
 
     ! Close prior current group if it was a section group (not the file root)
     if (state%cur_group > 0 .and. state%cur_group /= state%file_id) then
-       call h5gclose_f(int(state%cur_group, hid_t), ierr)
+       call h5gclose_f(int(state%cur_group, hid_t), ierr_close)
+       if (ierr_close /= 0) then
+          status = HDF5_ERR_BACKEND
+          call h5gclose_f(gid, ierr_close)
+          return
+       endif
     endif
 
     state%nsections = state%nsections + 1
@@ -195,6 +217,7 @@ contains
     integer, intent(inout) :: status
     integer(hid_t) :: gid
     integer :: ierr
+    if (status /= 0) return
     if (state%cur_idx >= 1 .and. state%cur_idx <= state%nsections) then
        if (state%ncols(state%cur_idx) > 0) then
           status = 0
@@ -325,25 +348,44 @@ contains
     integer,           intent(in)    :: bitpix_out
     integer,           intent(inout) :: status
     integer(hid_t) :: space_id, dset_id, dtype_id, dcpl_id
-    integer :: ierr, ierr_dcpl
+    integer :: ierr, ierr_dcpl, ierr_close
     logical :: chunked
+    if (status /= 0) return
+    space_id = -1_hid_t
+    dset_id  = -1_hid_t
+    dcpl_id  = -1_hid_t
+    chunked  = .false.
     if (bitpix_out == -64) then
        dtype_id = H5T_NATIVE_DOUBLE
     else
        dtype_id = H5T_NATIVE_REAL
     endif
     call h5screate_simple_f(ndim, dims(1:ndim), space_id, ierr)
-    call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
-    if (chunked) then
-       call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr, dcpl_id)
-    else
-       call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr)
+    if (ierr == 0) then
+       call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
+       if (ierr_dcpl /= 0) ierr = ierr_dcpl
     endif
-    call h5dwrite_f(dset_id, H5T_NATIVE_REAL, array, dims(1:ndim), ierr)
-    call h5dclose_f(dset_id, ierr)
-    call h5sclose_f(space_id, ierr)
-    if (chunked) call h5pclose_f(dcpl_id, ierr_dcpl)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) then
+       if (chunked) then
+          call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr, dcpl_id)
+       else
+          call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr)
+       endif
+    endif
+    if (ierr == 0) call h5dwrite_f(dset_id, H5T_NATIVE_REAL, array, dims(1:ndim), ierr)
+    call record_hdf5_error(status, ierr)
+    if (dset_id >= 0_hid_t) then
+       call h5dclose_f(dset_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (space_id >= 0_hid_t) then
+       call h5sclose_f(space_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (dcpl_id >= 0_hid_t) then
+       call h5pclose_f(dcpl_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine write_dataset_real32_rank
 
   subroutine write_dataset_real64_rank(group_id, name, array, dims, ndim, bitpix_out, status)
@@ -355,25 +397,44 @@ contains
     integer,           intent(in)    :: bitpix_out
     integer,           intent(inout) :: status
     integer(hid_t) :: space_id, dset_id, dtype_id, dcpl_id
-    integer :: ierr, ierr_dcpl
+    integer :: ierr, ierr_dcpl, ierr_close
     logical :: chunked
+    if (status /= 0) return
+    space_id = -1_hid_t
+    dset_id  = -1_hid_t
+    dcpl_id  = -1_hid_t
+    chunked  = .false.
     if (bitpix_out == -32) then
        dtype_id = H5T_NATIVE_REAL
     else
        dtype_id = H5T_NATIVE_DOUBLE
     endif
     call h5screate_simple_f(ndim, dims(1:ndim), space_id, ierr)
-    call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
-    if (chunked) then
-       call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr, dcpl_id)
-    else
-       call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr)
+    if (ierr == 0) then
+       call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
+       if (ierr_dcpl /= 0) ierr = ierr_dcpl
     endif
-    call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, array, dims(1:ndim), ierr)
-    call h5dclose_f(dset_id, ierr)
-    call h5sclose_f(space_id, ierr)
-    if (chunked) call h5pclose_f(dcpl_id, ierr_dcpl)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) then
+       if (chunked) then
+          call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr, dcpl_id)
+       else
+          call h5dcreate_f(group_id, trim(name), dtype_id, space_id, dset_id, ierr)
+       endif
+    endif
+    if (ierr == 0) call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, array, dims(1:ndim), ierr)
+    call record_hdf5_error(status, ierr)
+    if (dset_id >= 0_hid_t) then
+       call h5dclose_f(dset_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (space_id >= 0_hid_t) then
+       call h5sclose_f(space_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (dcpl_id >= 0_hid_t) then
+       call h5pclose_f(dcpl_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine write_dataset_real64_rank
 
   subroutine write_dataset_int32_rank(group_id, name, array, dims, ndim, status)
@@ -384,20 +445,39 @@ contains
     integer,           intent(in)    :: ndim
     integer,           intent(inout) :: status
     integer(hid_t) :: space_id, dset_id, dcpl_id
-    integer :: ierr, ierr_dcpl
+    integer :: ierr, ierr_dcpl, ierr_close
     logical :: chunked
+    if (status /= 0) return
+    space_id = -1_hid_t
+    dset_id  = -1_hid_t
+    dcpl_id  = -1_hid_t
+    chunked  = .false.
     call h5screate_simple_f(ndim, dims(1:ndim), space_id, ierr)
-    call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
-    if (chunked) then
-       call h5dcreate_f(group_id, trim(name), H5T_NATIVE_INTEGER, space_id, dset_id, ierr, dcpl_id)
-    else
-       call h5dcreate_f(group_id, trim(name), H5T_NATIVE_INTEGER, space_id, dset_id, ierr)
+    if (ierr == 0) then
+       call build_chunked_dcpl(ndim, dims, dcpl_id, chunked, ierr_dcpl)
+       if (ierr_dcpl /= 0) ierr = ierr_dcpl
     endif
-    call h5dwrite_f(dset_id, H5T_NATIVE_INTEGER, array, dims(1:ndim), ierr)
-    call h5dclose_f(dset_id, ierr)
-    call h5sclose_f(space_id, ierr)
-    if (chunked) call h5pclose_f(dcpl_id, ierr_dcpl)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) then
+       if (chunked) then
+          call h5dcreate_f(group_id, trim(name), H5T_NATIVE_INTEGER, space_id, dset_id, ierr, dcpl_id)
+       else
+          call h5dcreate_f(group_id, trim(name), H5T_NATIVE_INTEGER, space_id, dset_id, ierr)
+       endif
+    endif
+    if (ierr == 0) call h5dwrite_f(dset_id, H5T_NATIVE_INTEGER, array, dims(1:ndim), ierr)
+    call record_hdf5_error(status, ierr)
+    if (dset_id >= 0_hid_t) then
+       call h5dclose_f(dset_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (space_id >= 0_hid_t) then
+       call h5sclose_f(space_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (dcpl_id >= 0_hid_t) then
+       call h5pclose_f(dcpl_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine write_dataset_int32_rank
 
 !=============================================================================
@@ -408,31 +488,42 @@ contains
     character(len=*),      intent(in)  :: fname
     integer,             intent(inout) :: status
     integer(hid_t) :: file_id, fcpl_id
-    integer :: ierr, ios, tmp_unit
+    integer :: ierr, ierr_prop, ierr_close, ios, tmp_unit
 
     call hdf5_init(status)
     if (status /= 0) return
 
     ! Delete pre-existing file (matches fits_open_new semantics)
     open(newunit=tmp_unit, iostat=ios, file=trim(fname), status='old')
-    if (ios == 0) close(tmp_unit, status='delete')
+    if (ios == 0) then
+       close(tmp_unit, status='delete', iostat=ios)
+       if (ios /= 0) then
+          status = HDF5_ERR_BACKEND
+          return
+       endif
+    endif
 
     !-- Track link creation order on the root group so readers can iterate
     !   sections in the order they were written rather than alphabetically.
-    call h5pcreate_f(H5P_FILE_CREATE_F, fcpl_id, ierr)
-    if (ierr == 0) then
+    fcpl_id = -1_hid_t
+    file_id = -1_hid_t
+    call h5pcreate_f(H5P_FILE_CREATE_F, fcpl_id, ierr_prop)
+    if (ierr_prop == 0) then
        call h5pset_link_creation_order_f(fcpl_id, &
-            ior(H5P_CRT_ORDER_TRACKED_F, H5P_CRT_ORDER_INDEXED_F), ierr)
+            ior(H5P_CRT_ORDER_TRACKED_F, H5P_CRT_ORDER_INDEXED_F), ierr_prop)
     endif
-    if (ierr == 0) then
+    if (ierr_prop == 0) then
        call h5fcreate_f(trim(fname), H5F_ACC_TRUNC_F, file_id, ierr, &
                         creation_prp=fcpl_id)
     else
        call h5fcreate_f(trim(fname), H5F_ACC_TRUNC_F, file_id, ierr)
     endif
-    call h5pclose_f(fcpl_id, ierr)
-    if (ierr /= 0) then
-       status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    if (fcpl_id >= 0_hid_t) then
+       call h5pclose_f(fcpl_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (status /= 0) then
        return
     endif
     state%file_id  = int(file_id, int64)
@@ -449,7 +540,7 @@ contains
     integer,             intent(inout) :: status
     logical, optional,     intent(in)  :: writable
     integer(hid_t) :: file_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer :: access_flag
 
     call hdf5_init(status)
@@ -469,7 +560,11 @@ contains
 
     ! Build the section list by iterating root group children in creation order.
     call collect_sections(state, status)
-    if (status /= 0) return
+    if (status /= 0) then
+       call h5fclose_f(file_id, ierr_close)
+       state%file_id = -1_int64
+       return
+    endif
 
     state%writable  = (access_flag == H5F_ACC_RDWR_F)
 
@@ -489,6 +584,13 @@ contains
         trim(state%col_names(1,1)) == 'data') then
        call h5gopen_f(int(state%file_id, hid_t), &
                       '/'//trim(state%section_names(1)), state%cur_group, ierr)
+       if (ierr /= 0) then
+          status = HDF5_ERR_BACKEND
+          call h5fclose_f(file_id, ierr_close)
+          state%file_id = -1_int64
+          state%cur_group = -1_int64
+          return
+       endif
        state%cur_idx = 1
     else
        state%cur_idx   = 0
@@ -505,15 +607,17 @@ contains
     type(hdf5_state_type), intent(inout) :: state
     integer, intent(inout) :: status
     integer(hsize_t) :: idx, nlinks_h
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer(size_t) :: name_size
     integer :: storage_type, nlinks, max_corder
     character(len=HDF5_NAME_LEN) :: nm
     integer(hid_t) :: gid, oid
     integer :: type_
 
+    if (status /= 0) return
     call h5gget_info_f(int(state%file_id, hid_t), storage_type, nlinks, max_corder, ierr)
-    if (ierr /= 0) then; status = HDF5_ERR_BACKEND; return; endif
+    call record_hdf5_error(status, ierr)
+    if (status /= 0) return
 
     state%nsections = 0
     do idx = 0_hsize_t, int(nlinks - 1, hsize_t)
@@ -527,42 +631,54 @@ contains
           call h5lget_name_by_idx_f(int(state%file_id, hid_t), '/', &
                                     H5_INDEX_NAME_F, H5_ITER_INC_F, &
                                     idx, nm, ierr, size=name_size)
-          if (ierr /= 0) cycle
+          call record_hdf5_error(status, ierr)
+          if (status /= 0) return
        endif
 
        ! Skip non-group children at root (datasets, soft links, etc.)
        call h5oopen_f(int(state%file_id, hid_t), trim(nm), oid, ierr)
-       if (ierr /= 0) cycle
+       call record_hdf5_error(status, ierr)
+       if (status /= 0) return
        call h5iget_type_f(oid, type_, ierr)
-       call h5oclose_f(oid, ierr)
+       call record_hdf5_error(status, ierr)
+       call h5oclose_f(oid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+       if (status /= 0) return
        if (type_ /= H5I_GROUP_F) cycle
 
-       if (state%nsections >= HDF5_MAX_SECTIONS) exit
+       if (state%nsections >= HDF5_MAX_SECTIONS) then
+          status = HDF5_ERR_TOO_MANY
+          return
+       endif
        state%nsections = state%nsections + 1
        state%section_names(state%nsections) = trim(nm)
 
        call h5gopen_f(int(state%file_id, hid_t), trim(nm), gid, ierr)
-       if (ierr == 0) then
-          call list_datasets_in_group(gid, state, state%nsections)
-          call h5gclose_f(gid, ierr)
-       endif
+       call record_hdf5_error(status, ierr)
+       if (status /= 0) return
+       call list_datasets_in_group(gid, state, state%nsections, status)
+       call h5gclose_f(gid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+       if (status /= 0) return
     enddo
-    status = 0
   end subroutine collect_sections
 
-  subroutine list_datasets_in_group(gid, state, sec_idx)
+  subroutine list_datasets_in_group(gid, state, sec_idx, status)
     integer(hid_t),        intent(in)    :: gid
     type(hdf5_state_type), intent(inout) :: state
     integer,               intent(in)    :: sec_idx
+    integer,               intent(inout) :: status
     integer(hsize_t) :: k
     integer(size_t) :: name_size
     integer :: storage_type, nlinks, max_corder
-    integer :: ierr, type_
+    integer :: ierr, ierr_close, type_
     character(len=HDF5_NAME_LEN) :: dname
     integer(hid_t) :: oid
 
+    if (status /= 0) return
     call h5gget_info_f(gid, storage_type, nlinks, max_corder, ierr)
-    if (ierr /= 0) return
+    call record_hdf5_error(status, ierr)
+    if (status /= 0) return
 
     state%ncols(sec_idx) = 0
     do k = 0_hsize_t, int(nlinks - 1, hsize_t)
@@ -573,14 +689,22 @@ contains
        if (ierr /= 0) then
           call h5lget_name_by_idx_f(gid, '.', H5_INDEX_NAME_F, H5_ITER_INC_F, &
                                     k, dname, ierr, size=name_size)
-          if (ierr /= 0) cycle
+          call record_hdf5_error(status, ierr)
+          if (status /= 0) return
        endif
        call h5oopen_f(gid, trim(dname), oid, ierr)
-       if (ierr /= 0) cycle
+       call record_hdf5_error(status, ierr)
+       if (status /= 0) return
        call h5iget_type_f(oid, type_, ierr)
-       call h5oclose_f(oid, ierr)
+       call record_hdf5_error(status, ierr)
+       call h5oclose_f(oid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+       if (status /= 0) return
        if (type_ /= H5I_DATASET_F) cycle
-       if (state%ncols(sec_idx) >= HDF5_MAX_COLS) exit
+       if (state%ncols(sec_idx) >= HDF5_MAX_COLS) then
+          status = HDF5_ERR_TOO_MANY
+          return
+       endif
        state%ncols(sec_idx) = state%ncols(sec_idx) + 1
        state%col_names(state%ncols(sec_idx), sec_idx) = trim(dname)
     enddo
@@ -592,10 +716,11 @@ contains
     integer :: ierr
     if (state%cur_group > 0 .and. state%cur_group /= state%file_id) then
        call h5gclose_f(int(state%cur_group, hid_t), ierr)
+       call record_hdf5_error(status, ierr)
     endif
     if (state%file_id > 0) then
        call h5fclose_f(int(state%file_id, hid_t), ierr)
-       if (ierr /= 0) status = HDF5_ERR_BACKEND
+       call record_hdf5_error(status, ierr)
     endif
     state%file_id   = -1_int64
     state%cur_group = -1_int64
@@ -610,6 +735,7 @@ contains
     integer, optional,     intent(in)    :: nstep
     integer :: step, target_idx, ierr
     integer(hid_t) :: gid
+    if (status /= 0) return
     step = 1
     if (present(nstep)) then
        if (nstep >= 0) step = nstep
@@ -622,6 +748,10 @@ contains
     endif
     if (state%cur_group > 0 .and. state%cur_group /= state%file_id) then
        call h5gclose_f(int(state%cur_group, hid_t), ierr)
+       if (ierr /= 0) then
+          status = HDF5_ERR_BACKEND
+          return
+       endif
     endif
     call h5gopen_f(int(state%file_id, hid_t), &
                    '/'//trim(state%section_names(target_idx)), gid, ierr)
@@ -641,6 +771,7 @@ contains
     integer,               intent(inout) :: status
     integer :: i
     colnum = 0
+    if (status /= 0) return
     if (state%cur_idx < 1 .or. state%cur_idx > state%nsections) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
@@ -657,16 +788,6 @@ contains
 !=============================================================================
 !  Attribute write (= FITS put_keyword)
 !=============================================================================
-  subroutine put_attr_scalar(loc_id, name, dtype, buf, status)
-    integer(hid_t),   intent(in)    :: loc_id
-    character(len=*), intent(in)    :: name
-    integer(hid_t),   intent(in)    :: dtype
-    integer(hid_t),   intent(in)    :: buf  ! dummy address, callers pass through
-    integer,          intent(inout) :: status
-    ! unused — real attribute writes are below.
-    status = 0
-  end subroutine put_attr_scalar
-
   subroutine attr_open_or_create(loc_id, name, dtype, attr_id, ierr)
     integer(hid_t),    intent(in)  :: loc_id
     character(len=*),  intent(in)  :: name
@@ -676,14 +797,20 @@ contains
     integer(hid_t)   :: space_id
     integer(hsize_t) :: dims(1)
     logical :: exists
+    integer :: ierr_close
+    attr_id  = -1_hid_t
+    space_id = -1_hid_t
     dims(1) = 1
     call h5aexists_f(loc_id, trim(name), exists, ierr)
-    if (exists) then
+    if (ierr == 0 .and. exists) then
        call h5adelete_f(loc_id, trim(name), ierr)
     endif
-    call h5screate_simple_f(1, dims, space_id, ierr)
-    call h5acreate_f(loc_id, trim(name), dtype, space_id, attr_id, ierr)
-    call h5sclose_f(space_id, ierr)
+    if (ierr == 0) call h5screate_simple_f(1, dims, space_id, ierr)
+    if (ierr == 0) call h5acreate_f(loc_id, trim(name), dtype, space_id, attr_id, ierr)
+    if (space_id >= 0_hid_t) then
+       call h5sclose_f(space_id, ierr_close)
+       if (ierr == 0 .and. ierr_close /= 0) ierr = ierr_close
+    endif
   end subroutine attr_open_or_create
 
   subroutine hdf5_put_key_logical(state, name, value, comment, status)
@@ -694,14 +821,19 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr, val_i
+    integer :: ierr, ierr_close, val_i
+    if (status /= 0) return
+    aid = -1_hid_t
     val_i = 0
     if (value) val_i = 1
     dims(1) = 1
     call attr_open_or_create(int(state%cur_group, hid_t), trim(name), H5T_NATIVE_INTEGER, aid, ierr)
-    call h5awrite_f(aid, H5T_NATIVE_INTEGER, val_i, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5awrite_f(aid, H5T_NATIVE_INTEGER, val_i, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_logical
 
   subroutine hdf5_put_key_real32(state, name, value, comment, status)
@@ -712,12 +844,17 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    aid = -1_hid_t
     dims(1) = 1
     call attr_open_or_create(int(state%cur_group, hid_t), trim(name), H5T_NATIVE_REAL, aid, ierr)
-    call h5awrite_f(aid, H5T_NATIVE_REAL, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5awrite_f(aid, H5T_NATIVE_REAL, value, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_real32
 
   subroutine hdf5_put_key_real64(state, name, value, comment, status)
@@ -728,12 +865,17 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    aid = -1_hid_t
     dims(1) = 1
     call attr_open_or_create(int(state%cur_group, hid_t), trim(name), H5T_NATIVE_DOUBLE, aid, ierr)
-    call h5awrite_f(aid, H5T_NATIVE_DOUBLE, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5awrite_f(aid, H5T_NATIVE_DOUBLE, value, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_real64
 
   subroutine hdf5_put_key_int32(state, name, value, comment, status)
@@ -744,12 +886,17 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    aid = -1_hid_t
     dims(1) = 1
     call attr_open_or_create(int(state%cur_group, hid_t), trim(name), H5T_NATIVE_INTEGER, aid, ierr)
-    call h5awrite_f(aid, H5T_NATIVE_INTEGER, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5awrite_f(aid, H5T_NATIVE_INTEGER, value, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_int32
 
   subroutine hdf5_put_key_int64(state, name, value, comment, status)
@@ -760,12 +907,17 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    aid = -1_hid_t
     dims(1) = 1
     call attr_open_or_create(int(state%cur_group, hid_t), trim(name), H5T_STD_I64LE, aid, ierr)
-    call h5awrite_f(aid, H5T_STD_I64LE, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5awrite_f(aid, H5T_STD_I64LE, value, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_int64
 
   subroutine hdf5_put_key_string(state, name, value, comment, status)
@@ -776,8 +928,12 @@ contains
     integer,               intent(inout) :: status
     integer(hid_t) :: aid, tid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer(size_t) :: slen
+
+    if (status /= 0) return
+    aid = -1_hid_t
+    tid = -1_hid_t
 
     ! Special-case EXTNAME: rename the current section group.
     if (trim(name) == 'EXTNAME' .or. trim(name) == 'extname') then
@@ -787,44 +943,60 @@ contains
 
     slen = max(len_trim(value), 1)
     call h5tcopy_f(H5T_NATIVE_CHARACTER, tid, ierr)
-    call h5tset_size_f(tid, slen, ierr)
+    if (ierr == 0) call h5tset_size_f(tid, slen, ierr)
     dims(1) = 1
-    call attr_open_or_create(int(state%cur_group, hid_t), trim(name), tid, aid, ierr)
+    if (ierr == 0) &
+       call attr_open_or_create(int(state%cur_group, hid_t), trim(name), tid, aid, ierr)
     !--- an empty value would make h5awrite_f read 1 byte past a zero-length
     !--- string (garbage in the file); write a single space instead.
-    if (len_trim(value) == 0) then
+    if (ierr == 0 .and. len_trim(value) == 0) then
        call h5awrite_f(aid, tid, ' ', dims, ierr)
-    else
+    else if (ierr == 0) then
        call h5awrite_f(aid, tid, trim(value), dims, ierr)
     endif
-    call h5aclose_f(aid, ierr)
-    call h5tclose_f(tid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    if (aid >= 0_hid_t) then
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (tid >= 0_hid_t) then
+       call h5tclose_f(tid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
   end subroutine hdf5_put_key_string
 
   subroutine rename_current_section(state, newname, status)
     type(hdf5_state_type), intent(inout) :: state
     character(len=*),      intent(in)    :: newname
     integer,               intent(inout) :: status
-    integer :: ierr
+    integer :: ierr, ierr_reopen
     character(len=HDF5_NAME_LEN) :: oldname
+    if (status /= 0) return
     if (state%cur_idx < 1 .or. state%cur_idx > state%nsections) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
     oldname = state%section_names(state%cur_idx)
     if (trim(oldname) == trim(newname)) return
     ! Close current group, rename via H5Lmove, reopen.
-    if (state%cur_group > 0) call h5gclose_f(int(state%cur_group, hid_t), ierr)
+    if (state%cur_group > 0) then
+       call h5gclose_f(int(state%cur_group, hid_t), ierr)
+       if (ierr /= 0) then
+          status = HDF5_ERR_BACKEND
+          return
+       endif
+    endif
     call h5lmove_f(int(state%file_id, hid_t), '/'//trim(oldname), &
                    int(state%file_id, hid_t), '/'//trim(newname), ierr)
     if (ierr /= 0) then
        status = HDF5_ERR_BACKEND
        ! reopen the original to keep state consistent
-       call h5gopen_f(int(state%file_id, hid_t), '/'//trim(oldname), state%cur_group, ierr)
+       call h5gopen_f(int(state%file_id, hid_t), '/'//trim(oldname), &
+                      state%cur_group, ierr_reopen)
        return
     endif
     state%section_names(state%cur_idx) = trim(newname)
     call h5gopen_f(int(state%file_id, hid_t), '/'//trim(newname), state%cur_group, ierr)
+    call record_hdf5_error(status, ierr)
   end subroutine rename_current_section
 
 !=============================================================================
@@ -912,13 +1084,17 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr, val_i
+    integer :: ierr, ierr_close, val_i
+    value = .false.
+    if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
-    if (ierr /= 0) then; value = .false.; status = HDF5_ERR_NOT_FOUND; return; endif
+    if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5aread_f(aid, H5T_NATIVE_INTEGER, val_i, dims, ierr)
-    call h5aclose_f(aid, ierr)
-    value = (val_i /= 0)
+    call record_hdf5_error(status, ierr)
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
+    if (status == 0) value = (val_i /= 0)
     if (present(comment)) comment = ''
   end subroutine hdf5_get_key_logical
 
@@ -930,12 +1106,16 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    value = 0.0_real32
+    if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
-    if (ierr /= 0) then; value = 0.0_real32; status = HDF5_ERR_NOT_FOUND; return; endif
+    if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5aread_f(aid, H5T_NATIVE_REAL, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
+    call record_hdf5_error(status, ierr)
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
     if (present(comment)) comment = ''
   end subroutine hdf5_get_key_real32
 
@@ -947,12 +1127,16 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
+    value = 0.0_real64
+    if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
-    if (ierr /= 0) then; value = 0.0_real64; status = HDF5_ERR_NOT_FOUND; return; endif
+    if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5aread_f(aid, H5T_NATIVE_DOUBLE, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
+    call record_hdf5_error(status, ierr)
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
     if (present(comment)) comment = ''
   end subroutine hdf5_get_key_real64
 
@@ -964,8 +1148,10 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer(int64) :: fallback_val
+    value = 0_int32
+    if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
     if (ierr /= 0) then
@@ -976,12 +1162,13 @@ contains
           if (present(comment)) comment = ''
           return
        endif
-       value = 0_int32
        status = HDF5_ERR_NOT_FOUND
        return
     endif
     call h5aread_f(aid, H5T_NATIVE_INTEGER, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
+    call record_hdf5_error(status, ierr)
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
     if (present(comment)) comment = ''
   end subroutine hdf5_get_key_int32
 
@@ -993,8 +1180,10 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
-    integer :: ierr
+    integer :: ierr, ierr_close
     integer(int64) :: fallback_val
+    value = 0_int64
+    if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
     if (ierr /= 0) then
@@ -1004,12 +1193,13 @@ contains
           if (present(comment)) comment = ''
           return
        endif
-       value = 0_int64
        status = HDF5_ERR_NOT_FOUND
        return
     endif
     call h5aread_f(aid, H5T_STD_I64LE, value, dims, ierr)
-    call h5aclose_f(aid, ierr)
+    call record_hdf5_error(status, ierr)
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
     if (present(comment)) comment = ''
   end subroutine hdf5_get_key_int64
 
@@ -1021,11 +1211,12 @@ contains
     character(len=*), optional, intent(out)   :: comment
     integer(hid_t)   :: aid, tid, atype
     integer(hsize_t) :: dims(1)
-    integer          :: ierr, ii
+    integer          :: ierr, ierr_close, ii
     integer(size_t)  :: slen
     logical          :: is_vlen
     dims(1) = 1
     value = ''
+    if (status /= 0) return
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
 
@@ -1035,14 +1226,25 @@ contains
     !    treat vlen as unreadable here and let the caller treat the value
     !    as missing.  External pipelines should write fixed-length strings
     !    (h5py: dtype=h5py.string_dtype(encoding='ascii', length=N) ).
+    atype = -1_hid_t
+    tid   = -1_hid_t
     call h5aget_type_f(aid, atype, ierr)
-    call h5tis_variable_str_f(atype, is_vlen, ierr)
-    call h5tclose_f(atype, ierr)
+    if (ierr == 0) call h5tis_variable_str_f(atype, is_vlen, ierr)
+    call record_hdf5_error(status, ierr)
+    if (atype >= 0_hid_t) then
+       call h5tclose_f(atype, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (status /= 0) then
+       call h5aclose_f(aid, ierr_close)
+       return
+    endif
     if (is_vlen) then
        write(*,'(3a)') ' HDF5: WARNING -- string attribute ''', trim(name), &
             ''' is variable-length; LaRT requires fixed-length strings ' // &
             '(use h5py.string_dtype(length=N) when writing).  Skipping.'
-       call h5aclose_f(aid, ierr)
+       call h5aclose_f(aid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
        value = ''
        status = HDF5_ERR_NOT_FOUND
        if (present(comment)) comment = ''
@@ -1055,11 +1257,15 @@ contains
     call h5tcopy_f(H5T_NATIVE_CHARACTER, tid, ierr)
     slen = int(len(value), size_t)
     if (slen < 1) slen = 1
-    call h5tset_size_f(tid, slen, ierr)
-    call h5aread_f(aid, tid, value, dims, ierr)
-    call h5tclose_f(tid, ierr)
-    call h5aclose_f(aid, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    if (ierr == 0) call h5tset_size_f(tid, slen, ierr)
+    if (ierr == 0) call h5aread_f(aid, tid, value, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (tid >= 0_hid_t) then
+       call h5tclose_f(tid, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    call h5aclose_f(aid, ierr_close)
+    call record_hdf5_error(status, ierr_close)
 
     do ii = 1, len(value)
        if (value(ii:ii) == char(0)) value(ii:ii) = ' '
@@ -1071,13 +1277,6 @@ contains
 !=============================================================================
 !  Image append (always goes into /section_NNN/data)
 !=============================================================================
-#define HDF5_APPEND_IMAGE_BODY(rank_, kind_macro_, h5kind_) \
-    integer :: ierr; \
-    integer(hsize_t) :: dims(rank_); \
-    integer(hid_t) :: gid; \
-    call begin_new_section(state, status, gid); \
-    if (status /= 0) return;
-
   subroutine hdf5_append_1D_real32(state, array, status, bitpix)
     type(hdf5_state_type), intent(inout) :: state
     real(real32),          intent(in)    :: array(:)
@@ -1353,12 +1552,15 @@ contains
     integer,               intent(in)    :: ndim
     integer,               intent(inout) :: status
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    dset_id = -1_hid_t
     call h5dopen_f(int(state%cur_group, hid_t), 'data', dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_NATIVE_REAL, array, dims(1:ndim), ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine read_dataset_real32_rank
 
   subroutine read_dataset_real64_rank(state, array, dims, ndim, status)
@@ -1368,12 +1570,15 @@ contains
     integer,               intent(in)    :: ndim
     integer,               intent(inout) :: status
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
+    if (status /= 0) return
+    dset_id = -1_hid_t
     call h5dopen_f(int(state%cur_group, hid_t), 'data', dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, array, dims(1:ndim), ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine read_dataset_real64_rank
 
   subroutine hdf5_read_1D_real32(state, array, status)
@@ -1536,16 +1741,25 @@ contains
     integer,               intent(inout) :: status
     integer(hsize_t) :: dims(1)
     integer(hid_t) :: space_id, dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     call ensure_table_section(state, status); if (status /= 0) return
+    space_id = -1_hid_t
+    dset_id  = -1_hid_t
     dims(1) = size(array)
     call h5screate_simple_f(1, dims, space_id, ierr)
-    call h5dcreate_f(int(state%cur_group, hid_t), trim(colname), &
-                     H5T_STD_I64LE, space_id, dset_id, ierr)
-    call h5dwrite_f(dset_id, H5T_STD_I64LE, array, dims, ierr)
-    call h5dclose_f(dset_id, ierr)
-    call h5sclose_f(space_id, ierr)
-    if (ierr /= 0) then; status = HDF5_ERR_BACKEND; return; endif
+    if (ierr == 0) call h5dcreate_f(int(state%cur_group, hid_t), trim(colname), &
+                                    H5T_STD_I64LE, space_id, dset_id, ierr)
+    if (ierr == 0) call h5dwrite_f(dset_id, H5T_STD_I64LE, array, dims, ierr)
+    call record_hdf5_error(status, ierr)
+    if (dset_id >= 0_hid_t) then
+       call h5dclose_f(dset_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (space_id >= 0_hid_t) then
+       call h5sclose_f(space_id, ierr_close)
+       call record_hdf5_error(status, ierr_close)
+    endif
+    if (status /= 0) return
     call register_column(state, colname)
   end subroutine hdf5_append_table_column_int64
 
@@ -1559,8 +1773,9 @@ contains
     integer,               intent(inout) :: status
     integer(hsize_t) :: dims(1)
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     character(len=HDF5_NAME_LEN) :: nm
+    if (status /= 0) return
     if (colnum < 1 .or. colnum > state%ncols(state%cur_idx)) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
@@ -1569,8 +1784,9 @@ contains
     call h5dopen_f(int(state%cur_group, hid_t), trim(nm), dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_NATIVE_REAL, array, dims, ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine hdf5_read_table_column_real32
 
   subroutine hdf5_read_table_column_real64(state, colnum, array, status)
@@ -1580,8 +1796,9 @@ contains
     integer,               intent(inout) :: status
     integer(hsize_t) :: dims(1)
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     character(len=HDF5_NAME_LEN) :: nm
+    if (status /= 0) return
     if (colnum < 1 .or. colnum > state%ncols(state%cur_idx)) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
@@ -1590,8 +1807,9 @@ contains
     call h5dopen_f(int(state%cur_group, hid_t), trim(nm), dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, array, dims, ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine hdf5_read_table_column_real64
 
   subroutine hdf5_read_table_column_int32(state, colnum, array, status)
@@ -1601,8 +1819,9 @@ contains
     integer,               intent(inout) :: status
     integer(hsize_t) :: dims(1)
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     character(len=HDF5_NAME_LEN) :: nm
+    if (status /= 0) return
     if (colnum < 1 .or. colnum > state%ncols(state%cur_idx)) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
@@ -1611,8 +1830,9 @@ contains
     call h5dopen_f(int(state%cur_group, hid_t), trim(nm), dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_NATIVE_INTEGER, array, dims, ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine hdf5_read_table_column_int32
 
   subroutine hdf5_read_table_column_int64(state, colnum, array, status)
@@ -1622,8 +1842,9 @@ contains
     integer,               intent(inout) :: status
     integer(hsize_t) :: dims(1)
     integer(hid_t) :: dset_id
-    integer :: ierr
+    integer :: ierr, ierr_close
     character(len=HDF5_NAME_LEN) :: nm
+    if (status /= 0) return
     if (colnum < 1 .or. colnum > state%ncols(state%cur_idx)) then
        status = HDF5_ERR_NOT_FOUND; return
     endif
@@ -1632,8 +1853,9 @@ contains
     call h5dopen_f(int(state%cur_group, hid_t), trim(nm), dset_id, ierr)
     if (ierr /= 0) then; status = HDF5_ERR_NOT_FOUND; return; endif
     call h5dread_f(dset_id, H5T_STD_I64LE, array, dims, ierr)
-    call h5dclose_f(dset_id, ierr)
-    if (ierr /= 0) status = HDF5_ERR_BACKEND
+    call record_hdf5_error(status, ierr)
+    call h5dclose_f(dset_id, ierr_close)
+    call record_hdf5_error(status, ierr_close)
   end subroutine hdf5_read_table_column_int64
 
 #else
@@ -1675,21 +1897,45 @@ contains
     colnum = 0; status = HDF5_ERR_NOT_BUILT
   end subroutine
 
-#define STUB_PUT_KEY(NAME, TYPE) \
-  subroutine NAME(state, name, value, comment, status); \
-    type(hdf5_state_type), intent(in)    :: state; \
-    character(len=*),      intent(in)    :: name; \
-    TYPE,                  intent(in)    :: value; \
-    character(len=*),      intent(in)    :: comment; \
-    integer,               intent(inout) :: status; \
-    status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_put_key_logical(state, name, value, comment, status)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name, comment
+    logical, intent(in) :: value
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_put_key_logical
 
-  STUB_PUT_KEY(hdf5_put_key_logical, logical)
-  STUB_PUT_KEY(hdf5_put_key_real32,  real(real32))
-  STUB_PUT_KEY(hdf5_put_key_real64,  real(real64))
-  STUB_PUT_KEY(hdf5_put_key_int32,   integer(int32))
-  STUB_PUT_KEY(hdf5_put_key_int64,   integer(int64))
+  subroutine hdf5_put_key_real32(state, name, value, comment, status)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name, comment
+    real(real32), intent(in) :: value
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_put_key_real32
+
+  subroutine hdf5_put_key_real64(state, name, value, comment, status)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name, comment
+    real(real64), intent(in) :: value
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_put_key_real64
+
+  subroutine hdf5_put_key_int32(state, name, value, comment, status)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name, comment
+    integer(int32), intent(in) :: value
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_put_key_int32
+
+  subroutine hdf5_put_key_int64(state, name, value, comment, status)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name, comment
+    integer(int64), intent(in) :: value
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_put_key_int64
 
   subroutine hdf5_put_key_string(state, name, value, comment, status)
     type(hdf5_state_type), intent(inout) :: state
@@ -1698,22 +1944,60 @@ contains
     status = HDF5_ERR_NOT_BUILT
   end subroutine
 
-#define STUB_GET_KEY(NAME, TYPE, INIT) \
-  subroutine NAME(state, name, value, status, comment); \
-    type(hdf5_state_type),      intent(in)    :: state; \
-    character(len=*),           intent(in)    :: name; \
-    TYPE,                       intent(out)   :: value; \
-    integer,                    intent(inout) :: status; \
-    character(len=*), optional, intent(out)   :: comment; \
-    value = INIT; status = HDF5_ERR_NOT_BUILT; \
-    if (present(comment)) comment = ''; \
-  end subroutine
+  subroutine hdf5_get_key_logical(state, name, value, status, comment)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    logical, intent(out) :: value
+    integer, intent(inout) :: status
+    character(len=*), optional, intent(out) :: comment
+    value = .false.
+    status = HDF5_ERR_NOT_BUILT
+    if (present(comment)) comment = ''
+  end subroutine hdf5_get_key_logical
 
-  STUB_GET_KEY(hdf5_get_key_logical, logical,        .false.)
-  STUB_GET_KEY(hdf5_get_key_real32,  real(real32),   0.0_real32)
-  STUB_GET_KEY(hdf5_get_key_real64,  real(real64),   0.0_real64)
-  STUB_GET_KEY(hdf5_get_key_int32,   integer(int32), 0_int32)
-  STUB_GET_KEY(hdf5_get_key_int64,   integer(int64), 0_int64)
+  subroutine hdf5_get_key_real32(state, name, value, status, comment)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    real(real32), intent(out) :: value
+    integer, intent(inout) :: status
+    character(len=*), optional, intent(out) :: comment
+    value = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+    if (present(comment)) comment = ''
+  end subroutine hdf5_get_key_real32
+
+  subroutine hdf5_get_key_real64(state, name, value, status, comment)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    real(real64), intent(out) :: value
+    integer, intent(inout) :: status
+    character(len=*), optional, intent(out) :: comment
+    value = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+    if (present(comment)) comment = ''
+  end subroutine hdf5_get_key_real64
+
+  subroutine hdf5_get_key_int32(state, name, value, status, comment)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    integer(int32), intent(out) :: value
+    integer, intent(inout) :: status
+    character(len=*), optional, intent(out) :: comment
+    value = 0_int32
+    status = HDF5_ERR_NOT_BUILT
+    if (present(comment)) comment = ''
+  end subroutine hdf5_get_key_int32
+
+  subroutine hdf5_get_key_int64(state, name, value, status, comment)
+    type(hdf5_state_type), intent(in) :: state
+    character(len=*), intent(in) :: name
+    integer(int64), intent(out) :: value
+    integer, intent(inout) :: status
+    character(len=*), optional, intent(out) :: comment
+    value = 0_int64
+    status = HDF5_ERR_NOT_BUILT
+    if (present(comment)) comment = ''
+  end subroutine hdf5_get_key_int64
 
   subroutine hdf5_get_key_string(state, name, value, status, comment)
     type(hdf5_state_type),      intent(in)    :: state
@@ -1725,67 +2009,187 @@ contains
     if (present(comment)) comment = ''
   end subroutine
 
-#define STUB_RW_IMAGE(NAME, RANKDECL, TYPE) \
-  subroutine NAME(state, array, status, bitpix); \
-    type(hdf5_state_type), intent(inout) :: state; \
-    TYPE,                  intent(in)    :: array RANKDECL; \
-    integer,               intent(inout) :: status; \
-    integer, optional,     intent(in)    :: bitpix; \
-    status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_append_1D_real32(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real32), intent(in) :: array(:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_1D_real32
 
-  STUB_RW_IMAGE(hdf5_append_1D_real32, (:),       real(real32))
-  STUB_RW_IMAGE(hdf5_append_2D_real32, (:,:),     real(real32))
-  STUB_RW_IMAGE(hdf5_append_3D_real32, (:,:,:),   real(real32))
-  STUB_RW_IMAGE(hdf5_append_4D_real32, (:,:,:,:), real(real32))
-  STUB_RW_IMAGE(hdf5_append_1D_real64, (:),       real(real64))
-  STUB_RW_IMAGE(hdf5_append_2D_real64, (:,:),     real(real64))
-  STUB_RW_IMAGE(hdf5_append_3D_real64, (:,:,:),   real(real64))
-  STUB_RW_IMAGE(hdf5_append_4D_real64, (:,:,:,:), real(real64))
-  STUB_RW_IMAGE(hdf5_append_5D_real64, (:,:,:,:,:), real(real64))
+  subroutine hdf5_append_2D_real32(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real32), intent(in) :: array(:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_2D_real32
 
-#define STUB_IMG_INT(NAME, RANKDECL) \
-  subroutine NAME(state, array, status); \
-    type(hdf5_state_type), intent(inout) :: state; \
-    integer(int32),        intent(in)    :: array RANKDECL; \
-    integer,               intent(inout) :: status; \
-    status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_append_3D_real32(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real32), intent(in) :: array(:,:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_3D_real32
 
-  STUB_IMG_INT(hdf5_append_1D_int32, (:))
-  STUB_IMG_INT(hdf5_append_2D_int32, (:,:))
-  STUB_IMG_INT(hdf5_append_3D_int32, (:,:,:))
-  STUB_IMG_INT(hdf5_append_4D_int32, (:,:,:,:))
+  subroutine hdf5_append_4D_real32(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real32), intent(in) :: array(:,:,:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_4D_real32
 
-#define STUB_READ_IMAGE(NAME, RANKDECL, TYPE, INIT) \
-  subroutine NAME(state, array, status); \
-    type(hdf5_state_type), intent(in)    :: state; \
-    TYPE,                  intent(out)   :: array RANKDECL; \
-    integer,               intent(inout) :: status; \
-    array = INIT; status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_append_1D_real64(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real64), intent(in) :: array(:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_1D_real64
 
-  STUB_READ_IMAGE(hdf5_read_1D_real32, (:),       real(real32), 0.0_real32)
-  STUB_READ_IMAGE(hdf5_read_2D_real32, (:,:),     real(real32), 0.0_real32)
-  STUB_READ_IMAGE(hdf5_read_3D_real32, (:,:,:),   real(real32), 0.0_real32)
-  STUB_READ_IMAGE(hdf5_read_4D_real32, (:,:,:,:), real(real32), 0.0_real32)
-  STUB_READ_IMAGE(hdf5_read_1D_real64, (:),       real(real64), 0.0_real64)
-  STUB_READ_IMAGE(hdf5_read_2D_real64, (:,:),     real(real64), 0.0_real64)
-  STUB_READ_IMAGE(hdf5_read_3D_real64, (:,:,:),   real(real64), 0.0_real64)
-  STUB_READ_IMAGE(hdf5_read_4D_real64, (:,:,:,:), real(real64), 0.0_real64)
+  subroutine hdf5_append_2D_real64(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real64), intent(in) :: array(:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_2D_real64
 
-#define STUB_APPEND_TC(NAME, TYPE) \
-  subroutine NAME(state, colname, array, status, bitpix); \
-    type(hdf5_state_type), intent(inout) :: state; \
-    character(len=*),      intent(in)    :: colname; \
-    TYPE,                  intent(in)    :: array(:); \
-    integer,               intent(inout) :: status; \
-    integer, optional,     intent(in)    :: bitpix; \
-    status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_append_3D_real64(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real64), intent(in) :: array(:,:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_3D_real64
 
-  STUB_APPEND_TC(hdf5_append_table_column_real32, real(real32))
-  STUB_APPEND_TC(hdf5_append_table_column_real64, real(real64))
+  subroutine hdf5_append_4D_real64(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real64), intent(in) :: array(:,:,:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_4D_real64
+
+  subroutine hdf5_append_5D_real64(state, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    real(real64), intent(in) :: array(:,:,:,:,:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_5D_real64
+
+  subroutine hdf5_append_1D_int32(state, array, status)
+    type(hdf5_state_type), intent(inout) :: state
+    integer(int32), intent(in) :: array(:)
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_1D_int32
+
+  subroutine hdf5_append_2D_int32(state, array, status)
+    type(hdf5_state_type), intent(inout) :: state
+    integer(int32), intent(in) :: array(:,:)
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_2D_int32
+
+  subroutine hdf5_append_3D_int32(state, array, status)
+    type(hdf5_state_type), intent(inout) :: state
+    integer(int32), intent(in) :: array(:,:,:)
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_3D_int32
+
+  subroutine hdf5_append_4D_int32(state, array, status)
+    type(hdf5_state_type), intent(inout) :: state
+    integer(int32), intent(in) :: array(:,:,:,:)
+    integer, intent(inout) :: status
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_4D_int32
+
+  subroutine hdf5_read_1D_real32(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real32), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_1D_real32
+
+  subroutine hdf5_read_2D_real32(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real32), intent(out) :: array(:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_2D_real32
+
+  subroutine hdf5_read_3D_real32(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real32), intent(out) :: array(:,:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_3D_real32
+
+  subroutine hdf5_read_4D_real32(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real32), intent(out) :: array(:,:,:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_4D_real32
+
+  subroutine hdf5_read_1D_real64(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real64), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_1D_real64
+
+  subroutine hdf5_read_2D_real64(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real64), intent(out) :: array(:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_2D_real64
+
+  subroutine hdf5_read_3D_real64(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real64), intent(out) :: array(:,:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_3D_real64
+
+  subroutine hdf5_read_4D_real64(state, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    real(real64), intent(out) :: array(:,:,:,:)
+    integer, intent(inout) :: status
+    array = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_4D_real64
+
+  subroutine hdf5_append_table_column_real32(state, colname, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    character(len=*), intent(in) :: colname
+    real(real32), intent(in) :: array(:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_table_column_real32
+
+  subroutine hdf5_append_table_column_real64(state, colname, array, status, bitpix)
+    type(hdf5_state_type), intent(inout) :: state
+    character(len=*), intent(in) :: colname
+    real(real64), intent(in) :: array(:)
+    integer, intent(inout) :: status
+    integer, optional, intent(in) :: bitpix
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_append_table_column_real64
 
   subroutine hdf5_append_table_column_int32(state, colname, array, status)
     type(hdf5_state_type), intent(inout) :: state
@@ -1803,19 +2207,41 @@ contains
     status = HDF5_ERR_NOT_BUILT
   end subroutine
 
-#define STUB_READ_TC(NAME, TYPE, INIT) \
-  subroutine NAME(state, colnum, array, status); \
-    type(hdf5_state_type), intent(in)    :: state; \
-    integer,               intent(in)    :: colnum; \
-    TYPE,                  intent(out)   :: array(:); \
-    integer,               intent(inout) :: status; \
-    array = INIT; status = HDF5_ERR_NOT_BUILT; \
-  end subroutine
+  subroutine hdf5_read_table_column_real32(state, colnum, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    integer, intent(in) :: colnum
+    real(real32), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0.0_real32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_table_column_real32
 
-  STUB_READ_TC(hdf5_read_table_column_real32, real(real32),   0.0_real32)
-  STUB_READ_TC(hdf5_read_table_column_real64, real(real64),   0.0_real64)
-  STUB_READ_TC(hdf5_read_table_column_int32,  integer(int32), 0_int32)
-  STUB_READ_TC(hdf5_read_table_column_int64,  integer(int64), 0_int64)
+  subroutine hdf5_read_table_column_real64(state, colnum, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    integer, intent(in) :: colnum
+    real(real64), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0.0_real64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_table_column_real64
+
+  subroutine hdf5_read_table_column_int32(state, colnum, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    integer, intent(in) :: colnum
+    integer(int32), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0_int32
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_table_column_int32
+
+  subroutine hdf5_read_table_column_int64(state, colnum, array, status)
+    type(hdf5_state_type), intent(in) :: state
+    integer, intent(in) :: colnum
+    integer(int64), intent(out) :: array(:)
+    integer, intent(inout) :: status
+    array = 0_int64
+    status = HDF5_ERR_NOT_BUILT
+  end subroutine hdf5_read_table_column_int64
 #endif
 
 end module hdf5io_mod

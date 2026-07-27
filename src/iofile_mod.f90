@@ -83,14 +83,20 @@ contains
 !=============================================================================
   function io_detect_format(fname) result(fmt)
     character(len=*), intent(in) :: fname
-    integer :: fmt, ln
+    character(len=len(fname)) :: lower
+    integer :: fmt, ln, i
+    lower = fname
+    do i = 1, len_trim(lower)
+       if (lower(i:i) >= 'A' .and. lower(i:i) <= 'Z') &
+          lower(i:i) = char(ichar(lower(i:i)) + 32)
+    enddo
     ln = len_trim(fname)
     fmt = IO_FMT_FITS
     if (ln >= 3) then
-       if (fname(ln-2:ln) == '.h5')    fmt = IO_FMT_HDF5
+       if (lower(ln-2:ln) == '.h5')    fmt = IO_FMT_HDF5
     endif
     if (ln >= 5) then
-       if (fname(ln-4:ln) == '.hdf5')  fmt = IO_FMT_HDF5
+       if (lower(ln-4:ln) == '.hdf5')  fmt = IO_FMT_HDF5
     endif
   end function io_detect_format
 

@@ -251,7 +251,7 @@ contains
   !=========================================================================
   subroutine gas_rates_write()
     use iofile_mod
-    use utility, only : get_base_name
+    use utility, only : get_base_name, fatal_error
     implicit none
     type(io_file_type) :: file
     character(len=192) :: filename
@@ -366,11 +366,12 @@ contains
     if (par%use_metals) then
        block
          use species_mod, only : species_write
-         call species_write(file)
+         call species_write(file, status)
        end block
     end if
 
     call io_close(file, status)
+    if (status /= 0) call fatal_error('failed to write rates file: '//trim(filename))
     write(*,'(2a)') ' ION: rates written to: ', trim(filename)
   end subroutine gas_rates_write
 

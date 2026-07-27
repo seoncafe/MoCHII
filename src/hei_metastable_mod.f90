@@ -260,7 +260,7 @@ contains
   !=========================================================================
   subroutine hei_metastable_write(n2s3, phi3, nleaf)
     use iofile_mod
-    use utility,       only : get_base_name
+    use utility,       only : get_base_name, fatal_error
     use gas_state_mod, only : gas_nH, gas_ne, gas_Te
     implicit none
     integer,       intent(in) :: nleaf
@@ -314,6 +314,7 @@ contains
     deallocate(tmp)
 
     call io_close(file, status)
+    if (status /= 0) call fatal_error('failed to write He I metastable file: '//trim(filename))
     write(*,'(2a)') ' HEIMETA: 2^3S diagnostic written to: ', trim(filename)
   end subroutine hei_metastable_write
 
