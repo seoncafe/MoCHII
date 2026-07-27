@@ -742,7 +742,13 @@ public
      real(kind=wp)      :: te_min       = 1.0e3_wp
      real(kind=wp)      :: te_max       = 5.0e4_wp
      real(kind=wp)      :: gas_tol_te   = 1.0e-3_wp
-     character(len=256) :: atomic_dir   = 'data/atomic'
+     character(len=256) :: atomic_dir   = ''
+     !--- Root of the shipped data tables (atomic tables, free-free Gaunt
+     !--- factors, nebular continuum coefficients).  Left blank it is
+     !--- resolved at setup to <directory of MoCHII.x>/data, so a run works
+     !--- from any working directory; set it explicitly to point elsewhere.
+     !--- atomic_dir defaults to <data_dir>/atomic when left blank.
+     character(len=256) :: data_dir     = ''
      !--- trace-metal registry.  An element is active when its
      !--- abundance n(X)/n(H) > 0; defaults are the MOCASSIN HII20/HII40
      !--- benchmark abundances.  use_metals enables the cascade + metal

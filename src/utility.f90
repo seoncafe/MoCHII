@@ -12,6 +12,7 @@ module utility
    public :: copy_file
    public :: time_stamp
    public :: get_date_time
+   public :: fatal_error
    character(*), private, parameter :: LOWER_CASE = 'abcdefghijklmnopqrstuvwxyz'
    character(*), private, parameter :: UPPER_CASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -370,5 +371,23 @@ contains
                values(1),'/',values(2),'/',values(3), values(5),':',values(6),':',values(7)
    return
    end function get_date_time
+   !------------------------------------------------
+   ! Collective abort carrying a rank-qualified message.  MoCHII aborts the
+   ! whole communicator from whichever rank hits the error, so the message
+   ! must come from that same rank: gating the write on rank 0 loses the
+   ! diagnostic entirely whenever another rank fails first, and the run then
+   ! dies with no indication of why.  Ranks can reach a given failure at
+   ! different times (rank 0 lags behind while it writes output), so this is
+   ! not a hypothetical ordering.
+   subroutine fatal_error(msg)
+   use mpi
+   use define, only : mpar
+   implicit none
+   character(len=*), intent(in) :: msg
+   integer :: ierr
+   write(*,'(a,i0,2a)') ' ERROR [rank ', mpar%p_rank, ']: ', trim(msg)
+   flush(6)
+   call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+   end subroutine fatal_error
    !------------------------------------------------
 end module utility

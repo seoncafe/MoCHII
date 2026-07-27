@@ -92,7 +92,8 @@ contains
   !=========================================================================
   subroutine sh95_load(fname, t, name, required)
     use mpi
-    implicit none
+        use utility, only : fatal_error
+implicit none
     character(len=*),    intent(in)    :: fname, name
     type(sh95_tab_type), intent(inout) :: t
     logical,             intent(in)    :: required
@@ -104,9 +105,7 @@ contains
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
        if (required) then
-          if (mpar%p_rank == 0) write(*,'(3a)') 'ERROR: cannot open ', &
-             trim(fname), ' (par%atomic_dir)'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call fatal_error('cannot open '//trim(fname)//' (par%atomic_dir)')
        end if
        return
     end if

@@ -37,7 +37,8 @@ contains
   !=========================================================================
   subroutine dust_temp_setup()
     use mpi
-    implicit none
+        use utility, only : fatal_error
+implicit none
     real(kind=wp), allocatable :: lam(:), alb(:), cext(:)
     character(len=512) :: line
     real(kind=wp) :: v(4), cref, T, nu1, nu2, bnu, snu, w
@@ -46,9 +47,8 @@ contains
     !--- read the kext table (lambda, albedo, -, C_ext); sort ascending.
     open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: dust_temp needs par%ion_dust_kext.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call fatal_error('dust_temp cannot open par%ion_dust_kext = '// &
+          trim(par%ion_dust_kext))
     end if
     n = 0
     do

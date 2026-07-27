@@ -70,19 +70,17 @@ contains
   !=========================================================================
   subroutine nebcont_setup()
     use mpi
+    use utility, only : fatal_error
     implicit none
     character(len=16) :: fn(3)
     integer :: k, i, unit, ios, ierr
 
     fn = [character(len=16) :: 'gammaHI.dat', 'gammaHeI.dat', 'gammaHeII.dat']
     do k = 1, 3
-       open(newunit=unit, file='../../data/'//trim(fn(k)), status='old', iostat=ios)
-       if (ios /= 0) &
-          open(newunit=unit, file='data/'//trim(fn(k)), status='old', iostat=ios)
-       if (ios /= 0) then
-          if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fn(k))
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-       end if
+       open(newunit=unit, file=trim(par%data_dir)//'/'//trim(fn(k)), &
+            status='old', iostat=ios)
+       if (ios /= 0) call fatal_error('cannot open ' // &
+          trim(par%data_dir)//'/'//trim(fn(k)) // ' (par%data_dir)')
        read(unit,*) gtab(k)%nT, gtab(k)%nnu
        allocate(gtab(k)%tk(gtab(k)%nT), gtab(k)%nu(gtab(k)%nnu), &
                 gtab(k)%lg(gtab(k)%nnu, gtab(k)%nT))
@@ -95,8 +93,8 @@ contains
     end do
 
     !--- He I two-photon shape
-    open(newunit=unit, file='../../data/HeI2phot.dat', status='old', iostat=ios)
-    if (ios /= 0) open(newunit=unit, file='data/HeI2phot.dat', status='old', iostat=ios)
+    open(newunit=unit, file=trim(par%data_dir)//'/HeI2phot.dat', &
+         status='old', iostat=ios)
     if (ios == 0) then
        nhe2q = 0
        allocate(he2q_y(64), he2q_A(64))

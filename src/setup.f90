@@ -49,6 +49,23 @@ contains
      end if
   end if
 
+  !--- Same treatment for the shipped data tables.  They used to be opened
+  !--- as '../../data/x' with a 'data/x' retry, which resolves against the
+  !--- CURRENT WORKING DIRECTORY: the same run then succeeds or dies
+  !--- depending on where it was launched from, and the failure surfaces
+  !--- only after the transport has already been paid for.
+  if (len_trim(par%data_dir) == 0) then
+     call get_command_argument(0, exepath)
+     islash = index(trim(exepath), '/', back=.true.)
+     if (islash > 0) then
+        par%data_dir = exepath(1:islash-1) // '/data'
+     else
+        par%data_dir = 'data'
+     end if
+  end if
+  if (len_trim(par%atomic_dir) == 0) &
+     par%atomic_dir = trim(par%data_dir) // '/atomic'
+
   par%nprint = par%no_print
   if (par%nprint >= par%no_photons) par%nprint = par%no_photons/10
   if (par%no_photons < 10) par%nprint = 1

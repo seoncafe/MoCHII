@@ -90,7 +90,8 @@ contains
   !=========================================================================
   subroutine cooling_load(fname, fit)
     use mpi
-    implicit none
+        use utility, only : fatal_error
+implicit none
     character(len=*),       intent(in)  :: fname
     type(cooling_fit_type), intent(out) :: fit
     character(len=256) :: line
@@ -98,8 +99,7 @@ contains
 
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call fatal_error('cannot open '//trim(fname))
     end if
     do
        read(unit,'(a)') line
