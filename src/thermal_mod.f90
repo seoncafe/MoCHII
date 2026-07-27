@@ -53,8 +53,15 @@ contains
     !--- trace-metal line cooling (registry)
     if (par%use_metals) then
        block
-         use species_mod, only : metal_cooling, metal_heating, metal_freefree
+         use species_mod, only : metal_cooling, metal_heating, metal_freefree, &
+                                 metal_cooling_H
          net = net - metal_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+         !--- H-impact [C II] 158 um / [O I] 63 um fine-structure cooling.
+         !--- The n-level table above is electron-impact only, so the
+         !--- neutral-H collider is a separate channel; it is the dominant
+         !--- coolant wherever the gas is neutral and does not depend on
+         !--- what heats that gas.
+         net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
          !--- metal free-free cooling, net-charge weighted (par%metal_freefree)
          if (par%metal_freefree) &
             net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
@@ -78,18 +85,11 @@ contains
     if (par%grain_pe) then
        block
          use gas_rates_mod, only : g0_fuv
-         use species_mod,   only : metal_cooling_H
          use octree_mod,    only : amr_grid
          !--- MW reference dust extinction per H (D03 V band) — the
          !--- normalization of the BT94 fits.
          real(kind=wp), parameter :: CEXT_MW_V = 4.868e-22_wp
          real(kind=wp) :: g0, xpe, eps, beta, dscale, Tpe
-         !--- H-impact [C II]/[O I] fine-structure cooling: the PDR-zone
-         !--- coolant that balances the photoelectric heating (electron
-         !--- cooling alone lets the zone run away to ~10^4 K).
-         if (par%use_metals) &
-            net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, &
-                                        nH*(1.0_wp - xHI))
          g0 = g0_fuv(il)
          if (g0 > 0.0_wp) then
             !--- dust amount relative to MW from the leaf opacity itself

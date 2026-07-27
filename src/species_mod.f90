@@ -178,7 +178,8 @@ contains
   !=========================================================================
   subroutine read_element(fname, el)
     use mpi
-    implicit none
+        use utility, only : fatal_error
+implicit none
     character(len=*),   intent(in)  :: fname
     type(element_type), intent(out) :: el
     character(len=512) :: line, key
@@ -186,8 +187,7 @@ contains
 
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call fatal_error('cannot open '//trim(fname))
     end if
     it = 0
     do
@@ -467,20 +467,30 @@ contains
   ! [O I] 63 um excited by NEUTRAL HYDROGEN collisions — the dominant
   ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the n-level cooling table
   ! is electron-impact only, so the H channel is added separately).  The
-  ! two-level population saturates above the H critical density
-  ! n_crit,H = A_ul / q_ul^H, so the cooling is the low-density excitation
-  ! power divided by the two-level saturation factor:
-  !   Lambda = n_ion n_HI (g_u/g_l) q_ul^H e^{-dE/kT} dE / (1 + n_HI q_ul^H/A_ul)
-  ! with q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005),
+  ! two-level population saturates above the H critical density, so the
+  ! cooling is the low-density excitation power divided by the two-level
+  ! saturation factor.  The steady state n_u (A_ul + n_HI q_ul^H)
+  ! = n_l n_HI q_lu^H with n_ion = n_l + n_u gives
+  !   Lambda = n_ion n_HI q_lu^H dE / (1 + n_HI (q_ul^H + q_lu^H)/A_ul)
+  ! and hence n_crit,H = A_ul / (q_ul^H + q_lu^H).  BOTH collision
+  ! directions drain the lower level, so q_lu^H belongs in the denominator:
+  ! omitting it leaves the low-density limit right but overestimates the
+  ! dense limit by 1 + (g_u/g_l) e^{-dE/kT}, i.e. 1.8 at 100 K for [C II]
+  ! rising to 3 when kT >> dE, and up to 1.6 for [O I].
+  ! With q_lu^H = (g_u/g_l) q_ul^H e^{-dE/kT},
+  ! q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005),
   ! q_ul^H([O I]) = 9.2e-11 (T/100)^0.67 cm^3/s, A([C II] 158um) = 2.321e-6
-  ! and A([O I] 63um) = 8.865e-5 s^-1.  n_crit,H is ~3e3 for [C II] (so the
-  ! factor bites in dense PDR gas, nH ~ 5e3) and ~1e6 for [O I] (rarely
-  ! saturated); at low n_HI it reduces to the low-density limit.  The
-  ! electron channel is left to the density-suppressed n-level table
-  ! (its own saturation), so only n_HI enters the factor here (n_e << n_HI
-  ! in the PDR).  Part of the par%grain_pe PDR thermal package (without it
-  ! the photoelectric heating has no coolant below the Ly-alpha regime and
-  ! the PDR zone runs away to ~10^4 K).
+  ! and A([O I] 63um) = 8.865e-5 s^-1.  n_crit,H is ~1.7e3 for [C II] at
+  ! 100 K (so the factor bites in dense PDR gas, nH ~ 5e3) and ~9e5 for
+  ! [O I] (rarely saturated); at low n_HI it reduces to the low-density
+  ! limit.  The electron channel is left to the density-suppressed n-level
+  ! table (its own saturation), so only n_HI enters the factor here.  That
+  ! split is valid while n_e << n_HI, which is the PDR regime this channel
+  ! matters in; where both colliders are comparable the two saturation
+  ! denominators should be merged into one.  Called from the par%use_metals
+  ! cooling path: it is the coolant that keeps the neutral zone off the
+  ! ~10^4 K runaway under grain photoelectric heating, but it does not
+  ! depend on that heating being enabled.
   !=========================================================================
   real(kind=wp) function metal_cooling_H(il, T, nH, ne, nHI, nHII) result(cool)
     implicit none
@@ -500,14 +510,14 @@ contains
           qul  = 7.6e-10_wp*(T/100.0_wp)**0.14_wp           ! H de-excitation
           qlu  = 2.0_wp*qul*exp(-91.25_wp/T)                ! g_u/g_l = 4/2
           cool = cool + nion*nHI*qlu*(91.25_wp*kb) &
-                 / (1.0_wp + nHI*qul/A_CII)
+                 / (1.0_wp + nHI*(qul + qlu)/A_CII)
        case ('o')
           call species_fractions(ie, il, T, ne, nHI, nHII, frac)
           nion = elems(ie)%abund*nH*frac(1)                 ! O I
           qul  = 9.2e-11_wp*(T/100.0_wp)**0.67_wp           ! H de-excitation
           qlu  = 0.6_wp*qul*exp(-227.7_wp/T)                ! g_u/g_l = 3/5
           cool = cool + nion*nHI*qlu*(227.7_wp*kb) &
-                 / (1.0_wp + nHI*qul/A_OI)
+                 / (1.0_wp + nHI*(qul + qlu)/A_OI)
        end select
     end do
   end function metal_cooling_H
