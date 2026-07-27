@@ -24,7 +24,7 @@ program main
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
                               secion_apply, &
                               run_converged, run_iters, run_final_dx, &
-                              run_final_dte
+                              run_final_dte, run_field_consistent
   use ion_balance_mod, only : gas_equilibrium_update
   use thermal_mod,     only : gas_thermal_update
   use cooling_mod,     only : cooling_setup
@@ -45,6 +45,7 @@ program main
   real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
   logical             :: converged, use_vol, use_sobol
   integer             :: ierr, iter, niter, nd_qmc
+  character(len=32)   :: pass_label
   !--- active metal photoionization thresholds gathered for the
   !--- threshold-aligned band (par%ion_align_edges).
   real(kind=wp), allocatable :: metal_eth(:)
@@ -114,55 +115,8 @@ program main
   converged = .false.
   max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
-     jt_ion(:,:) = 0.0_wp
-     if (slab_tally_on) slab_Iesc(:,:) = 0.0_wp    ! keep the last iteration's escaping field
-     call time_stamp(dtime)
-     if (mpar%p_rank == 0) write(6,'(a,i4,a,f8.3,a)') &
-        '---> iteration ', iter, ': ionizing-band transport...  @ ', &
-        dtime/60.0_wp, ' mins'
-     n_done = 0
-     do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
-        if (use_sobol) then
-           call qmc_uniforms(ip-1_int64, u_launch(1:nd_qmc))
-           call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc))
-        else
-           call gen_ion_photon(photon)
-        end if
-        photon%id      = ip
-        photon%istream = QMC_STREAM_STELLAR
-        call transport_ion_packet(photon)
-        n_done = n_done + 1
-        if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
-           call time_stamp(dtime)
-           write(6,'(es14.3,a,f8.3,a)') real(n_done,wp)*mpar%nproc, &
-              ' photons  @ ', dtime/60.0_wp, ' mins'
-        endif
-     end do
-     !--- diffuse ground-recombination packets from the current state.
-     if (par%diffuse_field) then
-        call diffuse_build(ion_Ltot/real(par%nphotons, wp))
-        if (mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
-           '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
-           diffuse_nphot, ' packets'
-        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
-        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
-        !--- varies per iteration, and a Sobol prefix of any length is balanced.
-        do ip = mpar%p_rank+1, diffuse_nphot, mpar%nproc
-           if (use_sobol) then
-              call qmc_uniforms_stream(ip-1_int64, u_launch(1:9), QMC_STREAM_DIFFUSE)
-              call gen_diffuse_photon_qmc(photon, u_launch(1:9))
-           else
-              call gen_diffuse_photon(photon)
-           end if
-           photon%id      = ip
-           photon%istream = QMC_STREAM_DIFFUSE
-           call transport_ion_packet(photon)
-        end do
-     end if
-     call jtally_ion_reduce()
-     call gas_rates_compute()
-     if (par%use_metals) call species_gamma_compute()
-     if (par%use_sec_ion) call secion_apply()
+     write(pass_label,'(a,i4)') 'iteration ', iter
+     call ionizing_field_and_rates(pass_label)
      if (par%gas_niter < 1) exit          ! rates only, no solve
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
@@ -229,6 +183,26 @@ program main
      end if
   end if
 
+  !--- Final consistency pass.  The loop above ends on a gas solve followed
+  !--- by gas_opacity_fill, so the state it leaves behind has never been
+  !--- transported through: the rates, the gas heating and heat_dust still
+  !--- belong to the PREVIOUS iterate.  At convergence that mismatch is
+  !--- bounded by par%gas_tol, but at the iteration cap it is not bounded at
+  !--- all.  One more transport with no gas solve puts the written radiation
+  !--- field and the written gas state on the same iterate; it costs 1/niter
+  !--- of the run.  Skipped when par%ion_peel is set, because the imaging
+  !--- pass below rebuilds the same tally from the same state, and when
+  !--- par%gas_niter < 1, where no solve ever ran and the two already agree.
+  !--- The flag starts .false. and is set only where the pairing is actually
+  !--- established, so a path added later that forgets to rebuild the field
+  !--- reports itself in the header instead of claiming consistency.
+  if (par%gas_niter < 1) then
+     run_field_consistent = .true.      ! no solve ran; state never changed
+  else if (.not. par%ion_peel) then
+     call ionizing_field_and_rates('final consistency pass')
+     run_field_consistent = .true.
+  end if
+
   !--- peel-off imaging pass: one extra transport of the CONVERGED state
   !--- with observer peeling (direct at emission for stellar and diffuse
   !--- packets; dust-scattered at every interaction via the hook).  The
@@ -278,6 +252,9 @@ program main
        if (par%use_metals) call species_gamma_compute()
        if (par%use_sec_ion) call secion_apply()
      end block
+     !--- this pass transported the written state, so it doubles as the
+     !--- consistency pass skipped above.
+     run_field_consistent = .true.
   end if
 
   !--- output
@@ -356,4 +333,70 @@ program main
   call destroy_shared_mem_all()
   call MPI_FINALIZE(ierr)
   stop
+
+contains
+
+  !=========================================================================
+  ! One pass of the ionizing band: transport every stellar and diffuse
+  ! packet through the CURRENT opacity, reduce the path-length tally into
+  ! 4 pi J_nu dnu, and turn that into the photoionization and heating rate
+  ! integrals.  The nonlinear iteration and the final consistency pass both
+  ! come through here, so the radiation field the written rates carry is
+  ! built exactly as the field that drove the iteration -- same launch set,
+  ! same diffuse rebuild, same reduction.
+  !=========================================================================
+  subroutine ionizing_field_and_rates(label)
+    character(len=*), intent(in) :: label
+
+    jt_ion(:,:) = 0.0_wp
+    if (slab_tally_on) slab_Iesc(:,:) = 0.0_wp    ! keep the last pass's escaping field
+    call time_stamp(dtime)
+    if (mpar%p_rank == 0) write(6,'(3a,f8.3,a)') &
+       '---> ', trim(label), ': ionizing-band transport...  @ ', &
+       dtime/60.0_wp, ' mins'
+    n_done = 0
+    do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
+       if (use_sobol) then
+          call qmc_uniforms(ip-1_int64, u_launch(1:nd_qmc))
+          call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc))
+       else
+          call gen_ion_photon(photon)
+       end if
+       photon%id      = ip
+       photon%istream = QMC_STREAM_STELLAR
+       call transport_ion_packet(photon)
+       n_done = n_done + 1
+       if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
+          call time_stamp(dtime)
+          write(6,'(es14.3,a,f8.3,a)') real(n_done,wp)*mpar%nproc, &
+             ' photons  @ ', dtime/60.0_wp, ' mins'
+       endif
+    end do
+    !--- diffuse ground-recombination packets from the current state.
+    if (par%diffuse_field) then
+       call diffuse_build(ion_Ltot/real(par%nphotons, wp))
+       if (mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
+          '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
+          diffuse_nphot, ' packets'
+       !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
+       !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
+       !--- varies per pass, and a Sobol prefix of any length is balanced.
+       do ip = mpar%p_rank+1, diffuse_nphot, mpar%nproc
+          if (use_sobol) then
+             call qmc_uniforms_stream(ip-1_int64, u_launch(1:9), QMC_STREAM_DIFFUSE)
+             call gen_diffuse_photon_qmc(photon, u_launch(1:9))
+          else
+             call gen_diffuse_photon(photon)
+          end if
+          photon%id      = ip
+          photon%istream = QMC_STREAM_DIFFUSE
+          call transport_ion_packet(photon)
+       end do
+    end if
+    call jtally_ion_reduce()
+    call gas_rates_compute()
+    if (par%use_metals) call species_gamma_compute()
+    if (par%use_sec_ion) call secion_apply()
+  end subroutine ionizing_field_and_rates
+
 end program main

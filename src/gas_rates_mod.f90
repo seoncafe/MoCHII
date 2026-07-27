@@ -25,6 +25,7 @@ module gas_rates_mod
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
   public :: heat_dust, g0_fuv
   public :: run_converged, run_iters, run_final_dx, run_final_dte
+  public :: run_field_consistent
   public :: secion_apply
   public :: sec_dgamma_HI, sec_dgamma_HeI
   public :: sec_heat_HI, sec_heat_HeI, sec_heat_HeII
@@ -66,6 +67,11 @@ module gas_rates_mod
   integer       :: run_iters     = 0
   real(kind=wp) :: run_final_dx  = 0.0_wp
   real(kind=wp) :: run_final_dte = 0.0_wp
+  !--- .true. when the written rates, gas heating and dust heating were
+  !--- rebuilt by transporting the WRITTEN gas state, so that state and the
+  !--- radiation field belong to the same iterate.  .false. means they are
+  !--- one gas solve apart (rates-only runs, par%gas_niter < 1).
+  logical       :: run_field_consistent = .false.
 
 contains
 
@@ -273,6 +279,8 @@ contains
     call io_put_keyword(file,'NITERDON',run_iters,   'gas iterations run',      status)
     call io_put_keyword(file,'FINALDX', run_final_dx, 'final max|delta x_HII|',  status)
     call io_put_keyword(file,'FINALDTE',run_final_dte,'final max|delta Te|/Te',  status)
+    call io_put_keyword(file,'FLDCONS', run_field_consistent, &
+       'rates rebuilt by transporting the written state', status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HeI','He I photoionization rate [s^-1]',status)
     call io_append_image(file, gamma_HeII, status, bitpix=-64)
