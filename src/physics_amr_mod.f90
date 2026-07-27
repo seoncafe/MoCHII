@@ -10,7 +10,21 @@ module physics_amr_mod
   implicit none
   private
 
-  public :: laursen09_ndust
+  public :: laursen09_ndust, dust_opac_norm
+
+  !--- Scale factor that put the INITIAL dust opacity on the requested
+  !--- par%taumax (radial pole) or par%tauhomo (volume average).  It is
+  !--- solved once, at grid setup, and then held fixed: for dust_model =
+  !--- 'laursen09_live' every later opacity refill multiplies by it, so the
+  !--- target sets the optical depth of the initial configuration and the
+  !--- subsequent evolution comes from the ionization-dependent grain
+  !--- survival alone.  It is deliberately never re-solved -- pinning the
+  !--- realized tau to the target every iteration would defeat the live
+  !--- dust model.  Without a target it stays 1.  Kept here rather than in
+  !--- par because par%taumax/par%tauhomo are overwritten with the realized
+  !--- values once the grid is built, so the factor cannot be recovered
+  !--- from them afterward.
+  real(wp), save :: dust_opac_norm = 1.0_wp
 
 contains
 

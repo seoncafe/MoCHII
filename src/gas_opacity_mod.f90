@@ -189,7 +189,7 @@ contains
   !=========================================================================
   subroutine gas_opacity_fill()
     use mpi
-    use physics_amr_mod, only : laursen09_ndust
+    use physics_amr_mod, only : laursen09_ndust, dust_opac_norm
     use species_mod,     only : n_elements, species_opacity_add
     implicit none
     integer  :: il, inu, ierr
@@ -199,7 +199,12 @@ contains
        !--- dust density tied to the COMPUTED
        !--- ionization state, refreshed every iteration; the PAH share
        !--- f_pah carries its own ionized-gas survival f_ion_pah
-       !--- (default 0 = PAHs destroyed in ionized gas).
+       !--- (default 0 = PAHs destroyed in ionized gas).  dust_opac_norm is
+       !--- the scale solved once from par%taumax/par%tauhomo at grid setup
+       !--- (1 without a target); reapplying it here is what makes the
+       !--- target the optical depth of the INITIAL state rather than a
+       !--- value discarded at the first refill.  It is never re-solved, so
+       !--- the realized tau then follows the grain survival factor freely.
        if (trim(par%dust_model) == 'laursen09_live') then
           block
             real(kind=wp) :: xh, fac
@@ -208,7 +213,8 @@ contains
                fac = (1.0_wp - par%f_pah)*(xh + par%f_ion_dust*(1.0_wp - xh)) &
                      + par%f_pah*(xh + par%f_ion_pah*(1.0_wp - xh))
                amr_grid%rhokap(il) = (par%Z_global/max(par%Z_ref,1.0e-30_wp)) &
-                  * gas_nH(il)*fac * par%cext_dust * par%DGR * par%distance2cm
+                  * gas_nH(il)*fac * par%cext_dust * par%DGR * par%distance2cm &
+                  * dust_opac_norm
             end do
           end block
        end if

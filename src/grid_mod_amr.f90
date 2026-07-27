@@ -301,6 +301,10 @@ contains
      end if
   end if
   call MPI_BCAST(opac_norm, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+  !--- keep the factor: gas_opacity_fill rebuilds the 'laursen09_live'
+  !--- opacity from scratch every iteration and has to reapply it, or the
+  !--- requested target would survive only until the first refill.
+  dust_opac_norm = opac_norm
   if (opac_norm /= 1.0_wp .and. mpar%h_rank == 0) then
      do il = 1, nleaf
         amr_grid%rhokap(il) = amr_grid%rhokap(il) * opac_norm
