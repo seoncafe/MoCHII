@@ -15,6 +15,7 @@ results are recorded in CLAUDE.md and docs/MoCHII_physics.pdf.
 | `g4_tng` | Illustris-TNG post-processing demo |
 | `io` | HDF5 first-error preservation, failed-create propagation, HDF5-off compilation, and case-insensitive extension detection |
 | `thermal_parallel` | Exact `x_HI`, `x_HeI`, `x_HeII`, `n_e`, and `T_e` comparison between serial-thermal and node-local MPI-thermal rate files |
+| `continuous_energy` | Continuous-energy migration gates: C II/He I threshold cross sections; grouped metadata/fail-fast; H/He/metal direct-rate and dynamic-opacity shadows across AMR, DDA, dust scattering, and re-refinement; frozen HII20/HII40 baselines |
 | `d_dusty` | dusty Stromgren, scattering bracket, T_dust/IR, SEDust smokes (`sedust_smoke.in`, `dustemis_smoke.in`, `pahlive_smoke.in`), FUV option (`d_fuv_*.in`, `check_fuv.py`) |
 | `peel` | peel-off imaging: optically-thin analytic direct gate (`peel_thin.in`, `check_peel.py`), scattered morphology (`peel_scat.in`), bin cubes (`peel_cube.in`) |
 | `uni_dda` | Cartesian (car) grid vs single-level octree: `car_walk='amr'` walk bit-identical; incremental DDA walk (`car_walk='dda'`) to rounding + timing (`check_uni.py`); namelist-built car grid (`car_namelist.in`) + `nH_const`/`rmax` density model reproduce the file-built sphere (`amr` override `car_amr_ovr.in`) |

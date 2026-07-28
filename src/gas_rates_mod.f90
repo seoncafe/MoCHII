@@ -281,6 +281,18 @@ contains
     call io_put_keyword(file,'FINALDTE',run_final_dte,'final max|delta Te|/Te',  status)
     call io_put_keyword(file,'FLDCONS', run_field_consistent, &
        'rates rebuilt by transporting the written state', status)
+    call io_put_keyword(file,'IONEMODE',trim(par%ion_energy_mode), &
+       'ionizing packet energy mode', status)
+    call io_put_keyword(file,'CDFRTOL', par%source_cdf_tol, &
+       'source sampler relative tolerance', status)
+    call io_put_keyword(file,'NUBINUSE','solver_and_diagnostic', &
+       'role of ionizing spectral bins', status)
+    call io_put_keyword(file,'ENRGSAMP',trim(par%launch_sequence), &
+       'energy/source sampling sequence', status)
+    call io_put_keyword(file,'SHDWRATE',par%ion_shadow_rates, &
+       'direct-rate shadow validation enabled', status)
+    if (trim(par%launch_sequence) == 'sobol') &
+       call io_put_keyword(file,'QMCSEED',par%qmc_seed,'Sobol scramble seed',status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HeI','He I photoionization rate [s^-1]',status)
     call io_append_image(file, gamma_HeII, status, bitpix=-64)

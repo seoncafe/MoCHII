@@ -20,9 +20,13 @@ program main
   use jtally_mod,      only : jtally_ion_setup, jtally_ion_reduce, jt_ion, &
                               slab_tally_setup, slab_tally_reduce, &
                               slab_write_Imu, slab_tally_on, slab_Iesc
+  use ion_score_mod,   only : ion_score_setup, ion_score_reset, &
+                              ion_score_reduce, ion_score_compare_hhe, &
+                              ion_score_compare_metals
   use raytrace_amr_mod,only : transport_ion_packet, slab_walk_report
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
-                              secion_apply, &
+                              gamma_HI, gamma_HeI, gamma_HeII, &
+                              heat_HI, heat_HeI, heat_HeII, secion_apply, &
                               run_converged, run_iters, run_final_dx, &
                               run_final_dte, run_field_consistent
   use ion_balance_mod, only : gas_equilibrium_update
@@ -87,6 +91,7 @@ program main
   deallocate(metal_eth)
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
+  call ion_score_setup(amr_grid%nleaf)
   if (trim(par%source_geometry) == 'slab') then
      block
        logical :: ltop, lbot
@@ -222,6 +227,7 @@ program main
        if (par%ion_add_dust .and. par%ion_dust_scatter) &
           ion_peel_scatter_hook => ion_peel_scatter
        jt_ion(:,:) = 0.0_wp
+       call ion_score_reset()
        call time_stamp(dtime)
        if (mpar%p_rank == 0) write(6,'(a,f8.3,a)') &
           '---> imaging pass (peel-off)...  @ ', dtime/60.0_wp, ' mins'
@@ -254,8 +260,12 @@ program main
        end if
        ion_peel_scatter_hook => null()
        call jtally_ion_reduce()
+       call ion_score_reduce()
        call gas_rates_compute()
+       call ion_score_compare_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
+                                  heat_HI, heat_HeI, heat_HeII)
        if (par%use_metals) call species_gamma_compute()
+       call ion_score_compare_metals()
        if (par%use_sec_ion) call secion_apply()
      end block
      !--- this pass transported the written state, so it doubles as the
@@ -355,6 +365,7 @@ contains
     character(len=*), intent(in) :: label
 
     jt_ion(:,:) = 0.0_wp
+    call ion_score_reset()
     if (slab_tally_on) slab_Iesc(:,:) = 0.0_wp    ! keep the last pass's escaping field
     call time_stamp(dtime)
     if (mpar%p_rank == 0) write(6,'(3a,f8.3,a)') &
@@ -400,8 +411,12 @@ contains
        end do
     end if
     call jtally_ion_reduce()
+    call ion_score_reduce()
     call gas_rates_compute()
+    call ion_score_compare_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
+                               heat_HI, heat_HeI, heat_HeII)
     if (par%use_metals) call species_gamma_compute()
+    call ion_score_compare_metals()
     if (par%use_sec_ion) call secion_apply()
   end subroutine ionizing_field_and_rates
 

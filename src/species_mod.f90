@@ -34,6 +34,10 @@ module species_mod
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
+  public :: species_shadow_setup, species_shadow_reset, species_shadow_score
+  public :: species_shadow_reduce, species_shadow_compare
+  public :: species_stage_cache_refresh
+  public :: species_packet_cross_sections, species_cached_opacity
 
   integer, parameter :: MAX_EL = 11, MAX_ST = 6
 
@@ -85,6 +89,19 @@ module species_mod
   !--- photoheating per particle [erg/s] (transition, leaf); filled with
   !--- the Gamma's, consumed by metal_heating (par%metal_heat).
   type(gamma_block) :: eheat(MAX_EL)
+  !--- Grouped direct-estimator validation blocks.  coeff(1,:,:) is the
+  !--- ionization coefficient sigma/E and coeff(2,:,:) the heating coefficient;
+  !--- raw carries their unnormalized path sums.  Allocated only when
+  !--- par%ion_shadow_rates is enabled.
+  type metal_shadow_block
+     real(kind=wp), allocatable :: coeff(:,:,:)  ! (2,ntransition,nnu)
+     real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf)
+  end type metal_shadow_block
+  type(metal_shadow_block) :: metal_shadow(MAX_EL)
+  type(gamma_block) :: stage_frac(MAX_EL)  ! (stage,leaf), refreshed per gas state
+  integer :: flat_ntransition = 0
+  integer :: flat_ie(MAX_METAL_TRANSITIONS) = 0
+  integer :: flat_it(MAX_METAL_TRANSITIONS) = 0
 
   !--- rate cache for the n_e fixed point at one (leaf, T): all the
   !--- transition coefficients are functions of T (and the leaf Gammas)
@@ -152,10 +169,26 @@ contains
        egam(ie)%g = 0.0_wp
        allocate(eheat(ie)%g(elems(ie)%nstage-1, nleaf))
        eheat(ie)%g = 0.0_wp
+       allocate(stage_frac(ie)%g(elems(ie)%nstage, nleaf))
+       stage_frac(ie)%g = 0.0_wp
        if (mpar%p_rank == 0) write(*,'(3a,es10.3,a,i2,a,i2,a)') &
           ' SPEC: ', trim(names(k)), ' loaded (abund=', elems(ie)%abund, &
           ', ', elems(ie)%nstage, ' stages, ', &
           count(elems(ie)%has_cool(1:elems(ie)%nstage)), ' cooling fits)'
+    end do
+    flat_ntransition = 0
+    do ie = 1, n_elements
+       do i = 1, elems(ie)%nstage-1
+          flat_ntransition = flat_ntransition + 1
+          if (flat_ntransition > MAX_METAL_TRANSITIONS) then
+             if (mpar%p_rank == 0) write(*,'(a,i0)') &
+                'ERROR: active metal transitions exceed packet-cache capacity ', &
+                MAX_METAL_TRANSITIONS
+             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          end if
+          flat_ie(flat_ntransition) = ie
+          flat_it(flat_ntransition) = i
+       end do
     end do
   end subroutine species_setup
 
@@ -172,8 +205,153 @@ contains
        if (allocated(eheat(ie)%g)) deallocate(eheat(ie)%g)
        allocate(eheat(ie)%g(elems(ie)%nstage-1, nleaf))
        eheat(ie)%g = 0.0_wp
+       if (allocated(stage_frac(ie)%g)) deallocate(stage_frac(ie)%g)
+       allocate(stage_frac(ie)%g(elems(ie)%nstage, nleaf))
+       stage_frac(ie)%g = 0.0_wp
     end do
   end subroutine species_resize
+
+  subroutine species_stage_cache_refresh()
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
+    implicit none
+    real(kind=wp) :: frac(MAX_ST), nHI, nHII
+    integer :: ie, il
+    do ie = 1, n_elements
+       do il = 1, size(stage_frac(ie)%g,2)
+          nHI = gas_nH(il)*gas_xHI(il)
+          nHII = gas_nH(il)*(1.0_wp-gas_xHI(il))
+          call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
+                                 nHI, nHII, frac)
+          stage_frac(ie)%g(:,il) = frac(1:elems(ie)%nstage)
+       end do
+    end do
+  end subroutine species_stage_cache_refresh
+
+  subroutine species_packet_cross_sections(energy, sigma, ntransition)
+    real(kind=wp), intent(in)  :: energy
+    real(kind=wp), intent(out) :: sigma(MAX_METAL_TRANSITIONS)
+    integer,       intent(out) :: ntransition
+    integer :: k
+    sigma = 0.0_wp
+    ntransition = flat_ntransition
+    do k = 1, flat_ntransition
+       sigma(k) = species_sigma(flat_ie(k), flat_it(k), energy)
+    end do
+  end subroutine species_packet_cross_sections
+
+  real(kind=wp) function species_cached_opacity(sigma, ntransition, il) result(opacity)
+    real(kind=wp), intent(in) :: sigma(MAX_METAL_TRANSITIONS)
+    integer,       intent(in) :: ntransition, il
+    integer :: k, ie, it
+    opacity = 0.0_wp
+    do k = 1, ntransition
+       ie = flat_ie(k)
+       it = flat_it(k)
+       opacity = opacity + elems(ie)%abund*stage_frac(ie)%g(it,il)*sigma(k)
+    end do
+  end function species_cached_opacity
+
+  !=========================================================================
+  ! Grouped metal-rate shadow estimator.  These routines intentionally live
+  ! in species_mod so they can use the private registry and compare directly
+  ! with egam/eheat without exposing implementation storage.
+  !=========================================================================
+  subroutine species_shadow_setup(nleaf)
+    use ion_band_mod, only : ion_e, nnu_band
+    implicit none
+    integer, intent(in) :: nleaf
+    real(kind=wp) :: energy, sig
+    integer :: ie, it, inu, nt
+
+    do ie = 1, n_elements
+       if (allocated(metal_shadow(ie)%coeff)) deallocate(metal_shadow(ie)%coeff)
+       if (allocated(metal_shadow(ie)%raw)) deallocate(metal_shadow(ie)%raw)
+       nt = elems(ie)%nstage - 1
+       allocate(metal_shadow(ie)%coeff(2,nt,nnu_band))
+       allocate(metal_shadow(ie)%raw(2,nt,nleaf))
+       metal_shadow(ie)%raw = 0.0_wp
+       do it = 1, nt
+          do inu = 1, nnu_band
+             energy = ion_e(inu)
+             sig = species_sigma(ie, it, energy)
+             metal_shadow(ie)%coeff(1,it,inu) = sig/(energy*ev2erg)
+             metal_shadow(ie)%coeff(2,it,inu) = sig*max( &
+                1.0_wp - elems(ie)%eth(it)/energy, 0.0_wp)
+          end do
+       end do
+    end do
+  end subroutine species_shadow_setup
+
+  subroutine species_shadow_reset()
+    integer :: ie
+    do ie = 1, n_elements
+       if (allocated(metal_shadow(ie)%raw)) metal_shadow(ie)%raw = 0.0_wp
+    end do
+  end subroutine species_shadow_reset
+
+  subroutine species_shadow_score(inu, il, path_lum)
+    integer,       intent(in) :: inu, il
+    real(kind=wp), intent(in) :: path_lum
+    integer :: ie, it
+    do ie = 1, n_elements
+       do it = 1, elems(ie)%nstage-1
+          metal_shadow(ie)%raw(:,it,il) = metal_shadow(ie)%raw(:,it,il) &
+             + path_lum*metal_shadow(ie)%coeff(:,it,inu)
+       end do
+    end do
+  end subroutine species_shadow_score
+
+  subroutine species_shadow_reduce()
+    use mpi
+    implicit none
+    integer :: ie, ierr
+    do ie = 1, n_elements
+       call MPI_ALLREDUCE(MPI_IN_PLACE, metal_shadow(ie)%raw, &
+                          size(metal_shadow(ie)%raw), MPI_DOUBLE_PRECISION, &
+                          MPI_SUM, MPI_COMM_WORLD, ierr)
+    end do
+  end subroutine species_shadow_reduce
+
+  subroutine species_shadow_compare(rtol)
+    use octree_mod, only : leaf_half
+    use mpi
+    implicit none
+    real(kind=wp), intent(in) :: rtol
+    real(kind=wp) :: max_abs(2), scale(2), rel(2), reference(2)
+    real(kind=wp) :: fac, shadow
+    integer :: ie, it, il, i, ierr
+    logical :: passed
+
+    max_abs = 0.0_wp
+    scale = 0.0_wp
+    do ie = 1, n_elements
+       do it = 1, elems(ie)%nstage-1
+          do il = 1, size(egam(ie)%g,2)
+             fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
+             reference = [egam(ie)%g(it,il), eheat(ie)%g(it,il)]
+             do i = 1, 2
+                shadow = metal_shadow(ie)%raw(i,it,il)*fac
+                max_abs(i) = max(max_abs(i), abs(shadow-reference(i)))
+                scale(i) = max(scale(i), abs(reference(i)))
+             end do
+          end do
+       end do
+    end do
+    do i = 1, 2
+       if (scale(i) > 0.0_wp) then
+          rel(i) = max_abs(i)/scale(i)
+       else
+          rel(i) = max_abs(i)
+       end if
+    end do
+    passed = maxval(rel) <= rtol
+    if (mpar%p_rank == 0) then
+       write(*,'(a,2es11.3)') ' ION: metal shadow relative errors: ', rel
+       write(*,'(a,a)') ' ION: grouped metal direct-rate shadow: ', &
+                        merge('PASS', 'FAIL', passed)
+    end if
+    if (.not. passed) call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+  end subroutine species_shadow_compare
 
   !=========================================================================
   subroutine read_element(fname, el)
@@ -318,11 +496,11 @@ implicit none
   !=========================================================================
   subroutine species_opacity_add(kap, nnu, nleaf)
     use ion_band_mod,  only : ion_e
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
+    use gas_state_mod, only : gas_nH
     implicit none
     integer,       intent(in)    :: nnu, nleaf
     real(kind=wp), intent(inout) :: kap(nnu, nleaf)
-    real(kind=wp) :: sig(nnu, MAX_ST), frac(MAX_ST), nHI, nHII, add
+    real(kind=wp) :: sig(nnu, MAX_ST), add
     integer :: ie, it, il, inu
 
     do ie = 1, n_elements
@@ -333,14 +511,10 @@ implicit none
        end do
        do il = 1, nleaf
           if (gas_nH(il) <= 0.0_wp) cycle
-          nHI  = gas_nH(il)*gas_xHI(il)
-          nHII = gas_nH(il)*(1.0_wp - gas_xHI(il))
-          call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
-                                 nHI, nHII, frac)
           do inu = 1, nnu
              add = 0.0_wp
              do it = 1, elems(ie)%nstage-1
-                add = add + frac(it)*sig(inu,it)
+                add = add + stage_frac(ie)%g(it,il)*sig(inu,it)
              end do
              kap(inu,il) = kap(inu,il) &
                 + gas_nH(il)*elems(ie)%abund*add*par%distance2cm

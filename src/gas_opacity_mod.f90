@@ -190,11 +190,13 @@ contains
   subroutine gas_opacity_fill()
     use mpi
     use physics_amr_mod, only : laursen09_ndust, dust_opac_norm
-    use species_mod,     only : n_elements, species_opacity_add
+    use species_mod,     only : n_elements, species_opacity_add, &
+                                species_stage_cache_refresh
     implicit none
     integer  :: il, inu, ierr
     real(kind=wp) :: sHI, sHeI, sHeII, kap
 
+    if (par%use_metals .and. n_elements > 0) call species_stage_cache_refresh()
     if (mpar%h_rank == 0) then
        !--- dust density tied to the COMPUTED
        !--- ionization state, refreshed every iteration; the PAH share

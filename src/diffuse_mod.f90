@@ -114,7 +114,7 @@ contains
   !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
-    use ion_band_mod, only : ion_Ltot, ion_bin_of
+    use ion_band_mod, only : ion_Ltot, ion_bin_of, ion_e
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
@@ -186,6 +186,10 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
+    !--- Phase-1 grouped compatibility: carry a physical-energy field through
+    !--- transport, but deliberately initialize it from the diagnostic bin
+    !--- center.  Preserving the sampled diffuse eph is a later gated phase.
+    photon%energy_eV = ion_e(photon%inu)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically
@@ -205,7 +209,7 @@ contains
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
-    use ion_band_mod, only : ion_Ltot, ion_bin_of
+    use ion_band_mod, only : ion_Ltot, ion_bin_of, ion_e
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
@@ -272,6 +276,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
+    photon%energy_eV = ion_e(photon%inu)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically

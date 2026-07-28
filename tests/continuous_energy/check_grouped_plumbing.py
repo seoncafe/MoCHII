@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""Fast Phase-1 gate for grouped metadata and continuous-mode fail-fast."""
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import h5py
+import numpy as np
+
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent.parent
+
+
+def decoded_attr(group, name):
+    value = np.asarray(group.attrs[name]).reshape(-1)[0]
+    if isinstance(value, bytes):
+        return value.decode().strip()
+    return str(value).strip()
+
+
+def run_case(executable, input_text, input_path, work, run_env):
+    input_path.write_text(input_text)
+    return subprocess.run(
+        [str(executable), str(input_path)],
+        cwd=work,
+        text=True,
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=60,
+        check=False,
+        env=run_env,
+    )
+
+
+def check_shadow(label, result, require_scattered, require_metals=True):
+    if result.returncode != 0:
+        print(result.stdout)
+        print(f"{label}: FAIL (run failed)")
+        return False
+    marker = "ION: grouped H/He direct-rate shadow: PASS"
+    metal_marker = "ION: grouped metal direct-rate shadow: PASS"
+    opacity_marker = "ION: grouped dynamic-opacity shadow: PASS"
+    match = re.search(
+        r"scored path segments direct/scattered =\s*(\d+)\s+(\d+)",
+        result.stdout,
+    )
+    direct = int(match.group(1)) if match else -1
+    scattered = int(match.group(2)) if match else -1
+    passed = (
+        marker in result.stdout
+        and opacity_marker in result.stdout
+        and direct > 0
+    )
+    if require_metals:
+        passed &= metal_marker in result.stdout
+    if require_scattered:
+        passed &= scattered > 0
+    else:
+        passed &= scattered == 0
+    errors = next(
+        (
+            line.split(":", 1)[1].strip()
+            for line in result.stdout.splitlines()
+            if "H/He shadow relative errors" in line
+        ),
+        "missing",
+    )
+    metal_errors = next(
+        (
+            line.split(":", 1)[1].strip()
+            for line in result.stdout.splitlines()
+            if "metal shadow relative errors" in line
+        ),
+        "missing",
+    )
+    opacity_result = next(
+        (
+            line.split("ION:", 1)[1].strip()
+            for line in result.stdout.splitlines()
+            if "dynamic-opacity shadow checks" in line
+        ),
+        "missing",
+    )
+    print(
+        f"{label}: {'PASS' if passed else 'FAIL'} "
+        f"(segments={direct}/{scattered}, H/He errors={errors}, "
+        f"metal errors={metal_errors}, opacity={opacity_result})"
+    )
+    return passed
+
+
+def main():
+    executable = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else REPO / "MoCHII.x"
+    if not executable.exists():
+        print(f"missing executable: {executable}")
+        return 2
+
+    source = (HERE / "grouped_plumbing.in").read_text()
+    run_env = os.environ.copy()
+    # A one-rank smoke needs no network fabric.  Pinning Intel MPI to shared
+    # memory also makes the gate usable in restricted CI/sandbox environments.
+    run_env.setdefault("I_MPI_FABRICS", "shm")
+    with tempfile.TemporaryDirectory(prefix="mochii-energy-plumbing-") as tmp:
+        work = Path(tmp)
+        grouped = run_case(
+            executable, source, work / "grouped.in", work, run_env
+        )
+        ok = check_shadow("AMR direct shadow", grouped, require_scattered=False)
+
+        with h5py.File(work / "grouped_plumbing_rates.h5", "r") as handle:
+            header = handle["Gamma_HI"]
+            checks = {
+                "IONEMODE": "grouped",
+                "NUBINUSE": "solver_and_diagnostic",
+                "ENRGSAMP": "random",
+            }
+            for key, expected in checks.items():
+                actual = decoded_attr(header, key)
+                passed = actual == expected
+                print(f"{key:8s} = {actual!r}: {'PASS' if passed else 'FAIL'}")
+                ok &= passed
+            cdf_rtol = float(np.asarray(header.attrs["CDFRTOL"]).reshape(-1)[0])
+            passed = cdf_rtol == 1.0e-8
+            print(f"CDFRTOL  = {cdf_rtol:.9e}: {'PASS' if passed else 'FAIL'}")
+            ok &= passed
+            shadow_attr = bool(np.asarray(header.attrs["SHDWRATE"]).reshape(-1)[0])
+            print(f"SHDWRATE = {shadow_attr}: {'PASS' if shadow_attr else 'FAIL'}")
+            ok &= shadow_attr
+
+        no_shadow_source = source.replace(
+            "par%ion_shadow_rates = .true.",
+            "par%ion_shadow_rates = .false.",
+        ).replace("grouped_plumbing.h5", "grouped_no_shadow.h5")
+        no_shadow = run_case(
+            executable,
+            no_shadow_source,
+            work / "no_shadow.in",
+            work,
+            run_env,
+        )
+        no_shadow_ok = (
+            no_shadow.returncode == 0
+            and "direct-rate shadow: PASS" not in no_shadow.stdout
+        )
+        with h5py.File(work / "grouped_plumbing_rates.h5", "r") as enabled, h5py.File(
+            work / "grouped_no_shadow_rates.h5", "r"
+        ) as disabled:
+            for name in enabled:
+                no_shadow_ok &= np.array_equal(
+                    enabled[f"{name}/data"][:],
+                    disabled[f"{name}/data"][:],
+                    equal_nan=True,
+                )
+            disabled_attr = bool(
+                np.asarray(disabled["Gamma_HI"].attrs["SHDWRATE"]).reshape(-1)[0]
+            )
+            no_shadow_ok &= not disabled_attr
+        print(
+            "shadow off/on solver arrays bitwise identical:"
+            f" {'PASS' if no_shadow_ok else 'FAIL'}"
+        )
+        ok &= no_shadow_ok
+
+        hhe_source = source.replace(
+            "par%use_metals       = .true.",
+            "par%use_metals       = .false.",
+        ).replace("grouped_plumbing.h5", "grouped_hhe.h5")
+        hhe = run_case(executable, hhe_source, work / "hhe.in", work, run_env)
+        hhe_ok = check_shadow(
+            "H/He-only opacity",
+            hhe,
+            require_scattered=False,
+            require_metals=False,
+        )
+        hhe_ok &= "grouped metal direct-rate shadow: PASS" not in hhe.stdout
+        ok &= hhe_ok
+
+        dda_source = source.replace(
+            "par%car_walk         = 'amr'",
+            "par%car_walk         = 'dda'",
+        ).replace("grouped_plumbing.h5", "grouped_dda.h5")
+        dda = run_case(executable, dda_source, work / "dda.in", work, run_env)
+        ok &= check_shadow("DDA direct shadow", dda, require_scattered=False)
+
+        dust_table = REPO / "data/kext_albedo_WD_MW_3.1_60_D03.all_2003"
+        dust_source = source.replace(
+            "par%dust_model       = 'none'",
+            "par%dust_model       = 'global_dgr'",
+        ).replace(
+            "par%ion_add_dust     = .false.",
+            "par%ion_add_dust     = .true.\n"
+            " par%ion_dust_scatter = .true.\n"
+            f" par%ion_dust_kext    = '{dust_table}'\n"
+            " par%cext_dust        = 4.868e-22\n"
+            " par%DGR              = 1.0",
+        ).replace("grouped_plumbing.h5", "grouped_scattered.h5")
+        scattered = run_case(
+            executable, dust_source, work / "scattered.in", work, run_env
+        )
+        ok &= check_shadow(
+            "AMR scattered shadow", scattered, require_scattered=True
+        )
+
+        refine_source = (REPO / "tests/g4_refine/g4_refine.in").read_text()
+        refine_source = (
+            refine_source.replace(
+                "par%no_photons    = 4.0e7", "par%no_photons    = 2000"
+            )
+            .replace("par%gas_niter     = 60", "par%gas_niter     = 2")
+            .replace("par%refine_iter   = 15", "par%refine_iter   = 1")
+            .replace("par%refine_lmax   = 7", "par%refine_lmax   = 6")
+            .replace(
+                "par%amr_file      = 'amr_L5.fits'",
+                f"par%amr_file      = '{REPO / 'tests/g4_refine/amr_L5.fits'}'",
+            )
+            .replace("par%out_file        = 'g4_refine.h5'", "par%out_file = 'refine.h5'")
+            .replace(
+                "par%source_geometry = 'point'",
+                "par%ion_shadow_rates = .true.\n"
+                " par%use_metals = .true.\n"
+                " par%source_geometry = 'point'",
+            )
+        )
+        refined = run_case(
+            executable, refine_source, work / "refine.in", work, run_env
+        )
+        refine_ok = (
+            "AMR: re-refined on the I-front" in refined.stdout
+            and check_shadow("re-refined AMR cache", refined, require_scattered=False)
+        )
+        ok &= refine_ok
+
+        continuous = run_case(
+            executable,
+            source.replace(
+                "par%ion_energy_mode  = 'grouped'",
+                "par%ion_energy_mode  = 'continuous'",
+            ),
+            work / "continuous.in",
+            work,
+            run_env,
+        )
+        guard_text = "ion_energy_mode='continuous' is not enabled yet"
+        passed = continuous.returncode != 0 and guard_text in continuous.stdout
+        print(
+            "continuous fail-fast:"
+            f" {'PASS' if passed else 'FAIL'} (exit={continuous.returncode})"
+        )
+        ok &= passed
+
+    print("GROUPED ENERGY PLUMBING:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1403,6 +1403,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
+    photon%energy_eV = ion_e(photon%inu)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)
@@ -1478,6 +1479,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
+    photon%energy_eV = ion_e(photon%inu)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)

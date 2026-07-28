@@ -16,8 +16,10 @@ module raytrace_amr_mod
 ! no refinement gaps, so amr_next_leaf alone suffices for the transport walk.
 !---------------------------------------------------------------------------
   use octree_mod
-  use jtally_mod, only : jt_on, jt_first, jt_sum, jt_ion, &
+  use jtally_mod, only : jt_on, jt_first, jt_sum, &
                          slab_tally_on, slab_bnd_add
+  use ion_score_mod, only : score_ion_path
+  use ion_packet_mod, only : build_ion_packet_physics, ion_packet_opacity
   implicit none
   private
 
@@ -246,7 +248,6 @@ contains
   subroutine transport_ion_packet(photon)
     use define
     use random,          only : rand_number
-    use gas_opacity_mod, only : kap_ion, ion_dust_ssca, ion_dust_g
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp), parameter :: WMIN = 1.0e-4_wp, PSURV = 0.1_wp
@@ -254,6 +255,7 @@ contains
     real(wp) :: kx, ky, kz, ux, uy, uz, vx, vy, vz, norm
     integer  :: il
 
+    call build_ion_packet_physics(photon)
     call raytrace_ion_to_edge_amr(photon, tau_edge)
     if (.not. (par%ion_add_dust .and. par%ion_dust_scatter)) return
     if (tau_edge <= 1.0e-12_wp) return
@@ -268,8 +270,8 @@ contains
        il = photon%icell_amr
        if (il <= 0) exit
        !--- effective albedo at (bin, leaf): dust scattering / extinction
-       a_eff = amr_grid%rhokap(il)*ion_dust_ssca(photon%inu) &
-               / max(kap_ion(photon%inu, il), tinest)
+       a_eff = amr_grid%rhokap(il)*photon%ionphys%dust_sca &
+               / max(ion_packet_opacity(photon, il), tinest)
        photon%wgt = photon%wgt*a_eff
        !--- peel-off of the scattered contribution (imaging pass only;
        !--- photon%k is still the incident direction here).
@@ -280,7 +282,7 @@ contains
           photon%wgt = photon%wgt/PSURV
        end if
        !--- Henyey-Greenstein scattering about the current direction
-       gg = ion_dust_g(photon%inu)
+       gg = photon%ionphys%dust_g
        if (abs(gg) > 1.0e-3_wp) then
           cost = (1.0_wp + gg*gg - ((1.0_wp - gg*gg) &
                  /(1.0_wp + gg*(2.0_wp*rand_number() - 1.0_wp)))**2) &
@@ -343,7 +345,6 @@ contains
 
   subroutine raytrace_ion_to_tau_amr(photon, tau_in)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
@@ -382,18 +383,18 @@ contains
       end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
-      kap = kap_ion(inu, il)
+      kap = ion_packet_opacity(photon, il)
       if (tau + t_exit*kap >= tau_in) then
         if (kap > 0.0_wp) then
           d_step = (tau_in - tau)/kap
         else
           d_step = t_exit
         end if
-        if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*d_step
+        if (do_tally) call score_ion_path(photon, il, wl*d_step)
         x = x + d_step*kx;  y = y + d_step*ky;  z = z + d_step*kz
         exit
       end if
-      if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*t_exit
+      if (do_tally) call score_ion_path(photon, il, wl*t_exit)
       tau = tau + t_exit*kap
       x = x + t_exit*kx;  y = y + t_exit*ky;  z = z + t_exit*kz
       il_new = amr_next_leaf(icell, iface, x, y, z)
@@ -418,7 +419,6 @@ contains
 
   subroutine raytrace_ion_to_edge_amr(photon0, tau_edge_out)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
@@ -454,13 +454,13 @@ contains
       end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
-      kap = kap_ion(inu, il)
+      kap = ion_packet_opacity(photon0, il)
       if (kap*t_exit > 0.0_wp) then
         expo_out = expo*exp(-kap*t_exit)
-        jt_ion(inu,il) = jt_ion(inu,il) + wl*(expo - expo_out)/kap
+        call score_ion_path(photon0, il, wl*(expo - expo_out)/kap)
         expo = expo_out
       else
-        jt_ion(inu,il) = jt_ion(inu,il) + wl*expo*t_exit
+        call score_ion_path(photon0, il, wl*expo*t_exit)
       end if
       tau = tau + kap*t_exit
       if (tau >= tau_huge) exit
@@ -531,7 +531,6 @@ contains
 
   subroutine raytrace_ion_to_edge_car(photon0, tau_edge_out)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
@@ -557,13 +556,13 @@ contains
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
-      kap = kap_ion(inu, il)
+      kap = ion_packet_opacity(photon0, il)
       if (kap*seg > 0.0_wp) then
         expo_out = expo*exp(-kap*seg)
-        jt_ion(inu,il) = jt_ion(inu,il) + wl*(expo - expo_out)/kap
+        call score_ion_path(photon0, il, wl*(expo - expo_out)/kap)
         expo = expo_out
       else
-        jt_ion(inu,il) = jt_ion(inu,il) + wl*expo*seg
+        call score_ion_path(photon0, il, wl*expo*seg)
       end if
       tau = tau + kap*seg
       if (tau >= tau_huge) exit
@@ -592,7 +591,6 @@ contains
 
   subroutine raytrace_ion_to_tau_car(photon, tau_in)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
@@ -617,18 +615,18 @@ contains
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
-      kap = kap_ion(inu, il)
+      kap = ion_packet_opacity(photon, il)
       if (tau + seg*kap >= tau_in) then
         if (kap > 0.0_wp) then
           d_step = (tau_in - tau)/kap
         else
           d_step = seg
         end if
-        if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*d_step
+        if (do_tally) call score_ion_path(photon, il, wl*d_step)
         t_cur = t_cur + d_step
         exit
       end if
-      if (do_tally) jt_ion(inu,il) = jt_ion(inu,il) + wl*seg
+      if (do_tally) call score_ion_path(photon, il, wl*seg)
       tau = tau + seg*kap
       t_cur = tmax(a)
       tmax(a) = tmax(a) + tdel(a)
@@ -677,7 +675,6 @@ contains
 
   subroutine raytrace_ion_tau_only_car(photon0, tau_out)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(in)  :: photon0
     real(wp),          intent(out) :: tau_out
@@ -699,7 +696,7 @@ contains
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
       seg = tmax(a) - t_cur
-      tau = tau + kap_ion(inu, il)*seg
+      tau = tau + ion_packet_opacity(photon0, il)*seg
       if (tau >= tau_huge) exit
       t_cur = tmax(a)
       tmax(a) = tmax(a) + tdel(a)
@@ -726,7 +723,6 @@ contains
   !=========================================================================
   subroutine raytrace_ion_tau_only_amr(photon0, tau_out)
     use define
-    use gas_opacity_mod, only : kap_ion
     implicit none
     type(photon_type), intent(in)  :: photon0
     real(wp),          intent(out) :: tau_out
@@ -760,7 +756,7 @@ contains
       end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
-      tau = tau + kap_ion(inu, il)*t_exit
+      tau = tau + ion_packet_opacity(photon0, il)*t_exit
       if (tau >= tau_huge) exit
       x = x + t_exit*kx
       y = y + t_exit*ky

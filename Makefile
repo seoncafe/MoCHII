@@ -96,6 +96,8 @@ OBJS	= \
 	gas_state_mod.o \
 	species_mod.o \
 	gas_opacity_mod.o \
+	ion_packet_mod.o \
+	ion_score_mod.o \
 	raytrace_amr.o \
 	ion_peel_mod.o \
 	grid_mod_car.o \

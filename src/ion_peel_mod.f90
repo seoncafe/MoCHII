@@ -224,6 +224,7 @@ contains
   !=========================================================================
   subroutine ion_peel_direct(photon)
     use raytrace_amr_mod, only : raytrace_ion_tau_only_amr
+    use ion_packet_mod, only : build_ion_packet_physics
     implicit none
     type(photon_type), intent(in) :: photon
     type(photon_type) :: pobs
@@ -264,6 +265,7 @@ contains
        !--- unattenuated direct (direc0): tau-independent, always added.
        if (par%save_direc0) &
           img_dir0(ix, iy, ch, k) = img_dir0(ix, iy, ch, k) + contrib
+       call build_ion_packet_physics(pobs)
        call raytrace_ion_tau_only_amr(pobs, tau)
        if (tau > 500.0_wp) cycle      ! e^-tau = 0 to any precision
        contrib = contrib*exp(-tau)
@@ -278,7 +280,6 @@ contains
   !=========================================================================
   subroutine ion_peel_scatter(photon)
     use raytrace_amr_mod, only : raytrace_ion_tau_only_amr
-    use gas_opacity_mod,  only : ion_dust_g
     implicit none
     type(photon_type), intent(in) :: photon
     type(photon_type) :: pobs
@@ -290,7 +291,7 @@ contains
     !--- the D03 table carries <cos> = 1.000 in the EUV; g = 1 with a
     !--- perfectly forward peel direction gives 0/0 in the HG phase
     !--- function — clamp (one NaN contribution poisons the image sum).
-    gg = min(max(ion_dust_g(photon%inu), -0.9999_wp), 0.9999_wp)
+    gg = min(max(photon%ionphys%dust_g, -0.9999_wp), 0.9999_wp)
     do k = 1, par%nobs
        pobs = photon
        pobs%kx = observer(k)%x - photon%x

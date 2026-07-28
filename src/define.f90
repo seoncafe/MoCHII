@@ -79,6 +79,7 @@ public
 
 ! maximum number of stellar source components (multi-population SED)
   integer, parameter :: MAX_SRC = 16
+  integer, parameter :: MAX_METAL_TRANSITIONS = 64
 
 ! tinest = the smallest positive number
 ! eps    = the least positive number
@@ -93,6 +94,21 @@ public
 ! define NaN
   real(real64),  parameter :: nan64 = transfer(-2251799813685248_int64, 1._real64)
   real(real32),  parameter :: nan32 = transfer(-4194304_int32, 1._real32)
+
+! Ionizing packet physics evaluated once at the packet energy and reused
+! across every crossed leaf.  The fixed metal capacity exceeds the current
+! registry maximum (11 elements x at most 5 ionizing transitions).
+  type ion_packet_physics_type
+     real(kind=wp) :: energy_eV = 0.0_wp
+     real(kind=wp) :: sigma_HI = 0.0_wp
+     real(kind=wp) :: sigma_HeI = 0.0_wp
+     real(kind=wp) :: sigma_HeII = 0.0_wp
+     integer       :: n_metal = 0
+     real(kind=wp) :: sigma_metal(MAX_METAL_TRANSITIONS) = 0.0_wp
+     real(kind=wp) :: dust_abs = 0.0_wp
+     real(kind=wp) :: dust_sca = 0.0_wp
+     real(kind=wp) :: dust_g = 0.0_wp
+  end type ion_packet_physics_type
 
 ! photon type
   type photon_type
@@ -117,6 +133,13 @@ public
      !--- photon).  The ionizing band carries its own opacity array
      !--- kap_ion(inu,leaf); the grey s_ext rescale does not apply there.
      integer       :: inu    = 0
+     !--- Physical ionizing-packet energy [eV].  During the grouped-energy
+     !--- compatibility phase this is always initialized to ion_e(inu) and is
+     !--- carried through transport/copies without changing any solver
+     !--- physics.  Continuous mode will later sample this independently;
+     !--- inu then remains only the diagnostic output-bin label.
+     real(kind=wp) :: energy_eV = 0.0_wp
+     type(ion_packet_physics_type) :: ionphys
      !--- physical luminosity carried by the packet [erg/s], used by the
      !--- energy (J_lambda) tally so stellar and dust-emission photons with
      !--- different packet energies combine correctly (1.0 in mono mode).
@@ -179,6 +202,20 @@ public
      !--- selects the scramble; a different seed is an independent replicate.
      character(len=16) :: launch_sequence = 'random'
      integer           :: qmc_seed        = 12345
+     !--- Ionizing packet-energy treatment.  'grouped' is the compatibility
+     !--- default during continuous-energy development.  'continuous' is
+     !--- recognized but remains fail-fast until source sampling, opacity,
+     !--- ionization, and heating are enabled as one complete vertical slice.
+     character(len=16) :: ion_energy_mode = 'grouped'
+     !--- Relative integration tolerance for the future continuous source
+     !--- inverse CDF.  Recorded now so output provenance is stable before the
+     !--- sampler is connected.
+     real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
+     !--- Development/regression gate: accumulate direct path-based H/He and
+     !--- metal rates beside the legacy jt_ion reconstruction and require
+     !--- agreement.  Off by default because the shadow arrays and per-segment
+     !--- metal scoring are intentionally temporary validation overhead.
+     logical           :: ion_shadow_rates = .false.
      !--- ionizing-band luminosity [erg/s] of the primary source (a point
      !--- source, or the informational total with several).  Sentinel -999 =
      !--- unset: setup maps it to 1.0 for a 'shape'/Planck source (exact legacy)

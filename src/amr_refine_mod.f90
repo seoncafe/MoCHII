@@ -46,7 +46,8 @@ contains
   subroutine amr_refine_front()
     use mpi
     use gas_opacity_mod, only : gas_opacity_setup, kap_ion
-    use jtally_mod,      only : jtally_ion_resize, jt_ion
+    use jtally_mod,      only : jtally_ion_resize
+    use ion_score_mod,   only : ion_score_resize
     use species_mod,     only : species_resize
     use gas_state_mod,   only : gas_nH_p => gas_nH, gas_xHI_p => gas_xHI, &
                                 gas_xHeI_p => gas_xHeI, &
@@ -172,6 +173,7 @@ contains
     if (par%use_metals) call species_resize(nnew)
     call gas_opacity_setup()
     call jtally_ion_resize(nnew)
+    call ion_score_resize(nnew)
 
     if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a,i0,a,i0,a)') &
        ' AMR: re-refined on the I-front: ', nold, ' -> ', nnew, &

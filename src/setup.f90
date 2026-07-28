@@ -457,6 +457,27 @@ contains
         'ERROR: par%no_photons must be >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%ion_energy_mode) /= 'grouped' .and. &
+      trim(par%ion_energy_mode) /= 'continuous') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%ion_energy_mode must be ''grouped'' (default) or ''continuous''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%source_cdf_tol must be in (0, 1).'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  !--- Do not permit a hybrid run that advertises continuous packet energies
+  !--- while still using grouped opacity/rate reconstruction.  This guard is
+  !--- intentionally unconditional until the complete H/He vertical slice is
+  !--- activated; later phases will replace it with feature-specific guards.
+  if (trim(par%ion_energy_mode) == 'continuous') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: ion_energy_mode=''continuous'' is not enabled yet: exact-energy '// &
+        'source sampling, opacity, ionization, and heating must be activated together.'
+     call MPI_FINALIZE(ierr);  stop 1
+  endif
   if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%ion_relax must be in (0, 1].'
@@ -573,6 +594,9 @@ contains
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
      write(*,'(2a)')    'Photon launch sequence    : ', trim(par%launch_sequence)
+     write(*,'(2a)')    'Ionizing energy mode      : ', trim(par%ion_energy_mode)
+     write(*,'(a,es14.6)') 'Source CDF tolerance      : ', par%source_cdf_tol
+     write(*,'(a,l14)') 'Direct-rate shadow gate   : ', par%ion_shadow_rates
      if (trim(par%launch_sequence) == 'sobol') &
         write(*,'(a,i14)') 'QMC scramble seed         : ', par%qmc_seed
   endif
