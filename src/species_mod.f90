@@ -103,6 +103,7 @@ module species_mod
   integer :: flat_ntransition = 0
   integer :: flat_ie(MAX_METAL_TRANSITIONS) = 0
   integer :: flat_it(MAX_METAL_TRANSITIONS) = 0
+  real(kind=wp) :: flat_eth(MAX_METAL_TRANSITIONS) = 0.0_wp
 
   !--- rate cache for the n_e fixed point at one (leaf, T): all the
   !--- transition coefficients are functions of T (and the leaf Gammas)
@@ -137,7 +138,8 @@ contains
     real(kind=wp)      :: abunds(11)
     character(len=256) :: fname
     logical :: exists
-    integer :: k, ie, i, ierr
+    integer :: k, ie, i, ierr, j, ie_tmp, it_tmp
+    real(kind=wp) :: eth_tmp
 
     names  = [character(len=8) :: 'c', 'n', 'o', 'ne', 's', 'ar', 'mg', &
               'fe', 'si', 'cl', 'ca']
@@ -189,7 +191,27 @@ contains
           end if
           flat_ie(flat_ntransition) = ie
           flat_it(flat_ntransition) = i
+          flat_eth(flat_ntransition) = elems(ie)%eth(i)
        end do
+    end do
+    !--- Packet energies are strongly concentrated near the H edge. Sort the
+    !--- compact transition registry once so packet-cache construction can
+    !--- stop at the first threshold above the sampled energy.
+    do i = 2, flat_ntransition
+       ie_tmp = flat_ie(i)
+       it_tmp = flat_it(i)
+       eth_tmp = flat_eth(i)
+       j = i - 1
+       do while (j >= 1)
+          if (flat_eth(j) <= eth_tmp) exit
+          flat_ie(j+1) = flat_ie(j)
+          flat_it(j+1) = flat_it(j)
+          flat_eth(j+1) = flat_eth(j)
+          j = j - 1
+       end do
+       flat_ie(j+1) = ie_tmp
+       flat_it(j+1) = it_tmp
+       flat_eth(j+1) = eth_tmp
     end do
   end subroutine species_setup
 
@@ -234,9 +256,11 @@ contains
     integer,       intent(out) :: ntransition
     integer :: k
     sigma = 0.0_wp
-    ntransition = flat_ntransition
+    ntransition = 0
     do k = 1, flat_ntransition
+       if (energy < flat_eth(k)) exit
        sigma(k) = species_sigma(flat_ie(k), flat_it(k), energy)
+       ntransition = k
     end do
   end subroutine species_packet_cross_sections
 

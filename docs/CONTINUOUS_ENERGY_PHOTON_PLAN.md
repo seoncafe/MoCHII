@@ -48,8 +48,12 @@ Implementation progress as of 2026-07-28:
   `ion_metal_abs=.false.` keeps metals out of transport opacity. Metal
   `Gamma`, heating, and stage fractions are bitwise identical with 8 and 32
   diagnostic bins.
-- Next: safe sequence 16.8 step 18, benchmark exact-energy metal scoring
-  strategies before enabling metal opacity.
+- Safe sequence 16.8 step 18 complete: the flattened transition cache is
+  threshold-sorted once and packet cross-section evaluation stops at the
+  first inaccessible transition. The operation benchmark predicts a
+  61--69% reduction for HII20/HII40 and a 56--64% reduction with every
+  registry element enabled, without stochastic estimator noise.
+- Next: safe sequence 16.8 step 19, enable and validate exact metal opacity.
 
 ## 1. Required physical model
 
@@ -951,6 +955,21 @@ activate opacity or the 16.9 thermal coupling.
     - threshold-sorted early exit;
     - compact element/stage vector loops;
     - only if necessary, an unbiased stratified metal-transition estimator.
+
+Implementation result (2026-07-28): complete. The existing flattened packet
+cache is already the compact vector loop. Sorting that registry by threshold
+permits an exact early exit while retaining the same `(element, stage)`
+mapping. The reproducible operation-count benchmark
+`tests/continuous_energy/benchmark_metal_scoring.py` integrates the
+band-limited Planck packet-energy PDF. For the 12 HII C/N/O/Ne/S transitions,
+the mean number of cross-section evaluations falls from 12 to 3.742 at 20 kK
+and 4.668 at 40 kK, reductions of 68.8% and 61.1%. With all 32 registry
+transitions, it falls to 11.420 and 13.990, reductions of 64.3% and 56.3%.
+Because at most 32 deterministic evaluations remain and the exact compact
+loop is already inexpensive, stochastic transition subsampling is rejected:
+it would add variance and convergence diagnostics without a justified cost
+benefit. Grouped opacity shadows and continuous metal `Gamma`, heating, and
+stage-fraction bin-independence remain unchanged after the optimization.
 
 19. Enable exact metal opacity using the per-leaf stage cache and the
     packet-cross-section cache.
