@@ -184,6 +184,24 @@ one rank, and its printed convergence metrics agreed with the three-rank run.
 The reusable exact-state comparison is
 `tests/thermal_parallel/compare_state.sh`.
 
+The same one-iteration Sobol input was then run with 5, 6, and 8 ranks on the
+same node. All three jobs completed without a collective deadlock, and the
+printed convergence metrics were unchanged:
+
+| MPI ranks on node | thermal solve |
+|---:|---:|
+| 5 | 5.483 s |
+| 6 | 4.586 s |
+| 8 | 3.538 s |
+
+Comparing different rank counts is not bit-identical for the final gas state,
+because the preceding photon tally reductions have a different floating-point
+order. This is independent of thermal leaf ownership: all five gas-state
+datasets agree within relative `1e-12` between the 5-, 6-, and 8-rank runs.
+The exact baseline comparison above keeps the rank count fixed and therefore
+isolates the thermal parallelization itself. A multi-node run was not possible
+on this host because only `lart4` was available.
+
 ## 8. Risks
 
 - **Ownership mistakes in the stride** are the main failure mode: a leaf
