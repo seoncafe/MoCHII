@@ -66,8 +66,12 @@ Implementation progress as of 2026-07-28:
   iterations, respectively, and both completed their final consistency pass.
   The production gate passes energy closure, metadata, C III-tail recovery,
   Cloudy radial-profile non-regression, and temperature non-regression.
-- Next: use the converged outputs for the complete diagnostic-resolution and
-  RQMC/MPI ensemble before regenerating paper figures.
+- Safe sequence 16.11 step 29 complete: full HII20/HII40 production runs on
+  68 MPI ranks with `nnu_ion = 8, 16, 32, 64, 128` used the same `2^25`
+  Sobol packet history.  All solver/state/rate arrays were bitwise identical
+  across diagnostic resolutions; only `J_nu`, `E_bin`, and `dE_bin` changed.
+- Next: complete the independent-scramble RQMC ensemble and MPI/performance
+  validation before regenerating paper figures.
 
 ## 1. Required physical model
 
@@ -1071,11 +1075,31 @@ after its analytic, energy, and MPI tests pass.
     diagnostic-only.
 29. Run diagnostic grids of 8, 16, 32, 64, and 128 bins with a fixed packet
     history and require the physical state to be invariant.
+
+Implementation result (2026-07-29): complete for both HII20 and HII40.  Each
+resolution used the same `2^25` Sobol history and ran on 68 MPI ranks.  The
+metadata gate and bitwise comparison passed for all physical datasets,
+including H/He/metal rates, fractions, electron density, temperature, and
+stage populations.  The only intentionally resolution-dependent datasets
+were the diagnostic `J_nu` histogram and its `E_bin`/`dE_bin` grid.
 30. Complete random/QMC ensemble, multiple-scramble, MPI 1/2/3/5/8 rank,
     multi-node, energy-conservation, performance, and memory tests.
 31. Make continuous mode the default.
-32. Regenerate HII20/HII40 tables and figures, then update the paper and user
-    documentation.
+32. Update the paper manuscript itself (`paper/mochii.tex`) from the accepted
+    continuous HII20/HII40 production outputs, then update the user
+    documentation.  Regenerate every HII20/HII40 numerical value in every
+    Table included in the paper, and revise every affected sentence,
+    paragraph, stated deviation, conclusion, and cross-reference in the
+    paper body.  Also regenerate Figures 14--15 and their captions, and
+    revise the surrounding interpretation of the C III tail.  Record the
+    photon count, Sobol scramble/ensemble policy, continuous-energy sampling,
+    exact-energy cross sections, and diagnostic-only role of `nnu_ion`; do
+    not leave grouped-output values or bin-center language in any updated
+    table, caption, or discussion.  Preserve the frozen grouped results only
+    where they are explicitly labelled as historical comparison baselines.
+    Immediately before the single push after this stage, update the
+    `Last updated:` date and time in `README.md` and include that edit in the
+    final commit.
 
 ### 16.12 Cleanup only after release validation
 
