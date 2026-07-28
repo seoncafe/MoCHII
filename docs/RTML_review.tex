@@ -1,0 +1,473 @@
+\documentclass[english,a4paper]{my_memo2}
+\synctex=1
+\usepackage{mathtools}
+\usepackage{microtype}
+\usepackage{booktabs,longtable,array}
+\usepackage{enumitem}
+\hypersetup{hidelinks}
+
+\newcommand{\nelec}{n_{\rm e}}
+\newcommand{\nH}{n_{\rm H}}
+\newcommand{\tcool}{t_{\rm cool}}
+\newcommand{\Da}{\mathrm{Da}}
+
+\title{\textbf{Radiative Turbulent Mixing Layers in Astrophysics}\\
+\large Literature Review and a Practical Framework for Computing Emission Spectra}
+\author{Kwang-Il Seon}
+\date{\docmoddate}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Radiative turbulent mixing layers (RTMLs) occur where shearing hot and cold
+gas mix, pass through the efficient-cooling temperature range, and radiate the
+enthalpy supplied by the hot phase.  This note separates two related but
+distinct calculations: a bolometric cooling loss and an observable spectrum.
+It reviews the physical controls on RTMLs and presents an implementable
+post-processing workflow: obtain the time-dependent thermodynamic history,
+solve non-equilibrium ionization (NEI) where required, evaluate line and
+continuum emissivities from an atomic database, integrate them over volume or
+ray, and finally apply transfer and instrumental response.  The central
+practical result is that a cooling table alone cannot predict a spectrum: the
+ion fractions and level populations must be specified.  In rapidly mixed or
+rapidly cooled gas, the ionization/recombination time can exceed the cooling
+or mixing time, making CIE spectra a useful baseline but not the default
+prediction.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and physical picture}
+
+Consider cold gas $(T_c\sim10^4\,\mathrm{K})$ moving relative to a hot
+phase $(T_h\gtrsim10^6\,\mathrm{K})$.  Kelvin--Helmholtz-driven turbulence
+mixes material across the interface.  At nearly common pressure the mixed gas
+passes through roughly
+\begin{equation}
+ T_{\rm mix}\sim (T_cT_h)^{1/2},
+\end{equation}
+often near $10^5\,\mathrm{K}$, where metal-line cooling is efficient.  In a
+steady radiative layer, cooling is powered principally by the enthalpy flux of
+entrained hot gas, with turbulent dissipation potentially contributing.  The
+global energy statement is more robust than any particular geometric model:
+\begin{equation}
+ L_{\rm rad}=\int_V \nelec\nH\Lambda(T,\boldsymbol{x})\,dV
+ \simeq \dot M_{\rm in}\,h_h+\dot E_{\rm diss}-\dot E_{\rm stored}.
+ \label{eq:energy}
+\end{equation}
+Here $\Lambda$ is the \emph{net} cooling coefficient only when the assumed
+ionization state and radiation field match the gas.  Equation~(\ref{eq:energy})
+checks the energy budget; it does not determine how $L_{\rm rad}$ is distributed
+over wavelength.
+
+The relevant competition is captured by
+\begin{equation}
+ \Da\equiv\frac{t_{\rm turb}}{\tcool},\qquad
+ \tcool=\frac{e_{\rm th}}{\nelec\nH\Lambda_{\rm net}}.
+ \label{eq:da}
+\end{equation}
+For $\Da\gtrsim1$, cooling is fast compared with outer-scale mixing and the
+interface fragments into a strongly corrugated multiphase cooling front.  Tan,
+Oh, and Gronke emphasize that the outer eddy turnover time then sets the
+effective consumption/mixing rate, whereas Fielding et al. find a corrugated
+cooling surface with an approximately $5/2$ fractal dimension.  These are
+physical guides for convergence tests, not replacements for a spectrum
+calculation \cite{Tan2021,Fielding2020}.
+
+\section{Development of the existing research}
+
+\subsection{Analytic foundations and the first spectral predictions}
+
+Begelman and Fabian proposed that shear-driven turbulent transport mixes hot
+and cold material into an intermediate phase with a characteristic temperature
+near $(T_cT_h)^{1/2}$, and that the incoming hot-phase enthalpy supplies the
+radiative loss \cite{Begelman1990}.  This model established the two ideas that
+remain central today: the interface is an energy-conversion layer rather than
+an isolated parcel, and its luminosity is tied to the rate at which hot gas is
+entrained.  Its assumed layer thickness, often written
+$h\sim v_{\rm turb}\tcool$, should now be regarded as an early closure rather
+than a universal scaling.
+
+Slavin, Shull, and Begelman converted this picture into emission and absorption
+predictions for Galactic interfaces \cite{Slavin1993}.  Their calculation
+included time-dependent ionization and predicted C\,IV, Si\,IV, N\,V, O\,VI,
+UV semiforbidden lines, and H$\alpha$.  This work was conceptually important
+because it treated ionization lag and spectra together.  It also anticipated a
+persistent observational issue: one individual interface generally produces a
+modest high-ion column, so a long sightline may need to intersect many
+interfaces.
+
+\subsection{The numerical transition: dimensionality, NEI, and magnetic fields}
+
+Esquivel et al. performed three-dimensional MHD calculations with equilibrium
+cooling and demonstrated that field orientation and finite evolution time
+matter for the morphology and growth of a mixing layer \cite{Esquivel2006}.
+Kwak and Shelton subsequently coupled hydrodynamics to NEI rate equations
+\cite{Kwak2010}.  They found that mixing can transport ions into gas whose
+temperature differs from the CIE formation temperature, while cooling can
+outpace recombination.  Their simulated C\,IV/N\,V/O\,VI ratios were broadly
+compatible with Galactic-halo diagnostics, but varied strongly in space and
+time.  Thus a single static ``mixing temperature'' is insufficient for either
+ion columns or line emission.
+
+Ji, Oh, and Masterson carried out three-dimensional HD and MHD simulations
+including NEI and photoionization \cite{Ji2019}.  Their results revised several
+early analytic expectations:
+\begin{itemize}[leftmargin=*]
+\item characteristic turbulent and inflow velocities were substantially below
+the imposed shear velocity and only weakly dependent on it;
+\item the layer width followed approximately $h\propto\tcool^{1/2}$ in their
+parameter regime, rather than $h\propto\tcool$;
+\item ion columns retained density and metallicity dependence; and
+\item magnetic amplification and tension could strongly suppress mixing and
+reduce high-ion columns.
+\end{itemize}
+NEI increased the abundances and columns of high ions by factors of a few in
+relevant cases.  Photoionization can also over-ionize the gas and modify its
+cooling efficiency, although Ji et al. found this secondary for the CGM
+conditions they explored.
+
+\subsection{Fractal fronts, combustion theory, and two cooling regimes}
+
+Fielding et al. showed that most cooling occurs in a thin, corrugated sheet
+whose measured area is consistent with a fractal dimension $D\simeq5/2$
+\cite{Fielding2020}.  Their model connects the increase of cooling area to a
+hot-gas inflow scaling close to $\tcool^{-1/4}$ in the strong-cooling regime.
+The result explains why a planar interface area can severely underestimate the
+total emission, but the fitted fractal dimension and cutoff scale should not be
+treated as universal constants.
+
+Tan, Oh, and Gronke organized the problem using turbulent-combustion theory
+\cite{Tan2021}.  In terms of the outer-scale turbulent velocity $u'$ and size
+$L$, their simulations distinguish
+\begin{align}
+ Q,\;v_{\rm in} &\propto {u'}^{1/2}(L/\tcool)^{1/2},
+ &&\Da<1 \quad\text{(weak cooling)}, \label{eq:weakscaling}\\
+ Q,\;v_{\rm in} &\propto {u'}^{3/4}(L/\tcool)^{1/4},
+ &&\Da>1 \quad\text{(strong cooling)}, \label{eq:strongscaling}
+\end{align}
+where $Q=L_{\rm rad}/A_{\rm projected}$ is the bolometric surface brightness.
+The apparently conflicting $\tcool^{-1/2}$ and $\tcool^{-1/4}$ results in the
+literature can therefore describe different $\Da$ regimes.  These relations
+predict a bolometric energy flux, not a wavelength-dependent spectrum.
+
+\subsection{Local front structure and observable line predictions}
+
+Tan and Oh made a further distinction that is especially important for the
+present purpose \cite{TanOh2021}.  Global mass entrainment and bolometric
+cooling can converge when the outer turbulent scale is resolved, even if the
+microscopic interface is not.  In contrast, the temperature PDF, ion columns,
+and line ratios depend on the local conductive--cooling front.  A steady
+one-dimensional front obeys
+\begin{equation}
+ \frac{d}{dx}\left(\kappa\frac{dT}{dx}\right)
+ =j_xc_p\frac{dT}{dx}+\rho\mathcal{L}(T),
+ \label{eq:front}
+\end{equation}
+where $j_x=\rho v_x$ is the mass flux and
+$\rho\mathcal{L}=n^2\Lambda-n\Gamma$.  The local temperature scale includes
+the Field length
+\begin{equation}
+ \lambda_{\rm F}=\left(\frac{\kappa T}{n^2\Lambda}\right)^{1/2}.
+\end{equation}
+Their 1-D front model reproduced temperature distributions, column densities,
+and line ratios from 3-D hydrodynamic calculations.  It also showed why the
+temperature dependence of $\kappa$ matters: Spitzer
+$\kappa\propto T^{5/2}$, constant conductivity, turbulent diffusion, and
+grid-scale numerical diffusion weight the emitting temperatures differently.
+This work supplies a practical subgrid model, but its published spectral tests
+mostly assumed CIE; an RTML spectrum should combine this local-front treatment
+with NEI whenever the time-scale test in Section~\ref{sec:nei} fails.
+
+\subsection{High-Mach-number and magnetized extensions}
+
+Yang and Ji extended plane-parallel RTML calculations to supersonic shear
+\cite{YangJi2023}.  Below $\mathcal{M}\sim1$, their bolometric surface
+brightness and intermediate-ion columns rose roughly as $\mathcal{M}^{1/2}$.
+Above unity they saturated, because the velocity within the cooling/mixing
+zone was limited by the local sound speed.  Supersonic layers developed a
+two-zone structure: a nearly Mach-independent cooling/mixing zone and a
+broader turbulent zone.  Turbulent dissipation, rather than hot-phase enthalpy
+alone, became the dominant power source and cold gas tended toward evaporation
+rather than condensation.
+
+Recent MHD studies sharpen the magnetic-field caveat.  Zhao and Bai found that
+even initially weak fields can be amplified enough to lower the surface
+brightness and hot-gas inflow, through both magnetic pressure and suppression
+of turbulent mixing \cite{ZhaoBai2023}.  Das and Gronke likewise found strong
+suppression in idealized plane-parallel RTMLs, while driven turbulent boxes
+showed smaller changes in net cold-gas growth because magnetic fields also
+altered global morphology and contact area \cite{DasGronke2024}.  Therefore an
+HD scaling cannot simply be multiplied by a universal magnetic correction:
+the Alfv\'en Mach number, initial topology, anisotropic conduction, and global
+geometry must be specified.
+
+\subsection{Applications and present observational status}
+
+In cloud--wind simulations, Gronke and Oh identified the useful survival and
+growth condition
+\begin{equation}
+ t_{\rm cool,mix}\lesssim t_{\rm cc},
+\end{equation}
+where $t_{\rm cc}$ is the cloud-crushing time \cite{GronkeOh2018}.  Cooling of
+mixed gas then creates new comoving cold material and can allow the cold mass
+to exceed its initial value.  This is an application of RTML physics, although
+the curved, evolving cloud surface is not identical to a periodic
+plane-parallel layer.
+
+For cosmological cold streams, Mandelker et al. found that the analogous ratio
+of the mixed-gas cooling time to the shear-layer growth time controls whether a
+stream is disrupted or gains mass \cite{Mandelker2020}.  Their follow-up
+radiation model showed that KHI-induced dissipation could reach the luminosity
+scale of observed Ly$\alpha$ blobs in massive high-redshift haloes
+\cite{MandelkerLya2020}.  That comparison remains model-dependent because
+Ly$\alpha$ requires self-shielding, resonant transfer, dust, and the external
+UV field; bolometric RTML power cannot be equated directly to escaping
+Ly$\alpha$ luminosity.
+
+Taken together, existing studies support RTMLs as a physically plausible
+source of intermediate temperature ions and interface radiation.  They do not
+yet establish a unique spectral template.  Per-interface columns are often
+below observed CGM columns, with some models requiring roughly
+$10^2$--$10^3$ interfaces along a sightline \cite{TanOh2021,Ji2019}.  The
+number and orientation of interfaces, NEI history, magnetic topology, and
+radiative transfer are therefore part of the observable model rather than
+nuisance details.
+
+\section{What must be calculated for a spectrum}
+
+\subsection{From hydrodynamics to an emissivity distribution}
+
+For an optically thin cell $k$, the spectral luminosity is
+\begin{equation}
+ L_\lambda=\sum_k \epsilon_\lambda(T_k,\nelec{}_{k},\boldsymbol{f}_k,
+ Z, J_\nu)\,V_k,
+ \label{eq:sum}
+\end{equation}
+where $\boldsymbol{f}$ is the vector of ion fractions and $J_\nu$ is any
+external or internally generated radiation field.  It is often useful to
+store a differential emission measure (DEM),
+\begin{equation}
+ \frac{d\mathrm{EM}}{d\log T}=\sum_{k\in d\log T}\nelec{}_{k}\nH{}_{k}V_k,
+ \qquad \mathrm{EM}=\int\nelec\nH\,dV,
+ \label{eq:dem}
+\end{equation}
+and convolve it with a CIE contribution function $G_\lambda(T)$:
+\begin{equation}
+ L_\lambda^{\rm CIE}=\int G_\lambda(T;\nelec,Z)\,
+ \frac{d\mathrm{EM}}{d\log T}\,d\log T.
+ \label{eq:demcie}
+\end{equation}
+Equation~(\ref{eq:demcie}) is fast and excellent for a CIE reference model,
+but it is invalid if $\boldsymbol{f}$ is not the CIE fraction at the local
+temperature.  Do not use a bolometric $\Lambda(T)$ as $G_\lambda$; the former
+has already summed over all radiative channels.
+
+For a resolved transition $u\rightarrow l$ the volume emissivity is
+\begin{equation}
+ \epsilon_{ul}=n_u A_{ul}h\nu_{ul}.
+ \label{eq:lineem}
+\end{equation}
+At low density, statistical equilibrium for the excited levels can usually be
+solved at fixed ion fraction; collisional excitation, radiative decay,
+recombination cascades, and (when relevant) photoexcitation enter the rate
+matrix.  The continuum must be added on the same wavelength grid: free--free,
+free--bound, two-photon, and, where appropriate, dust emission.  CHIANTI is
+well suited to optically thin UV/EUV/optical line and continuum synthesis;
+AtomDB/APEC is a standard choice for CIE X-ray spectra \cite{CHIANTI,AtomDB}.
+
+\subsection{Why NEI is normally necessary in RTMLs}
+\label{sec:nei}
+
+For each element $X$ and charge state $q$, evolve
+\begin{align}
+ \frac{df_{X,q}}{dt}={}&\nelec\big[f_{X,q-1}C_{q-1}(T)+f_{X,q+1}\alpha_{q+1}(T)\\
+ &-f_{X,q}\{C_q(T)+\alpha_q(T)\}\big]+\mathcal{P}_{X,q}(J_\nu)
+ +\mathcal{X}_{X,q},
+ \label{eq:nei}
+\end{align}
+with $\sum_qf_{X,q}=1$.  $C$, $\alpha$, $\mathcal{P}$, and $\mathcal{X}$
+denote collisional ionization, total recombination, photoionization, and other
+processes (e.g. charge exchange).  Couple this stiff system to the energy
+equation because the emissivity and cooling rate depend on the evolving
+fractions.  A simple decision rule is to calculate CIE only if both
+$t_{\rm ion}$ and $t_{\rm rec}$ are short compared with \emph{both}
+$\tcool$ and the local mixing/advection time.  Otherwise use NEI.
+
+This is not a small correction in a mixing layer: mixing can be faster than
+ionization, and cooling can be faster than recombination.  Kwak and Shelton
+and Ji, Oh, and Masterson find enhanced high-ion columns in NEI relative to
+CIE in relevant RTML regimes \cite{Kwak2010,Ji2019}.  A spectrum intended for
+O\,VI, N\,V, C\,IV, Si\,IV, or soft-X-ray diagnostics should therefore report
+whether it is CIE, NEI, or photoionization+NEI.
+
+\section{Recommended calculation workflow}
+
+\begin{enumerate}[leftmargin=*,label=\textbf{Step \arabic*.}]
+\item \textbf{Specify the physical experiment.}  Record $T_c,T_h$, pressure
+or densities, relative velocity, metallicity and abundance pattern, magnetic
+field/conduction assumptions, external radiation field, and the target
+viewing geometry.  State whether the calculation is isochoric, isobaric, or
+fully hydrodynamic.
+
+\item \textbf{Obtain a converged flow history.}  Run a
+hydrodynamic/MHD calculation with a cooling treatment consistent with the
+chosen abundances and radiation field, or make a one-dimensional cooling-flow
+surrogate.  Save $(\rho,T,\nelec,\boldsymbol{v})$ and either Lagrangian tracer
+histories or sufficiently frequent snapshots.  Check that total radiative
+losses converge with resolution and close the energy budget in
+Equation~(\ref{eq:energy}).
+
+\item \textbf{Solve the ionization history.}  Prefer NEI integrated along
+tracers (or together with the flow).  Include H, He, C, N, O, Ne, Mg, Si, S,
+and Fe at minimum for broad UV--X-ray coverage, plus charge exchange near the
+cool interface.  Use an implicit/BDF solver or another positivity-preserving
+stiff integrator.  As a controlled diagnostic, generate an otherwise identical
+CIE spectrum and quote the ratio line by line.
+
+\item \textbf{Evaluate atomic emissivities.}  For each saved cell/tracer,
+compute level populations and $\epsilon_\lambda$ using its $T,\nelec$ and NEI
+fractions.  CHIANTI/ChiantiPy is convenient for optically thin line work;
+AtomDB/PyAtomDB is convenient for CIE X-rays.  For photoionized, optically
+thick, or radiation-coupled zones, use a spectral-synthesis/transfer code such
+as \textsc{Cloudy}, but supply the non-equilibrium state or a sequence of
+short history steps rather than silently imposing equilibrium.
+
+\item \textbf{Project and transfer the radiation.}  The intrinsic surface
+brightness along a ray is
+\begin{equation}
+ I_\lambda=\frac{1}{4\pi}\int\epsilon_\lambda(s)
+ \exp[-\tau_\lambda(s)]\,ds.
+ \label{eq:transfer}
+\end{equation}
+For an optically thin forbidden line set $\tau_\lambda=0$.  Treat resonance
+lines (e.g. Ly$\alpha$, C\,IV, O\,VI), dust UV extinction, and X-ray
+photoelectric absorption explicitly whenever their columns make them
+non-negligible.  Add thermal and turbulent Doppler shifts before binning;
+then convolve with the telescope line-spread function and effective area.
+
+\item \textbf{Validate and publish reproducibly.}  Compare the integrated
+model spectrum against the cooling loss, $\int L_\lambda d\lambda\simeq
+L_{\rm rad}$ after accounting for untracked bands.  Test atomic-data version,
+time cadence, resolution, abundances, CIE versus NEI, and viewing angle.
+Publish line luminosities, intrinsic and attenuated spectra, and the DEM,
+rather than only selected line ratios.
+\end{enumerate}
+
+\section{A minimal, useful surrogate: a steady isobaric cooling flow}
+
+When a full 3-D RTML calculation is unavailable, a steady cooling-flow model
+gives a transparent first estimate.  Assume a mass flux per interface area
+$\dot m/A$ and evolve a parcel from its initial mixed temperature under
+constant pressure.  With enthalpy per mass $h$, solve
+\begin{equation}
+ \frac{dh}{dt}=-\frac{\nelec\nH\Lambda_{\rm net}(T,\boldsymbol f)}{\rho},
+ \quad \frac{d\boldsymbol f}{dt}=\boldsymbol R(T,\nelec,J_\nu)\boldsymbol f,
+ \label{eq:parcel}
+\end{equation}
+then compute a line luminosity per interface area,
+\begin{equation}
+ \frac{L_{ul}}{A}=\frac{\dot m}{A}\int \frac{\epsilon_{ul}}{\rho}\,dt.
+ \label{eq:coolflowline}
+\end{equation}
+This has two benefits: it makes the assumed energy/mass flux explicit, and it
+handles ionization lag.  Its limitation is equally explicit: it cannot predict
+the entrainment rate, corrugated area, or velocity-dependent line profile.
+Those require a turbulence model or simulation.  Use it as a benchmark and
+parameter study, not as a substitute for resolved RTML dynamics.
+
+\section{Diagnostics and observables}
+
+The expected output is multi-band.  The $\sim10^{4.5}$--$10^{5.5}$ K material
+can produce UV high-ion diagnostics (C\,IV, Si\,IV, N\,V, O\,VI); hotter gas
+contributes EUV/soft-X-ray lines and continuum; recombined material can emit
+optical/IR lines if it remains ionized or is externally illuminated.  The
+classical mixing-layer models of Slavin, Shull, and Begelman explicitly
+connected high ions and UV/optical emission to a turbulent interface
+\cite{Slavin1993}.
+
+Interpret line ratios jointly with the DEM and absorption columns:
+\begin{equation}
+ N_{X,q}=\int n_X f_{X,q}\,ds.
+\end{equation}
+Emission scales approximately as density squared in the optically thin,
+low-density limit, while absorption scales linearly with density.  Combining
+them constrains filling factor and path length far better than either alone.
+NEI may make an ion appear at a temperature where its CIE contribution
+function is small; a ``formation temperature'' is therefore a model-dependent
+description, not a direct thermometer in an RTML.
+
+\section{Numerical and physical failure modes}
+
+\begin{itemize}[leftmargin=*]
+\item \textbf{Cooling--spectrum mismatch:} a tabulated CIE cooling curve is
+used in the dynamics while post-processing assumes NEI or a different
+abundance set.  Recompute or quantify the inconsistency.
+\item \textbf{Under-resolved numerical mixing:} numerical diffusion can set
+the DEM and artificially boost cooling.  Demonstrate convergence of integrated
+luminosity, DEM, and selected line luminosities, not merely morphology.
+\item \textbf{Equilibrium by assumption:} CIE can miss the lagging high ions
+in cooling/mixing gas.  Carry NEI fractions, at least in post-processing.
+\item \textbf{Ignoring transfer:} optically thin synthesis is not adequate
+for strong resonance lines or dusty/high-column sightlines.
+\item \textbf{Comparing unlike quantities:} distinguish intrinsic luminosity,
+surface brightness, attenuated flux, and detector counts; each has different
+geometry and units.
+\end{itemize}
+
+\section{Literature context}
+
+\begin{longtable}{p{3.1cm}p{3.2cm}p{7.0cm}}
+\toprule
+\textbf{Study} & \textbf{Main method} & \textbf{Reliable takeaway for spectral work}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Study} & \textbf{Main method} & \textbf{Reliable takeaway for spectral work}\\
+\midrule
+\endhead
+Begelman \& Fabian (1990) & Analytic energy balance & Establishes the enthalpy--cooling balance that remains a necessary global check.\\
+Slavin, Shull \& Begelman (1993) & Turbulent-interface/NEI spectral models & Direct precedent for predicting high-ion emission and absorption from mixing layers.\\
+Esquivel et al. (2006) & 3-D MHD + CIE cooling & Demonstrates time-dependent layer growth and magnetic sensitivity; CIE limits its spectral interpretation.\\
+Kwak \& Shelton (2010) & Hydro + NEI & Mixing and cooling histories enhance high ions relative to CIE; time dependence matters.\\
+Ji, Oh \& Masterson (2019) & 3-D HD/MHD + NEI + radiation & Simple $h\sim v_{\rm turb}\tcool$ scalings can fail; NEI changes high-ion columns by factors of a few.\\
+Fielding et al. (2020) & 3-D hydro, fractal cooling front & The cooling surface is corrugated; use global energetics and resolution tests rather than planar geometry alone.\\
+Tan, Oh \& Gronke (2021) & Turbulent-combustion analogy & $\Da$ organizes weak- and strong-cooling regimes and informs convergence tests.\\
+Tan \& Oh (2021) & 1-D front + 3-D spectral tests & Global entrainment and line observables have different resolution requirements; local conduction controls the temperature PDF.\\
+Yang \& Ji (2023) & High-Mach 3-D hydro & Surface brightness and ion columns saturate above $\mathcal{M}\sim1$; dissipation can drive evaporation.\\
+Zhao \& Bai (2023); Das \& Gronke (2024) & 3-D MHD & Amplified weak fields suppress local mixing, while global morphology can partly compensate in turbulent systems.\\
+\bottomrule
+\end{longtable}
+
+\section{Conclusions}
+
+An RTML radiation spectrum is a state-resolved emissivity calculation,
+not a direct plot of $\Lambda(T)$.  The recommended deliverable is a
+NEI-based intrinsic spectrum plus transferred spectra for specified sightlines,
+accompanied by a DEM, ion columns, and an energy-closure test.  A CIE/DEM
+spectrum remains valuable as a fast control model; differences from NEI then
+become an interpretable prediction of the mixing and cooling history.
+
+\begin{thebibliography}{99}
+\footnotesize
+\bibitem{Begelman1990} Begelman, M. C. \& Fabian, A. C. 1990, MNRAS, 244, 26P, doi:\href{https://doi.org/10.1093/mnras/244.1.26P}{10.1093/mnras/244.1.26P}.
+\bibitem{Slavin1993} Slavin, J. D., Shull, J. M. \& Begelman, M. C. 1993, ApJ, 407, 83, doi:\href{https://doi.org/10.1086/172494}{10.1086/172494}.
+\bibitem{Esquivel2006} Esquivel, A., Benjamin, R. A., Lazarian, A., Cho, J. \& Leitner, S. N. 2006, ApJ, 648, 1043, doi:\href{https://doi.org/10.1086/505338}{10.1086/505338}.
+\bibitem{Kwak2010} Kwak, K. \& Shelton, R. L. 2010, ApJ, 719, 523, doi:\href{https://doi.org/10.1088/0004-637X/719/1/523}{10.1088/0004-637X/719/1/523}.
+\bibitem{Gnat2007} Gnat, O. \& Sternberg, A. 2007, ApJS, 168, 213, doi:\href{https://doi.org/10.1086/509786}{10.1086/509786}.
+\bibitem{Ji2019} Ji, S., Oh, S. P. \& Masterson, P. 2019, MNRAS, 487, 737, doi:\href{https://doi.org/10.1093/mnras/stz1248}{10.1093/mnras/stz1248}.
+\bibitem{Fielding2020} Fielding, D. B., Ostriker, E. C., Bryan, G. L. \& Jermyn, A. S. 2020, ApJL, 894, L24, doi:\href{https://doi.org/10.3847/2041-8213/ab8d2c}{10.3847/2041-8213/ab8d2c}.
+\bibitem{Tan2021} Tan, B., Oh, S. P. \& Gronke, M. 2021, MNRAS, 502, 3179, doi:\href{https://doi.org/10.1093/mnras/stab053}{10.1093/mnras/stab053}.
+\bibitem{TanOh2021} Tan, B. \& Oh, S. P. 2021, MNRAS Letters, 508, L37, doi:\href{https://doi.org/10.1093/mnrasl/slab100}{10.1093/mnrasl/slab100}.
+\bibitem{YangJi2023} Yang, Y. \& Ji, S. 2023, MNRAS, 520, 2148, doi:\href{https://doi.org/10.1093/mnras/stad264}{10.1093/mnras/stad264}.
+\bibitem{ZhaoBai2023} Zhao, X. \& Bai, X.-N. 2023, MNRAS, 526, 4245, doi:\href{https://doi.org/10.1093/mnras/stad3011}{10.1093/mnras/stad3011}.
+\bibitem{DasGronke2024} Das, H. K. \& Gronke, M. 2024, MNRAS, 527, 991, doi:\href{https://doi.org/10.1093/mnras/stad3125}{10.1093/mnras/stad3125}.
+\bibitem{GronkeOh2018} Gronke, M. \& Oh, S. P. 2018, MNRAS Letters, 480, L111, doi:\href{https://doi.org/10.1093/mnrasl/sly131}{10.1093/mnrasl/sly131}.
+\bibitem{Mandelker2020} Mandelker, N., Nagai, D., Aung, H., Dekel, A., Birnboim, Y. \& van den Bosch, F. C. 2020, MNRAS, 494, 2641, doi:\href{https://doi.org/10.1093/mnras/staa812}{10.1093/mnras/staa812}.
+\bibitem{MandelkerLya2020} Mandelker, N., van den Bosch, F. C., Nagai, D., Dekel, A., Birnboim, Y. \& Aung, H. 2020, MNRAS, 498, 2415, doi:\href{https://doi.org/10.1093/mnras/staa2421}{10.1093/mnras/staa2421}.
+\bibitem{CHIANTI} Del Zanna, G., et al. 2021, ApJ, 909, 38, doi:\href{https://doi.org/10.3847/1538-4357/abd8ce}{10.3847/1538-4357/abd8ce}; \href{https://www.chiantidatabase.org/}{CHIANTI database}.
+\bibitem{AtomDB} Foster, A. R., et al. 2012, ApJ, 756, 128, doi:\href{https://doi.org/10.1088/0004-637X/756/2/128}{10.1088/0004-637X/756/2/128}; \href{https://www.atomdb.org/}{AtomDB}.
+\end{thebibliography}
+
+\end{document}
