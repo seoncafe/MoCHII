@@ -23,10 +23,13 @@ def decoded_attr(group, name):
     return str(value).strip()
 
 
-def run_case(executable, input_text, input_path, work, run_env):
+def run_case(executable, input_text, input_path, work, run_env, ranks=None):
     input_path.write_text(input_text)
+    command = [str(executable), str(input_path)]
+    if ranks is not None:
+        command = ["mpirun", "-np", str(ranks)] + command
     return subprocess.run(
-        [str(executable), str(input_path)],
+        command,
         cwd=work,
         text=True,
         errors="replace",
@@ -265,6 +268,316 @@ def main():
         )
         ok &= refine_ok
 
+        continuous_source = (
+            source.replace(
+                "par%ion_energy_mode  = 'grouped'",
+                "par%ion_energy_mode  = 'continuous'",
+            )
+            .replace(
+                "par%ion_shadow_rates = .true.",
+                "par%ion_shadow_rates = .false.",
+            )
+            .replace(
+                "par%use_metals       = .true.",
+                "par%use_metals       = .false.",
+            )
+            .replace(
+                "par%no_photons       = 1000",
+                "par%no_photons       = 8192",
+            )
+            .replace(
+                "par%no_print         = 1000",
+                "par%no_print         = 8192",
+            )
+            .replace(
+                "par%source_geometry  = 'point'",
+                "par%launch_sequence  = 'sobol'\n"
+                " par%qmc_seed         = 20260728\n"
+                " par%source_geometry  = 'point'",
+            )
+            .replace("grouped_plumbing.h5", "continuous_8.h5")
+        )
+        continuous_8 = run_case(
+            executable, continuous_source, work / "continuous_8.in", work, run_env
+        )
+        continuous_32_source = continuous_source.replace(
+            "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+        ).replace("continuous_8.h5", "continuous_32.h5")
+        continuous_32 = run_case(
+            executable,
+            continuous_32_source,
+            work / "continuous_32.in",
+            work,
+            run_env,
+        )
+        continuous_ok = (
+            continuous_8.returncode == 0
+            and continuous_32.returncode == 0
+            and "ION: continuous H/He direct rates: ACTIVE" in continuous_8.stdout
+            and "ION: continuous H/He direct rates: ACTIVE" in continuous_32.stdout
+        )
+        solver_fields = (
+            "Gamma_HI", "Gamma_HeI", "Gamma_HeII",
+            "Heat_HI", "Heat_HeI", "Heat_HeII",
+        )
+        if continuous_ok:
+            with h5py.File(work / "continuous_8_rates.h5", "r") as coarse, h5py.File(
+                work / "continuous_32_rates.h5", "r"
+            ) as fine:
+                for name in solver_fields:
+                    continuous_ok &= np.array_equal(
+                        coarse[f"{name}/data"][:],
+                        fine[f"{name}/data"][:],
+                        equal_nan=True,
+                    )
+                    continuous_ok &= np.all(np.isfinite(coarse[f"{name}/data"][:]))
+                header = coarse["Gamma_HI"]
+                continuous_ok &= decoded_attr(header, "IONEMODE") == "continuous"
+                continuous_ok &= decoded_attr(header, "NUBINUSE") == "diagnostic_only"
+                continuous_ok &= decoded_attr(header, "ENRGSAMP") == "sobol"
+                emitted = float(np.asarray(header.attrs["L_EMIT"]).reshape(-1)[0])
+                absorbed = float(np.asarray(header.attrs["L_ABS"]).reshape(-1)[0])
+                escaped = float(np.asarray(header.attrs["L_ESC"]).reshape(-1)[0])
+                continuous_ok &= emitted > 0.0
+                continuous_ok &= abs(absorbed + escaped - emitted) <= 5.0e-13*emitted
+        print(
+            "continuous H/He 8/32-bin solver arrays bitwise identical:"
+            f" {'PASS' if continuous_ok else 'FAIL'}"
+        )
+        if not continuous_ok:
+            print(continuous_8.stdout)
+            print(continuous_32.stdout)
+        ok &= continuous_ok
+
+        continuous_iter_source = (
+            continuous_source.replace(
+                "par%gas_niter        = 0", "par%gas_niter        = 3"
+            )
+            .replace("continuous_8.h5", "continuous_iter_8.h5")
+        )
+        continuous_iter_8 = run_case(
+            executable,
+            continuous_iter_source,
+            work / "continuous_iter_8.in",
+            work,
+            run_env,
+        )
+        continuous_iter_32_source = continuous_iter_source.replace(
+            "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+        ).replace("continuous_iter_8.h5", "continuous_iter_32.h5")
+        continuous_iter_32 = run_case(
+            executable,
+            continuous_iter_32_source,
+            work / "continuous_iter_32.in",
+            work,
+            run_env,
+        )
+        iter_ok = (
+            continuous_iter_8.returncode == 0
+            and continuous_iter_32.returncode == 0
+        )
+        if iter_ok:
+            with h5py.File(
+                work / "continuous_iter_8_rates.h5", "r"
+            ) as coarse, h5py.File(
+                work / "continuous_iter_32_rates.h5", "r"
+            ) as fine:
+                for name in solver_fields + (
+                    "x_HI", "x_HeI", "x_HeII", "n_e", "T_e"
+                ):
+                    iter_ok &= np.array_equal(
+                        coarse[f"{name}/data"][:],
+                        fine[f"{name}/data"][:],
+                        equal_nan=True,
+                    )
+        print(
+            "continuous H/He iteration 8/32-bin state identity:"
+            f" {'PASS' if iter_ok else 'FAIL'}"
+        )
+        if not iter_ok:
+            print(continuous_iter_8.stdout)
+            print(continuous_iter_32.stdout)
+        ok &= iter_ok
+
+        table_path = REPO / "tests/continuous_energy/threshold_spectrum.txt"
+        continuous_table_source = (
+            continuous_source.replace(
+                "par%tstar            = 4.0e4",
+                f"par%ion_spectrum     = '{table_path}'",
+            )
+            .replace("continuous_8.h5", "continuous_table_8.h5")
+        )
+        continuous_table_8 = run_case(
+            executable,
+            continuous_table_source,
+            work / "continuous_table_8.in",
+            work,
+            run_env,
+        )
+        continuous_table_32_source = continuous_table_source.replace(
+            "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+        ).replace("continuous_table_8.h5", "continuous_table_32.h5")
+        continuous_table_32 = run_case(
+            executable,
+            continuous_table_32_source,
+            work / "continuous_table_32.in",
+            work,
+            run_env,
+        )
+        table_ok = (
+            continuous_table_8.returncode == 0
+            and continuous_table_32.returncode == 0
+        )
+        if table_ok:
+            with h5py.File(
+                work / "continuous_table_8_rates.h5", "r"
+            ) as coarse, h5py.File(
+                work / "continuous_table_32_rates.h5", "r"
+            ) as fine:
+                for name in solver_fields:
+                    table_ok &= np.array_equal(
+                        coarse[f"{name}/data"][:],
+                        fine[f"{name}/data"][:],
+                        equal_nan=True,
+                    )
+        print(
+            "continuous tabulated spectrum 8/32-bin solver identity:"
+            f" {'PASS' if table_ok else 'FAIL'}"
+        )
+        if not table_ok:
+            print(continuous_table_8.stdout)
+            print(continuous_table_32.stdout)
+        ok &= table_ok
+
+        continuous_np3_source = continuous_source.replace(
+            "continuous_8.h5", "continuous_np3.h5"
+        )
+        continuous_np3 = run_case(
+            executable,
+            continuous_np3_source,
+            work / "continuous_np3.in",
+            work,
+            run_env,
+            ranks=3,
+        )
+        mpi_ok = continuous_np3.returncode == 0
+        if mpi_ok:
+            with h5py.File(work / "continuous_8_rates.h5", "r") as one, h5py.File(
+                work / "continuous_np3_rates.h5", "r"
+            ) as three:
+                for name in solver_fields:
+                    mpi_ok &= np.allclose(
+                        one[f"{name}/data"][:],
+                        three[f"{name}/data"][:],
+                        rtol=5.0e-14,
+                        atol=0.0,
+                        equal_nan=True,
+                    )
+        print(
+            "continuous H/He 1/3-rank solver agreement:"
+            f" {'PASS' if mpi_ok else 'FAIL'}"
+        )
+        if not mpi_ok:
+            print(continuous_np3.stdout)
+        ok &= mpi_ok
+
+        continuous_random_source = (
+            continuous_source.replace(
+                "par%launch_sequence  = 'sobol'",
+                "par%launch_sequence  = 'random'",
+            )
+            .replace("continuous_8.h5", "continuous_random.h5")
+        )
+        continuous_random = run_case(
+            executable,
+            continuous_random_source,
+            work / "continuous_random.in",
+            work,
+            run_env,
+        )
+        random_ok = (
+            continuous_random.returncode == 0
+            and "ION: continuous H/He direct rates: ACTIVE"
+            in continuous_random.stdout
+        )
+        if random_ok:
+            with h5py.File(work / "continuous_random_rates.h5", "r") as handle:
+                for name in solver_fields:
+                    random_ok &= np.all(np.isfinite(handle[f"{name}/data"][:]))
+                random_ok &= decoded_attr(handle["Gamma_HI"], "ENRGSAMP") == "random"
+        print(
+            "continuous H/He pseudorandom production path:"
+            f" {'PASS' if random_ok else 'FAIL'}"
+        )
+        if not random_ok:
+            print(continuous_random.stdout)
+        ok &= random_ok
+
+        continuous_diffuse_source = (
+            continuous_source.replace(
+                "par%xHI_init         = 1.0", "par%xHI_init         = 0.01"
+            )
+            .replace(
+                "par%xHeI_init        = 1.0", "par%xHeI_init        = 0.10"
+            )
+            .replace(
+                "par%xHeII_init       = 0.0", "par%xHeII_init       = 0.90"
+            )
+            .replace(
+                "par%source_geometry  = 'point'",
+                "par%case_ab          = 'A'\n"
+                " par%diffuse_field    = .true.\n"
+                " par%source_geometry  = 'point'",
+            )
+            .replace("continuous_8.h5", "continuous_diffuse_8.h5")
+        )
+        continuous_diffuse_8 = run_case(
+            executable,
+            continuous_diffuse_source,
+            work / "continuous_diffuse_8.in",
+            work,
+            run_env,
+        )
+        continuous_diffuse_32_source = continuous_diffuse_source.replace(
+            "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+        ).replace("continuous_diffuse_8.h5", "continuous_diffuse_32.h5")
+        continuous_diffuse_32 = run_case(
+            executable,
+            continuous_diffuse_32_source,
+            work / "continuous_diffuse_32.in",
+            work,
+            run_env,
+        )
+        diffuse_cont_ok = (
+            continuous_diffuse_8.returncode == 0
+            and continuous_diffuse_32.returncode == 0
+        )
+        diffuse_match = re.search(
+            r"diffuse field: L =\s*[0-9.Ee+-]+\s*erg/s,\s*(\d+)\s*packets",
+            continuous_diffuse_8.stdout,
+        )
+        diffuse_cont_ok &= diffuse_match is not None and int(diffuse_match.group(1)) > 0
+        if diffuse_cont_ok:
+            with h5py.File(
+                work / "continuous_diffuse_8_rates.h5", "r"
+            ) as coarse, h5py.File(
+                work / "continuous_diffuse_32_rates.h5", "r"
+            ) as fine:
+                for name in solver_fields:
+                    diffuse_cont_ok &= np.array_equal(
+                        coarse[f"{name}/data"][:],
+                        fine[f"{name}/data"][:],
+                        equal_nan=True,
+                    )
+        print(
+            "continuous diffuse 8/32-bin solver arrays bitwise identical:"
+            f" {'PASS' if diffuse_cont_ok else 'FAIL'}"
+        )
+        if not diffuse_cont_ok:
+            print(continuous_diffuse_8.stdout)
+            print(continuous_diffuse_32.stdout)
+        ok &= diffuse_cont_ok
+
         continuous = run_case(
             executable,
             source.replace(
@@ -275,7 +588,7 @@ def main():
             work,
             run_env,
         )
-        guard_text = "ion_energy_mode='continuous' is not enabled yet"
+        guard_text = "continuous H/He vertical slice requires use_metals=.false."
         passed = continuous.returncode != 0 and guard_text in continuous.stdout
         print(
             "continuous fail-fast:"

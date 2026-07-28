@@ -21,9 +21,11 @@ module energy_sampler_mod
      real(wp), allocatable :: energy(:)
      real(wp), allocatable :: density(:)
      real(wp), allocatable :: cdf(:)
+     real(wp) :: total_integral = 0.0_wp
   end type energy_sampler_type
 
-  public :: build_tabulated_sampler, build_planck_sampler
+  public :: build_tabulated_sampler, build_tabulated_band_sampler
+  public :: build_planck_sampler
   public :: sample_energy_cdf, energy_cdf_value
   public :: planck_energy_shape, sample_full_planck_bc
 
@@ -56,9 +58,50 @@ contains
     end do
     total = sampler%cdf(n)
     if (total <= 0.0_wp) error stop 'energy sampler: zero integrated luminosity'
+    sampler%total_integral = total
     sampler%cdf = sampler%cdf / total
     sampler%cdf(n) = 1.0_wp
   end subroutine build_tabulated_sampler
+
+  subroutine build_tabulated_band_sampler(sampler, energy, density, emin, emax)
+    type(energy_sampler_type), intent(out) :: sampler
+    real(wp), intent(in) :: energy(:), density(:), emin, emax
+    real(wp), allocatable :: clipped_e(:), clipped_f(:)
+    real(wp) :: lo, hi
+    integer :: i, n, nc
+
+    n = size(energy)
+    if (n < 2 .or. size(density) /= n) &
+       error stop 'energy sampler: table needs at least two matching columns'
+    if (any(density < 0.0_wp)) &
+       error stop 'energy sampler: negative spectral density'
+    do i = 1, n - 1
+       if (energy(i+1) <= energy(i)) &
+          error stop 'energy sampler: energies must be strictly ascending'
+    end do
+    if (emax <= emin) error stop 'energy sampler: invalid requested band'
+    lo = max(emin, energy(1))
+    hi = min(emax, energy(n))
+    if (hi <= lo) error stop 'energy sampler: table does not overlap requested band'
+
+    nc = 2 + count(energy > lo .and. energy < hi)
+    allocate(clipped_e(nc), clipped_f(nc))
+    clipped_e(1) = lo
+    clipped_f(1) = linear_table_value(energy, density, lo)
+    nc = 1
+    do i = 1, n
+       if (energy(i) > lo .and. energy(i) < hi) then
+          nc = nc + 1
+          clipped_e(nc) = energy(i)
+          clipped_f(nc) = density(i)
+       end if
+    end do
+    nc = nc + 1
+    clipped_e(nc) = hi
+    clipped_f(nc) = linear_table_value(energy, density, hi)
+    call build_tabulated_sampler(sampler, clipped_e(1:nc), clipped_f(1:nc))
+    deallocate(clipped_e, clipped_f)
+  end subroutine build_tabulated_band_sampler
 
   subroutine build_planck_sampler(sampler, temperature, emin, emax, rtol, thresholds)
     type(energy_sampler_type), intent(out) :: sampler
@@ -289,6 +332,31 @@ contains
     end do
     if (total <= 0.0_wp) error stop 'energy sampler: zero Planck band luminosity'
   end function rough_planck_integral
+
+  real(wp) function linear_table_value(energy, density, value) result(result)
+    real(wp), intent(in) :: energy(:), density(:), value
+    integer :: lo, hi, mid
+    real(wp) :: fraction
+    if (value <= energy(1)) then
+       result = density(1)
+       return
+    else if (value >= energy(size(energy))) then
+       result = density(size(density))
+       return
+    end if
+    lo = 1
+    hi = size(energy)
+    do while (hi-lo > 1)
+       mid = (lo+hi)/2
+       if (energy(mid) <= value) then
+          lo = mid
+       else
+          hi = mid
+       end if
+    end do
+    fraction = (value-energy(lo))/(energy(hi)-energy(lo))
+    result = density(lo) + fraction*(density(hi)-density(lo))
+  end function linear_table_value
 
   subroutine sort_unique(values, n)
     real(wp), allocatable, intent(inout) :: values(:)

@@ -77,7 +77,8 @@ contains
     real(kind=wp) :: dynamic, metal
 
     kap = kap_ion(photon%inu,il)
-    if (.not. par%ion_shadow_rates) return
+    if (trim(par%ion_energy_mode) /= 'continuous' .and. &
+        .not. par%ion_shadow_rates) return
 
     metal = 0.0_wp
     if (par%use_metals .and. par%ion_metal_abs) then
@@ -96,6 +97,10 @@ contains
        dynamic = dynamic + amr_grid%rhokap(il)*photon%ionphys%dust_abs
        if (par%ion_dust_scatter) &
           dynamic = dynamic + amr_grid%rhokap(il)*photon%ionphys%dust_sca
+    end if
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       kap = dynamic
+       return
     end if
     opacity_max_abs = max(opacity_max_abs, abs(dynamic-kap))
     opacity_scale = max(opacity_scale, abs(kap))

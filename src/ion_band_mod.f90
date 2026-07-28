@@ -31,6 +31,9 @@ module ion_band_mod
 ! luminosity CDF and carry Lpacket = ion_Ltot / nphotons.
 !---------------------------------------------------------------------------
   use define
+  use energy_sampler_mod, only : energy_sampler_type, build_planck_sampler, &
+       build_tabulated_band_sampler, sample_energy_cdf
+  use ion_energy_policy_mod, only : assign_ion_packet_energy
   implicit none
   private
 
@@ -45,6 +48,8 @@ module ion_band_mod
   real(kind=wp), allocatable :: ion_dnu(:)   ! bin width  [Hz]
   real(kind=wp), allocatable :: ion_lum(:)   ! total bin luminosity (sum over components) [erg/s]
   real(kind=wp), allocatable :: ion_cdf(:)   ! sampling CDF over bins (single-component fast path)
+  type(energy_sampler_type) :: source_energy_sampler
+  logical :: source_energy_sampler_ready = .false.
   !--- band bin EDGES [eV], size nnu_band+1, ascending.  The single source of
   !--- truth for mapping a photon energy to a bin: filled at ion_setup for BOTH
   !--- the aligned and the legacy-log grids (ion_bin_of does a binary search of
@@ -198,6 +203,9 @@ contains
           derived = is_abs .and. (par%luminosity <= 0.0_wp)
        end if
        ion_Ltot = sum(ion_lum)
+       if (trim(par%ion_energy_mode) == 'continuous' .and. &
+           par%luminosity > 0.0_wp) &
+          ion_Ltot = par%luminosity
        ion_cdf(1) = ion_lum(1)
        do i = 2, nnu
           ion_cdf(i) = ion_cdf(i-1) + ion_lum(i)
@@ -215,7 +223,53 @@ contains
     allocate(ion_eedge(nnu+1))
     ion_eedge = eedge
     deallocate(eedge)
+
+    !--- Initial continuous-energy vertical slice: setup has restricted this
+    !--- mode to one internal point source with a Planck or tabulated spectrum.
+    !--- The sampler is independent of ion_eedge/nnu_band; H/He thresholds are
+    !--- retained as mandatory adaptive-CDF knots for the Planck case.
+    source_energy_sampler_ready = .false.
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       call setup_continuous_source_sampler()
+       source_energy_sampler_ready = .true.
+    end if
   end subroutine ion_setup
+
+  subroutine setup_continuous_source_sampler()
+    implicit none
+    real(kind=wp), allocatable :: etab(:), ftab(:)
+    integer :: ntab
+
+    if (len_trim(par%src_spectrum_file) > 0) then
+       if (spec_is_physical()) then
+          call read_phys_table(par%src_spectrum_file, 1, 1, etab, ftab, ntab)
+       else
+          call read_shape_table(par%src_spectrum_file, 1, 1, etab, ftab, ntab)
+       end if
+    else if (len_trim(par%ion_spectrum) > 0) then
+       if (spec_is_physical()) then
+          call read_phys_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
+       else
+          call read_shape_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
+       end if
+    else
+       call build_planck_sampler(source_energy_sampler, par%tstar, &
+            par%eion_min, par%eion_max, par%source_cdf_tol, &
+            [eth_HI, eth_HeI, eth_HeII])
+       ion_Ltot = par%luminosity
+       return
+    end if
+
+    call build_tabulated_band_sampler(source_energy_sampler, etab, ftab, &
+                                       par%eion_min, par%eion_max)
+    if (par%luminosity > 0.0_wp) then
+       ion_Ltot = par%luminosity
+    else
+       ion_Ltot = source_energy_sampler%total_integral
+       par%luminosity = ion_Ltot
+    end if
+    deallocate(etab, ftab)
+  end subroutine setup_continuous_source_sampler
 
   !=========================================================================
   ! Bin index for a photon energy eph [eV]: the bin whose edges bracket eph
@@ -1049,6 +1103,77 @@ contains
   end subroutine bin_interp
 
   !=========================================================================
+  ! Read one value column from an arbitrary-shape spectrum as ascending
+  ! (E [eV], L_E) points.  This is the continuous-sampler counterpart of the
+  ! legacy midpoint bin readers and supports both two-column and one-source
+  ! multi-column files through the same interface.
+  !=========================================================================
+  subroutine read_shape_table(fname, icol, ncol, etab, ftab, ntab)
+    use mpi
+    implicit none
+    character(len=*), intent(in) :: fname
+    integer, intent(in) :: icol, ncol
+    real(kind=wp), allocatable, intent(out) :: etab(:), ftab(:)
+    integer, intent(out) :: ntab
+    real(kind=wp), allocatable :: row(:)
+    character(len=2048) :: line
+    real(kind=wp) :: extra, tmp
+    integer :: unit, ios, ios2, i, j, ierr
+    logical :: has_extra
+
+    ntab = 0
+    open(newunit=unit, file=trim(fname), status='old', iostat=ios)
+    if (ios /= 0) then
+       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+    do
+       read(unit,'(a)',iostat=ios) line
+       if (ios /= 0) exit
+       line = adjustl(line)
+       if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
+       ntab = ntab + 1
+    end do
+    allocate(etab(ntab), ftab(ntab), row(ncol+1))
+    rewind(unit)
+    has_extra = .false.
+    i = 0
+    do
+       read(unit,'(a)',iostat=ios) line
+       if (ios /= 0) exit
+       line = adjustl(line)
+       if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
+       i = i + 1
+       read(line,*,iostat=ios2) row(1:ncol+1)
+       if (ios2 /= 0) then
+          if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
+             'ERROR: ', trim(fname), ' needs 1 + ', ncol, &
+             ' columns (E [eV] and spectral density); it has too few.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       if (i == 1) then
+          read(line,*,iostat=ios2) row(1:ncol+1), extra
+          if (ios2 == 0) has_extra = .true.
+       end if
+       etab(i) = row(1)
+       ftab(i) = row(1+icol)
+    end do
+    close(unit)
+    if (has_extra .and. icol == 1 .and. mpar%p_rank == 0) &
+       write(*,'(3a,i0,a)') ' ION: NOTE: ', trim(fname), &
+       ' has more than ', ncol, ' value column(s); using the first as needed.'
+
+    do i = 2, ntab
+       do j = i, 2, -1
+          if (etab(j-1) <= etab(j)) exit
+          tmp = etab(j-1);  etab(j-1) = etab(j);  etab(j) = tmp
+          tmp = ftab(j-1);  ftab(j-1) = ftab(j);  ftab(j) = tmp
+       end do
+    end do
+    deallocate(row)
+  end subroutine read_shape_table
+
+  !=========================================================================
   ! Read a physical-type spectrum file and return its icol-th value column as
   ! (E [eV] ascending, X_E per eV), converted from par%spectrum_type:
   !   'per_ev'  col1 E [eV],      X_E = value
@@ -1350,7 +1475,7 @@ contains
     use octree_mod, only : amr_find_leaf
     implicit none
     type(photon_type), intent(inout) :: photon
-    real(kind=wp) :: u
+    real(kind=wp) :: u, sampled_energy
     integer :: i, ic, ik
 
     if (.not. multi_src) then
@@ -1366,13 +1491,21 @@ contains
           call emit_slab(photon)
        end select
        u = rand_number()
-       photon%inu = nnu_band
-       do i = 1, nnu_band
-          if (u <= ion_cdf(i)) then
-             photon%inu = i
-             exit
-          end if
-       end do
+       if (trim(par%ion_energy_mode) == 'continuous') then
+          if (.not. source_energy_sampler_ready) &
+             error stop 'continuous source energy sampler is not initialized'
+          sampled_energy = sample_energy_cdf(source_energy_sampler, u)
+          photon%inu = ion_bin_of(sampled_energy)
+       else
+          photon%inu = nnu_band
+          do i = 1, nnu_band
+             if (u <= ion_cdf(i)) then
+                photon%inu = i
+                exit
+             end if
+          end do
+          sampled_energy = ion_e(photon%inu)
+       end if
     else
        !--- multi-component: pick a component, emit from it, draw its bin.
        u = rand_number()
@@ -1399,11 +1532,13 @@ contains
              exit
           end if
        end do
+       sampled_energy = ion_e(photon%inu)
     end if
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
-    photon%energy_eV = ion_e(photon%inu)
+    call assign_ion_packet_energy(photon%energy_eV, sampled_energy, &
+                                  ion_e(photon%inu), par%ion_energy_mode)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)
@@ -1438,16 +1573,26 @@ contains
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
     integer :: i, ic, ik
+    real(kind=wp) :: sampled_energy
 
     if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
        !--- single point source: stage-1 layout (u1 = frequency).
        call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
                            u(2), u(3))
-       photon%inu = bin_from_cdf(ion_cdf, u(1))
+       if (trim(par%ion_energy_mode) == 'continuous') then
+          if (.not. source_energy_sampler_ready) &
+             error stop 'continuous source energy sampler is not initialized'
+          sampled_energy = sample_energy_cdf(source_energy_sampler, u(1))
+          photon%inu = ion_bin_of(sampled_energy)
+       else
+          photon%inu = bin_from_cdf(ion_cdf, u(1))
+          sampled_energy = ion_e(photon%inu)
+       end if
     else if ((.not. multi_src) .and. trim(par%source_geometry) == 'slab') then
        !--- slab layout: u1 frequency, u2 face, u3/u4 xy, u5 mu, u6 phi.
        call emit_slab_qmc(photon, u(2), u(3), u(4), u(5), u(6))
        photon%inu = bin_from_cdf(ion_cdf, u(1))
+       sampled_energy = ion_e(photon%inu)
     else if (.not. multi_src) then
        !--- single external component (nsource=0): superset angle/surface dims,
        !--- frequency from the global CDF (u2).  d1 (component) is unused.
@@ -1457,6 +1602,7 @@ contains
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
        photon%inu = bin_from_cdf(ion_cdf, u(2))
+       sampled_energy = ion_e(photon%inu)
     else
        !--- multi-component: pick a component (u1), emit from it, draw its bin.
        ic = ncomp
@@ -1475,11 +1621,13 @@ contains
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
        photon%inu = bin_from_cdf(ion_cdf_src(:,ic), u(2))
+       sampled_energy = ion_e(photon%inu)
     end if
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
-    photon%energy_eV = ion_e(photon%inu)
+    call assign_ion_packet_energy(photon%energy_eV, sampled_energy, &
+                                  ion_e(photon%inu), par%ion_energy_mode)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)

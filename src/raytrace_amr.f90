@@ -18,7 +18,7 @@ module raytrace_amr_mod
   use octree_mod
   use jtally_mod, only : jt_on, jt_first, jt_sum, &
                          slab_tally_on, slab_bnd_add
-  use ion_score_mod, only : score_ion_path
+  use ion_score_mod, only : score_ion_path, ion_score_energy_packet
   use ion_packet_mod, only : build_ion_packet_physics, ion_packet_opacity
   implicit none
   private
@@ -257,6 +257,7 @@ contains
 
     call build_ion_packet_physics(photon)
     call raytrace_ion_to_edge_amr(photon, tau_edge)
+    call ion_score_energy_packet(photon, tau_edge)
     if (.not. (par%ion_add_dust .and. par%ion_dust_scatter)) return
     if (tau_edge <= 1.0e-12_wp) return
 

@@ -17,6 +17,7 @@ contains
   implicit none
 
   character(len=128) :: model_infile, arg
+  character(len=256) :: continuous_reason
   character(len=256) :: exepath
   integer :: unit, ierr, islash
 
@@ -468,15 +469,31 @@ contains
         'ERROR: par%source_cdf_tol must be in (0, 1).'
      call MPI_FINALIZE(ierr);  stop
   endif
-  !--- Do not permit a hybrid run that advertises continuous packet energies
-  !--- while still using grouped opacity/rate reconstruction.  This guard is
-  !--- intentionally unconditional until the complete H/He vertical slice is
-  !--- activated; later phases will replace it with feature-specific guards.
+  !--- First complete continuous-energy vertical slice.  Source sampling,
+  !--- packet opacity, and H/He ionization/heating are activated atomically,
+  !--- but unsupported coupled features remain fail-fast rather than falling
+  !--- back to grouped physics.
   if (trim(par%ion_energy_mode) == 'continuous') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: ion_energy_mode=''continuous'' is not enabled yet: exact-energy '// &
-        'source sampling, opacity, ionization, and heating must be activated together.'
-     call MPI_FINALIZE(ierr);  stop 1
+     continuous_reason = ''
+     if (trim(par%source_geometry) /= 'point' .or. par%nsource /= 1) &
+        continuous_reason = 'one internal point source'
+     if (par%ext_intensity > 0.0_wp .or. len_trim(par%ext_spectrum) > 0) &
+        continuous_reason = 'no external source'
+     if (len_trim(par%ion_spectrum) == 0 .and. &
+         len_trim(par%src_spectrum_file) == 0 .and. par%tstar <= 0.0_wp) &
+        continuous_reason = 'a Planck or tabulated internal-source spectrum'
+     if (par%add_fuv) continuous_reason = 'add_fuv=.false.'
+     if (par%use_metals) continuous_reason = 'use_metals=.false.'
+     if (par%ion_add_dust) continuous_reason = 'ion_add_dust=.false.'
+     if (par%use_sec_ion) continuous_reason = 'use_sec_ion=.false.'
+     if (par%hei_metastable) continuous_reason = 'hei_metastable=.false.'
+     if (par%ion_peel) continuous_reason = 'ion_peel=.false.'
+     if (len_trim(continuous_reason) > 0) then
+        if (mpar%p_rank == 0) write(*,'(3a)') &
+           'ERROR: continuous H/He vertical slice requires ', &
+           trim(continuous_reason), '; unsupported features never use grouped fallback.'
+        call MPI_FINALIZE(ierr);  stop 1
+     end if
   endif
   if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &

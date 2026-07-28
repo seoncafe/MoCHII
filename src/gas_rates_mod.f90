@@ -111,6 +111,22 @@ contains
     si_HI_HI  = 0.0_wp;  si_HI_HeI  = 0.0_wp;  si_HI_HeII  = 0.0_wp
     si_HeI_HI = 0.0_wp;  si_HeI_HeI = 0.0_wp;  si_HeI_HeII = 0.0_wp
 
+    !--- Continuous H/He mode consumes the already reduced packet-energy
+    !--- estimators directly.  jt_ion remains populated only as a diagnostic
+    !--- spectrum and must not feed solver rates in this mode.
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       block
+         use ion_score_mod, only : ion_score_apply_hhe
+         call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
+                                  heat_HI, heat_HeI, heat_HeII)
+       end block
+       sec_dgamma_HI = 0.0_wp;  sec_dgamma_HeI = 0.0_wp
+       sec_heat_HI = heat_HI
+       sec_heat_HeI = heat_HeI
+       sec_heat_HeII = heat_HeII
+       return
+    end if
+
     !--- cross sections depend only on the (fixed) band, not on the leaf:
     !--- evaluate once per bin instead of nleaf times (identical values).
     do inu = 1, nnu_band
@@ -256,6 +272,7 @@ contains
     type(io_file_type) :: file
     character(len=192) :: filename
     real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
+    real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped
     integer :: status, il, inu, ic, nleaf
 
     if (mpar%p_rank /= 0) return
@@ -285,12 +302,29 @@ contains
        'ionizing packet energy mode', status)
     call io_put_keyword(file,'CDFRTOL', par%source_cdf_tol, &
        'source sampler relative tolerance', status)
-    call io_put_keyword(file,'NUBINUSE','solver_and_diagnostic', &
-       'role of ionizing spectral bins', status)
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       call io_put_keyword(file,'NUBINUSE','diagnostic_only', &
+          'role of ionizing spectral bins', status)
+    else
+       call io_put_keyword(file,'NUBINUSE','solver_and_diagnostic', &
+          'role of ionizing spectral bins', status)
+    end if
     call io_put_keyword(file,'ENRGSAMP',trim(par%launch_sequence), &
        'energy/source sampling sequence', status)
     call io_put_keyword(file,'SHDWRATE',par%ion_shadow_rates, &
        'direct-rate shadow validation enabled', status)
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       block
+         use ion_score_mod, only : ion_score_energy_totals
+         call ion_score_energy_totals(energy_emitted, energy_absorbed, energy_escaped)
+       end block
+       call io_put_keyword(file,'L_EMIT',energy_emitted, &
+          'transported ionizing packet luminosity',status)
+       call io_put_keyword(file,'L_ABS',energy_absorbed, &
+          'absorbed ionizing packet luminosity',status)
+       call io_put_keyword(file,'L_ESC',energy_escaped, &
+          'escaped ionizing packet luminosity',status)
+    end if
     if (trim(par%launch_sequence) == 'sobol') &
        call io_put_keyword(file,'QMCSEED',par%qmc_seed,'Sobol scramble seed',status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)

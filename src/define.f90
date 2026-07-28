@@ -202,14 +202,13 @@ public
      !--- selects the scramble; a different seed is an independent replicate.
      character(len=16) :: launch_sequence = 'random'
      integer           :: qmc_seed        = 12345
-     !--- Ionizing packet-energy treatment.  'grouped' is the compatibility
-     !--- default during continuous-energy development.  'continuous' is
-     !--- recognized but remains fail-fast until source sampling, opacity,
-     !--- ionization, and heating are enabled as one complete vertical slice.
+     !--- Ionizing packet-energy treatment.  'grouped' remains the compatibility
+     !--- default during development.  'continuous' activates the complete
+     !--- H/He-only vertical slice; setup fails fast on coupled features not
+     !--- yet migrated (metals, dust, secondary ionization, etc.).
      character(len=16) :: ion_energy_mode = 'grouped'
-     !--- Relative integration tolerance for the future continuous source
-     !--- inverse CDF.  Recorded now so output provenance is stable before the
-     !--- sampler is connected.
+     !--- Relative integration tolerance for the continuous Planck source CDF
+     !--- (tabulated linear spectra are integrated/inverted analytically).
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
      !--- Development/regression gate: accumulate direct path-based H/He and
      !--- metal rates beside the legacy jt_ion reconstruction and require

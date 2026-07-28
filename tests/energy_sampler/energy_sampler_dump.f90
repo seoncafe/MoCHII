@@ -1,8 +1,8 @@
 program energy_sampler_dump
   use, intrinsic :: iso_fortran_env, only : int64, real64
   use energy_sampler_mod, only : energy_sampler_type, build_tabulated_sampler, &
-       build_planck_sampler, sample_energy_cdf, energy_cdf_value, &
-       sample_full_planck_bc
+       build_tabulated_band_sampler, build_planck_sampler, sample_energy_cdf, &
+       energy_cdf_value, sample_full_planck_bc
   use qmc_mod, only : qmc_setup, qmc_uniforms, qmc_uniforms_stream, &
        QMC_STREAM_DIFFUSE
   implicit none
@@ -10,7 +10,7 @@ program energy_sampler_dump
   integer, parameter :: wp = real64
   integer, parameter :: nrandom = 40000, nbc = 200000
   integer, parameter :: nqmc = 32768, ntab = 4096
-  type(energy_sampler_type) :: p20, p40, constant, linear, broken
+  type(energy_sampler_type) :: p20, p40, constant, linear, broken, clipped
   real(wp) :: thresholds(4), etab(4), ftab(4), u(9), ur(5)
   real(wp) :: e20, e40
   character(len=512) :: outdir, fname
@@ -31,6 +31,11 @@ program energy_sampler_dump
   call build_tabulated_sampler(linear, etab, ftab)
   ftab = [0.2_wp, 3.0_wp, 0.4_wp, 0.05_wp]
   call build_tabulated_sampler(broken, etab, ftab)
+  call build_tabulated_band_sampler(clipped, [10.0_wp,20.0_wp,110.0_wp], &
+       [10.0_wp,20.0_wp,110.0_wp], 13.598_wp, 100.0_wp)
+  if (abs(clipped%total_integral - 0.5_wp*(100.0_wp**2-13.598_wp**2)) > &
+      2.0e-12_wp*clipped%total_integral) &
+     error stop 'band-clipped tabulated integral failed'
 
   call random_seed(size=nseed)
   allocate(seed(nseed))
@@ -85,6 +90,8 @@ program energy_sampler_dump
   open(newunit=un, file=trim(fname), status='replace', action='write')
   do i = 1, ntab
      u(1) = (real(i,wp)-0.5_wp)/real(ntab,wp)
+     if (abs(energy_cdf_value(clipped,sample_energy_cdf(clipped,u(1)))-u(1)) > &
+         2.0e-14_wp) error stop 'band-clipped tabulated round trip failed'
      write(un,'(7(es24.16,1x))') u(1), sample_energy_cdf(constant,u(1)), &
           sample_energy_cdf(linear,u(1)), sample_energy_cdf(broken,u(1)), &
           energy_cdf_value(constant,sample_energy_cdf(constant,u(1))), &

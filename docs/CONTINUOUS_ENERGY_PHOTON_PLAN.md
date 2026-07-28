@@ -36,8 +36,15 @@ Implementation progress as of 2026-07-28:
   retain their sampled `eph` in continuous mode and explicitly select the
   historical bin center in grouped mode. A standalone policy gate and an
   actual grouped diffuse-packet smoke pass.
-- Next: safe sequence 16.7, activate the complete guarded H/He-only,
-  dust-free continuous-energy vertical slice atomically.
+- Safe sequence 16.7 complete: the guarded single-point H/He-only slice uses
+  continuous Planck or tabulated source energies, preserves diffuse energies,
+  evaluates exact-energy H/He opacity, accumulates direct exact-energy
+  ionization/heating estimators, and feeds those estimators to the solver.
+  Planck, threshold-structured table, random/Sobol, diffuse, iterative-solver,
+  1/3-rank, emitted/absorbed/escaped energy-closure, and 8/32
+  diagnostic-bin tests pass.
+- Next: safe sequence 16.8 step 17, enable exact-energy metal ionization and
+  heating estimators while keeping `ion_metal_abs=.false.`.
 
 ## 1. Required physical model
 
@@ -889,6 +896,28 @@ external features in continuous mode.
 
 Gate: monochromatic-cell, threshold, Strömgren, energy-conservation,
 diagnostic-bin-independence, random/QMC, and MPI tests pass.
+
+Implementation result (2026-07-28): complete for the deliberately guarded
+single internal point-source configuration. Analytic Planck and linearly
+interpolated tabulated spectra use the same monotone inverse-CDF interface;
+tabulated inputs are clipped to the transported band and integrated
+analytically. Pseudorandom and Sobol launch paths store the sampled energy,
+and diffuse launchers retain their existing continuum/line energy. The packet
+cache evaluates H/He cross-sections at that energy, dynamic H/He opacity
+drives both AMR and DDA walks, and direct path estimators supply the solver
+Gamma/heating arrays. `jt_ion` is written only as a diagnostic histogram and
+`NUBINUSE=diagnostic_only` records this separation.
+
+The production gate verifies bitwise solver/state identity between 8 and 32
+diagnostic bins for Planck, threshold-structured tabulated, diffuse, and
+iterated H/He cases; pseudorandom and Sobol paths; and 1/3-rank agreement.
+It also reduces emitted, absorbed, and escaped ionizing luminosities across
+MPI, requires closure to `5e-13`, and records `L_EMIT`, `L_ABS`, and `L_ESC`
+in the rates metadata. The existing threshold and isolated source-sampler/MPI
+gates also pass.
+Continuous mode remains fail-fast for multiple/external/slab sources, FUV,
+metals, secondary ionization, EUV dust, He I metastable photoionization, and
+peel-off imaging until their later atomic cutovers.
 
 ### 16.8 Add metals in two steps
 
