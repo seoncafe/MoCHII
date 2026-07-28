@@ -23,6 +23,7 @@ module diffuse_mod
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                             gas_Te, gas_nleaf
+  use ion_energy_policy_mod, only : assign_ion_packet_energy
   use recomb_mod
   implicit none
   private
@@ -186,10 +187,11 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
-    !--- Phase-1 grouped compatibility: carry a physical-energy field through
-    !--- transport, but deliberately initialize it from the diagnostic bin
-    !--- center.  Preserving the sampled diffuse eph is a later gated phase.
-    photon%energy_eV = ion_e(photon%inu)
+    !--- Grouped compatibility retains the historical bin-center physics.
+    !--- Once the guarded continuous vertical slice is enabled, preserve the
+    !--- already sampled diffuse energy instead; inu remains its output bin.
+    call assign_ion_packet_energy(photon%energy_eV, eph, &
+                                  ion_e(photon%inu), par%ion_energy_mode)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically
@@ -276,7 +278,8 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
-    photon%energy_eV = ion_e(photon%inu)
+    call assign_ion_packet_energy(photon%energy_eV, eph, &
+                                  ion_e(photon%inu), par%ion_energy_mode)
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically

@@ -32,8 +32,12 @@ Implementation progress as of 2026-07-28:
   five-uniform full-Planck Barnett--Canfield reference. Random/Sobol moments,
   quantiles, threshold fractions, the C II/He I window, multi-source,
   external, diffuse-stream, and bitwise 1/2/3/5/8-rank tests pass.
-- Next: safe sequence 16.6, preserve the physical energy already sampled by
-  diffuse emission while keeping grouped production results unchanged.
+- Safe sequence 16.6 complete: both pseudorandom and Sobol diffuse launchers
+  retain their sampled `eph` in continuous mode and explicitly select the
+  historical bin center in grouped mode. A standalone policy gate and an
+  actual grouped diffuse-packet smoke pass.
+- Next: safe sequence 16.7, activate the complete guarded H/He-only,
+  dust-free continuous-energy vertical slice atomically.
 
 ## 1. Required physical model
 
@@ -859,6 +863,15 @@ code remains disconnected from these samplers at this gate.
 
 Gate: grouped diffuse runs remain unchanged; standalone tests confirm that
 continuous diffuse energies survive launch.
+
+Implementation result (2026-07-28): complete. Both diffuse launch paths call
+one fail-closed energy-assignment policy after deriving `inu`: grouped mode
+stores `ion_e(inu)`, while continuous mode stores the sampled continuum,
+fixed-line, or two-photon `eph`. The setup guard still prevents continuous
+production transport before 16.7. The standalone survival gate covers all
+representative diffuse energy ranges, and the grouped plumbing gate launches
+real diffuse packets whose packet-cache assertion confirms bin-center
+compatibility.
 
 ### 16.7 Activate one complete H/He vertical slice
 

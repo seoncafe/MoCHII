@@ -181,6 +181,35 @@ def main():
         hhe_ok &= "grouped metal direct-rate shadow: PASS" not in hhe.stdout
         ok &= hhe_ok
 
+        diffuse_source = (
+            source.replace("par%xHI_init         = 1.0", "par%xHI_init         = 0.01")
+            .replace("par%xHeI_init        = 1.0", "par%xHeI_init        = 0.10")
+            .replace("par%xHeII_init       = 0.0", "par%xHeII_init       = 0.90")
+            .replace(
+                "par%source_geometry  = 'point'",
+                "par%case_ab          = 'A'\n"
+                " par%diffuse_field    = .true.\n"
+                " par%source_geometry  = 'point'",
+            )
+            .replace("grouped_plumbing.h5", "grouped_diffuse.h5")
+        )
+        diffuse = run_case(
+            executable, diffuse_source, work / "diffuse.in", work, run_env
+        )
+        diffuse_ok = check_shadow(
+            "grouped diffuse energy", diffuse, require_scattered=False
+        )
+        match = re.search(
+            r"diffuse field: L =\s*[0-9.Ee+-]+\s*erg/s,\s*(\d+)\s*packets",
+            diffuse.stdout,
+        )
+        diffuse_ok &= match is not None and int(match.group(1)) > 0
+        print(
+            "grouped diffuse packets launched:"
+            f" {'PASS' if match is not None and int(match.group(1)) > 0 else 'FAIL'}"
+        )
+        ok &= diffuse_ok
+
         dda_source = source.replace(
             "par%car_walk         = 'amr'",
             "par%car_walk         = 'dda'",

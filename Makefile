@@ -70,6 +70,7 @@ $(SRCDIR)/%.o: $(SRCDIR)/%.f90
 
 OBJS	= \
 	define.o \
+	ion_energy_policy_mod.o \
 	random_mt.o \
 	qmc_mod.o \
 	energy_sampler_mod.o \
