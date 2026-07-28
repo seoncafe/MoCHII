@@ -26,8 +26,14 @@ Implementation progress as of 2026-07-28:
   opacity update. H/He-only, metal, dust-scattering, AMR, DDA, and
   re-refinement dynamic-opacity shadows agree with `kap_ion` at approximately
   `3e-16` or better.
-- Next: safe sequence 16.5, implement and statistically validate the
-  tabulated-spectrum and band-limited Planck energy samplers in isolation.
+- Safe sequence 16.5 complete: an isolated continuous-energy sampler provides
+  analytic inversion of piecewise-linear tabulated spectra, an adaptive
+  band-limited Planck CDF shared by random and Sobol uniforms, and the
+  five-uniform full-Planck Barnett--Canfield reference. Random/Sobol moments,
+  quantiles, threshold fractions, the C II/He I window, multi-source,
+  external, diffuse-stream, and bitwise 1/2/3/5/8-rank tests pass.
+- Next: safe sequence 16.6, preserve the physical energy already sampled by
+  diffuse emission while keeping grouped production results unchanged.
 
 ## 1. Required physical model
 
@@ -835,6 +841,16 @@ transported with a continuous energy.
 Gate: sampled moments, quantiles, threshold fractions, the C II/He I window,
 QMC scramble behavior, and MPI rank independence all pass. The samplers are
 not yet connected to production transport.
+
+Implementation result (2026-07-28): complete. `energy_sampler_mod` contains
+no diagnostic-bin dependency. Its tabulated sampler analytically integrates
+and inverts each linear interval, while its Planck sampler adaptively refines
+the energy-luminosity density with all supplied thresholds retained as knots.
+The same monotone inverse accepts either pseudorandom or Sobol uniforms. The
+standalone `tests/energy_sampler` gate also checks the independent
+five-uniform Barnett--Canfield reference and reproduces the identical
+global-index energy array at 1, 2, 3, 5, and 8 MPI ranks. Production launch
+code remains disconnected from these samplers at this gate.
 
 ### 16.6 Preserve diffuse energy
 

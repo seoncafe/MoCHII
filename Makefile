@@ -72,6 +72,7 @@ OBJS	= \
 	define.o \
 	random_mt.o \
 	qmc_mod.o \
+	energy_sampler_mod.o \
 	utility.o \
 	memory_mod_mpi.o \
 	mathlib.o \
