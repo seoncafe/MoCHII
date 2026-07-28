@@ -349,6 +349,87 @@ def main():
             print(continuous_32.stdout)
         ok &= continuous_ok
 
+        continuous_metal_source = (
+            continuous_source.replace(
+                "par%use_metals       = .false.",
+                "par%use_metals       = .true.\n"
+                " par%ion_metal_abs    = .false.",
+            )
+            .replace("continuous_8.h5", "continuous_metal_8.h5")
+        )
+        continuous_metal_8 = run_case(
+            executable,
+            continuous_metal_source,
+            work / "continuous_metal_8.in",
+            work,
+            run_env,
+        )
+        continuous_metal_32_source = continuous_metal_source.replace(
+            "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+        ).replace("continuous_metal_8.h5", "continuous_metal_32.h5")
+        continuous_metal_32 = run_case(
+            executable,
+            continuous_metal_32_source,
+            work / "continuous_metal_32.in",
+            work,
+            run_env,
+        )
+        metal_ok = (
+            continuous_metal_8.returncode == 0
+            and continuous_metal_32.returncode == 0
+            and "ION: continuous metal direct rates: ACTIVE"
+            in continuous_metal_8.stdout
+            and "ION: continuous metal direct rates: ACTIVE"
+            in continuous_metal_32.stdout
+        )
+        if metal_ok:
+            with h5py.File(
+                work / "continuous_metal_8_rates.h5", "r"
+            ) as coarse, h5py.File(
+                work / "continuous_metal_32_rates.h5", "r"
+            ) as fine:
+                metal_fields = sorted(
+                    name for name in coarse.keys()
+                    if name.startswith("x_") and name.endswith("_stages")
+                )
+                metal_ok &= bool(metal_fields)
+                for name in metal_fields:
+                    coarse_frac = coarse[f"{name}/data"][:]
+                    fine_frac = fine[f"{name}/data"][:]
+                    metal_ok &= np.array_equal(
+                        coarse_frac, fine_frac, equal_nan=True
+                    )
+                    metal_ok &= np.all(np.isfinite(coarse_frac))
+                    metal_ok &= np.allclose(
+                        np.sum(coarse_frac, axis=1),
+                        1.0,
+                        rtol=5.0e-14,
+                        atol=5.0e-14,
+                    )
+                for prefix in ("Gamma_", "Heat_"):
+                    rate_fields = sorted(
+                        name for name in coarse.keys()
+                        if name.startswith(prefix) and name.endswith("_stages")
+                    )
+                    metal_ok &= len(rate_fields) == len(metal_fields)
+                    for name in rate_fields:
+                        coarse_rate = coarse[f"{name}/data"][:]
+                        fine_rate = fine[f"{name}/data"][:]
+                        metal_ok &= np.array_equal(
+                            coarse_rate, fine_rate, equal_nan=True
+                        )
+                        metal_ok &= np.all(np.isfinite(coarse_rate))
+                        metal_ok &= np.all(coarse_rate >= 0.0)
+                        metal_ok &= np.any(coarse_rate > 0.0)
+        print(
+            "continuous metal 8/32-bin rates/heating/stages bitwise identical:"
+            f" {'PASS' if metal_ok else 'FAIL'}"
+        )
+        if not metal_ok:
+            print(continuous_metal_8.stdout)
+            print(continuous_metal_32.stdout)
+        ok &= metal_ok
+
         continuous_iter_source = (
             continuous_source.replace(
                 "par%gas_niter        = 0", "par%gas_niter        = 3"
@@ -588,7 +669,10 @@ def main():
             work,
             run_env,
         )
-        guard_text = "continuous H/He vertical slice requires use_metals=.false."
+        guard_text = (
+            "continuous H/He vertical slice requires "
+            "ion_metal_abs=.false. when use_metals=.true."
+        )
         passed = continuous.returncode != 0 and guard_text in continuous.stdout
         print(
             "continuous fail-fast:"

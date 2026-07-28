@@ -138,8 +138,14 @@ contains
     end if
     if (par%use_metals) then
        block
-         use species_mod, only : species_shadow_score
-         call species_shadow_score(inu, il, path_lum)
+         use species_mod, only : species_shadow_score, species_shadow_score_exact
+         if (trim(par%ion_energy_mode) == 'continuous') then
+            call species_shadow_score_exact(photon%ionphys%energy_eV, &
+                 photon%ionphys%sigma_metal, photon%ionphys%n_metal, &
+                 il, path_lum)
+         else
+            call species_shadow_score(inu, il, path_lum)
+         end if
        end block
     end if
   end subroutine score_ion_path
@@ -286,7 +292,13 @@ contains
   end subroutine ion_score_compare_hhe
 
   subroutine ion_score_compare_metals()
-    if (.not. par%ion_shadow_rates .or. .not. par%use_metals) return
+    if (.not. par%use_metals) return
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       if (mpar%p_rank == 0) &
+          write(*,'(a)') ' ION: continuous metal direct rates: ACTIVE'
+       return
+    end if
+    if (.not. par%ion_shadow_rates) return
     block
       use species_mod, only : species_shadow_compare
       call species_shadow_compare(SHADOW_RTOL)

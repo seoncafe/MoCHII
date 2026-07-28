@@ -230,15 +230,17 @@ contains
     !--- retained as mandatory adaptive-CDF knots for the Planck case.
     source_energy_sampler_ready = .false.
     if (trim(par%ion_energy_mode) == 'continuous') then
-       call setup_continuous_source_sampler()
+       call setup_continuous_source_sampler(metal_eth, nmetal)
        source_energy_sampler_ready = .true.
     end if
   end subroutine ion_setup
 
-  subroutine setup_continuous_source_sampler()
+  subroutine setup_continuous_source_sampler(metal_eth, nmetal)
     implicit none
-    real(kind=wp), allocatable :: etab(:), ftab(:)
-    integer :: ntab
+    real(kind=wp), intent(in), optional :: metal_eth(:)
+    integer,       intent(in), optional :: nmetal
+    real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
+    integer :: ntab, nmet
 
     if (len_trim(par%src_spectrum_file) > 0) then
        if (spec_is_physical()) then
@@ -253,9 +255,16 @@ contains
           call read_shape_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
        end if
     else
+       nmet = 0
+       if (present(nmetal)) nmet = nmetal
+       allocate(knots(3+nmet))
+       knots(1:3) = [eth_HI, eth_HeI, eth_HeII]
+       if (nmet > 0 .and. present(metal_eth)) &
+          knots(4:3+nmet) = metal_eth(1:nmet)
        call build_planck_sampler(source_energy_sampler, par%tstar, &
             par%eion_min, par%eion_max, par%source_cdf_tol, &
-            [eth_HI, eth_HeI, eth_HeII])
+            knots)
+       deallocate(knots)
        ion_Ltot = par%luminosity
        return
     end if

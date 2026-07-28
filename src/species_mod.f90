@@ -35,6 +35,7 @@ module species_mod
   public :: species_ne_prepare, species_ne_cached
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
   public :: species_shadow_setup, species_shadow_reset, species_shadow_score
+  public :: species_shadow_score_exact
   public :: species_shadow_reduce, species_shadow_compare
   public :: species_stage_cache_refresh
   public :: species_packet_cross_sections, species_cached_opacity
@@ -89,10 +90,10 @@ module species_mod
   !--- photoheating per particle [erg/s] (transition, leaf); filled with
   !--- the Gamma's, consumed by metal_heating (par%metal_heat).
   type(gamma_block) :: eheat(MAX_EL)
-  !--- Grouped direct-estimator validation blocks.  coeff(1,:,:) is the
-  !--- ionization coefficient sigma/E and coeff(2,:,:) the heating coefficient;
-  !--- raw carries their unnormalized path sums.  Allocated only when
-  !--- par%ion_shadow_rates is enabled.
+  !--- Direct metal-rate estimator blocks.  coeff(1,:,:) is the grouped
+  !--- validation coefficient sigma/E and coeff(2,:,:) its heating
+  !--- coefficient. raw carries unnormalized path sums and is also the
+  !--- authoritative continuous-energy estimator.
   type metal_shadow_block
      real(kind=wp), allocatable :: coeff(:,:,:)  ! (2,ntransition,nnu)
      real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf)
@@ -267,18 +268,20 @@ contains
        if (allocated(metal_shadow(ie)%coeff)) deallocate(metal_shadow(ie)%coeff)
        if (allocated(metal_shadow(ie)%raw)) deallocate(metal_shadow(ie)%raw)
        nt = elems(ie)%nstage - 1
-       allocate(metal_shadow(ie)%coeff(2,nt,nnu_band))
        allocate(metal_shadow(ie)%raw(2,nt,nleaf))
        metal_shadow(ie)%raw = 0.0_wp
-       do it = 1, nt
-          do inu = 1, nnu_band
-             energy = ion_e(inu)
-             sig = species_sigma(ie, it, energy)
-             metal_shadow(ie)%coeff(1,it,inu) = sig/(energy*ev2erg)
-             metal_shadow(ie)%coeff(2,it,inu) = sig*max( &
-                1.0_wp - elems(ie)%eth(it)/energy, 0.0_wp)
+       if (par%ion_shadow_rates) then
+          allocate(metal_shadow(ie)%coeff(2,nt,nnu_band))
+          do it = 1, nt
+             do inu = 1, nnu_band
+                energy = ion_e(inu)
+                sig = species_sigma(ie, it, energy)
+                metal_shadow(ie)%coeff(1,it,inu) = sig/(energy*ev2erg)
+                metal_shadow(ie)%coeff(2,it,inu) = sig*max( &
+                   1.0_wp - elems(ie)%eth(it)/energy, 0.0_wp)
+             end do
           end do
-       end do
+       end if
     end do
   end subroutine species_shadow_setup
 
@@ -300,6 +303,22 @@ contains
        end do
     end do
   end subroutine species_shadow_score
+
+  subroutine species_shadow_score_exact(energy, sigma, ntransition, il, path_lum)
+    real(kind=wp), intent(in) :: energy
+    real(kind=wp), intent(in) :: sigma(MAX_METAL_TRANSITIONS)
+    integer,       intent(in) :: ntransition, il
+    real(kind=wp), intent(in) :: path_lum
+    integer :: k, ie, it
+    do k = 1, ntransition
+       ie = flat_ie(k)
+       it = flat_it(k)
+       metal_shadow(ie)%raw(1,it,il) = metal_shadow(ie)%raw(1,it,il) &
+          + path_lum*sigma(k)/(energy*ev2erg)
+       metal_shadow(ie)%raw(2,it,il) = metal_shadow(ie)%raw(2,it,il) &
+          + path_lum*sigma(k)*max(1.0_wp-elems(ie)%eth(it)/energy, 0.0_wp)
+    end do
+  end subroutine species_shadow_score_exact
 
   subroutine species_shadow_reduce()
     use mpi
@@ -536,6 +555,22 @@ implicit none
     real(kind=wp) :: sig(nnu_band), vol, fac, fJ, fH
 
     nleaf = amr_grid%nleaf
+    if (trim(par%ion_energy_mode) == 'continuous') then
+       do ie = 1, n_elements
+          if (.not. allocated(metal_shadow(ie)%raw)) &
+             error stop 'continuous metal path estimators are not allocated'
+          do it = 1, elems(ie)%nstage-1
+             do il = 1, nleaf
+                vol = (2.0_wp*leaf_half(il))**3
+                fac = 1.0_wp/(vol*par%distance2cm**2)
+                egam(ie)%g(it,il) = metal_shadow(ie)%raw(1,it,il)*fac
+                eheat(ie)%g(it,il) = metal_shadow(ie)%raw(2,it,il)*fac
+             end do
+          end do
+       end do
+       return
+    end if
+
     do ie = 1, n_elements
        do it = 1, elems(ie)%nstage-1
           do inu = 1, nnu_band
@@ -868,6 +903,15 @@ implicit none
             'ion fractions (stage, leaf)',status)
        call io_put_keyword(file,'ABUND',elems(ie)%abund,'n(X)/n(H)',status)
        deallocate(fr)
+
+       call io_append_image(file, egam(ie)%g, status, bitpix=-64)
+       write(extname,'(3a)') 'Gamma_', trim(elems(ie)%name), '_stages'
+       call io_put_keyword(file,'EXTNAME',trim(extname), &
+            'photoionization rates (transition, leaf) [s^-1]',status)
+       call io_append_image(file, eheat(ie)%g, status, bitpix=-64)
+       write(extname,'(3a)') 'Heat_', trim(elems(ie)%name), '_stages'
+       call io_put_keyword(file,'EXTNAME',trim(extname), &
+            'photoheating rates (transition, leaf) [erg/s per ion]',status)
     end do
   end subroutine species_write
 

@@ -43,8 +43,13 @@ Implementation progress as of 2026-07-28:
   Planck, threshold-structured table, random/Sobol, diffuse, iterative-solver,
   1/3-rank, emitted/absorbed/escaped energy-closure, and 8/32
   diagnostic-bin tests pass.
-- Next: safe sequence 16.8 step 17, enable exact-energy metal ionization and
-  heating estimators while keeping `ion_metal_abs=.false.`.
+- Safe sequence 16.8 step 17 complete: trace-metal ionization and heating
+  estimators consume each packet's exact-energy cross-section cache while
+  `ion_metal_abs=.false.` keeps metals out of transport opacity. Metal
+  `Gamma`, heating, and stage fractions are bitwise identical with 8 and 32
+  diagnostic bins.
+- Next: safe sequence 16.8 step 18, benchmark exact-energy metal scoring
+  strategies before enabling metal opacity.
 
 ## 1. Required physical model
 
@@ -916,8 +921,9 @@ MPI, requires closure to `5e-13`, and records `L_EMIT`, `L_ABS`, and `L_ESC`
 in the rates metadata. The existing threshold and isolated source-sampler/MPI
 gates also pass.
 Continuous mode remains fail-fast for multiple/external/slab sources, FUV,
-metals, secondary ionization, EUV dust, He I metastable photoionization, and
-peel-off imaging until their later atomic cutovers.
+metal opacity, metal electron/heating coupling, secondary ionization, EUV
+dust, He I metastable photoionization, and peel-off imaging until their later
+atomic cutovers.
 
 ### 16.8 Add metals in two steps
 
@@ -925,6 +931,20 @@ peel-off imaging until their later atomic cutovers.
     `ion_metal_abs=.false.`. This trace-metal configuration is sufficient to
     test recovery of the HII20 C III tail without coupling metal opacity back
     into transport.
+
+Implementation result (2026-07-28): complete. The packet cache evaluates all
+active metal-transition cross-sections once at `photon%energy_eV`. The common
+path scorer accumulates exact `sigma/E` ionization and excess-energy heating
+coefficients, MPI reduction preserves the existing ownership model, and
+`species_gamma_compute` feeds those reduced arrays to the metal cascade in
+continuous mode. Rates files expose per-element `Gamma_*_stages` and
+`Heat_*_stages` arrays in addition to stage fractions. Active metal thresholds
+are also mandatory Planck-CDF quadrature knots. The production gate verifies
+that all three outputs are finite and bitwise identical for 8 and 32
+diagnostic bins. `ion_metal_abs=.true.`, `metal_ne=.true.`, and
+`metal_heat=.true.` remain fail-fast so this step does not prematurely
+activate opacity or the 16.9 thermal coupling.
+
 18. Benchmark metal scoring strategies before enabling full metal opacity:
 
     - all active transitions;
