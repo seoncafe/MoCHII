@@ -15,7 +15,7 @@ results are recorded in CLAUDE.md and docs/MoCHII_physics.pdf.
 | `g4_tng` | Illustris-TNG post-processing demo |
 | `io` | HDF5 first-error preservation, failed-create propagation, HDF5-off compilation, and case-insensitive extension detection |
 | `thermal_parallel` | Exact `x_HI`, `x_HeI`, `x_HeII`, `n_e`, and `T_e` comparison between serial-thermal and node-local MPI-thermal rate files |
-| `continuous_energy` | Continuous-energy migration gates: C II/He I thresholds; grouped shadows/baselines; diffuse-energy survival; guarded exact-energy H/He Planck/table transport and solver rates; exact metal ionization/heating and opacity with iteration-refreshed stage caches; threshold-sorted metal scoring benchmark; random/Sobol, 1/3-rank, iterative, and 8/32-bin independence |
+| `continuous_energy` | Continuous-energy migration gates: C II/He I thresholds; grouped shadows/baselines; diffuse-energy survival; guarded exact-energy H/He Planck/table transport and solver rates; exact metal ionization/heating, opacity, electron, and thermal coupling; threshold-sorted metal scoring benchmark; random/Sobol, 1/3-rank, iterative, and 8/32-bin independence |
 | `energy_sampler` | Isolated continuous source samplers: analytic tabulated inverse CDF, adaptive band-limited Planck CDF, full-Planck Barnett--Canfield reference, random/Sobol statistics, source-coordinate mappings, and 1/2/3/5/8-rank QMC identity |
 | `d_dusty` | dusty Stromgren, scattering bracket, T_dust/IR, SEDust smokes (`sedust_smoke.in`, `dustemis_smoke.in`, `pahlive_smoke.in`), FUV option (`d_fuv_*.in`, `check_fuv.py`) |
 | `peel` | peel-off imaging: optically-thin analytic direct gate (`peel_thin.in`, `check_peel.py`), scattered morphology (`peel_scat.in`), bin cubes (`peel_cube.in`) |

@@ -57,8 +57,12 @@ Implementation progress as of 2026-07-28:
   packet's exact-energy metal cross sections with the iteration-refreshed
   per-leaf stage cache. Iterated 8/32-bin states and rates are bitwise
   identical, 1/3-rank results agree, and an HII20 AMR/thermal smoke passes.
-- Next: safe sequence 16.9 step 20, restore metal electron and photoheating
-  coupling to the continuous thermal iteration.
+- Safe sequence 16.9 step 20 complete: `metal_ne` and `metal_heat` consume
+  exact-energy metal ionization/heating arrays in the continuous thermal
+  iteration. Full-coupling 8/32-bin states are bitwise identical and 1/3-rank
+  outputs agree.
+- Next: safe sequence 16.9 step 21, run fully converged continuous HII20 and
+  HII40 calculations with final consistency passes.
 
 ## 1. Required physical model
 
@@ -930,9 +934,8 @@ MPI, requires closure to `5e-13`, and records `L_EMIT`, `L_ABS`, and `L_ESC`
 in the rates metadata. The existing threshold and isolated source-sampler/MPI
 gates also pass.
 Continuous mode remains fail-fast for multiple/external/slab sources, FUV,
-metal electron/heating coupling, secondary ionization, EUV dust, He I
-metastable photoionization, and peel-off imaging until their later atomic
-cutovers.
+secondary ionization, EUV dust, He I metastable photoionization, and peel-off
+imaging until their later atomic cutovers.
 
 ### 16.8 Add metals in two steps
 
@@ -1003,6 +1006,16 @@ walk.
 
 20. Connect exact-energy metal photoheating, metal electron contribution, and
     the thermal iteration.
+
+Implementation result (2026-07-28): complete. Both existing thermal consumers
+already read `egam`/`eheat`, which are authoritative direct exact-energy
+estimators in continuous mode. The continuous setup guard now permits
+`metal_ne` and `metal_heat`. A three-iteration full-coupling gate enables
+exact metal opacity, metal electrons, metal photoheating, and the thermal
+solver together; H/He state, electron density, temperature, metal
+`Gamma`/heating, and stage fractions are bitwise identical with 8 and 32
+diagnostic bins. One- and three-rank outputs agree to `5e-14`.
+
 21. Run fully converged HII20 and HII40 calculations, including the final
     consistency pass.
 

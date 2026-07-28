@@ -483,8 +483,6 @@ contains
          len_trim(par%src_spectrum_file) == 0 .and. par%tstar <= 0.0_wp) &
         continuous_reason = 'a Planck or tabulated internal-source spectrum'
      if (par%add_fuv) continuous_reason = 'add_fuv=.false.'
-     if (par%metal_ne) continuous_reason = 'metal_ne=.false.'
-     if (par%metal_heat) continuous_reason = 'metal_heat=.false.'
      if (par%ion_add_dust) continuous_reason = 'ion_add_dust=.false.'
      if (par%use_sec_ion) continuous_reason = 'use_sec_ion=.false.'
      if (par%hei_metastable) continuous_reason = 'hei_metastable=.false.'
