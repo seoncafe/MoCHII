@@ -61,8 +61,13 @@ Implementation progress as of 2026-07-28:
   exact-energy metal ionization/heating arrays in the continuous thermal
   iteration. Full-coupling 8/32-bin states are bitwise identical and 1/3-rank
   outputs agree.
-- Next: safe sequence 16.9 step 21, run fully converged continuous HII20 and
-  HII40 calculations with final consistency passes.
+- Safe sequence 16.9 step 21 complete: 8-rank, `2^25`-packet Sobol
+  production calculations of HII20 and HII40 converged in 27 and 38 gas
+  iterations, respectively, and both completed their final consistency pass.
+  The production gate passes energy closure, metadata, C III-tail recovery,
+  Cloudy radial-profile non-regression, and temperature non-regression.
+- Next: use the converged outputs for the complete diagnostic-resolution and
+  RQMC/MPI ensemble before regenerating paper figures.
 
 ## 1. Required physical model
 
@@ -1022,6 +1027,31 @@ diagnostic bins. One- and three-rank outputs agree to `5e-14`.
 Gate: the C III tail is recovered, other species and temperatures do not
 regress, and diagnostic energy-bin changes do not alter the physical solution
 for a fixed packet history.
+
+Implementation result (2026-07-28): complete. Both runs used
+`launch_sequence='sobol'`, `qmc_seed=20260728`, `no_photons=2^25`,
+`ion_energy_mode='continuous'`, 32 diagnostic bins, explicit case-A diffuse
+transport including He I channels, exact metal opacity, metal electrons, and
+metal photoheating.  Both ran on eight MPI ranks and required convergence
+before output.  HII20 converged in 27 iterations with final energy closure
+`1.996e-16`; HII40 converged in 38 with closure below printed precision.
+
+The C III shell medians, continuous / grouped / Cloudy c25, were:
+
+| model | radius [pc] | continuous | grouped | Cloudy c25 |
+|---|---:|---:|---:|---:|
+| HII20 | 1.50 | 0.0890 | `1.01e-15` | 0.1096 |
+| HII20 | 2.00 | 0.0409 | `5.00e-16` | 0.0509 |
+| HII20 | 2.50 | 0.0185 | `2.37e-15` | 0.0235 |
+| HII40 | 4.20 | 0.257 | `1.76e-3` | 0.544 |
+| HII40 | 4.35 | 0.210 | `6.88e-9` | 0.261 |
+| HII40 | 4.50 | 0.156 | `1.22e-10` | 0.201 |
+
+`tests/continuous_energy/check_hii_production.py` passes for both models.
+The mean ionized-gas temperatures move only -0.54% (HII20) and -0.09%
+(HII40) from the frozen grouped calculations.  All checked H/He, C, N, O,
+and Ne radial-profile errors against Cloudy either improve or remain within
+the predefined non-regression allowance.
 
 ### 16.10 Add secondary and dust physics one feature at a time
 
