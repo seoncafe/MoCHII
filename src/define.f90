@@ -838,12 +838,14 @@ public
      !--- p_rank    = process (thread) rank
      !--- h_rank    = host rank (rank defined for each process of a node)
      !--- nproc     = number of total processes
+     !--- h_size    = number of processes sharing the node
      !--- hostcomm  = communicator for host
      !--- SAME_HRANK_COMM  = communicator for processes with the same h_rank
      !--- SAME_HRANK_NPROC = number of processes with the same h_rank
      integer :: p_rank
      integer :: h_rank
      integer :: nproc
+     integer :: h_size
      integer :: hostcomm
      integer :: SAME_HRANK_COMM
      integer :: SAME_HRANK_NPROC

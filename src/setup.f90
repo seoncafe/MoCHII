@@ -78,6 +78,7 @@ contains
   call MPI_COMM_SPLIT_TYPE(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, mpar%p_rank, &
                            MPI_INFO_NULL, mpar%hostcomm, ierr)
   call MPI_COMM_RANK(mpar%hostcomm, mpar%h_rank, ierr)
+  call MPI_COMM_SIZE(mpar%hostcomm, mpar%h_size, ierr)
   call MPI_COMM_SPLIT(MPI_COMM_WORLD, mpar%h_rank, mpar%p_rank, mpar%SAME_HRANK_COMM, ierr)
   call MPI_COMM_SIZE(mpar%SAME_HRANK_COMM, mpar%SAME_HRANK_NPROC, ierr)
 

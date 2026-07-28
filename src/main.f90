@@ -42,6 +42,7 @@ program main
   type(photon_type)   :: photon
   integer(kind=int64) :: ip, n_done, n_step
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol
+  real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
   logical             :: converged, use_vol, use_sobol
   integer             :: ierr, iter, niter, nd_qmc
@@ -120,7 +121,9 @@ program main
      if (par%gas_niter < 1) exit          ! rates only, no solve
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
+        thermal_t0 = MPI_WTIME()
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
+        thermal_dt = MPI_WTIME() - thermal_t0
         if (use_vol) then
            converged = dx_vol < par%gas_tol .and. dte_vol < par%gas_tol_te
         else
@@ -133,6 +136,9 @@ program main
            write(6,'(a,2(a,es12.4))') &
               '                 ', ' vol |delta x_HII| = ', dx_vol, &
               ',  vol |delta Te|/Te = ', dte_vol
+           write(6,'(a,f10.3,a,i0,a)') &
+              '                  thermal solve = ', thermal_dt, &
+              ' s (', mpar%h_size, ' node-local MPI ranks)'
         end if
      else
         call gas_equilibrium_update(max_dx, dx_vol)

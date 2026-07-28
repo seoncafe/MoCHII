@@ -12,11 +12,12 @@ module gas_state_mod
 ! from grid_create_amr before the transient read arrays are deallocated.
 !---------------------------------------------------------------------------
   use define
-  use memory_mod, only : create_shared_mem
+  use memory_mod, only : create_shared_mem, get_window
+  use mpi
   implicit none
   private
 
-  public :: gas_state_setup, gas_state_recreate
+  public :: gas_state_setup, gas_state_recreate, gas_state_sync
   public :: gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_Te, gas_nleaf
 
   real(kind=wp), pointer :: gas_nH(:)    => null()  ! H number density [cm^-3]
@@ -26,6 +27,9 @@ module gas_state_mod
   real(kind=wp), pointer :: gas_ne(:)    => null()  ! electron density [cm^-3]
   real(kind=wp), pointer :: gas_Te(:)    => null()  ! electron temperature [K]
   integer :: gas_nleaf = 0
+  integer :: win_xHI = MPI_WIN_NULL, win_xHeI = MPI_WIN_NULL
+  integer :: win_xHeII = MPI_WIN_NULL, win_ne = MPI_WIN_NULL
+  integer :: win_Te = MPI_WIN_NULL
 
 contains
 
@@ -35,12 +39,11 @@ contains
   ! par%xHeI_init / par%xHeII_init (no He columns in the generic format).
   !=========================================================================
   subroutine gas_state_setup(nH, nleaf, xHI)
-    use mpi
     implicit none
     real(kind=wp), intent(in)           :: nH(:)
     integer,       intent(in)           :: nleaf
     real(kind=wp), intent(in), optional :: xHI(:)
-    integer :: il, ierr
+    integer :: il
 
     gas_nleaf = nleaf
     call create_shared_mem(gas_nH,    [nleaf])
@@ -49,6 +52,7 @@ contains
     call create_shared_mem(gas_xHeII, [nleaf])
     call create_shared_mem(gas_ne,    [nleaf])
     call create_shared_mem(gas_Te,    [nleaf])
+    call cache_state_windows()
 
     if (mpar%h_rank == 0) then
        do il = 1, nleaf
@@ -70,7 +74,7 @@ contains
        end do
        gas_Te(:) = par%te_fixed
     end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call gas_state_sync()
 
     if (mpar%p_rank == 0) then
        write(*,'(a,i12)')    ' GAS: leaf state allocated, nleaf = ', nleaf
@@ -91,13 +95,10 @@ contains
   ! local arrays.  Collective; h_rank 0 writes.
   !=========================================================================
   subroutine gas_state_recreate(nleaf, nHv, x1, x2, x3, nev, tev)
-    use mpi
     implicit none
     integer,       intent(in) :: nleaf
     real(kind=wp), intent(in) :: nHv(nleaf), x1(nleaf), x2(nleaf), &
                                  x3(nleaf), nev(nleaf), tev(nleaf)
-    integer :: ierr
-
     gas_nleaf = nleaf
     call create_shared_mem(gas_nH,    [nleaf])
     call create_shared_mem(gas_xHI,   [nleaf])
@@ -105,6 +106,7 @@ contains
     call create_shared_mem(gas_xHeII, [nleaf])
     call create_shared_mem(gas_ne,    [nleaf])
     call create_shared_mem(gas_Te,    [nleaf])
+    call cache_state_windows()
     if (mpar%h_rank == 0) then
        gas_nH(1:nleaf)    = nHv
        gas_xHI(1:nleaf)   = x1
@@ -113,7 +115,33 @@ contains
        gas_ne(1:nleaf)    = nev
        gas_Te(1:nleaf)    = tev
     end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call gas_state_sync()
   end subroutine gas_state_recreate
+
+  !=========================================================================
+  ! Publish direct loads/stores to the node-shared gas-state windows.
+  !
+  ! The inherited shared-memory allocator keeps a fence epoch open for each
+  ! window.  Advancing that epoch collectively publishes the direct stores;
+  ! the host barrier then keeps all state windows at the same update boundary.
+  !=========================================================================
+  subroutine gas_state_sync()
+    integer :: ierr
+
+    if (win_xHI   /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHI,   ierr)
+    if (win_xHeI  /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeI,  ierr)
+    if (win_xHeII /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeII, ierr)
+    if (win_ne    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_ne,    ierr)
+    if (win_Te    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_Te,    ierr)
+    call MPI_BARRIER(mpar%hostcomm, ierr)
+  end subroutine gas_state_sync
+
+  subroutine cache_state_windows()
+    call get_window(gas_xHI,   win_xHI)
+    call get_window(gas_xHeI,  win_xHeI)
+    call get_window(gas_xHeII, win_xHeII)
+    call get_window(gas_ne,    win_ne)
+    call get_window(gas_Te,    win_Te)
+  end subroutine cache_state_windows
 
 end module gas_state_mod

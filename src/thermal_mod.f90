@@ -18,7 +18,7 @@ module thermal_mod
 !---------------------------------------------------------------------------
   use define
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                            gas_Te, gas_nleaf
+                            gas_Te, gas_nleaf, gas_state_sync
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             sec_dgamma_HI, sec_dgamma_HeI, &
                             sec_heat_HI, sec_heat_HeI, sec_heat_HeII
@@ -123,33 +123,31 @@ contains
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
   subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
     use mpi
-    use octree_mod, only : amr_grid, leaf_half
+    use octree_mod, only : leaf_half
     implicit none
     real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol
 
     real(kind=wp), allocatable :: xHI_new(:), xHeI_new(:), xHeII_new(:), &
                                   ne_new(:), te_new(:)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol
-    real(kind=wp) :: sum_dxv, sum_xv, sum_dtev, sum_tev
+    real(kind=wp) :: max_local(2), max_host(2)
+    real(kind=wp) :: sum_local(4), sum_host(4), metrics(4)
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     logical :: caseA
     integer :: il, it, ierr
 
     caseA = trim(par%case_ab) == 'A'
     w     = par%ion_relax
-    !--- only the node-local rank 0 solves; jt_ion is ALLREDUCEd over
-    !--- MPI_COMM_WORLD so every node's rank 0 is identical.  The other node
-    !--- ranks skip the (expensive) bisection-with-metals and receive the
-    !--- state through shared memory + the metrics by broadcast.
-    if (mpar%h_rank == 0) then
     allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &
              ne_new(gas_nleaf), te_new(gas_nleaf))
 
-    max_dx   = 0.0_wp
-    max_dte  = 0.0_wp
-    sum_dxv  = 0.0_wp;  sum_xv  = 0.0_wp
-    sum_dtev = 0.0_wp;  sum_tev = 0.0_wp
-    do il = 1, gas_nleaf
+    max_local = 0.0_wp
+    sum_local = 0.0_wp
+    !--- Cyclic ownership mixes cheap boundary-clamped cells with expensive
+    !--- bracketed cells.  h_size is the actual node-local communicator size,
+    !--- so every leaf is owned exactly once even for 3, 5, 6, ... ranks and
+    !--- on multi-node jobs whose node sizes differ from mpar%nproc.
+    do il = mpar%h_rank + 1, gas_nleaf, mpar%h_size
        nH = gas_nH(il)
        if (nH <= 0.0_wp) then
           xHI_new(il) = gas_xHI(il);  xHeI_new(il) = gas_xHeI(il)
@@ -205,19 +203,29 @@ contains
           end block
        end if
        te_new(il) = te
-       max_dx  = max(max_dx,  abs(xHI_new(il) - gas_xHI(il)))
-       max_dte = max(max_dte, abs(te_new(il) - gas_Te(il))/gas_Te(il))
+       max_local(1) = max(max_local(1), abs(xHI_new(il) - gas_xHI(il)))
+       max_local(2) = max(max_local(2), &
+                          abs(te_new(il) - gas_Te(il))/gas_Te(il))
        vol = (2.0_wp*leaf_half(il))**3
-       sum_dxv  = sum_dxv  + vol*abs(xHI_new(il) - gas_xHI(il))
-       sum_xv   = sum_xv   + vol*(1.0_wp - xHI_new(il))
-       sum_dtev = sum_dtev + vol*ne_new(il)*abs(te_new(il) - gas_Te(il))
-       sum_tev  = sum_tev  + vol*ne_new(il)*te_new(il)
+       sum_local(1) = sum_local(1) + vol*abs(xHI_new(il) - gas_xHI(il))
+       sum_local(2) = sum_local(2) + vol*(1.0_wp - xHI_new(il))
+       sum_local(3) = sum_local(3) &
+                    + vol*ne_new(il)*abs(te_new(il) - gas_Te(il))
+       sum_local(4) = sum_local(4) + vol*ne_new(il)*te_new(il)
     end do
-    dx_vol  = sum_dxv  / max(sum_xv,  tinest)
-    dte_vol = sum_dtev / max(sum_tev, tinest)
 
-    !--- write the solved state straight into the node-shared arrays.
-    do il = 1, gas_nleaf
+    call MPI_ALLREDUCE(max_local, max_host, 2, MPI_DOUBLE_PRECISION, MPI_MAX, &
+                       mpar%hostcomm, ierr)
+    call MPI_ALLREDUCE(sum_local, sum_host, 4, MPI_DOUBLE_PRECISION, MPI_SUM, &
+                       mpar%hostcomm, ierr)
+    max_dx  = max_host(1)
+    max_dte = max_host(2)
+    dx_vol  = sum_host(1) / max(sum_host(2), tinest)
+    dte_vol = sum_host(3) / max(sum_host(4), tinest)
+
+    !--- Each rank writes only the shared leaves for which it performed the
+    !--- solve; no uninitialized entries of its private work arrays are read.
+    do il = mpar%h_rank + 1, gas_nleaf, mpar%h_size
        gas_xHI(il)   = xHI_new(il)
        gas_xHeI(il)  = xHeI_new(il)
        gas_xHeII(il) = xHeII_new(il)
@@ -225,15 +233,19 @@ contains
        gas_Te(il)    = te_new(il)
     end do
     deallocate(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
-    end if   ! h_rank == 0
 
-    !--- broadcast the metrics to the node's other ranks and barrier so the
-    !--- shared-memory writes are visible before this returns.
-    call MPI_BCAST(max_dx,  1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
-    call MPI_BCAST(max_dte, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
-    call MPI_BCAST(dx_vol,  1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
-    call MPI_BCAST(dte_vol, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    !--- Publish the disjoint direct stores to every process on this node.
+    call gas_state_sync()
+
+    !--- Different nodes can have different host sizes and therefore a
+    !--- different floating-point summation order.  Use global rank 0's
+    !--- metrics everywhere so every rank makes the same loop-exit decision.
+    metrics = [max_dx, max_dte, dx_vol, dte_vol]
+    call MPI_BCAST(metrics, 4, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    max_dx  = metrics(1)
+    max_dte = metrics(2)
+    dx_vol  = metrics(3)
+    dte_vol = metrics(4)
   end subroutine gas_thermal_update
 
 end module thermal_mod

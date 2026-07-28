@@ -2789,7 +2789,7 @@ contains
   !---------------------------
   subroutine destroy_shared_mem_all()
   implicit none
-  integer, parameter :: assert = 0
+  integer, parameter :: assert = MPI_MODE_NOSUCCEED
   integer :: ierr, i
   do i=1, num_windows
      if (windows(i) /= MPI_WIN_NULL) then
@@ -2841,7 +2841,7 @@ contains
   subroutine destroy_shared_mem_window(win)
   implicit none
   integer, intent(in) :: win
-  integer, parameter  :: assert = 0
+  integer, parameter  :: assert = MPI_MODE_NOSUCCEED
   integer :: ierr, i
   do i=1, num_windows
      if (win == windows(i) .and. windows(i) /= MPI_WIN_NULL) then
