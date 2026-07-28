@@ -53,7 +53,12 @@ Implementation progress as of 2026-07-28:
   first inaccessible transition. The operation benchmark predicts a
   61--69% reduction for HII20/HII40 and a 56--64% reduction with every
   registry element enabled, without stochastic estimator noise.
-- Next: safe sequence 16.8 step 19, enable and validate exact metal opacity.
+- Safe sequence 16.8 step 19 complete: continuous transport combines the
+  packet's exact-energy metal cross sections with the iteration-refreshed
+  per-leaf stage cache. Iterated 8/32-bin states and rates are bitwise
+  identical, 1/3-rank results agree, and an HII20 AMR/thermal smoke passes.
+- Next: safe sequence 16.9 step 20, restore metal electron and photoheating
+  coupling to the continuous thermal iteration.
 
 ## 1. Required physical model
 
@@ -925,9 +930,9 @@ MPI, requires closure to `5e-13`, and records `L_EMIT`, `L_ABS`, and `L_ESC`
 in the rates metadata. The existing threshold and isolated source-sampler/MPI
 gates also pass.
 Continuous mode remains fail-fast for multiple/external/slab sources, FUV,
-metal opacity, metal electron/heating coupling, secondary ionization, EUV
-dust, He I metastable photoionization, and peel-off imaging until their later
-atomic cutovers.
+metal electron/heating coupling, secondary ionization, EUV dust, He I
+metastable photoionization, and peel-off imaging until their later atomic
+cutovers.
 
 ### 16.8 Add metals in two steps
 
@@ -973,6 +978,22 @@ stage-fraction bin-independence remain unchanged after the optimization.
 
 19. Enable exact metal opacity using the per-leaf stage cache and the
     packet-cross-section cache.
+
+Implementation result (2026-07-28): complete. The existing dynamic opacity
+path now serves continuous production with `ion_metal_abs=.true.`. It combines
+packet-cached exact-energy cross sections with the stage fractions refreshed
+by `gas_opacity_fill` after each gas update; no cascade solve occurs during a
+packet-cell crossing. The final consistency pass follows the same refresh and
+transport sequence. Three-iteration 8/32-bin tests give bitwise-identical
+H/He states, metal `Gamma`/heating, and metal stage fractions, while 1/3-rank
+outputs agree to `5e-14`. A 100,000-packet HII20 AMR smoke including the
+thermal solver and final consistency pass completes successfully.
+
+That larger smoke exposed ordinary double-precision summation drift in the
+independent emitted/absorbed/escaped diagnostic totals. Rank-local energy
+accounting now uses at least 18 decimal digits before conversion for the MPI
+reduction, retaining the `5e-13` closure gate; the HII20 smoke closure is
+`1.46e-16`.
 
 Gate: the selected estimator meets accuracy requirements at acceptable cost,
 HII20/HII40 metals pass, and no metal cascade is solved inside a packet-cell

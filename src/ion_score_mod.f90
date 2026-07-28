@@ -26,6 +26,7 @@ module ion_score_mod
   integer, parameter :: I_GHI = 1, I_GHEI = 2, I_GHEII = 3
   integer, parameter :: I_HHI = 4, I_HHEI = 5, I_HHEII = 6
   integer, parameter :: NHHE = 6
+  integer, parameter :: ENERGY_ACC_WP = selected_real_kind(18,300)
   real(kind=wp), parameter :: SHADOW_RTOL = 5.0e-12_wp
 
   real(kind=wp), allocatable :: hhe_coeff(:,:)   ! (NHHE,nnu_band)
@@ -36,6 +37,9 @@ module ion_score_mod
   real(kind=wp) :: energy_emitted = 0.0_wp
   real(kind=wp) :: energy_absorbed = 0.0_wp
   real(kind=wp) :: energy_escaped = 0.0_wp
+  real(kind=ENERGY_ACC_WP) :: energy_emitted_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_absorbed_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_escaped_acc = 0.0_ENERGY_ACC_WP
 
 contains
 
@@ -94,6 +98,9 @@ contains
     energy_emitted = 0.0_wp
     energy_absorbed = 0.0_wp
     energy_escaped = 0.0_wp
+    energy_emitted_acc = 0.0_ENERGY_ACC_WP
+    energy_absorbed_acc = 0.0_ENERGY_ACC_WP
+    energy_escaped_acc = 0.0_ENERGY_ACC_WP
     if (par%use_metals) then
        block
          use species_mod, only : species_shadow_reset
@@ -157,9 +164,11 @@ contains
     if (trim(par%ion_energy_mode) /= 'continuous') return
     luminosity = photon%Lpacket*photon%wgt
     transmission = exp(-max(tau_edge,0.0_wp))
-    energy_emitted = energy_emitted + luminosity
-    energy_absorbed = energy_absorbed + luminosity*(1.0_wp-transmission)
-    energy_escaped = energy_escaped + luminosity*transmission
+    energy_emitted_acc = energy_emitted_acc + real(luminosity, ENERGY_ACC_WP)
+    energy_absorbed_acc = energy_absorbed_acc + real( &
+       luminosity*(1.0_wp-transmission), ENERGY_ACC_WP)
+    energy_escaped_acc = energy_escaped_acc + real( &
+       luminosity*transmission, ENERGY_ACC_WP)
   end subroutine ion_score_energy_packet
 
   subroutine ion_score_reduce()
@@ -187,7 +196,8 @@ contains
     direct_segments = counts(1)
     scattered_segments = counts(2)
     if (trim(par%ion_energy_mode) == 'continuous') then
-       energy_totals = [energy_emitted, energy_absorbed, energy_escaped]
+       energy_totals = real( &
+          [energy_emitted_acc, energy_absorbed_acc, energy_escaped_acc], wp)
        call MPI_ALLREDUCE(MPI_IN_PLACE, energy_totals, 3, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
        energy_emitted = energy_totals(1)

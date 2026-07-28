@@ -430,6 +430,115 @@ def main():
             print(continuous_metal_32.stdout)
         ok &= metal_ok
 
+        continuous_metal_opacity_source = (
+            continuous_metal_source.replace(
+                "par%ion_metal_abs    = .false.",
+                "par%ion_metal_abs    = .true.",
+            )
+            .replace(
+                "par%gas_niter        = 0",
+                "par%gas_niter        = 3",
+            )
+            .replace("continuous_metal_8.h5", "continuous_metal_opacity_8.h5")
+        )
+        continuous_metal_opacity_8 = run_case(
+            executable,
+            continuous_metal_opacity_source,
+            work / "continuous_metal_opacity_8.in",
+            work,
+            run_env,
+        )
+        continuous_metal_opacity_32_source = (
+            continuous_metal_opacity_source.replace(
+                "par%nnu_ion          = 8", "par%nnu_ion          = 32"
+            ).replace(
+                "continuous_metal_opacity_8.h5",
+                "continuous_metal_opacity_32.h5",
+            )
+        )
+        continuous_metal_opacity_32 = run_case(
+            executable,
+            continuous_metal_opacity_32_source,
+            work / "continuous_metal_opacity_32.in",
+            work,
+            run_env,
+        )
+        metal_opacity_ok = (
+            continuous_metal_opacity_8.returncode == 0
+            and continuous_metal_opacity_32.returncode == 0
+        )
+        opacity_fields = ()
+        if metal_opacity_ok:
+            with h5py.File(
+                work / "continuous_metal_opacity_8_rates.h5", "r"
+            ) as coarse, h5py.File(
+                work / "continuous_metal_opacity_32_rates.h5", "r"
+            ) as fine:
+                opacity_fields = solver_fields + (
+                    "x_HI", "x_HeI", "x_HeII", "n_e", "T_e"
+                ) + tuple(
+                    sorted(
+                        name for name in coarse.keys()
+                        if (
+                            name.endswith("_stages")
+                            and name.startswith(("x_", "Gamma_", "Heat_"))
+                        )
+                    )
+                )
+                for name in opacity_fields:
+                    metal_opacity_ok &= np.array_equal(
+                        coarse[f"{name}/data"][:],
+                        fine[f"{name}/data"][:],
+                        equal_nan=True,
+                    )
+        print(
+            "continuous exact metal opacity 8/32-bin state/rate identity:"
+            f" {'PASS' if metal_opacity_ok else 'FAIL'}"
+        )
+        if not metal_opacity_ok:
+            print(continuous_metal_opacity_8.stdout)
+            print(continuous_metal_opacity_32.stdout)
+        ok &= metal_opacity_ok
+
+        continuous_metal_opacity_np3_source = (
+            continuous_metal_opacity_source.replace(
+                "continuous_metal_opacity_8.h5",
+                "continuous_metal_opacity_np3.h5",
+            )
+        )
+        continuous_metal_opacity_np3 = run_case(
+            executable,
+            continuous_metal_opacity_np3_source,
+            work / "continuous_metal_opacity_np3.in",
+            work,
+            run_env,
+            ranks=3,
+        )
+        metal_opacity_mpi_ok = (
+            metal_opacity_ok and continuous_metal_opacity_np3.returncode == 0
+        )
+        if metal_opacity_mpi_ok:
+            with h5py.File(
+                work / "continuous_metal_opacity_8_rates.h5", "r"
+            ) as one, h5py.File(
+                work / "continuous_metal_opacity_np3_rates.h5", "r"
+            ) as three:
+                for name in opacity_fields:
+                    metal_opacity_mpi_ok &= np.allclose(
+                        one[f"{name}/data"][:],
+                        three[f"{name}/data"][:],
+                        rtol=5.0e-14,
+                        atol=0.0,
+                        equal_nan=True,
+                    )
+        print(
+            "continuous exact metal opacity 1/3-rank agreement:"
+            f" {'PASS' if metal_opacity_mpi_ok else 'FAIL'}"
+        )
+        if not metal_opacity_mpi_ok:
+            print(continuous_metal_opacity_np3.stdout)
+        ok &= metal_opacity_mpi_ok
+
         continuous_iter_source = (
             continuous_source.replace(
                 "par%gas_niter        = 0", "par%gas_niter        = 3"
@@ -664,15 +773,16 @@ def main():
             source.replace(
                 "par%ion_energy_mode  = 'grouped'",
                 "par%ion_energy_mode  = 'continuous'",
+            ).replace(
+                "par%use_metals       = .true.",
+                "par%use_metals       = .true.\n"
+                " par%metal_ne         = .true.",
             ),
             work / "continuous.in",
             work,
             run_env,
         )
-        guard_text = (
-            "continuous H/He vertical slice requires "
-            "ion_metal_abs=.false. when use_metals=.true."
-        )
+        guard_text = "continuous H/He vertical slice requires metal_ne=.false."
         passed = continuous.returncode != 0 and guard_text in continuous.stdout
         print(
             "continuous fail-fast:"
