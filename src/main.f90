@@ -100,6 +100,15 @@ program main
        call slab_tally_setup(par%slab_nmu, ion_Ltot, [ltop, lbot])
      end block
   end if
+  !--- Milne ground-continuum tables: built once, after ion_setup has fixed
+  !--- par%eion_max (the tables are truncated at the band edge) and after the
+  !--- atomic data are loaded.  Read-only during transport.
+  if (par%diffuse_field .and. trim(par%diffuse_energy_model) == 'milne') then
+     block
+       use milne_recomb_spectrum_mod, only : milne_setup
+       call milne_setup()
+     end block
+  end if
   if (par%solve_te) call cooling_setup()
   !--- report the (T, n_e) cooling tables built by species_setup/cooling_setup
   !--- (par%cooling_model = 'local_ne'); a no-op otherwise.

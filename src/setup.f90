@@ -178,9 +178,11 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%diffuse_energy_model) /= 'exponential' .and. &
-      trim(par%diffuse_energy_model) /= 'threshold') then
+      trim(par%diffuse_energy_model) /= 'threshold'   .and. &
+      trim(par%diffuse_energy_model) /= 'milne') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%diffuse_energy_model must be ''exponential'' or ''threshold''.'
+          'ERROR: par%diffuse_energy_model must be ''milne'', ' // &
+          '''exponential'' or ''threshold''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%cooling_model) /= 'low_density' .and. &

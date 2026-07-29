@@ -90,6 +90,7 @@ OBJS	= \
 	jtally_mod.o \
 	photo_xsec.o \
 	recomb_mod.o \
+	milne_recomb_spectrum_mod.o \
 	gaunt.o \
 	gaunt_vh14_mod.o \
 	nlevel_mod.o \
@@ -122,6 +123,12 @@ OBJECTS = $(patsubst %.o, $(SRCDIR)/%.o, $(OBJS))
 
 # MoCafe policy: no inter-module dependency lists — always a full rebuild
 # (module .mod staleness otherwise bites after editing define.f90 etc.).
+# Source-order compilation is therefore required: Fortran USE dependencies are
+# not represented as Make prerequisites.  This makes `make -j` safe by
+# serialising the object prerequisites of the executable while retaining the
+# conventional command-line interface.
+.NOTPARALLEL: MoCHII.x
+
 default: clean
 	$(MAKE) MoCHII.x
 

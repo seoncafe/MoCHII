@@ -25,6 +25,8 @@ module diffuse_mod
                             gas_Te, gas_nleaf
   use ion_energy_policy_mod, only : assign_ion_packet_energy
   use recomb_mod
+  use milne_recomb_spectrum_mod, only : milne_setup, milne_sample_energy, &
+                                        milne_energy_per_recomb, milne_is_ready
   implicit none
   private
 
@@ -80,11 +82,11 @@ contains
        nHeIII  = nH*par%He_abund*xHeIII
        !--- channel energy luminosities [erg/s]
        a1 = alphaA_HII(T)   - alphaB_HII(T)
-       dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(eth_HI, kT_eV)*ev2erg*vol
+       dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(1, eth_HI, kT_eV, T)*ev2erg*vol
        a1 = alphaA_HeII(T)  - alphaB_HeII(T)
-       dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(eth_HeI, kT_eV)*ev2erg*vol
+       dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(2, eth_HeI, kT_eV, T)*ev2erg*vol
        a1 = alphaA_HeIII(T) - alphaB_HeIII(T)
-       dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(eth_HeII, kT_eV)*ev2erg*vol
+       dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(3, eth_HeII, kT_eV, T)*ev2erg*vol
        !--- channel 4: He I EXCITED-level recombination radiation
        !--- (par%hei_diffuse): all case-B He II recombinations cascade to
        !--- n = 2 and decay with the AGN3 branching; only the H-ionizing
@@ -164,9 +166,7 @@ contains
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
-       if (trim(par%diffuse_energy_model) == 'exponential') &
-            eph = eph + kT_eV*(-log(max(rand_number(), tinest)))
-       eph = min(eph, par%eion_max*0.999_wp)
+       eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), rand_number())
     else
        ub = rand_number()*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
                           + HEI_F1S*HEI_P2PH*HEI_E1S )
@@ -261,9 +261,7 @@ contains
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
-       if (trim(par%diffuse_energy_model) == 'exponential') &
-            eph = eph + kT_eV*(-log(max(u(8), tinest)))
-       eph = min(eph, par%eion_max*0.999_wp)
+       eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), u(8))
     else
        ub = u(8)*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
                  + HEI_F1S*HEI_P2PH*HEI_E1S )
@@ -288,10 +286,39 @@ contains
     photon%icell_amr = il
   end subroutine gen_diffuse_photon_qmc
 
-  elemental real(kind=wp) function ground_mean_energy(eth, kT_eV) result(mean_e)
-    real(kind=wp), intent(in) :: eth, kT_eV
-    mean_e = eth
-    if (trim(par%diffuse_energy_model) == 'exponential') mean_e = eth + kT_eV
+  !--- In-band energy radiated per ground-state recombination [eV].  This is
+  !--- what turns the recombination rate into the channel's energy luminosity,
+  !--- so it MUST be the mean of the same distribution gen_diffuse_photon
+  !--- samples; otherwise the emitted photon rate no longer equals
+  !--- n_e n_ion alpha_1 V.
+  real(kind=wp) function ground_mean_energy(ich, eth, kT_eV, T_K) result(mean_e)
+    integer,       intent(in) :: ich
+    real(kind=wp), intent(in) :: eth, kT_eV, T_K
+    select case (trim(par%diffuse_energy_model))
+    case ('milne')
+       mean_e = milne_energy_per_recomb(ich, T_K)
+    case ('exponential')
+       mean_e = eth + kT_eV
+    case default                          ! 'threshold'
+       mean_e = eth
+    end select
   end function ground_mean_energy
+
+  !--- Photon energy [eV] of one ground-continuum packet from the uniform u.
+  !--- One routine for both the pseudorandom and the Sobol launch, so the two
+  !--- cannot drift apart.
+  real(kind=wp) function ground_photon_energy(ich, eth, kT_eV, T_K, u) result(eph)
+    integer,       intent(in) :: ich
+    real(kind=wp), intent(in) :: eth, kT_eV, T_K, u
+    select case (trim(par%diffuse_energy_model))
+    case ('milne')
+       eph = milne_sample_energy(ich, T_K, u)
+    case ('exponential')
+       eph = eth + kT_eV*(-log(max(u, tinest)))
+    case default                          ! 'threshold'
+       eph = eth
+    end select
+    eph = min(eph, par%eion_max*0.999_wp)
+  end function ground_photon_energy
 
 end module diffuse_mod

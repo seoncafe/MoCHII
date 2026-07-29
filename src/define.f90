@@ -61,6 +61,7 @@ public
   real(kind=wp), parameter :: ev2erg       = 1.602176634e-12_wp  ! erg/eV
   real(kind=wp), parameter :: hc_evAng     = 12398.42_wp         ! eV*Angstrom (h*c)
   real(kind=wp), parameter :: kboltz_cgs   = 1.380649e-16_wp     ! erg/K
+  real(kind=wp), parameter :: me_cgs       = 9.1093837015e-28_wp ! g, electron mass
   real(kind=wp), parameter :: eth_HI       = 13.598_wp           ! eV, H I ionization threshold
   real(kind=wp), parameter :: eth_HeI      = 24.587_wp           ! eV, He I
   real(kind=wp), parameter :: eth_HeII     = 54.416_wp           ! eV, He II
@@ -804,9 +805,12 @@ public
      !--- packets are emitted from every leaf and transported; forces
      !--- case A rates (case B double-counts the on-the-spot absorption).
      logical            :: diffuse_field = .false.
-     !--- ground-recombination continuum spectrum: 'exponential' samples
-     !--- E=Eth+kT Exp(1), the current near-edge approximation; 'threshold'
-     !--- emits at Eth and is a sensitivity diagnostic, not a physical model.
+     !--- ground-recombination continuum spectrum.  'milne' samples the
+     !--- detailed-balance free-bound spectrum with the transport cross
+     !--- section (milne_recomb_spectrum_mod) and is the physical model;
+     !--- 'exponential' keeps E=Eth+kT Exp(1), the historical near-edge
+     !--- approximation retained to reproduce earlier runs; 'threshold'
+     !--- emits at Eth and is a sensitivity diagnostic, not a model.
      character(len=16)  :: diffuse_energy_model = 'exponential'
      logical            :: use_metals   = .false.
      !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
