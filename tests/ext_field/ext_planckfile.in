@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-ext-spectrum (fast-path bug fix): external-only run via the COMPOSABLE form
  ! (nsource=0 + par%ext_intensity/par%ext_geometry), spectrum from a file
  ! par%ext_spectrum = ext_spec_4e4.txt (tabulated 4e4 K Planck).  par%tstar is a

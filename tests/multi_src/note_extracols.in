@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Negative check: nsource=1 (fast path) but two_temp_spec.txt has 2 data
  ! columns -> bin_lum_from_multicol must use column 1 and print a single rank-0
  ! NOTE that extra columns beyond nsource were ignored.

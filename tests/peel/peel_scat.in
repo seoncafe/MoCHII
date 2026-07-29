@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! FUV-option smoke: dusty Stromgren with par%add_fuv (two-segment band:
  ! 16 FUV bins on 6-13.598 eV under 32 ionizing bins) + metals with
  ! par%ion_metal_abs.  par%luminosity is the IONIZING luminosity

@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Two stars of different temperature and luminosity in one uniform medium.
  ! par%nsource = 2 point sources share the ionizing band; each carries its own
  ! luminosity src_lum(i) and blackbody temperature src_tstar(i).  The result is

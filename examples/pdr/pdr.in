@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Photodissociation region (PDR): the neutral gas just beyond the
  ! ionization front.  The FUV band (added under the ionizing band) drives
  ! grain photoelectric heating, while metal electrons and metal-line cooling

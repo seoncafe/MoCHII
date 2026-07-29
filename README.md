@@ -13,10 +13,13 @@ infrared dust/PAH spectrum.
 
 ## Features
 
-- **Radiation field**: ionizing bins (13.6–100 eV) with edges aligned on
-  the H/He and metal ionization thresholds by default (no bin straddles an
-  edge), extendable into the FUV down to ~6 eV as a separate band segment;
-  Planck or tabulated source spectra, an analytic zero-variance estimator
+- **Radiation field**: continuous stellar photon energies (13.6–100 eV) are
+  sampled from a Planck or tabulated-spectrum CDF, with cross sections
+  evaluated at each sampled energy.  Ionizing bins are diagnostic spectral
+  tallies in this default mode; threshold-aligned bin edges are relevant to
+  the explicit `ion_energy_mode='grouped'` compatibility mode.  The band is
+  extendable into the FUV down to ~6 eV as a separate segment, with an
+  analytic zero-variance estimator
   for the direct field, explicit diffuse recombination packets (case A) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
   in the band.  Optional quasi-random launch (`launch_sequence='sobol'`,
@@ -123,4 +126,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-29 14:24 KST
+Last updated: 2026-07-29 14:44 KST

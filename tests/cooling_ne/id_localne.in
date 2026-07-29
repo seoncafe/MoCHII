@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! MoCHII G2 gate: Lexington HII40 benchmark, threshold-aligned bins.
  ! Blackbody 40 kK, Q_H = 4.26e49 s^-1, nH = 100 cm^-3, hollow shell
  ! Rin = 3e18 cm, Rout = 1.46e19 cm; abundances He 0.1, C 2.2e-4, N 4e-5,

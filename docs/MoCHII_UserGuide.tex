@@ -132,9 +132,10 @@ parameter & default & meaning \\
 parameter & default & meaning \\
 \midrule
 \code{use\_ion\_band} & F & must be T (the MoCHII transport) \\
-\code{nnu\_ion} & 16 & ionizing-band bins; gates use 32.  With \code{ion\_align\_edges} on (the default) the bins are log-uniform within each threshold-bounded segment; off, they are a single log grid \\
+\code{ion\_energy\_mode} & 'continuous' & packet-energy transport mode.  The default samples the source energy CDF continuously and evaluates cross sections at the sampled energy.  Set \code{'grouped'} explicitly only for compatibility/reproduction calculations that use one representative energy per bin \\
+\code{nnu\_ion} & 16 & diagnostic ionizing-energy bins in \code{'continuous'} mode (gates use 32); changing it does not change the physical solution.  In \code{'grouped'} mode it is the transport/solver bin count \\
 \code{eion\_min}, \code{eion\_max} & 13.598, 100 & ionizing band edges [eV] \\
-\code{ion\_align\_edges} & T & pin the ionizing-band bin edges onto the ionization thresholds (H\,\textsc{i} 13.6, He\,\textsc{i} 24.6, He\,\textsc{ii} 54.4~eV plus the active metal edges) so no bin straddles one; segments between thresholds are log-uniform, and if the thresholds outnumber the bins the lowest-priority metal edges are dropped (H/He always kept), so it is safe at any \code{nnu\_ion}.  Removes the $\sim$18\% He-ionizing-photon excess of a coarse log grid crossing the 24.6~eV edge.  Set F for the legacy single log grid \\
+\code{ion\_align\_edges} & T & align diagnostic bin edges to the ionization thresholds.  It does not affect continuous-energy transport.  In \code{'grouped'} mode it also prevents a transport bin from straddling a threshold; segments are log-uniform and low-priority metal edges are dropped safely when necessary.  Set F for a single log grid \\
 \code{add\_fuv} & F & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and FUV photoionization of low-threshold metals (Mg\,\textsc{i}, C\,\textsc{i}, S\,\textsc{i}, Fe\,\textsc{i}); \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top) \\
 \code{efuv\_min} & 6.0 & FUV lower edge [eV] \\
 \code{nnu\_fuv} & 8 & FUV bins (16 recommended with metals) \\
@@ -805,6 +806,7 @@ A minimal thermal + metals + dust input (from \code{d\_dusty}):
  par%grid_type = 'amr'           par%amr_file = 'amr_L6.fits'
  par%distance_unit = 'pc'        par%dust_model = 'global_dgr'
  par%use_ion_band = .true.       par%nnu_ion = 32
+ par%ion_energy_mode = 'grouped'  ! dust example; continuous mode currently requires ion_add_dust = .false.
  par%eion_min = 13.598           par%eion_max = 100.0
  par%tstar = 4.0e4               par%luminosity = 3.178e38
  par%xHI_init = 1.0e-3           par%He_abund = 0.1

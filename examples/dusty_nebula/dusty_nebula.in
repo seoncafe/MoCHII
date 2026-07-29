@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Dusty photoionized sphere: dust competes with the gas for ionizing
  ! photons.  In the ionizing band the grains both absorb and forward-scatter
  ! (WD01/D03 Milky Way mixture); the absorbed energy heats the grains to an

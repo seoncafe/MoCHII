@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! MoCHII external-field validation: isotropic ionizing field entering the box
  ! faces (source_geometry='external_rec').  An optically thin uniform box
  ! (tau_HI << 1) illuminated by an isotropic field of mean intensity

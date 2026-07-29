@@ -461,7 +461,7 @@ contains
   if (trim(par%ion_energy_mode) /= 'grouped' .and. &
       trim(par%ion_energy_mode) /= 'continuous') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ion_energy_mode must be ''grouped'' (default) or ''continuous''.'
+          'ERROR: par%ion_energy_mode must be ''continuous'' (default) or ''grouped''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then

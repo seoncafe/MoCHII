@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Secondary-ionization ON-smoke: HARD 1e5 K blackbody on the HII20 shell
  ! grid so E0 = hnu - E_th > 40 eV photoelectrons exist and a partially
  ! neutral front is present.

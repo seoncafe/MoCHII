@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! A cloud bathed in an isotropic external ionizing field.  Instead of an
  ! internal star (par%nsource = 0), an isotropic background of mean intensity
  ! par%ext_intensity enters the box faces (par%ext_geometry = 'rec') and eats

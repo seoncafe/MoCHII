@@ -202,11 +202,12 @@ public
      !--- selects the scramble; a different seed is an independent replicate.
      character(len=16) :: launch_sequence = 'random'
      integer           :: qmc_seed        = 12345
-     !--- Ionizing packet-energy treatment.  'grouped' remains the compatibility
-     !--- default during development.  'continuous' activates the complete
-     !--- H/He-only vertical slice; setup fails fast on coupled features not
-     !--- yet migrated (metals, dust, secondary ionization, etc.).
-     character(len=16) :: ion_energy_mode = 'grouped'
+     !--- Ionizing packet-energy treatment.  Continuous sampling is the
+     !--- default: packet energies and cross sections are physical, while
+     !--- nnu_ion only controls diagnostic spectral tally resolution.
+     !--- 'grouped' retains representative-energy bin transport for explicit
+     !--- compatibility/reproduction inputs.
+     character(len=16) :: ion_energy_mode = 'continuous'
      !--- Relative integration tolerance for the continuous Planck source CDF
      !--- (tabulated linear spectra are integrated/inverted analytically).
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
@@ -567,7 +568,7 @@ public
      !--- leaf, from which the photoionization rates Gamma_i and photoheating
      !--- H_i follow.
      logical            :: use_ion_band = .false.
-     integer            :: nnu_ion      = 16          ! ionizing frequency bins (immutable; total incl. FUV is ion_band nnu_band)
+     integer            :: nnu_ion      = 16          ! diagnostic ionizing-energy bins in continuous mode; solver bins in grouped mode
      real(kind=wp)      :: eion_min     = 13.598_wp   ! band lower edge [eV]
      real(kind=wp)      :: eion_max     = 100.0_wp    ! band upper edge [eV]
      !--- source spectrum in the band: 2-column file (E[eV], L_E[arb]) or,
@@ -583,11 +584,10 @@ public
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
-     !--- align ionizing bin edges to the ionization thresholds (H I, He I,
-     !--- He II, and the active metal photoionization thresholds) so no bin
-     !--- straddles a threshold, removing the He/metal edge discretization
-     !--- error (the 32-bin log grid overcounts He-ionizing photons by ~18%).
-     !--- Default ON (physically correct); set .false. for the legacy log grid.
+     !--- Align diagnostic ionizing-energy bin edges to thresholds.  This
+     !--- affects only diagnostic tallies in continuous mode.  In grouped mode
+     !--- it also defines representative-energy transport bins and avoids the
+     !--- He/metal edge discretization error.  Default ON.
      logical            :: ion_align_edges = .true.
      !--- further registry elements (default 0 = off; pass GAS-PHASE
      !--- values — Si and especially Ca are strongly depleted onto

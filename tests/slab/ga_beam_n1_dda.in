@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! PP3 gate G-a: frozen neutral slab, collimated beam from top, normal (theta=0).
  ! gas_niter=0 -> rates only, x_HI frozen at 1 -> pure-absorption medium.
  ! Gamma_HI(z) should be F * exp(-nH*sigma*(zmax-z)/mu).  nnu_ion=1 -> single sigma.

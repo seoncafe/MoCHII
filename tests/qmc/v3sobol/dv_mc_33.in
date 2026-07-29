@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  par%no_photons    = 5.0e5
  par%no_print      = 5.0e5
  par%iseed         = 33

@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Dense PDR thermal balance: the isrf_cloud geometry (nH = 5e3 clump in the
  ! Draine ISRF preset) with the thermal solve ON, so the metal line cooling
  ! actually enters.  This is the case where the [C I] 609.1/370.4um and

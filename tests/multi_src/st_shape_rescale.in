@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-rescale twin: the SAME two Planck shapes via the shape multi-column file
  ! (two_temp_spec.txt) with the SAME explicit src_lum = 3e37/1e37.  The 'per_ev'
  ! rescale run (st_per_ev_rescale.in) must reproduce this to ~0.01%.

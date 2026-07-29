@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! MoCHII G0 gate: uniform-density neutral sphere, central point source,
  ! fixed ion fractions (no feedback).  Compare Gamma(r) per leaf against
  ! the analytic point-source attenuation (check_g0_gamma.py).

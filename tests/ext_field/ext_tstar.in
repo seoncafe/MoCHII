@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-ext-spectrum twin: identical external-only run, but the 4e4 K spectrum comes
  ! from par%ext_tstar (Planck) instead of a file.  par%tstar is the same 2e4 K
  ! decoy that must be ignored (ext_tstar > global).  Must match ext_planckfile.in

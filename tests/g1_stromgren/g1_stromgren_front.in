@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! MoCHII G1 gate: Stromgren sphere.  Uniform nH = 100 cm^-3 sphere
  ! (R = 4 pc), central blackbody source (4e4 K) with band photon rate
  ! Q_H = 1e49 s^-1, case B, fixed Te = 1e4 K.

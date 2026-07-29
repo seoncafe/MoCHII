@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! 3D density cube (FITS) read directly onto the grid: a clumpy hydrogen
  ! density field is loaded from a file onto a 'car' Cartesian grid, one value
  ! per cell.  The grid dimensions come from the cube, so nx/ny/nz are not set

@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! V1(d): diffuse-field Stromgren, ALIGNED grid (default), random launch.
  ! random launch.  Task-0's binary-search bin mapping must reproduce the old
  ! closed-form log-grid formula bin for bin -> HEAD vs NEW bit-identical.

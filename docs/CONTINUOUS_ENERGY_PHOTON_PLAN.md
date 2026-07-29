@@ -1147,6 +1147,14 @@ under `results/continuous_energy/production/` (paper inputs),
 `bin_independence/`, `rqmc_ensemble/`, `mpi_scaling/`, and `mpi_multinode/`.
 The production checker and both paper generators read the production paths.
 
+Implementation result (2026-07-29, steps 31 and 35): complete.  The default
+`ion_energy_mode` is `continuous`; every pre-existing MoCHII regression and
+example input declares `ion_energy_mode = 'grouped'` explicitly to preserve
+its established configuration.  In continuous mode `nnu_ion` is documented
+and recorded as diagnostic spectral-tally resolution, and
+`ion_align_edges` affects only that diagnostic binning.  Both retain their
+transport/solver-bin meanings in explicit grouped mode.
+
 ### 16.12 Cleanup only after release validation
 
 33. Decide whether to retain grouped mode for historical reproduction.

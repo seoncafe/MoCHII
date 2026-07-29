@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-mixed: one internal point source (legacy scalars: origin, L = 1e37) PLUS an
  ! isotropic external field (ext_intensity = 1e-5, ext_geometry = 'rec').  This
  ! exercises the nsource==1 + external normalization path (source 1 populated

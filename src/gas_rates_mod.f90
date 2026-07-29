@@ -285,7 +285,7 @@ contains
 
     call io_append_image(file, gamma_HI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HI','H I photoionization rate [s^-1]',status)
-    call io_put_keyword(file,'NNU_ION', par%nnu_ion, 'ionizing frequency bins', status)
+    call io_put_keyword(file,'NNU_ION', par%nnu_ion, 'ionizing energy-bin count', status)
     call io_put_keyword(file,'NNU_BAND', nnu_band, 'total band bins (ionizing+FUV)', status)
     call io_put_keyword(file,'EION_MIN',par%eion_min,'band lower edge [eV]',    status)
     call io_put_keyword(file,'EION_MAX',par%eion_max,'band upper edge [eV]',    status)

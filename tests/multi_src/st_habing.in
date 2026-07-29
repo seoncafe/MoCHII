@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-presets: external-only habing ISRF, ext_scale=1, add_fuv (FUV-only
  ! field).  The interior FUV energy density u_FUV = (4pi/c)<J_FUV> must match the
  ! analytic Draine integral (~8.9e-14 erg/cm^3); the ionizing bins carry ZERO.

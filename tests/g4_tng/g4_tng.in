@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! MoCHII G4 demo: photoionization post-processing of an Illustris-TNG
  ! gas cutout (MoCafe converter output; 60 kpc box, uniform level 5,
  ! nH and xHI columns from the simulation).  A starburst-scale source

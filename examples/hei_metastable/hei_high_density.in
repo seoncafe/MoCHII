@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! He I 2^3S metastable diagnostic, HIGH-density (collisional) limit.
  !
  ! The same star and diagnostic as hei_low_density, but a 100x denser sphere:

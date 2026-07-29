@@ -83,20 +83,20 @@ recombination lines, and the nebular continuum.
 
 %==========================================================================
 \section{The ionizing band and transport}
-\subsection{Frequency bins and the source}
+\subsection{Continuous energy and diagnostic bins}
 The ionizing band covers photon energies
-$[E_{\min}, E_{\max}] = [13.598, 100]$~eV with $n_\nu$ log-spaced bins
-(\code{par\%nnu\_ion}; gates use 32).  Bin centers are geometric means;
-the source spectrum (Planck $B_\nu(T_\star)$ or a 2-column file) is
-integrated on a 32-point sub-grid within each bin and normalized so that
-$\sum_b L_b = L_{\rm band}$ (\code{par\%luminosity}).  Packets sample the
-bin from the luminosity CDF and carry $L_{\rm pkt} = L_{\rm band}/N$.
-Bin-count convergence of the rate integrals (measured in the rate-integral
-gate): 16 bins $\rightarrow 2.2\%$, 32 $\rightarrow 2.1\%$, 64
-$\rightarrow 0.02\%$ against a 2048-bin reference.
+$[E_{\min}, E_{\max}] = [13.598, 100]$~eV.  By default
+(\code{par\%ion\_energy\_mode = 'continuous'}), a packet energy is sampled
+from the normalized Planck or tabulated source-energy CDF and its cross
+sections are evaluated at that energy.  Every packet carries
+$L_{\rm pkt} = L_{\rm band}/N$.  The $n_\nu$ bins
+(\code{par\%nnu\_ion}; gates use 32) are then diagnostic $J_E$ tally bins;
+their count cannot alter the physical solution.
 
-\paragraph{Threshold-aligned bins (default).}  With
-\code{par\%ion\_align\_edges} (default on) the ionizing-band bin
+\paragraph{Grouped mode.}  With \code{par\%ion\_energy\_mode = 'grouped'},
+packets instead sample a luminosity bin and use its representative energy.
+In this explicit compatibility mode, \code{par\%ion\_align\_edges} (default
+on) pins the ionizing-band bin
 \emph{edges} are pinned onto the ionization thresholds --- H\,\textsc{i}
 (13.6~eV), He\,\textsc{i} (24.6~eV), He\,\textsc{ii} (54.4~eV), plus the
 active metal photoionization thresholds gathered from the registry ---
@@ -105,8 +105,8 @@ consecutive thresholds are log-uniform, and bins are distributed among
 the segments by log width (largest-remainder, floor 1).  When the
 thresholds outnumber the bins the lowest-priority (metal) edges are
 dropped gracefully --- the H/He edges are always kept --- so the option
-is safe at any \code{nnu\_ion}.  Setting it \code{.false.} recovers the
-legacy pure-log grid, bit-identical to the earlier behavior.  The
+is safe at any \code{nnu\_ion}.  Setting it \code{.false.} uses a
+single log grid.  The
 alignment removes a real discretization error: a coarse 32-bin log grid
 straddles the 24.6~eV He\,\textsc{i} edge and delivers $\sim$18\% too
 many He-ionizing photons against a true 40~kK blackbody

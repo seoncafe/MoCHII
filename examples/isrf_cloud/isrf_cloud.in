@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! A neutral cloud bathed in the standard interstellar radiation field, given
  ! by an ISRF PRESET.  par%ext_spectrum = 'draine' is the Draine (1978) FUV
  ! field (reserved names 'draine'/'habing'/'mathis'; FUV-only, 5-13.6 eV,

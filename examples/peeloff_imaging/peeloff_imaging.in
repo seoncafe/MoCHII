@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! Peel-off imaging: after the ionization and thermal balance converge, an
  ! extra transport pass projects the emerging light onto an image plane
  ! toward an observer.  Direct (stellar + diffuse) and dust-scattered light

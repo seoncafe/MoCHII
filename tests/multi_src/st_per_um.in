@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! G-per_um-conversion: same two spectra as st_per_ev.in, written as L_lambda vs
  ! lambda [micron] (spectrum_type='per_um').  Must match the 'per_ev' run <0.5%/bin.
 

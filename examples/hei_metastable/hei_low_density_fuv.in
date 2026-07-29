@@ -1,4 +1,5 @@
 &parameters
+ par%ion_energy_mode = 'grouped'
  ! He I 2^3S metastable diagnostic, LOW-density + soft-UV photoionization.
  !
  ! Identical to hei_low_density, plus a soft-UV FUV band reaching down to the
