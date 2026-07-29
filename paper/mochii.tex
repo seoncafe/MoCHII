@@ -521,8 +521,31 @@ and the volume criterion is the recommended production setting.
 When the explicit diffuse field is enabled, case-B OTS is replaced by
 case-A rates plus explicit emission of ground-recombination packets in
 three channels (\HII, \HeII, \HeIII) with rate $\alpha_1 = \alpha_A -
-\alpha_B$ and photon energies $E = E_{\mathrm{th}} + kT_e\,x$, $x \sim
-\mathrm{Exp}(1)$.  The emission table is rebuilt from the current state
+\alpha_B$.  Detailed balance fixes the emitted spectrum: per unit photon
+energy the free--bound photon emissivity of each ground continuum is
+\begin{equation}
+  n(E) \;\propto\; E^{2}\,\sigma_{\mathrm{pi}}(E)\,
+     \exp\!\left[-\frac{E - E_{\mathrm{th}}}{kT_e}\right],
+  \qquad E \ge E_{\mathrm{th}},
+  \label{eq:milne}
+\end{equation}
+evaluated with the \emph{same} ground-state photoionization cross section
+the transport absorbs with, so a packet is absorbed with the cross section
+it was emitted with.  Restoring the Milne prefactor turns the integral of
+Equation~(\ref{eq:milne}) into $\alpha_1(T)$ itself, which recovers
+$\alpha_{1s}(\HI, 10^4~\mathrm{K}) = 1.579 \times 10^{-13}$~cm$^3$\,s$^{-1}$
+against the tabulated $1.58 \times 10^{-13}$; the code reports that integral
+against the $\alpha_A - \alpha_B$ used for the emission rate without
+rescaling either, and they agree to $0.5$--$1.3$\% for \HI{} and $0.4$\%
+for \HeII{} while differing by up to $3.4$\% for \HeI{}.  Because packets
+are equal-energy and their number follows the channel's \emph{energy}
+luminosity, their energies are drawn from $E\,n(E)$ rather than $n(E)$,
+which makes the represented photon rate exactly $n_e n_{\rm ion}\alpha_1 V$.
+The cumulative distribution is tabulated in $x = (E-E_{\mathrm{th}})/kT$,
+interpolated in $\log T$ and inverted once.  A near-threshold approximation
+$E = E_{\mathrm{th}} + kT_e\,x$ with $x \sim \mathrm{Exp}(1)$, which is
+Equation~(\ref{eq:milne}) with the $E^2\sigma_{\rm pi}$ weight dropped, is
+retained as an option.  The emission table is rebuilt from the current state
 each iteration; packets are transported by the same edge walk.  The
 sampled photon energy is mapped to its bin by a binary search of the
 stored bin-edge array, correct on both the aligned and the plain
@@ -1033,13 +1056,13 @@ HII40, below the published 0.715--0.829 (median 0.767) and C25's 0.741, and
 0.046 at HII20, near the published median of 0.048 inside a spread of
 0.034--0.077.
 
-\emph{Temperature.}  The weighted temperature is 8194~K at HII40 and
-6916~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
-same two models --- 8210~K and 6910~K --- to $0.2\%$ and $0.1\%$, and both
+\emph{Temperature.}  The weighted temperature is 8202~K at HII40 and
+6922~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
+same two models --- 8210~K and 6910~K --- to $0.1\%$ and $0.2\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
-published spread at both, 7538~K at HII40 against a published 7370--8318~K
-and 6938~K at HII20 against a published 6562--7224~K.  The converged
+published spread at both, 7540~K at HII40 against a published 7370--8318~K
+and 6942~K at HII20 against a published 6562--7224~K.  The converged
 MOCASSIN 2.02 run of the HII40 model gives 8176~K, also inside the published
 spread.  The two benchmark solutions therefore agree closely while remaining
 within the range set by the independent calculations.
@@ -1047,7 +1070,7 @@ within the range set by the independent calculations.
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
 density-suppressed cooling used above --- the level populations at the local
-$\nelec$, Section~\ref{sec:cooldata} --- gives the 8194 and 6916~K that
+$\nelec$, Section~\ref{sec:cooldata} --- gives the 8202 and 6922~K that
 track \textsc{Cloudy}; the zero-density limit of the same fits, retained as
 an option, overestimates the far-infrared line cooling at
 $\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so places \MoCHII{} instead at
@@ -1059,8 +1082,8 @@ measures directly.
 % Published columns: Tables 4 and 5 of Ercolano et al. (2003), transcribed
 % and checked value by value against the paper.
 % MoCHII column: continuous-energy production runs (Sobol seed 20260728,
-% explicit diffuse field, Q(H) matched to the specification, 2^25 packets,
-% conv_crit='vol'); line entries are the L/L(Hbeta) column of
+% explicit diffuse field with the Milne ground continua, Q(H) matched to the
+% specification, 2^25 packets, conv_crit='vol'); line entries are the L/L(Hbeta) column of
 % results/continuous_energy/production/hii{40,20}_continuous_lines.txt
 % (doublets summed), temperatures are from the matching rates files.
 % C25 column: tests/cloudy_c25/, Cloudy c25.00 on the distributed decks.
@@ -1125,7 +1148,7 @@ power --- \textsc{Cloudy} balances its own heating at the unscaled
 temperature, and the photoheating of the two codes agrees --- gives 7784~K
 against \textsc{Cloudy}'s 8210~K, close to the 7894~K the converged
 zero-density run reaches.  Removing the overestimate, the density-suppressed
-default reaches 8194~K, matching \textsc{Cloudy} to $0.2\%$
+default reaches 8202~K, matching \textsc{Cloudy} to $0.1\%$
 (Section~\ref{sec:hii}).  The far-infrared overestimate, not the atomic
 data, is thus what separates the two limits, and the $(\Te,\nelec)$ table of
 Section~\ref{sec:cooldata} removes it.
@@ -1617,9 +1640,9 @@ Lexington 2000 \HII{} region benchmarks, with continuously sampled Planck
 photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron
 density, the
-$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8194~K at HII40 and
-6916~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
-two models (8210 and 6910~K) to $0.2\%$ and $0.1\%$; both models are
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8202~K at HII40 and
+6922~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
+two models (8210 and 6910~K) to $0.1\%$ and $0.2\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
 $L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  The
 line-cooling data are checked independently of the temperature by evaluating

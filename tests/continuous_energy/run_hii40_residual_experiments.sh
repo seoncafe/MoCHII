@@ -22,7 +22,7 @@ ranks=${MOCHII_RANKS:-68}
 cases=("$@")
 
 if [ ${#cases[@]} -eq 0 ]; then
-    cases=(diffuse_off no_hei l7 mocrec threshold milne)
+    cases=(diffuse_off no_hei l7 mocrec threshold milne exponential)
 fi
 mkdir -p "$results"
 
@@ -33,6 +33,10 @@ for case_name in "${cases[@]}"; do
     sed -e "s#hii40_continuous.h5#${output}#" "$base" > "$work"
 
     case "$case_name" in
+    exponential)
+        # The historical near-threshold approximation, as a paired control.
+        sed -i "s#^ par%diffuse_energy_model = .*# par%diffuse_energy_model = 'exponential'#" "$work"
+        ;;
     diffuse_off)
         sed -i \
             -e "s/par%case_ab         = 'A'/par%case_ab         = 'B'/" \
@@ -52,12 +56,12 @@ for case_name in "${cases[@]}"; do
         ;;
     threshold)
         # Sensitivity bracket for the ground-recombination continuum energy.
-        sed -i "/par%diffuse_field/a par%diffuse_energy_model = 'threshold'" "$work"
+        sed -i "s#^ par%diffuse_energy_model = .*# par%diffuse_energy_model = 'threshold'#" "$work"
         ;;
     milne)
         # Detailed-balance free-bound ground continuum: the physical model the
         # exponential default approximates.
-        sed -i "/par%diffuse_field/a par%diffuse_energy_model = 'milne'" "$work"
+        sed -i "s#^ par%diffuse_energy_model = .*# par%diffuse_energy_model = 'milne'#" "$work"
         ;;
     *)
         echo "unknown residual experiment: $case_name" >&2
