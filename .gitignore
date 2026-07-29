@@ -81,11 +81,11 @@ SEDust/data/dielectric/qlib_gra_D16MGemt_1.400
 tests/slab/*_slab_Imu.txt
 docs/Draine2026_HeI10833_tau.*
 
-# paper/: sources, figures and generated tables are tracked; build artifacts are not
-#!paper/figures/*.png
-#!paper/aastex702.cls
-#!paper/orcid-ID.png
-paper
+# paper/: sources, figures and generated tables are tracked; build artifacts are not.
+# A blanket 'paper' rule used to sit here, which ignored the whole directory:
+# the tracked files survived only because they had been force-added, and any
+# new source or figure was silently invisible.  The build artifacts below are
+# what actually needs excluding.
 paper/sample702.*
 paper/aastex702.zip
 paper/*.aux
