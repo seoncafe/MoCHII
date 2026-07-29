@@ -70,8 +70,10 @@ Implementation progress as of 2026-07-28:
   68 MPI ranks with `nnu_ion = 8, 16, 32, 64, 128` used the same `2^25`
   Sobol packet history.  All solver/state/rate arrays were bitwise identical
   across diagnostic resolutions; only `J_nu`, `E_bin`, and `dE_bin` changed.
-- Next: complete the independent-scramble RQMC ensemble and MPI/performance
-  validation before regenerating paper figures.
+- Safe sequence 16.11 RQMC ensemble portion complete: four independent
+  scrambled-Sobol seeds passed for both production models.  The remaining
+  release item is MPI/performance validation before regenerating paper
+  figures.
 
 ## 1. Required physical model
 
@@ -1084,6 +1086,14 @@ stage populations.  The only intentionally resolution-dependent datasets
 were the diagnostic `J_nu` histogram and its `E_bin`/`dE_bin` grid.
 30. Complete random/QMC ensemble, multiple-scramble, MPI 1/2/3/5/8 rank,
     multi-node, energy-conservation, performance, and memory tests.
+
+Implementation result (2026-07-29, RQMC portion): complete.  Seeds 101, 202,
+303, and 404 were run at 68 MPI ranks with the same `2^25` packet count.
+All eight outputs converged, completed their final consistency pass, and
+passed energy closure.  The sample relative scatter was 0.002% in HII20
+ionized-gas temperature and below 0.001% in HII40; C III shell scatter was
+0.261%, 0.619%, 0.630% at 1.5, 2.0, 2.5 pc in HII20 and 0.088%, 0.074%,
+0.100% at 4.2, 4.35, 4.5 pc in HII40.
 31. Make continuous mode the default.
 32. Update the paper manuscript itself (`paper/mochii.tex`) from the accepted
     continuous HII20/HII40 production outputs, then update the user
