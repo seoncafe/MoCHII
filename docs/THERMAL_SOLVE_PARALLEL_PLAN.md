@@ -2,7 +2,7 @@
 
 - Date: 2026-07-28
 - Target: `gas_thermal_update` in `src/thermal_mod.f90`
-- Status: implemented and validated locally
+- Status: implemented; single-node and multi-node validation complete
 
 ## 1. Why
 
@@ -163,7 +163,8 @@ contains no directives, so nothing is lost by staying with MPI.
    the cross-node redundancy is unchanged but the intra-node partition is new.
 
 Test 2 is the important one. Tests 1 and 2 should become a committed gate, not
-a one-time check.
+a one-time check.  Test 5 is recorded below and is the one that exercises
+`h_size` coming from `hostcomm` rather than from `mpar%nproc`.
 
 ### Local implementation result (2026-07-28)
 
@@ -199,8 +200,44 @@ because the preceding photon tally reductions have a different floating-point
 order. This is independent of thermal leaf ownership: all five gas-state
 datasets agree within relative `1e-12` between the 5-, 6-, and 8-rank runs.
 The exact baseline comparison above keeps the rank count fixed and therefore
-isolates the thermal parallelization itself. A multi-node run was not possible
-on this host because only `lart4` was available.
+isolates the thermal parallelization itself.
+
+### Multi-node result (2026-07-29)
+
+Test 5 was deferred when only `lart4` was reachable; `lart2` and `lart3` are
+now available, so it has been run. The decisive comparison holds the rank
+count at 6 and moves only the node placement, which leaves the photon
+transport partition untouched and changes only `h_size`, the node-local
+thermal partition:
+
+| placement | `h_size` | `T_e` | `x_HI` | `n_e` |
+|---|---:|---|---:|---:|
+| 6 on one node | 6 | baseline | baseline | baseline |
+| 3 + 3 on two nodes | 3 | **bit-identical** | 1.1e-15 | 4.5e-13 |
+| 2 + 2 + 2 on three nodes | 2 | **bit-identical** | 1.1e-15 | 3.7e-13 |
+
+`T_e` is bit-identical across all three partitions. Since the thermal solve is
+precisely what the placement repartitions, and `T_e` is its direct output,
+this is the strongest available evidence that leaf ownership is exact and
+complete — the failure mode of section 8, where a leaf is solved by nobody or
+by two ranks, cannot produce bit-identity. `h_size` is taken from `hostcomm`
+in `setup.f90`, and these runs confirm it takes the values 6, 3 and 2 as the
+placement changes.
+
+The residual 1e-15 to 1e-13 differences in the other fields are not from the
+thermal partition. They come from the photon-tally `MPI_ALLREDUCE`, whose
+summation order depends on process placement, exactly as section 5 predicted.
+`T_e` escapes them because the bisection's accept/reject decisions are
+discrete and a roundoff-level change in the rates does not move the bracket.
+
+The reusable inputs and outputs are under
+`results/continuous_energy/mpi_multinode/thermal_placement/`.
+
+Operational note: the run directory must be on shared storage. A first
+attempt from node-local `/tmp` failed on the remote ranks with
+`forrtl: No such file or directory`, because only the launching node could see
+the input. `mpirun -wdir` does not help when the directory itself is not
+shared.
 
 ## 8. Risks
 

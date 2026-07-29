@@ -22,7 +22,11 @@ infrared dust/PAH spectrum.
   analytic zero-variance estimator
   for the direct field, explicit diffuse recombination packets (case A) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
-  in the band.  Optional quasi-random launch (`launch_sequence='sobol'`,
+  in the band.  The three ground recombination continua are sampled from
+  their detailed-balance Milne free-bound spectra
+  (`diffuse_energy_model='milne'`), using the same cross sections transport
+  absorbs with, so a diffuse packet is absorbed with the cross section it
+  was emitted with.  Optional quasi-random launch (`launch_sequence='sobol'`,
   Owen-scrambled Sobol) for the stellar and diffuse packets — the
   launch set is independent of the MPI task count and the direct-field
   error scales as 1/N (effective photon gains of 29–222x measured on the

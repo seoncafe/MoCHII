@@ -87,17 +87,46 @@ recombination lines, and the nebular continuum.
 The ionizing band covers photon energies
 $[E_{\min}, E_{\max}] = [13.598, 100]$~eV.  By default
 (\code{par\%ion\_energy\_mode = 'continuous'}), a packet energy is sampled
-from the normalized Planck or tabulated source-energy CDF and its cross
-sections are evaluated at that energy.  Every packet carries
-$L_{\rm pkt} = L_{\rm band}/N$.  The $n_\nu$ bins
-(\code{par\%nnu\_ion}; gates use 32) are then diagnostic $J_E$ tally bins;
-their count cannot alter the physical solution.
+from the normalized source-energy CDF, rather than from a frequency bin.
+For a Planck source the CDF is built adaptively from the Planck energy
+spectrum; for a tabulated source it is the cumulative integral of the
+input $L_E$.  H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}, and active
+metal thresholds are retained as knots in the adaptive Planck CDF.  With
+$u\in[0,1)$, the draw is
+\begin{equation}
+ F_E(E) = \frac{\int_{E_{\min}}^E L_{E'}\,{\rm d}E'}
+                {\int_{E_{\min}}^{E_{\max}} L_{E'}\,{\rm d}E'},
+ \qquad E_{\rm pkt}=F_E^{-1}(u), \qquad
+ L_{\rm pkt}=\frac{L_{\rm band}}{N_{\rm pkt}} .
+ \label{eq:band-source-cdf}
+\end{equation}
+Here $L_{\rm band}$ is the luminosity integrated over the whole ionizing
+band, not the luminosity of one energy interval.  Each packet is therefore
+an equal-luminosity sample of the source spectrum.
+
+The packet retains $E_{\rm pkt}$ throughout transport.  Gas opacity,
+photoionization cross sections, and the excess energy used for heating are
+evaluated at this exact energy.  The $n_\nu$ bins
+(\code{par\%nnu\_ion}; gates use 32) receive only a diagnostic $J_E$ tally:
+the sampled energy is located by a binary search of the bin-edge array and
+assigned an output index.  Consequently the number or placement of those
+bins cannot alter the continuous-mode physical solution; it changes only
+the spectral resolution of saved tallies and rate diagnostics.  This is
+important at thresholds: a photon exactly on a stored edge is assigned to
+the bin above it, but its interaction physics still uses its own energy.
+
+The validated continuous-energy path currently accepts one internal point
+source with a Planck or tabulated spectrum.  It rejects unsupported
+combinations (external sources, FUV extension, ionizing dust, secondary
+ionization, metastable-He, and peel-off options) rather than falling back
+silently to grouped energy physics.
 
 \paragraph{Grouped mode.}  With \code{par\%ion\_energy\_mode = 'grouped'},
-packets instead sample a luminosity bin and use its representative energy.
+packets instead sample a luminosity bin and use its representative energy;
+this is an explicit compatibility/reproduction mode, not the default
+physical-energy treatment.
 In this explicit compatibility mode, \code{par\%ion\_align\_edges} (default
-on) pins the ionizing-band bin
-\emph{edges} are pinned onto the ionization thresholds --- H\,\textsc{i}
+on) pins the ionizing-band bin edges onto the ionization thresholds --- H\,\textsc{i}
 (13.6~eV), He\,\textsc{i} (24.6~eV), He\,\textsc{ii} (54.4~eV), plus the
 active metal photoionization thresholds gathered from the registry ---
 so that no bin straddles a threshold.  The sub-segments between
@@ -949,9 +978,9 @@ xxx\=xxx\=xxx\=\kill
 read grid $\rightarrow$ persist gas leaf state $\rightarrow$ fill \code{kap\_ion}\\
 \textbf{do} iter = 1, \code{gas\_niter}\\
 \> zero the band tally $J_b$\\
-\> transport stellar packets (analytic edge walk, Eq.~\ref{eq:edgewalk})\\
+\> sample and transport stellar packets (analytic edge walk, Eq.~\ref{eq:edgewalk})\\
 \> [diffuse] rebuild the diffuse emission table from the current state;\\
-\> \> emit and transport $L_{\rm dif}/L_{\rm pkt}$ diffuse packets\\
+\> \> sample and transport $L_{\rm dif}/L_{\rm pkt}$ diffuse LyC packets\\
 \> ALLREDUCE $J_b$; rate integrals (Eq.~\ref{eq:rates}); metal $\Gamma$'s\\
 \> solve each leaf: ionization only or coupled $(x, T_e)$\\
 \> refill \code{kap\_ion} from the new state (the stellar tally is\\
@@ -975,6 +1004,27 @@ floor ($\sim$2--4${\times}10^{-2}$ at $4{\times}10^7$ packets), so
 tolerances below that are unreachable by that criterion --- the
 diffuse field, interestingly, smooths the front and converges to
 $3{\times}10^{-3}$.
+
+\subsection{Stellar packet launch}
+\label{sec:stellar-launch}
+For each direct packet, MoCHII first samples its energy with
+Eq.~(\ref{eq:band-source-cdf}); it then samples an isotropic point-source
+direction with $\mu=2u_\mu-1$ and $\phi=2\pi u_\phi$.  The source position,
+the exact energy, the direction, and the common packet luminosity are placed
+in the packet before the octree edge walk begins.  Thus energy sampling is
+not conditional on the diagnostic binning.  At every traversed cell the
+path estimator uses the packet's exact-energy opacity and cross sections;
+the energy-bin index is accumulated only alongside this estimator to form
+the reported spectrum.  Rebuilding the direct tally from zero on every
+nonlinear iteration means that the changing opacity is always applied to a
+new sample of the source spectrum rather than to a reweighted old tally.
+
+For ordinary pseudo-random launching the inverse-CDF variate and the two
+direction variates are independent Mersenne-Twister draws.  The same
+probability law is used by the Sobol option described next.  The packet
+weight is not divided by the probability density: equal packet luminosity
+combined with inverse-CDF sampling is the importance sampling rule that
+recovers the source luminosity spectrum in expectation.
 
 \paragraph{Convergence measures.}  Two pairs are computed every
 iteration and \code{par\%conv\_crit} selects which gates the loop:
@@ -1014,7 +1064,7 @@ and \code{FINALDTE}.
 
 \subsection{Quasi-random photon launching (optional)}
 With \code{par\%launch\_sequence = 'sobol'} the packet launch draws its
-variables --- source component, frequency bin, direction, and any
+variables --- source component where relevant, energy, direction, and any
 entry-surface coordinates --- from an Owen-scrambled Sobol net
 (\code{src/qmc\_mod.f90}) instead of the Mersenne Twister, while every
 post-launch transport event stays pseudo-random.  The Sobol point is
@@ -1028,7 +1078,14 @@ cell-wise $\Gamma_{\rm HI}$ error scales as $\sim 1/N$ (Monte Carlo
 $1/\sqrt{N}$), with effective photon gains of $29\times$ at $N = 2^{17}$ and
 $222\times$ at $2^{20}$, at unchanged wall time and no significant bias.  The
 method, the fixed dimension layouts, and all gates are documented in the
-companion memo \code{MoCHII\_QMC}.
+companion memo \code{MoCHII\_QMC}.  In the validated single point-source
+continuous mode the three Sobol coordinates are
+$(u_E,u_\mu,u_\phi)$: $u_E$ is inverted through the source CDF and the
+remaining coordinates set the isotropic direction.  QMC therefore reduces
+the discrepancy of the energy samples as well as of the angular samples;
+it does not replace continuous energy sampling by bin selection.  Diffuse
+packets use a separate scrambled stream and the nine coordinates listed in
+\S\ref{sec:diffuse}.
 
 \subsection{Ionization equilibrium}
 \label{sec:ioneq}
@@ -1140,28 +1197,113 @@ with metal $\Gamma_i$ computed once per iteration from the same band
 tally.  Adding an ion is one entry in the data generators plus its
 cooling and $n$-level files.
 
-\subsection{Explicit diffuse field}
+\subsection{Explicit diffuse LyC field and packet sampling}
 \label{sec:diffuse}
 Case B on the spot is replaced by case A rates plus explicit emission of
-ground-recombination packets: three channels with rates
-$\alpha_1 = \alpha_A - \alpha_B$ and photon energies
-$E = E_{\rm th} + kT_e\,x$, $x \sim {\rm Exp}(1)$ (the near-threshold
-Milne shape at bin resolution).  Each iteration the emission table
-$L_{\rm ch}({\rm leaf}) = n_e n_{\rm rec}\alpha_1(T)(E_{\rm th} + kT)V$
-is rebuilt from the current state; packets carry the stellar
-$L_{\rm pkt}$, sample the leaf from a CDF, a uniform position within it,
-and are transported by the same edge walk.  At HII40 the diffuse band
-luminosity converges to $6.8{\times}10^{38}$~erg/s $= 0.50\,L_\star$.
-The sampled photon energy is mapped to its band bin by a binary search of
-the stored bin-edge array (\code{ion\_eedge}, \code{ion\_bin\_of}), correct
-on both the aligned (default) and the legacy log grids: an energy exactly on
-a threshold edge falls in the bin \emph{above} it, the physically correct
-side for a recombination photon emitted at threshold${}+\delta$.  The former
-closed-form log mapping assumed the log grid and mis-binned threshold
-photons once \code{ion\_align\_edges} became the default --- a
-He\,\textsc{i} ground-recombination photon (24.6~eV) landed in the bin
-\emph{below} the He\,\textsc{i} edge, where it could not ionize helium; the
-fix lowers the mean $x_{\rm HeI}$ by 50.5\% on a diffuse Str\"omgren sphere.
+ground-recombination packets.  For each leaf and each of the three ground
+continua H\,\textsc{ii}$\rightarrow$H\,\textsc{i}($1s$),
+He\,\textsc{ii}$\rightarrow$He\,\textsc{i}($1^1S$), and
+He\,\textsc{iii}$\rightarrow$He\,\textsc{ii}($1s$), the emissivity uses
+$\alpha_1(T)=\alpha_A(T)-\alpha_B(T)$.  At the start of every gas
+iteration the code rebuilds the energy-luminosity table
+\begin{equation}
+ L_{{\rm ch},l} = n_{e,l}n_{{\rm rec},l}\alpha_{1,\rm ch}(T_l)
+      \left<E\right>_{n,\rm ch}(T_l)\,V_l,
+ \qquad L_{\rm dif}=\sum_{l,{\rm ch}} L_{{\rm ch},l},
+ \label{eq:diffuse-luminosity}
+\end{equation}
+with $\left<E\right>_n$ the photon-number-weighted mean energy of the
+emitted continuum.
+
+\paragraph{Ground-continuum spectrum (\code{par\%diffuse\_energy\_model}).}
+Detailed balance between photoionization and radiative recombination fixes
+the free--bound spectrum.  Per unit photon energy the photon-number
+emissivity of each ground continuum is
+\begin{equation}
+ n(E)\;\propto\;E^2\,\sigma_{\rm pi}(E)\,
+   \exp\!\left[-\frac{E-E_{\rm th}}{kT_e}\right],
+ \qquad E\ge E_{\rm th},
+ \label{eq:milne-pdf}
+\end{equation}
+evaluated with the \emph{same} ground-state cross section the transport
+absorbs with, so a packet is absorbed with the cross section it was emitted
+with.  This is the default, \code{'milne'}.  Restoring the Milne prefactor
+turns the same integral into the ground-state recombination coefficient,
+\begin{equation}
+ \alpha_1(T)=\frac{g_n}{2g_+}\,\frac{2}{\sqrt{\pi}}\,(kT)^{-3/2}
+   \sqrt{\frac{2}{m_e}}\,\frac{1}{m_ec^2}
+   \int_{E_{\rm th}}^{\infty}\!E^2\sigma_{\rm pi}(E)
+   e^{-(E-E_{\rm th})/kT}\,dE ,
+ \label{eq:milne-alpha1}
+\end{equation}
+so the spectrum and the emission rate are not independent assumptions.
+Equation~(\ref{eq:milne-alpha1}) reproduces
+$\alpha_{1s}({\rm H\,\textsc{i}},10^4~{\rm K})=1.579\times10^{-13}$
+cm$^3$\,s$^{-1}$ against the tabulated $1.58\times10^{-13}$.  The code
+reports it at start-up against the $\alpha_A-\alpha_B$ that sets the packet
+count; the two are independent data and are never rescaled into agreement.
+They agree to $0.5$--$1.3\%$ for H\,\textsc{i} and $0.4\%$ for
+He\,\textsc{ii}, but differ by up to $3.4\%$ for He\,\textsc{i}.
+
+Two legacy options remain.  \code{'exponential'} is the historical
+near-threshold approximation
+\begin{equation}
+ E_{\rm pkt}=E_{\rm th}+kT_e[-\ln(\max(u,\epsilon))],
+ \label{eq:diffuse-energy}
+\end{equation}
+i.e.\ Eq.~(\ref{eq:milne-pdf}) with the $E^2\sigma_{\rm pi}$ weight dropped;
+it is kept to reproduce earlier runs.  \code{'threshold'} emits at
+$E_{\rm th}$ and is a sensitivity bracket, not a model.  The three
+thresholds are 13.598, 24.587, and 54.416~eV, and every model is a sampled
+photon energy, not a bin-center approximation.
+
+\paragraph{Sampling weight.}  MoCHII emits equal-energy packets and fixes
+their number from the channel's \emph{energy} luminosity.  The packet
+energies must therefore follow the energy-luminosity density $E\,n(E)$,
+not $n(E)$ itself.  With that pairing the represented photon rate is exactly
+the physical one,
+\begin{equation}
+ N_{\rm pkt}L_{\rm pkt}\left<E^{-1}\right>_{En}
+   = R\left<E\right>_n\frac{1}{\left<E\right>_n}=R ,
+\end{equation}
+whereas drawing from $n(E)$ while counting packets from the energy
+luminosity inflates it by $\left<E\right>_n\left<E^{-1}\right>_n>1$
+(1.002 at $8000$~K, 1.010 at $2\times10^4$~K).  The CDF is tabulated in
+$x=(E-E_{\rm th})/kT$, interpolated in $\log T$ and inverted once, rather
+than inverting two neighbouring temperature rows and interpolating the
+resulting energies.
+
+\paragraph{Effect.}  Against the exponential approximation the converged
+HII40 calculation moves $r({\rm He^0}=0.5)$ outward by $0.00063$~pc and
+$r({\rm C^{2+}}=0.5)$ by $0.00052$~pc, closing $0.3\%$ of the residual
+against Cloudy c25.  The two continua move in opposite directions because
+each follows its own mean energy: the H\,\textsc{i} continuum softens
+($14.460\rightarrow14.427$~eV at $10^4$~K) since the hydrogenic cross
+section falls as $E^{-3}$, while the He\,\textsc{i} continuum hardens
+($25.449\rightarrow25.460$~eV) because the Verner He\,\textsc{i} fit falls
+more slowly near threshold.  The exact spectrum is therefore a correctness
+fix, not the explanation of the Cloudy front residual.
+
+All diffuse packets carry the same luminosity as direct packets,
+$L_{\rm pkt}=L_{\rm band}/N_{\rm pkt}$, so their number is
+$N_{\rm dif}=\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})$.  A packet first
+selects a leaf from the CDF of $\sum_{\rm ch}L_{{\rm ch},l}$, then a channel
+from that leaf's four-channel luminosity weights.  Its emission point is
+uniform in the selected cubic leaf and its direction is isotropic.  It is
+then transported with the same exact-energy edge walk and path estimator as
+a stellar packet.  Hence diffuse luminosity is represented by packet count,
+not by a different packet weight.  At HII40 the diffuse band luminosity
+converges to $6.8{\times}10^{38}$~erg/s $=0.50\,L_\star$.
+
+For output bookkeeping, the energy from Eq.~(\ref{eq:diffuse-energy}) is
+mapped by binary search of \code{ion\_eedge} (\code{ion\_bin\_of}).  This
+works for both threshold-aligned and logarithmic diagnostic grids; an energy
+on an edge falls in the bin above it.  In continuous mode this assignment
+does not modify $E_{\rm pkt}$ or its cross sections.  In grouped mode only,
+the representative energy of that selected bin is used for transport.  The
+binary search also corrects the former closed-form log-grid mapping, which
+could place a 24.6-eV He\,\textsc{i} recombination photon below the
+He\,\textsc{i} threshold on an aligned grid.
 
 With \code{par\%hei\_diffuse} a fourth channel adds the He\,\textsc{i}
 \emph{excited-level} recombination radiation (previously those photons
@@ -1176,6 +1318,16 @@ unchanged to four decimals --- correct energy bookkeeping, and the
 demonstration that the He-structure residual against MOCASSIN does
 NOT come from this channel (the split is set by the $>$24.6-eV
 budget).
+
+With \code{launch\_sequence='sobol'}, diffuse packets use a separate
+Owen-scrambled Sobol stream so that their changing count does not disturb
+the direct-source sequence.  Its fixed nine coordinates are: one for the
+leaf CDF; three for the position within that leaf; two for $(\mu,\phi)$;
+one for the channel CDF; one for the ground-continuum energy draw (or
+the excited-He branch); and one for the flat two-photon energy when that
+branch is selected.  Coordinates that are irrelevant to a selected channel
+are still reserved, preserving the global packet-indexed layout across
+iterations and MPI task counts.
 
 \subsection{Solution-driven I-front re-refinement}
 \label{sec:refine}

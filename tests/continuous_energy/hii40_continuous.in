@@ -36,6 +36,11 @@
  par%ion_relax       = 1.0
  par%case_ab         = 'A'
  par%diffuse_field   = .true.
+!--- The published tables and figures were computed before the Milne
+!--- ground continuum became the default; pin the model that produced
+!--- them so this input stays reproducible.  Milne moves the HII40
+!--- He I front by +0.6e-3 pc, far below any figure resolution.
+ par%diffuse_energy_model = 'exponential'
  par%hei_diffuse     = .true.
  par%solve_te        = .true.
  par%te_min          = 3.0e3

@@ -811,7 +811,7 @@ public
      !--- 'exponential' keeps E=Eth+kT Exp(1), the historical near-edge
      !--- approximation retained to reproduce earlier runs; 'threshold'
      !--- emits at Eth and is a sensitivity diagnostic, not a model.
-     character(len=16)  :: diffuse_energy_model = 'exponential'
+     character(len=16)  :: diffuse_energy_model = 'milne'
      logical            :: use_metals   = .false.
      !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
      !--- 16/34 levels) instead of the compact 13/14-level defaults.
