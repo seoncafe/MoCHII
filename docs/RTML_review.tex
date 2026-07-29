@@ -34,6 +34,24 @@ ion fractions and level populations must be specified.  In rapidly mixed or
 rapidly cooled gas, the ionization/recombination time can exceed the cooling
 or mixing time, making CIE spectra a useful baseline but not the default
 prediction.
+For a new calculation, the most direct publicly documented implementation is
+the full-ionization-network extension of \textsc{Pluto}; \textsc{Flash} is a
+robust alternative but requires a new cooling/emissivity coupling, while
+\textsc{Maihem} is the most integrated option if its modified-\textsc{Flash}
+source can be obtained.  \textsc{Torus} is better retained for transfer and
+synthetic-observation post-processing than used as the primary RTML
+microphysics solver.  The locally available \textsc{Mappings~V} 5.2.1 source
+substantially improves the practical options: it is not a multidimensional
+mixing solver, but it can supply internally consistent CIE/NEI cooling
+histories, ion fractions, and line/continuum emissivities, as well as
+one-zone and radiative-shock benchmarks.  The most realistic modular
+architecture is therefore \textsc{Pluto} or \textsc{Flash} for the RTML
+dynamics, \textsc{Mappings} for microphysics and spectral tables, and
+\textsc{Torus} only when a subsequent transfer calculation is required.  For
+galactic-wind applications, the Fielding--Bryan steady multiphase-wind model
+provides a useful additional closure between local interface emission and the
+radial population of clouds, allowing a local RTML surface flux to be
+converted into a galaxy-scale luminosity distribution.
 \end{abstract}
 
 \tableofcontents
@@ -216,6 +234,16 @@ to exceed its initial value.  This is an application of RTML physics, although
 the curved, evolving cloud surface is not identical to a periodic
 plane-parallel layer.
 
+Fielding and Bryan promoted this local cloud--wind exchange into a
+steady-state model for an entire multiphase galactic wind
+\cite{FieldingBryan2022}.  Their framework evolves the volume-filling hot
+phase and an embedded cold-cloud population simultaneously, treating
+cloud growth or destruction, drag, kinetic-energy thermalization, and metal
+exchange as mass, momentum, and energy source terms for the hot flow.  It
+does not resolve an RTML, but it supplies the missing population and geometry
+closure needed to translate a single-interface calculation into a radial
+wind luminosity.
+
 For cosmological cold streams, Mandelker et al. found that the analogous ratio
 of the mixed-gas cooling time to the shear-layer growth time controls whether a
 stream is disrupted or gains mass \cite{Mandelker2020}.  Their follow-up
@@ -332,7 +360,11 @@ fractions.  CHIANTI/ChiantiPy is convenient for optically thin line work;
 AtomDB/PyAtomDB is convenient for CIE X-rays.  For photoionized, optically
 thick, or radiation-coupled zones, use a spectral-synthesis/transfer code such
 as \textsc{Cloudy}, but supply the non-equilibrium state or a sequence of
-short history steps rather than silently imposing equilibrium.
+short history steps rather than silently imposing equilibrium.  The local
+\textsc{Mappings~V} installation is an additional, particularly useful route:
+precompute cooling, ionization, and emissivity tables with the same abundance
+and radiation assumptions used by the dynamics, or evolve representative
+tracer histories through its time-dependent single-zone solver.
 
 \item \textbf{Project and transfer the radiation.}  The intrinsic surface
 brightness along a ray is
@@ -355,6 +387,421 @@ Publish line luminosities, intrinsic and attenuated spectra, and the DEM,
 rather than only selected line ratios.
 \end{enumerate}
 
+\section{Code assessment and practical implementation}
+\label{sec:codes}
+
+\subsection{Selection criteria}
+
+The relevant question is not which code has the largest collection of
+features, but which one minimizes the amount of new microphysics required for
+the intended observable.  A practical RTML code should ideally provide:
+\begin{enumerate}[leftmargin=*]
+\item multidimensional HD/MHD with a controllable plane-parallel shear layer;
+\item passive-scalar or species advection and a stiff NEI integrator;
+\item all charge states needed for C\,IV, N\,V, and O\,VI;
+\item radiative losses evaluated from the same instantaneous ion fractions
+that are advected by the flow;
+\item optional thermal conduction and a resolvable Field length; and
+\item an export or post-processing route from cell states to line and
+continuum emissivities.
+\end{enumerate}
+No candidate considered here supplies unrestricted three-dimensional dynamics,
+full NEI, arbitrary-geometry frequency-dependent transfer, and an
+observation-ready spectrum without some additional work.
+
+\subsection{Comparison of the main candidates}
+
+\begin{longtable}{
+ >{\raggedright\arraybackslash}p{2.4cm}
+ >{\raggedright\arraybackslash}p{3.4cm}
+ >{\raggedright\arraybackslash}p{4.5cm}
+ >{\raggedright\arraybackslash}p{3.4cm}}
+\toprule
+\textbf{Code} & \textbf{Existing strengths} &
+\textbf{Missing or limiting feature} & \textbf{Recommended role}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Code} & \textbf{Existing strengths} &
+\textbf{Missing or limiting feature} & \textbf{Recommended role}\\
+\midrule
+\endhead
+\textsc{Pluto} with the Sarkar--Sternberg--Gnat extension &
+HD/MHD; full ion stages of H, He, C, N, O, Ne, Mg, Si, S, and Fe;
+ion-by-ion cooling based on \textsc{Cloudy}-17; charge exchange and
+photoionization; public source and an NEI spectral post-processor &
+The published frequency-dependent transfer solver assumes spherical
+symmetry; the extension is based on \textsc{Pluto} 4.0 and therefore needs
+build and regression testing before a production 3-D run &
+\textbf{Most direct public starting point} for a plane-parallel NEI RTML;
+use its 3-D ion network and optically thin spectral post-processing, not its
+spherical transfer solver \cite{Sarkar2021}\\
+\textsc{Maihem} &
+Modified \textsc{Flash} with NEI, ion-by-ion cooling, photoionization and
+photoheating; 84 species across 13 elements; demonstrated non-CIE line
+synthesis with frozen ion fractions passed to \textsc{Cloudy} &
+No clearly maintained general public distribution was identified; obtaining
+and validating the exact source version may require collaboration with the
+authors &
+\textbf{Best integrated physical match if the source is available}
+\cite{Gray2019}\\
+\textsc{Flash} 4.8 &
+Mature AMR HD/MHD; an \texttt{Ionize/Nei} unit that advects every charge
+state for a selectable set including C, N, and O; explicit/implicit isotropic
+and anisotropic conduction &
+The standard NEI unit does not feed ionization/recombination losses back into
+the energy equation and uses the Summers (1974) rate file; it does not
+produce a spectrum automatically &
+\textbf{Most robust fallback}: add modern ion-dependent cooling and a
+\textsc{Chianti}/\textsc{Cloudy} emissivity layer
+\cite{Fryxell2000,FLASHGuide}\\
+\textsc{Athena++} &
+Modern, efficient AMR MHD framework; already used for plane-parallel RTML
+calculations with cooling and conduction &
+Published RTML setups usually use CIE cooling and synthetic spectra rather
+than an in-flow full-metal NEI network &
+Excellent CIE dynamics baseline or a platform for a new custom NEI module,
+but not the shortest route to NEI emission \cite{Stone2020,TanOh2021}\\
+Standard \textsc{Pluto} MINEq &
+NEI source integration and self-consistent optically thin cooling from 29
+species; designed for emission-line diagnostics &
+The older network includes only the first five stages of C, N, O, Ne, and S,
+so it does not by itself contain O\,VI; superseded for this project by the
+full-ion extension &
+Useful validation case, not the preferred production network
+\cite{Tesileanu2008}\\
+\textsc{Mappings~V} 5.2.1 (local checkout) &
+Thirty-element atomic setup; fixed-temperature CIE, time-dependent
+ionization, coupled time-dependent cooling and recombination, isochoric or
+isobaric evolution, detailed line/continuum emissivities, and radiative-shock
+models with self-consistent precursor calculations &
+It is a standalone, mostly interactive Fortran microphysics/spectral code,
+not a multidimensional turbulence or MHD solver; arbitrary 3-D RTML histories
+require a wrapper or precomputed tables, and one invocation per simulation
+cell would be impractical &
+\textbf{Preferred local microphysics and validation engine}: generate
+CIE/NEI cooling and emissivity tables, post-process representative tracer
+histories, and benchmark the atomic physics independently of the hydro code
+\cite{Sutherland2017}\\
+{\footnotesize\shortstack[l]{\textsc{Multiphase}\\
+\textsc{GalacticWind}}} &
+Compact Python implementation of the Fielding--Bryan steady multiphase-wind
+model; bidirectional hot/cloud mass, momentum, energy, and metal exchange;
+RTML-informed cloud growth and ablation; radial cloud area and number-density
+closure &
+It neither resolves KH turbulence nor evolves NEI ions, line emissivities,
+MHD, conduction, or transfer; the example evolves one characteristic cloud
+population and uses equilibrium Wiersma et al.\ cooling tables &
+\textbf{Preferred galaxy-scale population wrapper}: convert a calibrated
+single-interface RTML flux into radial luminosity, surface-brightness, and
+velocity-profile predictions for a multiphase wind
+\cite{FieldingBryan2022,Wiersma2009}\\
+\textsc{Torus} (local checkout) &
+1-D/2-D/3-D AMR, Eulerian hydrodynamics, Monte Carlo radiation transport,
+photoionization equilibrium, dust, and line-transfer machinery; a
+\texttt{geometry="kelvin"} hydrodynamic initial condition is present &
+No ready-made collisionally ionized full C/N/O NEI network, self-consistent
+RTML metal cooling, MHD, or conductive front model was found; C\,IV is
+present in the local ion list, whereas N\,V and the higher oxygen stages
+needed for O\,VI are disabled or absent &
+Use as a \textbf{transfer/synthetic-observation post-processor} after importing
+the flow and NEI ion fractions, especially when dust, absorption, scattering,
+or complex viewing geometry matters \cite{Harries2019}\\
+\bottomrule
+\end{longtable}
+
+\subsection{Role of the local \textsc{Mappings~V} checkout}
+\label{sec:mappings}
+
+The inspected source tree is the public \textsc{Mappings~V} version 5.2.1.
+Its full preference set loads 30 elements, including all carbon, nitrogen,
+and oxygen ion stages needed for C\,IV, N\,V, and O\,VI.  The single-zone
+driver provides equilibrium ionization at fixed temperature, equilibrium
+ionization and temperature, time-dependent ionization at either fixed or
+equilibrium temperature, and coupled time-dependent ionization and
+temperature.  For the last case the density evolution may be chosen as
+isochoric or isobaric.  The supplied cooling examples include both CIE and
+NEI cooling trajectories, while the cooling and spectrum routines can write
+element-resolved cooling, ionization fractions, line emissivities, and local
+or integrated spectra.  These are exactly the ingredients required to
+construct controlled RTML spectral benchmarks.
+
+The radiative-shock module adds a second useful test.  It advances the
+post-shock ionization and cooling zones using atomic, cooling, and flow time
+scales and iterates the upstream photoionized precursor
+\cite{Sutherland2017}.  Such a shock spectrum must \emph{not} be identified
+with a shear-driven RTML spectrum: compression, velocity history, and
+self-irradiation differ.  It is nevertheless a stringent test of the same
+ionization, cooling, and emissivity machinery over the temperature range
+occupied by a radiative mixing layer.
+
+There are four recommended uses:
+\begin{enumerate}[leftmargin=*]
+\item generate a version-pinned CIE cooling curve and CIE emissivity grid for
+the initial hydro and spectrum baseline;
+\item generate isochoric and isobaric NEI cooling sequences and the associated
+C\,IV/N\,V/O\,VI contribution functions;
+\item post-process a representative set of Lagrangian thermal histories from
+the RTML simulation; and
+\item compare integrated cooling and selected line luminosities against
+\textsc{Chianti}, \textsc{Cloudy}, and the \textsc{Pluto} full-ion
+post-processor to expose atomic-data or normalization differences.
+\end{enumerate}
+
+For CIE, a table indexed by $(T,\nelec,Z,J_\nu)$ can be interpolated cell by
+cell.  The analogous NEI table cannot generally be indexed by only the
+\emph{current} $(T,\nelec)$, because two parcels at the same temperature can
+retain different ion fractions after different mixing and cooling histories.
+The production calculation must therefore do one of the following: evolve
+the ions inside the hydro code; save tracer histories and pass them through
+\textsc{Mappings}; or construct a deliberately restricted library of
+isochoric/isobaric histories and quantify the approximation.  A final
+snapshot containing only density and temperature is insufficient for a
+general NEI spectrum.
+
+Directly launching the interactive \textsc{Mappings} executable once for
+every cell and output time would also be prohibitively expensive.  The
+practical interface is a scripted batch wrapper that first computes tables
+on a grid of physical conditions and then uses interpolation during
+post-processing.  If the hydro cooling is taken from those tables, the
+spectral calculation must retain the same abundances, dust assumptions,
+radiation field, and atomic-data version.  A separate background metal
+cooling term must not be added on top of the \textsc{Mappings} loss, because
+that would double count radiative channels.
+
+At the time of inspection the local source tree contained no built
+\texttt{map52} executable.  Its documented build target is
+\texttt{make build}, with a default installation under
+\texttt{\string~/mappings520}.  Before scientific use, build it in an
+isolated test location, run the supplied CIE and NEI cooling examples, and
+archive the exact preference, abundance, dust, and atomic-data files with
+the generated tables.
+
+\subsection{From a local RTML to a multiphase galactic wind}
+\label{sec:fieldingbryan}
+
+The public \textsc{MultiphaseGalacticWind} repository is a compact
+implementation of the Fielding--Bryan analytic framework
+\cite{FieldingBryan2022}.  It first constructs a Chevalier--Clegg-like hot
+wind and then solves radial ordinary differential equations for
+\[
+ \{v_{\rm w},\rho_{\rm w},P_{\rm w},\rho_{\rm w}Z_{\rm w},
+   M_{\rm c},v_{\rm c},Z_{\rm c}\}.
+\]
+The hot and cold phases exchange mass, momentum, energy, and metals.  The
+cloud is pressure confined; its acceleration includes ram-pressure drag,
+momentum gained with condensing material, and gravity, while the hot wind
+responds to all of these source terms.  This bidirectional coupling is more
+useful for a global wind than treating clouds as passive test particles.
+
+The RTML closure enters through
+\begin{equation}
+ T_{\rm mix}=(T_{\rm w}T_{\rm c})^{1/2},\qquad
+ Z_{\rm mix}=(Z_{\rm w}Z_{\rm c})^{1/2},\qquad
+ \xi=\frac{r_{\rm c}}{v_{\rm turb}t_{\rm cool,mix}}.
+ \label{eq:windxi}
+\end{equation}
+The example implementation uses a cloud-growth factor proportional to
+$\xi^{1/2}$ for $\xi<1$ and $\xi^{1/4}$ for $\xi>1$, corresponding to the
+weak- and strong-cooling RTML scalings, together with a separately
+parameterized turbulent ablation rate and an effective cooling-area boost.
+It therefore provides a concrete route from the local scalings in
+Equations~(\ref{eq:weakscaling}) and (\ref{eq:strongscaling}) to a radial
+mass-loading model.  The coefficients and density-contrast powers remain
+closures calibrated by idealized simulations and must be varied rather than
+treated as universal constants.
+
+Its most important contribution to spectral modeling is geometrical.  For a
+steady cloud number flux $\dot N_{\rm c}$ in solid angle $\Omega$, the cloud
+number density is
+\begin{equation}
+ n_{\rm c}(r)=\frac{\dot N_{\rm c}(r)}
+ {\Omega r^2v_{\rm c}(r)}.
+ \label{eq:cloudnumber}
+\end{equation}
+If a local RTML calculation supplies a spectral surface flux
+$F_\lambda^{\rm RTML}$ and the effective emitting area of one cloud is
+$A_{\rm eff}$, then
+\begin{align}
+ L_\lambda^{\rm c}(r)&=A_{\rm eff}(r)
+ F_\lambda^{\rm RTML}
+ [P,T_{\rm w},T_{\rm c},v_{\rm rel},Z,\mathrm{history}],\\
+ \frac{dL_\lambda}{dr}
+ &=\Omega r^2 n_{\rm c}L_\lambda^{\rm c}
+ =\frac{\dot N_{\rm c}}{v_{\rm c}}L_\lambda^{\rm c}.
+ \label{eq:windlum}
+\end{align}
+This converts a planar or single-cloud emissivity calculation into a
+galaxy-scale radial luminosity.  Doppler shifting each contribution by the
+projected $v_{\rm c}(r)$ and $v_{\rm w}(r)$ then gives an intrinsic line
+profile before transfer.  The needed
+$F_\lambda^{\rm RTML}$ should come from \textsc{Mappings} tables or resolved
+\textsc{Pluto}/\textsc{Flash} interface calculations, not from the
+bolometric cooling curve alone.
+
+The repository's bundled cooling table is based on the redshift-zero
+Wiersma et al.\ UV-background calculation \cite{Wiersma2009}.  It is useful
+for the steady wind energy equation but supplies neither the NEI state nor
+C\,IV/N\,V/O\,VI line emissivities.  The code also assumes steady radial
+flow and a representative cloud rather than a time-dependent distribution of
+cloud sizes and histories.  Accordingly, it should be used as a
+\emph{population wrapper} around RTML microphysics, not as a replacement for
+the hydro, NEI, spectral, or transfer stages.
+
+\subsection{Revised practical recommendation}
+
+For work that can start from publicly identified source, the most economical
+choice is the Sarkar--Sternberg--Gnat \textsc{Pluto} extension
+\cite{Sarkar2021}.  Its ionization network is valid over
+$5\times10^3$--$3\times10^8\,\mathrm{K}$, includes all stages needed for
+C\,IV/N\,V/O\,VI, calculates cooling for each ion--electron pair on the fly,
+and supplies a post-processing tool for projected columns and spectra.  The
+ion network is compatible with three-dimensional MHD even though its
+frequency-dependent radiation-transfer module is restricted to spherical
+symmetry.  A plane-parallel RTML should therefore use the 3-D MHD+NEI part and
+perform optically thin spectral integration separately.  The local
+\textsc{Mappings} code should then be used as an independent one-zone
+microphysics benchmark and, where its atomic data are preferred, as a
+secondary emissivity-table generator.
+
+If the \textsc{Maihem} source can be obtained and built reproducibly, it is an
+even closer physical match.  It evolves the ionization state and computes
+cooling ion by ion, and published applications pass the non-equilibrium
+fractions to \textsc{Cloudy} to calculate line emissivities.  This procedure
+has produced strong C\,IV $\lambda1549$ and O\,VI $\lambda1037$ emission in
+rapidly cooling flows \cite{Gray2019}.  Its practical ranking is limited by
+source availability rather than physics.
+
+\textsc{Flash} 4.8 remains the safest independently maintainable alternative.
+Its built-in NEI unit already removes the largest bookkeeping burden---the
+advection and reaction solution for all C/N/O stages---but a production RTML
+calculation must replace or augment the old rate data and must couple the
+instantaneous ion state to the energy source.  The documented defaults
+$10^4<T<10^7\,\mathrm{K}$ and
+$1<\nelec<10^{12}\,\mathrm{cm}^{-3}$ also require special attention:
+the default lower electron-density bound is unsuitable for much of the CGM
+unless it is changed and validated \cite{FLASHGuide}.
+
+Consequently the recommended order is:
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Shortest self-consistent NEI route:} the full-ion
+\textsc{Pluto} extension for dynamics and ion evolution, with
+\textsc{Mappings} and \textsc{Chianti} as independent spectral checks;
+\item \textbf{most maintainable modular route:} \textsc{Flash} 4.8 for AMR
+HD/MHD plus version-pinned \textsc{Mappings} cooling/emissivity tables and a
+new coupling layer;
+\item \textbf{best integrated physics if obtainable:} \textsc{Maihem}, again
+benchmarked against \textsc{Mappings};
+\item \textbf{fast CIE control calculation:} \textsc{Athena++} or standard
+\textsc{Pluto} with a \textsc{Mappings}/\textsc{Chianti} tabulated CIE cooling
+curve; and
+\item \textbf{galaxy-scale population wrapper:}
+\textsc{MultiphaseGalacticWind}, after calibrating its cloud-growth,
+ablation, and emitting-area closures with the local RTML calculation; and
+\item \textbf{radiation-transfer finishing stage:} \textsc{Torus}, only after
+the required ion fractions and intrinsic emissivities have been supplied.
+\end{enumerate}
+
+Thus the most realistic near-term stack for the available local codes is
+\[
+\begin{aligned}
+ \textsc{Pluto/Flash}\;(\text{RTML dynamics})
+ &\longrightarrow \textsc{Mappings~V}\;(\text{NEI emission})\\
+ &\longrightarrow \textsc{MultiphaseGalacticWind}\;
+   (\text{optional population model})\\
+ &\longrightarrow \textsc{Torus}\;(\text{optional transfer}).
+\end{aligned}
+\]
+\textsc{MultiphaseGalacticWind} is omitted for a single-interface study.
+\textsc{Torus} is omitted from the first production pass if all diagnostic
+lines are demonstrably optically thin and foreground attenuation can be
+applied analytically.
+
+\subsection{A concrete production architecture}
+
+The proposed calculation should be developed in five increasingly expensive
+levels.
+
+\paragraph{Level 1: hydrodynamic CIE benchmark.}
+Initialize a pressure-balanced hot/cold interface in a Cartesian box with the
+shear direction periodic, a transverse domain large enough to contain the
+growing layer, and seeded perturbations whose spectrum is recorded.  Run 2-D
+resolution and cooling-strength scans before the 3-D production model.
+Compute the bolometric loss, DEM, mixing-layer width, entrainment velocity,
+and CIE C\,IV/N\,V/O\,VI columns.  This stage tests Equations
+(\ref{eq:energy})--(\ref{eq:strongscaling}) without conflating a hydro error
+with an NEI error.  Generate the baseline cooling and emissivity tables with
+\textsc{Mappings}, and cross-check a sparse set of temperatures with
+\textsc{Chianti}.
+
+\paragraph{Level 2: dynamically coupled NEI.}
+Evolve at least H, He, C, N, and O as conserved species with reaction source
+terms.  Other important coolants may either be evolved or included through a
+carefully separated background cooling term.  The two contributions must not
+double count the same metal lines.  Advance reactions and cooling with
+subcycling or an implicit stiff solver, enforce positivity and elemental
+normalization, and recompute $\nelec$ and the mean molecular weight from the
+instantaneous ion state.  Compare the NEI and CIE cooling histories for
+identical fluid initial conditions.  Validate the coupled solver against the
+\textsc{Mappings} isochoric and isobaric single-zone cooling sequences before
+running a turbulent box.
+
+\paragraph{Level 3: intrinsic emission cube and spectrum.}
+For each transition $u\rightarrow l$, calculate
+\begin{equation}
+ \epsilon_\nu(\boldsymbol{x})=
+ \nelec n_{X,q}\,q_{ul}(T,\nelec)\,h\nu_{ul}\,
+ \phi_\nu[T,\boldsymbol{v},v_{\rm turb}],
+ \label{eq:profileem}
+\end{equation}
+where $\phi_\nu$ contains thermal broadening, the cell line-of-sight velocity,
+and any explicitly defined unresolved velocity dispersion.  Obtain
+$q_{ul}$ and continuum coefficients from a version-pinned atomic data set,
+using either \textsc{Mappings} or \textsc{Chianti}; sparse one-zone
+\textsc{Cloudy} calculations with frozen NEI fractions provide a useful
+cross-check.  If \textsc{Mappings} is used, interpolate precomputed
+emissivities rather than starting one interactive model per cell.  Produce
+both a cell emissivity cube and the volume-integrated spectrum so that
+inclination and aperture can be varied without rerunning the dynamics.
+
+\paragraph{Level 4: optional wind-scale population synthesis.}
+If the target is an integrated galactic wind rather than one interface,
+interpolate the RTML surface-flux library along the radial solution of
+Section~\ref{sec:fieldingbryan}.  Calculate $A_{\rm eff}$, cloud number
+density, $dL_\lambda/dr$, projected velocity, and aperture dependence.
+Vary the cloud injection history or mass spectrum and the uncertain
+growth/ablation coefficients.  Energy radiated by the interfaces must remain
+consistent with the mass and enthalpy exchange applied to the hot wind.
+
+\paragraph{Level 5: transfer and instrument model.}
+First calculate the optically thin result using
+Equation~(\ref{eq:transfer}).  Only if the inferred line-center optical depth,
+dust opacity, or photoelectric absorption is significant should the emission
+cube be passed to \textsc{Torus} or another transfer solver.  Importing NEI
+fractions into \textsc{Torus} will require a defined data interface and an
+extension of its atomic model for N\,V and O\,VI; its current photoionization
+equilibrium solution should not overwrite the imported NEI state.  Resonant
+scattering must preserve photon frequency and direction information rather
+than being represented by a scalar escape fraction when line profiles are an
+observable.
+
+\subsection{Minimum verification matrix}
+
+Before interpreting a spectrum, vary at least the grid scale, cooling
+normalization, conduction coefficient, magnetic-field strength/orientation,
+and ionization model.  The minimum reported comparison is
+\[
+ \{\mathrm{CIE},\mathrm{NEI}\}\times
+ \{\mathrm{HD},\mathrm{MHD}\}\times
+ \{\kappa=0,\kappa=\kappa_{\rm adopted}\},
+\]
+with matched initial conditions.  Verify conservation of every elemental
+abundance, positivity of all fractions, cooling-energy closure, convergence
+of the DEM and line luminosities, and the reproduction of one-zone CIE and
+isochoric/isobaric NEI benchmarks.  Because emissivity is approximately
+quadratic in density, agreement in total mass or column density alone is not
+a sufficient emission test.
+
 \section{A minimal, useful surrogate: a steady isobaric cooling flow}
 
 When a full 3-D RTML calculation is unavailable, a steady cooling-flow model
@@ -375,7 +822,10 @@ This has two benefits: it makes the assumed energy/mass flux explicit, and it
 handles ionization lag.  Its limitation is equally explicit: it cannot predict
 the entrainment rate, corrugated area, or velocity-dependent line profile.
 Those require a turbulence model or simulation.  Use it as a benchmark and
-parameter study, not as a substitute for resolved RTML dynamics.
+parameter study, not as a substitute for resolved RTML dynamics.  The
+time-dependent, isobaric option in the local \textsc{Mappings} single-zone
+solver is a direct implementation path for this surrogate, while the
+isochoric option brackets sensitivity to the thermodynamic closure.
 
 \section{Diagnostics and observables}
 
@@ -437,6 +887,7 @@ Tan, Oh \& Gronke (2021) & Turbulent-combustion analogy & $\Da$ organizes weak- 
 Tan \& Oh (2021) & 1-D front + 3-D spectral tests & Global entrainment and line observables have different resolution requirements; local conduction controls the temperature PDF.\\
 Yang \& Ji (2023) & High-Mach 3-D hydro & Surface brightness and ion columns saturate above $\mathcal{M}\sim1$; dissipation can drive evaporation.\\
 Zhao \& Bai (2023); Das \& Gronke (2024) & 3-D MHD & Amplified weak fields suppress local mixing, while global morphology can partly compensate in turbulent systems.\\
+Fielding \& Bryan (2022) & Steady two-phase wind ODEs with RTML-informed exchange & Converts local cloud growth/ablation into bidirectional mass, momentum, energy, and metal source terms; useful for interface population and radial luminosity modeling, not for NEI microphysics.\\
 \bottomrule
 \end{longtable}
 
@@ -448,6 +899,22 @@ NEI-based intrinsic spectrum plus transferred spectra for specified sightlines,
 accompanied by a DEM, ion columns, and an energy-closure test.  A CIE/DEM
 spectrum remains valuable as a fast control model; differences from NEI then
 become an interpretable prediction of the mixing and cooling history.
+
+For implementation, the current first choice is the publicly available
+full-ion NEI extension of \textsc{Pluto}, because it already connects
+multidimensional MHD, the required C/N/O charge states, ion-dependent cooling,
+and an emission-spectrum post-processor.  The local \textsc{Mappings~V} 5.2.1
+checkout is the preferred complementary microphysics tool: it can supply CIE
+and NEI cooling/emissivity tables, one-zone cooling-flow calculations, and
+radiative-shock benchmarks, but it cannot form the multidimensional mixing
+layer.  \textsc{Maihem} is the most integrated alternative if its source can
+be obtained, and \textsc{Flash} 4.8 is the preferred robust platform when the
+cooling/emissivity coupling will be developed locally.  The resulting
+practical architecture is \textsc{Pluto}/\textsc{Flash} for dynamics,
+\textsc{Mappings} for microphysics and intrinsic radiation,
+\textsc{MultiphaseGalacticWind} when a local interface must be embedded in a
+radial cloud population, and \textsc{Torus} only as the final transfer stage
+for an externally computed NEI emission cube.
 
 \begin{thebibliography}{99}
 \footnotesize
@@ -468,6 +935,16 @@ become an interpretable prediction of the mixing and cooling history.
 \bibitem{MandelkerLya2020} Mandelker, N., van den Bosch, F. C., Nagai, D., Dekel, A., Birnboim, Y. \& Aung, H. 2020, MNRAS, 498, 2415, doi:\href{https://doi.org/10.1093/mnras/staa2421}{10.1093/mnras/staa2421}.
 \bibitem{CHIANTI} Del Zanna, G., et al. 2021, ApJ, 909, 38, doi:\href{https://doi.org/10.3847/1538-4357/abd8ce}{10.3847/1538-4357/abd8ce}; \href{https://www.chiantidatabase.org/}{CHIANTI database}.
 \bibitem{AtomDB} Foster, A. R., et al. 2012, ApJ, 756, 128, doi:\href{https://doi.org/10.1088/0004-637X/756/2/128}{10.1088/0004-637X/756/2/128}; \href{https://www.atomdb.org/}{AtomDB}.
+\bibitem{Fryxell2000} Fryxell, B., et al. 2000, ApJS, 131, 273, doi:\href{https://doi.org/10.1086/317361}{10.1086/317361}.
+\bibitem{FLASHGuide} Flash Center for Computational Science 2024, \textit{FLASH User's Guide, Version 4.8}, \href{https://flash.rochester.edu/site/flashcode/user_support/flash_ug_devel/flash4_ug.html}{online manual}, especially the \href{https://flash.rochester.edu/site/flashcode/user_support/flash_ug_devel/node120.html}{Ionization Unit} and \href{https://flash.rochester.edu/site/flashcode/user_support/flash_ug_devel/node128.html}{Diffuse Unit}.
+\bibitem{Tesileanu2008} Te\c{s}ileanu, O., Mignone, A. \& Massaglia, S. 2008, A\&A, 488, 429, doi:\href{https://doi.org/10.1051/0004-6361:200809461}{10.1051/0004-6361:200809461}.
+\bibitem{Sarkar2021} Sarkar, K. C., Sternberg, A. \& Gnat, O. 2021, MNRAS, 503, 5807, doi:\href{https://doi.org/10.1093/mnras/stab578}{10.1093/mnras/stab578}; \href{https://gitlab.com/kartickchsarkar/pluto-neq-radiation}{public source repository}.
+\bibitem{Sutherland2017} Sutherland, R. S. \& Dopita, M. A. 2017, ApJS, 229, 34, doi:\href{https://doi.org/10.3847/1538-4365/aa6541}{10.3847/1538-4365/aa6541}; \href{https://mappings.anu.edu.au/}{MAPPINGS public distribution}.
+\bibitem{FieldingBryan2022} Fielding, D. B. \& Bryan, G. L. 2022, ApJ, 924, 82, doi:\href{https://doi.org/10.3847/1538-4357/ac2f41}{10.3847/1538-4357/ac2f41}; \href{https://github.com/dfielding14/MultiphaseGalacticWind/}{public example code}.
+\bibitem{Wiersma2009} Wiersma, R. P. C., Schaye, J. \& Smith, B. D. 2009, MNRAS, 393, 99, doi:\href{https://doi.org/10.1111/j.1365-2966.2008.14191.x}{10.1111/j.1365-2966.2008.14191.x}.
+\bibitem{Gray2019} Gray, W. J., Oey, M. S., Silich, S. \& Scannapieco, E. 2019, ApJ, 887, 161, doi:\href{https://doi.org/10.3847/1538-4357/ab510d}{10.3847/1538-4357/ab510d}.
+\bibitem{Stone2020} Stone, J. M., Tomida, K., White, C. J. \& Felker, K. G. 2020, ApJS, 249, 4, doi:\href{https://doi.org/10.3847/1538-4365/ab929b}{10.3847/1538-4365/ab929b}.
+\bibitem{Harries2019} Harries, T. J., Haworth, T. J., Acreman, D., Ali, A. \& Douglas, T. 2019, Astronomy and Computing, 27, 63, doi:\href{https://doi.org/10.1016/j.ascom.2019.03.002}{10.1016/j.ascom.2019.03.002}.
 \end{thebibliography}
 
 \end{document}
