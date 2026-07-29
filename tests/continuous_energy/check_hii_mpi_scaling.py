@@ -44,8 +44,10 @@ def read(path):
     return values, metadata
 
 
-def check_case(tag, directory):
+def check_case(tag, directory, include_multinode):
     paths = {rank: directory / f"{tag}_mpi_np{rank}_rates.h5" for rank in RANKS}
+    if include_multinode:
+        paths["multinode"] = directory / f"{tag}_mpi_multinode_rates.h5"
     if any(not path.exists() for path in paths.values()):
         print(f"[{tag}] missing MPI output")
         return False
@@ -67,7 +69,8 @@ def check_case(tag, directory):
                     rank_ok = False
                     print(f"[{tag} np={rank}] dataset mismatch: {name}")
         ok &= meta_ok and rank_ok
-        time_path = directory / f"{tag}_mpi_np{rank}.time"
+        time_name = f"{tag}_mpi_multinode.time" if rank == "multinode" else f"{tag}_mpi_np{rank}.time"
+        time_path = directory / time_name
         timing = time_path.read_text().strip() if time_path.exists() else "missing timing"
         print(f"[{tag} np={rank}] closure={closure:.3e} "
               f"metadata={'PASS' if meta_ok else 'FAIL'} "
@@ -80,9 +83,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--directory", type=Path, default=REPO)
     parser.add_argument("--case", choices=("hii20", "hii40", "both"), default="both")
+    parser.add_argument("--include-multinode", action="store_true")
     args = parser.parse_args()
     cases = ("hii20", "hii40") if args.case == "both" else (args.case,)
-    ok = all(check_case(tag, args.directory) for tag in cases)
+    ok = all(check_case(tag, args.directory, args.include_multinode) for tag in cases)
     print("FULL MPI SCALING GATE:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

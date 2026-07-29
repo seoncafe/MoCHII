@@ -71,14 +71,14 @@ Implementation progress as of 2026-07-28:
   Sobol packet history.  All solver/state/rate arrays were bitwise identical
   across diagnostic resolutions; only `J_nu`, `E_bin`, and `dE_bin` changed.
 - Safe sequence 16.11 RQMC ensemble portion complete: four independent
-  scrambled-Sobol seeds passed for both production models.  The remaining
-  release item is multi-node MPI validation before regenerating paper
-  figures.
+  scrambled-Sobol seeds passed for both production models.
 - Safe sequence 16.11 node-local MPI/performance portion complete:
   HII20/HII40 100,000-packet, three-iteration continuous-metal smoke runs
   passed at 1, 2, 3, 5, 8, and 68 ranks.  The 68-rank tests used the 72-thread
-  node while reserving four hardware threads.  Multi-node execution remains
-  an external-allocation validation item.
+  node while reserving four hardware threads.  Multi-node execution is also
+  verified on lart2/lart3/lart4.
+- Next: update the paper manuscript, its numerical Tables and text, and
+  Figures 14--15 from the accepted continuous production outputs.
 
 ## 1. Required physical model
 
@@ -1109,6 +1109,15 @@ closures pass.  Wall times [s] for 1/2/3/5/8/68 ranks were
 set size was 0.55--0.76 GiB.  This matrix used one 72-thread node; a
 multi-node allocation remains required to complete that specific release
 sub-gate.
+
+Implementation result (2026-07-29, multi-node MPI portion): complete.  The
+same HII20/HII40 smoke ran across `lart2,lart3,lart4` with 68 ranks per node
+(204 ranks total), retaining four threads per node.  Both outputs pass energy
+closure and agree with the node-local 68-rank reference to `rtol=5e-12`,
+`atol=5e-14`.  Wall times were 177.59 s (HII20) and 185.05 s (HII40), with
+maximum resident sets 0.70 GiB and 0.69 GiB.  The small 100,000-packet smoke
+is launch/communication dominated, so these timings validate correctness and
+resource behavior rather than claiming strong scaling at production size.
 31. Make continuous mode the default.
 32. Update the paper manuscript itself (`paper/mochii.tex`) from the accepted
     continuous HII20/HII40 production outputs, then update the user
