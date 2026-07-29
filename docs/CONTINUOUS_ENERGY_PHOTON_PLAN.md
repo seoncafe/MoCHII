@@ -72,8 +72,13 @@ Implementation progress as of 2026-07-28:
   across diagnostic resolutions; only `J_nu`, `E_bin`, and `dE_bin` changed.
 - Safe sequence 16.11 RQMC ensemble portion complete: four independent
   scrambled-Sobol seeds passed for both production models.  The remaining
-  release item is MPI/performance validation before regenerating paper
+  release item is multi-node MPI validation before regenerating paper
   figures.
+- Safe sequence 16.11 node-local MPI/performance portion complete:
+  HII20/HII40 100,000-packet, three-iteration continuous-metal smoke runs
+  passed at 1, 2, 3, 5, 8, and 68 ranks.  The 68-rank tests used the 72-thread
+  node while reserving four hardware threads.  Multi-node execution remains
+  an external-allocation validation item.
 
 ## 1. Required physical model
 
@@ -1094,6 +1099,16 @@ passed energy closure.  The sample relative scatter was 0.002% in HII20
 ionized-gas temperature and below 0.001% in HII40; C III shell scatter was
 0.261%, 0.619%, 0.630% at 1.5, 2.0, 2.5 pc in HII20 and 0.088%, 0.074%,
 0.100% at 4.2, 4.35, 4.5 pc in HII40.
+
+Implementation result (2026-07-29, node-local MPI/performance portion):
+complete.  HII20/HII40 state and rate datasets at 1, 2, 3, 5, 8, and 68
+ranks agree with the 68-rank reference to `rtol=5e-12`, `atol=5e-14`; all
+closures pass.  Wall times [s] for 1/2/3/5/8/68 ranks were
+171.45/110.46/90.17/74.86/63.36/58.09 (HII20) and
+162.09/104.79/87.31/72.22/64.17/58.73 (HII40).  The measured maximum resident
+set size was 0.55--0.76 GiB.  This matrix used one 72-thread node; a
+multi-node allocation remains required to complete that specific release
+sub-gate.
 31. Make continuous mode the default.
 32. Update the paper manuscript itself (`paper/mochii.tex`) from the accepted
     continuous HII20/HII40 production outputs, then update the user
