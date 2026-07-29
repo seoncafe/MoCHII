@@ -92,7 +92,7 @@ def main():
     args = parser.parse_args()
 
     cases = [("MoCHII production", args.production)]
-    for tag in ("diffuse_off", "no_hei", "mocrec", "l7", "threshold", "milne"):
+    for tag in ("diffuse_off", "no_hei", "mocrec", "l7", "threshold", "milne", "2ph", "step2"):
         path = args.results / f"hii40_{tag}_rates.h5"
         if path.exists():
             cases.append((tag, path))

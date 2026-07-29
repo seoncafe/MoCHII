@@ -27,6 +27,9 @@ module diffuse_mod
   use recomb_mod
   use milne_recomb_spectrum_mod, only : milne_setup, milne_sample_energy, &
                                         milne_energy_per_recomb, milne_is_ready
+  use hei_twophoton_mod, only : hei_2ph_sample_energy, &
+                               hei_2ph_energy_per_decay
+  use hei_cascade_mod,   only : hei_branch_fractions, hei_584_ionizes_H
   implicit none
   private
 
@@ -45,9 +48,12 @@ module diffuse_mod
   real(kind=wp), parameter :: HEI_F1P = 0.25_wp*(2.0_wp/3.0_wp), &
                               HEI_E1P = 21.22_wp
   real(kind=wp), parameter :: HEI_F1S = 0.25_wp*(1.0_wp/3.0_wp), &
-                              HEI_P2PH = 0.56_wp, HEI_E2PH = 20.62_wp
-  !--- mean H-ionizing energy of the 2^1S branch (flat in [13.6, 20.62])
-  real(kind=wp), parameter :: HEI_E1S = 0.5_wp*(13.598_wp + HEI_E2PH)
+                              HEI_E2PH = 20.62_wp
+  !--- The in-band energy radiated per 2^1S decay now comes from the Drake
+  !--- et al. (1969) shape (hei_twophoton_mod), not from a fixed 0.56 photons
+  !--- times the mean of a flat spectrum.  The photon count was right to
+  !--- 0.6%, but the flat surrogate overestimated the mean in-band photon
+  !--- energy by 6% and the radiated in-band energy by 6.5%.
 
 contains
 
@@ -56,6 +62,7 @@ contains
     implicit none
     real(kind=wp), intent(in) :: lpacket
     real(kind=wp) :: T, ne, nH, vol, kT_eV, a1
+    real(kind=wp) :: be3s, be1p, be1s
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
     integer :: il, ic
 
@@ -94,9 +101,9 @@ contains
        dif_ch(4,il) = 0.0_wp
        if (par%hei_diffuse) then
           a1 = alphaB_HeII(T)
-          dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg* &
-             ( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
-             + HEI_F1S*HEI_P2PH*HEI_E1S )
+          call hei_branch_energies(T, gas_xHI(il), gas_xHeI(il), &
+                                   be3s, be1p, be1s)
+          dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
        end if
     end do
 
@@ -121,6 +128,7 @@ contains
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
+    real(kind=wp) :: be3s, be1p, be1s
     integer :: lo, hi, mid, il, ic, ch
 
     !--- leaf from the CDF (binary search)
@@ -152,7 +160,7 @@ contains
     !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1);
     !--- the He I excited channel (4) samples its decay branch by
     !--- energy luminosity (fixed line energies; the two-photon branch
-    !--- draws flat in [13.6, 20.62] eV).
+    !--- draws from the Drake et al. 1969 shape, hei_2ph_sample_energy).
     w = dif_ch(:,il)
     u = rand_number()*sum(w)
     if (u <= w(1)) then
@@ -168,14 +176,15 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), rand_number())
     else
-       ub = rand_number()*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
-                          + HEI_F1S*HEI_P2PH*HEI_E1S )
-       if (ub <= HEI_F3S*HEI_E3S) then
+       call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
+                                be3s, be1p, be1s)
+       ub = rand_number()*(be3s + be1p + be1s)
+       if (ub <= be3s) then
           eph = HEI_E3S
-       else if (ub <= HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P) then
+       else if (ub <= be3s + be1p) then
           eph = HEI_E1P
        else
-          eph = eth_HI + rand_number()*(HEI_E2PH - eth_HI)
+          eph = hei_2ph_sample_energy(rand_number())
        end if
     end if
 
@@ -208,7 +217,8 @@ contains
   !   u(7)   emission channel (dif_ch inverse over the 4 channels);
   !   u(8)   first energy variate: channels 1-3 the Exp(1) via -log(u);
   !          channel 4 the He I decay-branch pick;
-  !   u(9)   second energy variate: the He I two-photon flat energy (else unused).
+  !   u(9)   second energy variate: the He I two-photon energy from the
+  !          tabulated Drake shape (else unused).
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
@@ -217,6 +227,7 @@ contains
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
     real(kind=wp) :: uu, cost, sint, phi, half, eph, kT_eV, w(4), ub
+    real(kind=wp) :: be3s, be1p, be1s
     integer :: lo, hi, mid, il, ch
 
     !--- leaf from the CDF (binary search)
@@ -247,7 +258,8 @@ contains
 
     !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1);
     !--- the He I excited channel (4) samples its decay branch by energy
-    !--- luminosity (fixed line energies; the two-photon branch flat energy).
+    !--- luminosity (fixed line energies; the two-photon branch from the
+    !--- tabulated Drake shape).
     w = dif_ch(:,il)
     uu = u(7)*sum(w)
     if (uu <= w(1)) then
@@ -263,14 +275,15 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), u(8))
     else
-       ub = u(8)*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
-                 + HEI_F1S*HEI_P2PH*HEI_E1S )
-       if (ub <= HEI_F3S*HEI_E3S) then
+       call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
+                                be3s, be1p, be1s)
+       ub = u(8)*(be3s + be1p + be1s)
+       if (ub <= be3s) then
           eph = HEI_E3S
-       else if (ub <= HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P) then
+       else if (ub <= be3s + be1p) then
           eph = HEI_E1P
        else
-          eph = eth_HI + u(9)*(HEI_E2PH - eth_HI)
+          eph = hei_2ph_sample_energy(u(9))
        end if
     end if
 
@@ -291,6 +304,30 @@ contains
   !--- so it MUST be the mean of the same distribution gen_diffuse_photon
   !--- samples; otherwise the emitted photon rate no longer equals
   !--- n_e n_ion alpha_1 V.
+  !--- Energy radiated per He II recombination in each H-ionizing branch of
+  !--- the He I cascade [eV], from the tabulated alpha_eff (hei_cascade_mod)
+  !--- rather than the statistical 3/4 : 1/4 x 2/3 : 1/3 weights.  One routine
+  !--- for the luminosity table and for both launchers, so the branch CDF and
+  !--- the emitted luminosity cannot disagree.
+  subroutine hei_branch_energies(T_K, xHI, xHeI, e3s, e1p, e1s)
+    real(kind=wp), intent(in)  :: T_K, xHI, xHeI
+    real(kind=wp), intent(out) :: e3s, e1p, e1s
+    real(kind=wp) :: f3s, f1s, f1p, p584
+    call hei_branch_fractions(T_K, f3s, f1s, f1p)
+    !--- The trapped 584 A photon either photoionizes hydrogen or is
+    !--- collisionally transferred 2^1P -> 2^1S and leaves as the two-photon
+    !--- continuum instead.  Both outcomes are local, so the split folds into
+    !--- the branch weights here and needs no extra random variate; the Sobol
+    !--- dimension assignment is unchanged.
+    p584 = hei_584_ionizes_H(T_K, xHI, xHeI)
+    e3s = f3s*HEI_E3S
+    e1p = f1p*p584*HEI_E1P
+    !--- A converted decay radiates the 2^1S pair, 20.62 eV, not 21.22 eV;
+    !--- the remaining 0.60 eV leaves as 2^1P -> 2^1S at 2.06 micron, which is
+    !--- non-ionizing and so correctly absent from the band.
+    e1s = (f1s + f1p*(1.0_wp - p584))*hei_2ph_energy_per_decay()
+  end subroutine hei_branch_energies
+
   real(kind=wp) function ground_mean_energy(ich, eth, kT_eV, T_K) result(mean_e)
     integer,       intent(in) :: ich
     real(kind=wp), intent(in) :: eth, kT_eV, T_K

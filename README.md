@@ -26,7 +26,18 @@ infrared dust/PAH spectrum.
   their detailed-balance Milne free-bound spectra
   (`diffuse_energy_model='milne'`), using the same cross sections transport
   absorbs with, so a diffuse packet is absorbed with the cross section it
-  was emitted with.  Optional quasi-random launch (`launch_sequence='sobol'`,
+  was emitted with.  The optional He I excited cascade splits into its
+  `2^3S`, `2^1S` and `2^1P` branches with temperature-dependent fractions
+  from one internally consistent set of effective recombination coefficients
+  (Benjamin, Skillman & Smits 1999), and samples the `2^1S` two-photon
+  continuum from the Drake, Victor & Dalgarno (1969) distribution that the
+  nebular continuum already used.  The trapped He I 584 A resonance photon is
+  not assumed to ionize hydrogen: it is split locally between hydrogen
+  absorption and collisional conversion `2^1P -> 2^1S`, which then decays as
+  the two-photon continuum, with the escape-probability closure of Wood, Mathis
+  & Ercolano (2004), and the nebular continuum uses the same split, so the
+  transported packets and the written continuum describe one nebula.
+  Optional quasi-random launch (`launch_sequence='sobol'`,
   Owen-scrambled Sobol) for the stellar and diffuse packets — the
   launch set is independent of the MPI task count and the direct-field
   error scales as 1/N (effective photon gains of 29–222x measured on the
@@ -130,4 +141,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-29 22:54 KST
+Last updated: 2026-07-30 05:56 KST

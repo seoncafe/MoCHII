@@ -552,10 +552,75 @@ stored bin-edge array, correct on both the aligned and the plain
 logarithmic grids: an
 energy exactly on a threshold edge falls in the bin \emph{above} it, the
 physically correct side for a recombination photon emitted just above
-threshold.  An optional fourth channel adds the \HeI{} excited-level
-recombination radiation with the low-density branching of
-\citet{osterbrock2006}.  At HII40 the diffuse band luminosity converges to
-$\sim$$0.5\,L_\star$.
+threshold.
+
+An optional fourth channel adds the \HeI{} excited-level recombination
+radiation.  Every case-B \HeII{} recombination reaches $1^1$S through
+exactly one of the $n=2$ terms, so what the channel needs are the three
+branch fractions; their absolute scale is already set by $\alpha_B(\HeII)$.
+They are formed from one internally consistent set of effective
+recombination coefficients,
+$2.10\times10^{-13}\,T_4^{-0.381}$ ($2^3$S),
+$2.06\times10^{-14}\,T_4^{-0.451}$ ($2^1$S) and
+$4.17\times10^{-14}\,T_4^{-0.695}$ ($2^1$P) $\cmc$, from
+\citet[][Table~1, with J.~S.~Mathis]{benjamin1999} as tabulated in K.~Wood's
+\code{ionize} \citep{wood2004} and in \textsc{CMacIonize}
+\citep{cmacionize2018}, normalized by their sum.  Taking all three from one
+source matters more than the individual values, because a ratio of
+coefficients with unrelated temperature dependences is not a branch fraction;
+normalizing by the sum rather than closing one branch against an external
+$\alpha_B$ keeps the mismatch between two independent data sets out of
+whichever branch is solved last.  That sum is $0.90\,\alpha_B(\HeII)$ at
+8000~K and $0.97$ at $10^4$~K, and the shortfall is reported at start-up
+rather than absorbed.  At 8000~K the fractions are $0.762 : 0.076 : 0.162$
+against the $0.750 : 0.083 : 0.167$ of the low-density statistical weights
+($0.741 : 0.076 : 0.183$ at 5000~K, $0.771 : 0.076 : 0.153$ at $10^4$~K): a
+modest temperature-dependent correction, not a reordering.  The $2^1$S
+photons are drawn from the tabulated \citet{drake1969} two-photon
+distribution rather than flat above the \HI{} edge; that shape also fixes the
+H-ionizing fraction, 0.5564 photons per decay with a mean in-band energy of
+16.11~eV.  Together the two replace the 19.200~eV in 0.9634 photons that the
+statistical weights and a flat two-photon spectrum emit per case-B \HeII{}
+recombination by 19.223~eV in 0.9663 photons at 8000~K.  The 584~\AA{}
+photon of the $2^1$P branch is a resonance photon, and two irreversible
+outcomes compete during its trapped random walk: absorption by a hydrogen
+atom, which photoionizes it, or collisional conversion
+$2^1$P\,$\to$\,$2^1$S in the helium atom that last absorbed it, after which
+the decay leaves as the two-photon continuum instead.  \MoCHII{} splits the
+branch with the escape probability that \citet{wood2004} and
+\textsc{CMacIonize} \citep{cmacionize2018} adopt,
+$p_{584} = [1 + 77\,x(\mathrm{He^{0}})/(\Te^{1/2}\,x(\mathrm{H^{0}}))]^{-1}$
+with $\Te$ in K; it is a property of the emitting leaf, so it folds into the
+branch weights of the emission table and costs no further random variate.  A
+converted decay radiates 20.62~eV as the two-photon pair, the remaining
+0.60~eV leaving as the non-ionizing 2.06~$\mu$m $2^1$P\,$\to$\,$2^1$S line.
+The same probability sets the effective coefficient of the \HeI{} two-photon
+nebular continuum,
+$\alpha_{2q} = \alpha(2^1\mathrm{S}) + (1-p_{584})\,\alpha(2^1\mathrm{P})$,
+so the transported packets and the tabulated continuum describe one nebula.
+Emission-weighted $p_{584}$ is $0.12$ at HII40 and $0.004$ at HII20: most of
+the branch converts, the channel loses 7--8\% of its photons and softens,
+and the fronts move inward --- at HII40 by $-0.0036$~pc in \HeI{} and
+$-0.0100$~pc in \HI{}, with $L(\mathrm{H}\beta)$ down $0.20\%$.  At HII20
+the softer spectrum leaves little \HeII{} to recombine, so the channel
+carries $2\%$ of the diffuse field rather than $18\%$ and the same fronts
+move by $-0.0002$~pc.
+
+Four corrections to what the diffuse field emits have now been made --- the
+Milne ground-continuum shape, the \citet{drake1969} two-photon spectrum, the
+effective branch coefficients and the 584~\AA{} fate --- and at HII40 they
+displace the \HeI{} front by $+0.0006$, $-0.0003$, $+0.0002$ and
+$-0.0036$~pc, a net $-0.0031$~pc.  Each is separately required, and each
+reproduces an external implementation or an exact relation; together they
+recover under $2\%$ of the $0.18$~pc by which that front sits inside the
+\textsc{Cloudy} c25.00 one, and they move it the wrong way.  The remaining
+code-to-code difference of Section~\ref{sec:hii} is therefore not in what
+the diffuse field emits.  The axes left are the transport of those photons,
+which none of the four touched, and the \HeI{} ground-continuum atomic data,
+where $\alpha_1$ from the Milne integral and the fitted
+$\alpha_A - \alpha_B$ disagree by 2--$3.4\%$ --- in exactly the continuum
+whose front is discrepant.  At HII40 the diffuse band luminosity converges
+to $\sim$$0.5\,L_\star$.
 
 \subsection{Quasi-random photon launching}
 \label{sec:qmc}
@@ -1056,13 +1121,13 @@ HII40, below the published 0.715--0.829 (median 0.767) and C25's 0.741, and
 0.046 at HII20, near the published median of 0.048 inside a spread of
 0.034--0.077.
 
-\emph{Temperature.}  The weighted temperature is 8202~K at HII40 and
-6922~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
-same two models --- 8210~K and 6910~K --- to $0.1\%$ and $0.2\%$, and both
+\emph{Temperature.}  The weighted temperature is 8162~K at HII40 and
+6918~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
+same two models --- 8210~K and 6910~K --- to $0.6\%$ and $0.1\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
-published spread at both, 7540~K at HII40 against a published 7370--8318~K
-and 6942~K at HII20 against a published 6562--7224~K.  The converged
+published spread at both, 7533~K at HII40 against a published 7370--8318~K
+and 6936~K at HII20 against a published 6562--7224~K.  The converged
 MOCASSIN 2.02 run of the HII40 model gives 8176~K, also inside the published
 spread.  The two benchmark solutions therefore agree closely while remaining
 within the range set by the independent calculations.
@@ -1070,7 +1135,7 @@ within the range set by the independent calculations.
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
 density-suppressed cooling used above --- the level populations at the local
-$\nelec$, Section~\ref{sec:cooldata} --- gives the 8202 and 6922~K that
+$\nelec$, Section~\ref{sec:cooldata} --- gives the 8162 and 6918~K that
 track \textsc{Cloudy}; the zero-density limit of the same fits, retained as
 an option, overestimates the far-infrared line cooling at
 $\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so places \MoCHII{} instead at
@@ -1148,7 +1213,7 @@ power --- \textsc{Cloudy} balances its own heating at the unscaled
 temperature, and the photoheating of the two codes agrees --- gives 7784~K
 against \textsc{Cloudy}'s 8210~K, close to the 7894~K the converged
 zero-density run reaches.  Removing the overestimate, the density-suppressed
-default reaches 8202~K, matching \textsc{Cloudy} to $0.1\%$
+default reaches 8162~K, matching \textsc{Cloudy} to $0.6\%$
 (Section~\ref{sec:hii}).  The far-infrared overestimate, not the atomic
 data, is thus what separates the two limits, and the $(\Te,\nelec)$ table of
 Section~\ref{sec:cooldata} removes it.
@@ -1640,9 +1705,9 @@ Lexington 2000 \HII{} region benchmarks, with continuously sampled Planck
 photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron
 density, the
-$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8202~K at HII40 and
-6922~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
-two models (8210 and 6910~K) to $0.1\%$ and $0.2\%$; both models are
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8162~K at HII40 and
+6918~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
+two models (8210 and 6910~K) to $0.6\%$ and $0.1\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
 $L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  The
 line-cooling data are checked independently of the temperature by evaluating

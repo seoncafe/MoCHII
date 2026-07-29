@@ -1270,7 +1270,7 @@ whereas drawing from $n(E)$ while counting packets from the energy
 luminosity inflates it by $\left<E\right>_n\left<E^{-1}\right>_n>1$
 (1.002 at $8000$~K, 1.010 at $2\times10^4$~K).  The CDF is tabulated in
 $x=(E-E_{\rm th})/kT$, interpolated in $\log T$ and inverted once, rather
-than inverting two neighbouring temperature rows and interpolating the
+than inverting two neighboring temperature rows and interpolating the
 resulting energies.
 
 \paragraph{Effect.}  Against the exponential approximation the converged
@@ -1282,7 +1282,40 @@ each follows its own mean energy: the H\,\textsc{i} continuum softens
 section falls as $E^{-3}$, while the He\,\textsc{i} continuum hardens
 ($25.449\rightarrow25.460$~eV) because the Verner He\,\textsc{i} fit falls
 more slowly near threshold.  The exact spectrum is therefore a correctness
-fix, not the explanation of the Cloudy front residual.
+fix, not the explanation of the Cloudy front residual.  The same holds for
+the three He\,\textsc{i} cascade corrections described below: the two-photon
+shape moves $r({\rm He^0}=0.5)$ by $-0.00030$~pc, the branch fractions by
+$+0.00024$~pc, and the fate of the 584~\AA{} photon by $-0.00363$~pc.  All
+four corrections to the emitted diffuse spectrum together move it
+$-0.00306$~pc, i.e.\ $1.7\%$ of the $0.18$~pc residual and \emph{away} from
+Cloudy rather than toward it.  Switching the whole fourth channel off moves
+it $-0.103$~pc, so the channel's presence matters and its internal detail
+does not.
+
+\paragraph{Where the Cloudy front residual is not.}  Each of those four
+corrections is independently correct --- three of them reproduce an external
+reference implementation and the first an exact detailed-balance relation ---
+and the acceptance criterion is physical correctness, not agreement with a
+particular reference calculation, so a net displacement in the unhelpful
+direction is not an argument against any of them.  What the sum does settle
+is the diagnosis: \emph{the $0.18$~pc residual is not in what the diffuse
+field emits.}  Four independent corrections, spanning the emitted spectrum's
+shape, its branch weights and the fate of its strongest line, together
+account for $1.7\%$ of the gap and with the wrong sign.  Four candidates
+remain, in decreasing order of plausibility:
+\begin{enumerate}
+\item the \emph{transport} of the diffuse photons rather than their
+  emission --- the one axis never varied in this sequence;
+\item the He\,\textsc{i} ground-continuum atomic data.  \code{milne\_setup}
+  reports the $\alpha_1$ of the Milne integral disagreeing with the fitted
+  $\alpha_A-\alpha_B$ by $2$--$3.4\%$ for He\,\textsc{i}, against $0.5\%$ for
+  H\,\textsc{i} and $0.4\%$ for He\,\textsc{ii} --- in exactly the continuum
+  whose front is discrepant;
+\item collisional redistribution among the $n=2$ He\,\textsc{i} terms, which
+  is density dependent and not implemented;
+\item a difference outside the diffuse field entirely --- the metal opacity
+  at the front, or a Cloudy-side modeling choice not yet identified.
+\end{enumerate}
 
 All diffuse packets carry the same luminosity as direct packets,
 $L_{\rm pkt}=L_{\rm band}/N_{\rm pkt}$, so their number is
@@ -1305,27 +1338,251 @@ binary search also corrects the former closed-form log-grid mapping, which
 could place a 24.6-eV He\,\textsc{i} recombination photon below the
 He\,\textsc{i} threshold on an aligned grid.
 
-With \code{par\%hei\_diffuse} a fourth channel adds the He\,\textsc{i}
-\emph{excited-level} recombination radiation (previously those photons
-simply vanished): all case-B He\,\textsc{ii} recombinations cascade to
-$n = 2$ and decay with the AGN3 low-density branching --- $3/4$ to
-$2^3{\rm S}$ (a single 19.82-eV photon), $1/4 \times 2/3$ to
-$2^1{\rm P}$ (584~\AA{} = 21.22~eV), $1/4 \times 1/3$ to $2^1{\rm S}$
-(two-photon; probability 0.56 of an H-ionizing photon, sampled flat in
-$[13.6, 20.62]$~eV).  At HII40 this raises the diffuse luminosity by
-4.7\% and $T_e$ by 1.1\% while leaving the He\,\textsc{i/ii} split
-unchanged to four decimals --- correct energy bookkeeping, and the
-demonstration that the He-structure residual against MOCASSIN does
-NOT come from this channel (the split is set by the $>$24.6-eV
-budget).
+\paragraph{He\,\textsc{i} excited-level recombination
+(\code{par\%hei\_diffuse}).}
+A fourth channel adds the He\,\textsc{i} \emph{excited-level} recombination
+radiation (previously those photons simply vanished).  Every case-B
+He\,\textsc{ii} recombination reaches $1^1{\rm S}$ through exactly one
+$n = 2$ term, so what the channel needs is not three absolute rates but
+three \emph{branch fractions}; the absolute rate is already fixed by the
+$\alpha_B({\rm He\,II})$ that sets the packet count.  MoCHII takes all three
+from one internally consistent set of effective recombination coefficients,
+\begin{equation}
+\begin{aligned}
+ \alpha_{\rm eff}(2^3{\rm S}) &= 2.10{\times}10^{-13}\,(T_4)^{-0.381}, \\
+ \alpha_{\rm eff}(2^1{\rm S}) &= 2.06{\times}10^{-14}\,(T_4)^{-0.451}, \\
+ \alpha_{\rm eff}(2^1{\rm P}) &= 4.17{\times}10^{-14}\,(T_4)^{-0.695},
+\end{aligned}
+ \label{eq:hei-branch}
+\end{equation}
+in $\cmc$ --- Benjamin, Skillman \& Smits (1999) Table~1 with J.~S.\ Mathis,
+in the form carried by K.~Wood's \code{ionize} --- and normalizes by their
+sum.  That all three come from one source matters more than any individual
+value: a fraction assembled from fits with unrelated temperature dependences
+is not a fraction of anything.  Normalizing by the sum is the source's own
+choice, made for the reason it states, that the fitting formulae carry
+different temperature dependences.  Outside $3{\times}10^3$--$2{\times}10^4$~K
+the fits are clamped, not extrapolated.
+
+The closure
+\begin{equation}
+ \alpha_{\rm eff}(2^3{\rm S}) + \alpha_{\rm eff}(2^1{\rm S})
+   + \alpha_{\rm eff}(2^1{\rm P}) = \alpha_B({\rm He\,II})
+ \label{eq:hei-closure}
+\end{equation}
+is physically true, but MoCHII does \emph{not} use it to derive a branch.
+Its two sides are independent atomic data: the three fits of
+Eq.~(\ref{eq:hei-branch}) account for $0.90\,\alpha_B$ at 8000~K and
+$0.97\,\alpha_B$ at $10^4$~K, and the ratio is reported at start-up rather
+than absorbed.  Forcing it onto $\alpha_B$ would dump the entire mismatch
+between two data sets into whichever branch was solved for last.  The
+resulting fractions, as the code prints them, are
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+$T$ [K] & $2^3$S & $2^1$S & $2^1$P & $\sum\alpha_{\rm eff}/\alpha_B$ \\
+\midrule
+$5{\times}10^3$   & 0.74084 & 0.07629 & 0.18288 & 0.767 \\
+$8{\times}10^3$   & 0.76183 & 0.07591 & 0.16226 & 0.896 \\
+$10^4$            & 0.77121 & 0.07565 & 0.15314 & 0.970 \\
+$1.5{\times}10^4$ & 0.78729 & 0.07507 & 0.13764 & 1.134 \\
+\midrule
+statistical & 0.75000 & 0.08333 & 0.16667 & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+against the AGN3 low-density statistical weights of the last row, which the
+code used before.  The correction is a moderate temperature-dependent shift,
+not a reordering.
+
+Two provenance points belong with these numbers.  First,
+$2.06{\times}10^{-14} + 4.17{\times}10^{-14} = 6.23{\times}10^{-14}$
+exactly, so the $6.23{\times}10^{-14}(T_4)^{-0.827}$ that \code{nebcont\_mod}
+took from MOCASSIN for the He\,\textsc{i} two-photon continuum
+(Section~\ref{sec:twophoton}) is the \emph{singlet total}, not
+$\alpha_{\rm eff}(2^1{\rm S})$.  An earlier version of this section read it
+as the latter and closed $2^1$P against $\alpha_B$, obtaining
+$0.746 : 0.224 : 0.031$ together with an argument that case-B trapping
+inverts the singlet split; both the numbers and the argument are withdrawn.
+Second, the $2^3$S coefficient here is deliberately \emph{not} shared with
+the \code{ALPHA3} of \code{hei\_metastable\_mod}, which is
+$2.10{\times}10^{-13}(T_4)^{-0.778}$ (Oklopcic \& Hirata 2018): the same
+prefactor with a steeper exponent, $9\%$ higher at 8000~K.  That one is an
+absolute production rate for the metastable population; this one is a member
+of a set whose ratios are the branch fractions, and mixing sources would
+break the internal consistency those ratios depend on.
+
+The $2^1$S photons follow the tabulated Drake, Victor \& Dalgarno (1969)
+distribution (\code{data/HeI2phot.dat}, the same table the nebular continuum
+uses) rather than a flat draw.  That shape fixes the H-ionizing yield at
+0.55644 photons and 8.9646~eV per decay, with a mean in-band energy of
+16.110~eV, against the 0.56 and 17.109~eV of the flat surrogate.  The two
+corrections are individually small and act in opposite directions.  Per
+case-B He\,\textsc{ii} recombination the channel emits
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+ & H-ionizing energy [eV] & photons \\
+\midrule
+statistical weights, flat two-photon & 19.200 & 0.9634 \\
+statistical weights, Drake shape     & 19.149 & 0.9633 \\
+Eq.~(\ref{eq:hei-branch}), Drake shape, 8000~K & 19.223 & 0.9663 \\
+\bottomrule
+\end{tabular}
+\end{center}
+i.e.\ $-0.27\%$ in energy from the two-photon shape, then $+0.39\%$ in
+energy and $+0.34\%$ in photons from the branch fractions, for a net
+$+0.12\%$ and $+0.30\%$ against the statistical weights.  In transport (68
+ranks, same Sobol stream, branch fractions against the Drake-only state) the
+He\,\textsc{i} front moves by $+0.00024$~pc at HII40 and $+0.00006$~pc at
+HII20, $r({\rm C^{2+}}=0.5)$ by $+0.00015$ and $0.00000$~pc, and
+$L({\rm H}\beta)$ by $+0.0121\%$ and $+0.0027\%$; both benchmarks still pass
+\code{tests/continuous\_energy/check\_hii\_production.py}.  Like the Milne
+ground continua, this is a correctness fix and not the explanation of the
+$0.18$~pc Cloudy residual.
+
+\paragraph{The fate of the 584~\AA{} photon.}  The $2^1$P branch decays to
+the ground state on He\,\textsc{i} Ly$\alpha$, 584~\AA{} $=21.22$~eV, which
+is both an H-ionizing photon and a resonance photon in a medium optically
+thick to it in He$^0$.  It therefore scatters many times before anything
+irreversible happens, and two irreversible outcomes compete: photoionization
+of a hydrogen atom (depositing $21.22-13.60 = 7.62$~eV of heat), or
+collisional transfer $2^1{\rm P}\rightarrow 2^1{\rm S}$ in the last He atom
+that absorbed it, after which the decay is the two-photon continuum instead.
+Which one wins is set by the H$^0$ and He$^0$ opacities the trapped photon
+sees, so it is a local, density- and ionization-dependent branching and not a
+constant.  MoCHII resolves it with the escape-probability closure of Wood,
+Mathis \& Ercolano (2004), Section~3.3,
+\begin{equation}
+ p_{584} = \left[1 + \frac{77\,x({\rm He^0})}
+                          {\sqrt{T}\;x({\rm H^0})}\right]^{-1},
+ \label{eq:hei-584}
+\end{equation}
+the probability that the 584~\AA{} photon ends up ionizing hydrogen
+(\code{hei\_584\_ionizes\_H} in \code{hei\_cascade\_mod}).  Its two limits are
+the correct ones: $x({\rm H^0})\rightarrow0$ gives $p_{584}\rightarrow0$,
+nothing left to ionize and everything converted, while
+$x({\rm He^0})\rightarrow0$ gives $p_{584}\rightarrow1$, nothing left to
+convert.  K.~Wood's \code{ionize} and CMacIonize carry the same closure in
+two algebraically different arrangements, and the gate
+\code{tests/hei\_cascade/check\_hei\_584.f90} reproduces both to
+$2.2{\times}10^{-16}$ over a grid in $(T, x_{\rm H^0}, x_{\rm He^0})$.  The
+four codes in the reference trees sit at three different points on the
+question:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+code & cascade coefficients & fate of the 584~\AA{} photon & transported? \\
+\midrule
+Wood \code{ionize} & Eq.~(\ref{eq:hei-branch}), sum-normalized &
+  $p_{584}$ ionizes H; $1-p_{584}$ converts & no, on the spot \\
+CMacIonize & the same set and normalization & the same split &
+  no, on the spot \\
+MOCASSIN & singlet total $6.23{\times}10^{-14}(T_4)^{-0.827}$ &
+  all converted ($p_{584}=0$) & emissivity only \\
+MoCHII & Eq.~(\ref{eq:hei-branch}), sum-normalized &
+  Eq.~(\ref{eq:hei-584}) split & yes, full transport \\
+\bottomrule
+\end{tabular}
+\end{center}
+CMacIonize is also where MoCHII's flat-surrogate constant $0.56$ came from,
+as $2\times28\%$ of the two-photon distribution above the Lyman limit;
+Eq.~(\ref{eq:hei-branch}) and the Drake table replaced both of those
+constants above.  MOCASSIN does not resolve the competition at all: its
+comment states the assumption that all He\,\textsc{i} singlets end in
+$2^1$S, and the $6.23{\times}10^{-14}$ singlet total is that
+$p_{584}\rightarrow 0$ limit written as one coefficient.  MoCHII is now the
+only one of the four that applies the branching and then \emph{transports}
+what it produces: Wood and CMacIonize destroy the 584~\AA{} photon where it
+was created, so the deposition of whatever the branch yields is assumed
+local, while MoCHII carries the branch product through the grid with the
+same edge walk as any other packet and lets the grid decide where it is
+absorbed.
+
+Because $p_{584}$ depends only on the emitting leaf's own $T$, $x({\rm H^0})$
+and $x({\rm He^0})$, the split folds into the branch weights of
+\code{hei\_branch\_energies} at build time and needs no random variate of its
+own, so the nine-coordinate Sobol assignment below is unchanged:
+\begin{equation}
+\begin{aligned}
+ e(2^3{\rm S}) &= f_{2^3{\rm S}}\times 19.82~{\rm eV}, \\
+ e(2^1{\rm P}) &= f_{2^1{\rm P}}\,p_{584}\times 21.22~{\rm eV}, \\
+ e(2^1{\rm S}) &= \left[f_{2^1{\rm S}}
+                  + f_{2^1{\rm P}}(1-p_{584})\right]
+                  \times 8.9646~{\rm eV}.
+\end{aligned}
+\end{equation}
+A converted decay radiates the two-photon pair, $20.62$~eV, and not
+$21.22$~eV; the difference of $0.60$~eV leaves as $2^1{\rm P}\rightarrow
+2^1{\rm S}$ at 2.06~$\mu$m, which is non-ionizing and therefore correctly
+absent from the band.  \code{gamma\_2q\_HeI} uses the same split for the
+He\,\textsc{i} two-photon nebular continuum,
+$\alpha_{2q} = \alpha_{\rm eff}(2^1{\rm S}) + [1-p_{584}]\,
+\alpha_{\rm eff}(2^1{\rm P})$ (Section~\ref{sec:twophoton}), which closes an
+internal inconsistency: \code{nebcont\_mod} had inherited MOCASSIN's singlet
+total, the $p_{584}\rightarrow0$ limit, while \code{diffuse\_mod} transported
+every $2^1$P decay as a 21.22-eV packet, the $p_{584}\rightarrow1$ limit, so
+the two modules disagreed about the fate of the same decay.  The domain of
+validity is recorded at the code site: this is an escape-probability closure
+for a 584~\AA{} line assumed optically thick, static and dust free.  Dust
+competes for the trapped photon and is not in the closure --- a small
+correction at the Lexington dust content, not a small one at higher
+dust-to-gas ratios.
+
+\paragraph{Effect of the 584~\AA{} split.}  Weighted by the $2^1$P emission
+rate on the converged grids, $\left<p_{584}\right> = 0.117$ at HII40 and
+$0.0044$ at HII20: $88\%$ and $99.6\%$ of that branch converts to the
+two-photon continuum, and the channel's output per case-B He\,\textsc{ii}
+recombination falls from 19.22 to 17.47~eV at HII40 ($-9.1\%$) and from 19.24
+to 17.12~eV at HII20 ($-11.0\%$), with the photon count down $6.6\%$ and
+$7.9\%$.  In transport (68 ranks, same Sobol stream, against the branch-fraction
+state):
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+ & HII40 & HII20 \\
+\midrule
+$\Delta r({\rm He^0}=0.5)$ [pc]  & $-0.00363$ & $-0.00022$ \\
+$\Delta r({\rm C^{2+}}=0.5)$ [pc] & $-0.00332$ & $-0.00001$ \\
+$\Delta r({\rm H^0}=0.1)$ [pc]   & $-0.01002$ & (density bounded) \\
+$\Delta L({\rm H}\beta)$          & $-0.1997\%$ & $-0.0704\%$ \\
+$\left<T_e\right>$ ($x_{\rm H^0}<0.95$) [K]
+  & $9080.2\rightarrow9053.4$ & $8523.0\rightarrow8522.3$ \\
+diffuse band luminosity           & $-1.56\%$ & $-0.22\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Both benchmarks still pass
+\code{tests/continuous\_energy/check\_hii\_production.py}.  This is the
+largest of the four corrections to the emitted diffuse spectrum --- six times
+the Milne ground continua and twelve times the branch fractions --- and it
+still moves the He\,\textsc{i} front only $2\%$ of the way to the Cloudy
+residual, in the wrong direction.
+
+Three predictions were recorded before these runs, and grading them is worth
+keeping.  The sign was predicted correctly: losing channel-4 photons pulls
+the fronts inward.  The magnitude, of order $0.01$~pc, was correct.  The
+third, that HII20 would move more than HII40, was \emph{wrong} --- HII40
+moved sixteen times further.  The prediction had been read off $p_{584}$
+alone, which measures only what fraction of the $2^1$P branch converts;
+front displacement instead scales with that branch's \emph{absolute}
+contribution to the ionizing budget.  Inverting the measured luminosity drops
+against the change per recombination puts channel 4 at $17.6\%$ of the HII40
+diffuse field and $2.0\%$ of the HII20 one: a 20~kK spectrum makes few
+photons above 24.6~eV, so He$^+$ is scarce and the channel fed by its
+recombinations is small.  A larger converted fraction of a much smaller
+channel moves the front less.  The lesson generalizes --- a local branching
+probability predicts what happens per event, never how far a front moves;
+that second factor is the channel's share of the budget, set by the hardness
+of the source.
 
 With \code{launch\_sequence='sobol'}, diffuse packets use a separate
 Owen-scrambled Sobol stream so that their changing count does not disturb
 the direct-source sequence.  Its fixed nine coordinates are: one for the
 leaf CDF; three for the position within that leaf; two for $(\mu,\phi)$;
 one for the channel CDF; one for the ground-continuum energy draw (or
-the excited-He branch); and one for the flat two-photon energy when that
-branch is selected.  Coordinates that are irrelevant to a selected channel
+the excited-He branch); and one for the two-photon energy,
+drawn from the tabulated Drake shape, when that branch is selected.  Coordinates that are irrelevant to a selected channel
 are still reserved, preserving the global packet-indexed layout across
 iterations and MPI task counts.
 
@@ -1729,7 +1986,8 @@ ion & weight & $\nu_0$ [Ryd] & $\alpha_{\rm eff}(2s)$ \\
 H\,\textsc{i}   & $n_e n_{\rm HII}$   & 0.7496 &
   $0.8368{\times}10^{-13}(T_4)^{-0.723}$ (Pengelly 1964) \\
 He\,\textsc{i}  & $n_e n_{\rm HeII}$  & 1.514  &
-  $6.23{\times}10^{-14}(T_4)^{-0.827}$ (BSS99) \\
+  $\alpha_{\rm eff}(2^1{\rm S}) + [1-p_{584}]\,\alpha_{\rm eff}(2^1{\rm P})$
+  (BSS99) \\
 He\,\textsc{ii} & $n_e n_{\rm HeIII}$ & 3.00   &
   SH95 table, $6.16 \rightarrow 2.04{\times}10^{-13}$ over 5--30~kK \\
 \bottomrule
@@ -1738,7 +1996,27 @@ He\,\textsc{ii} & $n_e n_{\rm HeIII}$ & 3.00   &
 with the Nussbaumer \& Schmutz (1984) shape $A(y)$, $y = \nu/\nu_0$, for
 H\,\textsc{i} and (scaled by $Z^6 = 64$ in both $A$ and $A_{2q}$) for
 He\,\textsc{ii}, and the Almog \& Netzer (1989) tabulated shape for
-He\,\textsc{i}.  Only H\,\textsc{i} carries the collisional suppression
+He\,\textsc{i}.  The He\,\textsc{i} entry has a history worth recording.  The
+port took MOCASSIN's $6.23{\times}10^{-14}(T_4)^{-0.827}$, which is the
+recombination coefficient to \emph{all} singlets --- the exact sum
+$2.06{\times}10^{-14}+4.17{\times}10^{-14}$ of the $2^1$S and $2^1$P
+coefficients of Eq.~(\ref{eq:hei-branch}), refitted as a single power law, so
+the exponent $-0.827$ is a fit to the sum and not a sum of exponents.  Using
+it is MOCASSIN's stated assumption that every He\,\textsc{i} singlet ends in
+$2^1$S, i.e.\ the $p_{584}\rightarrow0$ limit of Eq.~(\ref{eq:hei-584}), and
+it disagreed with the $p_{584}\rightarrow1$ limit \code{diffuse\_mod} was
+transporting.  That constant is no longer used.  \code{gamma\_2q\_HeI} now
+builds the emitting $2^1$S population from the two coefficients separately,
+\begin{equation}
+ \alpha_{2q}({\rm He\,I}) = 2.06{\times}10^{-14}(T_4)^{-0.451}
+   + \left[1-p_{584}\right]4.17{\times}10^{-14}(T_4)^{-0.695},
+\end{equation}
+with the same local $p_{584}$ that \code{diffuse\_mod} folds into its branch
+weights, so the written continuum and the transported field now describe one
+nebula (Section~\ref{sec:diffuse}).  The MOCASSIN constant is recovered
+exactly as $p_{584}\rightarrow0$ and $\alpha_{\rm eff}(2^1{\rm S})$ alone as
+$p_{584}\rightarrow1$.  Only H\,\textsc{i} carries the
+collisional suppression
 \begin{equation}
   \gamma_{2q} \rightarrow \frac{\gamma_{2q}}
        {1 + n_e q_{2s\text{-}2p}/A_{2q}},
@@ -1786,7 +2064,9 @@ $2^1{\rm S}$ and He\,\textsc{ii} $2s$ is absent, as it is in \textsc{Mocassin},
 helium two-photon photons can ionize anything: the H\,\textsc{i} continuum
 stops at 10.2~eV, so omitting it costs nothing.  The He\,\textsc{i}
 $2^1{\rm S}$ branch is one of the four diffuse channels and carries its
-H-ionizing fraction 0.56.  The He\,\textsc{ii} continuum, which extends to
+H-ionizing fraction 0.55644 from the Drake table (Section~\ref{sec:diffuse};
+the flat surrogate's 0.56 is no longer used).  The He\,\textsc{ii}
+continuum, which extends to
 40.8~eV and can ionize both H and He\,\textsc{i}, is \emph{not} transported,
 and neither is He\,\textsc{ii} Ly$\alpha$ --- of no consequence wherever
 He$^{2+}$ is absent (both Lexington benchmarks), an omission to close for

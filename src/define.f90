@@ -620,11 +620,13 @@ public
      logical            :: grain_pe     = .false.
      real(kind=wp)      :: pe_scale     = 1.0_wp
      !--- He I EXCITED-level recombination radiation as a fourth diffuse
-     !--- channel (needs diffuse_field): ~60% of He II recombinations end
-     !--- in excited levels whose decay photons ionize H — AGN3 low-density
-     !--- branching, 3/4 -> 2^3S (19.82 eV), 1/4 x 2/3 -> 2^1P (584 A,
-     !--- 21.22 eV), 1/4 x 1/3 -> 2^1S (two-photon; probability 0.56 of an
-     !--- H-ionizing photon, energy sampled flat in [13.6, 20.62] eV).
+     !--- channel (needs diffuse_field): every case-B He II recombination
+     !--- reaches 1^1S through one n = 2 term whose decay photon can ionize
+     !--- H.  Branch fractions from one consistent set of alpha_eff(T)
+     !--- (hei_cascade_mod: 2^3S 19.82 eV, 2^1P 584 A = 21.22 eV, 2^1S
+     !--- two-photon), the 2^1S energies from the Drake et al. (1969) shape
+     !--- (hei_twophoton_mod), and the trapped 584 A photon split between
+     !--- photoionizing H and collisional conversion to 2^1S.
      logical            :: hei_diffuse  = .false.
      !--- free-free Gaunt factors from the van Hoof et al. (2014) table
      !--- (data/gauntff_vh14.dat) instead of the ported Hummer (1988)

@@ -109,6 +109,16 @@ program main
        call milne_setup()
      end block
   end if
+  !--- He I 2^1S two-photon shape: needed whenever the excited-cascade
+  !--- channel emits, independently of the ground-continuum model.
+  if (par%diffuse_field .and. par%hei_diffuse) then
+     block
+       use hei_twophoton_mod, only : hei_2ph_setup
+       use hei_cascade_mod,   only : hei_cascade_setup
+       call hei_2ph_setup()
+       call hei_cascade_setup()
+     end block
+  end if
   if (par%solve_te) call cooling_setup()
   !--- report the (T, n_e) cooling tables built by species_setup/cooling_setup
   !--- (par%cooling_model = 'local_ne'); a no-op otherwise.

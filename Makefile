@@ -91,6 +91,7 @@ OBJS	= \
 	photo_xsec.o \
 	recomb_mod.o \
 	milne_recomb_spectrum_mod.o \
+	hei_twophoton_mod.o \
 	gaunt.o \
 	gaunt_vh14_mod.o \
 	nlevel_mod.o \
@@ -108,6 +109,7 @@ OBJS	= \
 	amr_refine_mod.o \
 	dust_temp_mod.o \
 	sedust_mod.o \
+	hei_cascade_mod.o \
 	diffuse_mod.o \
 	nebcont_mod.o \
 	sh95_mod.o \

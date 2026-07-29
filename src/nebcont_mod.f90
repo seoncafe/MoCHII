@@ -251,16 +251,34 @@ contains
     g = a2s*1.0e-13_wp*gNu * 1.0e40_wp
   end function gamma_2q_HeII
 
-  real(kind=wp) function gamma_2q_HeI(nu, T) result(g)
+  !--- He I two-photon continuum.  The emitting population is 2^1S, fed both
+  !--- directly by recombination and by the trapped 584 A line that is
+  !--- collisionally transferred 2^1P -> 2^1S rather than photoionizing
+  !--- hydrogen.  That second path is the same branching diffuse_mod applies
+  !--- (hei_584_ionizes_H), so the transported packets and this written
+  !--- continuum describe one nebula:
+  !---
+  !---     alpha_2q = alpha(2^1S) + [1 - p_584] alpha(2^1P) .
+  !---
+  !--- The port took MOCASSIN's constant 6.23e-14 (T4)^-0.827 here, which is
+  !--- the singlet TOTAL -- 2.06e-14 + 4.17e-14 = 6.23e-14 exactly, refitted
+  !--- as one power law -- under its stated assumption that every singlet ends
+  !--- in 2^1S.  That is the p_584 -> 0 limit, and it disagreed with
+  !--- diffuse_mod's p_584 -> 1 limit about the fate of the same decay.
+  real(kind=wp) function gamma_2q_HeI(nu, T, xHI, xHeI) result(g)
+    use hei_cascade_mod, only : hei_584_ionizes_H
     implicit none
-    real(kind=wp), intent(in) :: nu, T
+    real(kind=wp), intent(in) :: nu, T, xHI, xHeI
     real(kind=wp) :: y, Ay, a2s, w
     real(kind=wp), parameter :: nu0 = 1.514_wp
     integer :: j
     g = 0.0_wp
     y = nu/nu0
     if (y >= 1.0_wp .or. nhe2q < 2) return
-    a2s = 6.23_wp*(T/1.0e4_wp)**(-0.827_wp)         ! [1e-14], BSS99
+    !--- BSS99 Table 1 + JSM, in units of 1e-14 cm^3 s^-1
+    a2s = 2.06_wp*(T/1.0e4_wp)**(-0.451_wp) &
+          + (1.0_wp - hei_584_ionizes_H(T, xHI, xHeI)) &
+            *4.17_wp*(T/1.0e4_wp)**(-0.695_wp)
     do j = 1, nhe2q-1
        if (y <= he2q_y(j+1)) exit
     end do
@@ -328,7 +346,7 @@ contains
                       *1.0e-40_wp*vol
           end if
           L2q(i) = L2q(i) + ne*( nHII*gamma_2q_HI(nu, T, ne) &
-                   + nHeII_n*gamma_2q_HeI(nu, T) &
+                   + nHeII_n*gamma_2q_HeI(nu, T, gas_xHI(il), gas_xHeI(il)) &
                    + nHeIII*gamma_2q_HeII(nu, T) )*1.0e-40_wp*vol
        end do
     end do
