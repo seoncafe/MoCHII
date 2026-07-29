@@ -27,7 +27,7 @@ data. It does not modify the MoCafe tree.
   registry ("adding an ion is a data operation, not a code operation"), and the
   CHIANTI fitting pipeline (Tier-1 cooling fits for the hot loop, Tier-2
   collision-strength fits + n-level solve for diagnostics).
-- **`src/PORTING.md`** — module-by-module port map (what comes from which tree,
+- **`docs/PORTING.md`** — module-by-module port map (what comes from which tree,
   what changes on the way in).
 - **`docs/MoCHII_physics.pdf`** — atomic data with sources and fit functions,
   algorithms, all gate results. Companions: `MoCHII_UserGuide.pdf` (build/run,
@@ -116,7 +116,7 @@ item; at nH=100 it biases Te slightly low.
 
 | Tree | Path | What MoCHII takes |
 |---|---|---|
-| MoCafe v2.00 | `~/MoCafe/new/MoCafe_v2.00/` | AMR engine + transport + I/O (see `src/PORTING.md`); build/run conventions; `README_HOWTO.md` for the `par%` reference |
+| MoCafe v2.00 | `~/MoCafe/new/MoCafe_v2.00/` | AMR engine + transport + I/O (see `docs/PORTING.md`); build/run conventions; `README_HOWTO.md` for the `par%` reference |
 | EXHALE | `~/RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/` | `cooling_data/` fitting pipeline; atomic-rate docs (Verner/Badnell/Voronov/charge-exchange); 1D reference profiles |
 | MOCASSIN | `~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/` | `gaunt.f90` (verbatim free-free); `fb_ff` nebular-continuum block + gamma tables; the 11-case regression suite as 3D validation reference |
 | CHIANTI v11.0.2 | `~/RT_Codes/CHIANTI/dbase` | raw atomic data for the fitting pipeline (never parsed at runtime) |
@@ -162,7 +162,7 @@ CLAUDE.md               this file (summary)
 CLAUDE.md_2026.07.27    full chronological development log
 README.md               short overview
 docs/PLAN.md            founding design + staged plan (read first)
-src/                    Fortran sources (PORTING.md = port map)
+src/                    Fortran sources (docs/PORTING.md = port map)
 data/atomic/            fitted coefficient files (provenance headers required)
 tools/fitting/          Python fitting pipeline (extends EXHALE cooling_data)
 tools/python/           output readers + map maker (mochii_output.py)

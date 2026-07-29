@@ -8,7 +8,7 @@ retrofitting an octree into MOCASSIN (see
 `P1.11-feasibility` analysis of why its traversal resists structural
 change), build H/He(+alpha) photoionization **on top of MoCafe v2's
 existing, validated AMR dust-RT engine** — by copying the needed modules
-into this package (see `src/PORTING.md`), never modifying the MoCafe tree —
+into this package (see `docs/PORTING.md`), never modifying the MoCafe tree —
 with modern analytic atomic data following the EXHALE pattern
 (`RT_Codes/Exoplanetary_Atmospheres/ATES/EXHALE/docs/`).
 
