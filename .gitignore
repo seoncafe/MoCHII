@@ -67,6 +67,8 @@ docs/figures/
 __pycache__/
 
 #CLAUDE
+CLAUDE.md
+CLAUDE.md_*
 .claude
 
 # SEDust build artifacts (rebuilt by SEDust/sed/build_lib.sh)
