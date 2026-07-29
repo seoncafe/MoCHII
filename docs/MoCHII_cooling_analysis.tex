@@ -106,9 +106,16 @@ suppressing the line cooling to the local $\nel$ with a $(T, \nel)$ table built
 from the same $n$-level solve --- now the default,
 \code{par\%cooling\_model = local\_ne} --- removes the far-infrared
 overestimate, brings the fixed-state line total from $1.116\times$ to
-$1.01\times$ \Cloudy{}'s, and raises the converged benchmarks to 8211 and
-7025~K, matching \Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are
-retained as the \code{low\_density} option.  A comparison of the cooling
+$1.01\times$ \Cloudy{}'s, and superseded the two zero-density temperatures at
+once by 8211 and 7025~K, matching \Cloudy{} c25.00 (8210, 6910~K); the
+zero-density fits are retained as the \code{low\_density} option.  Corrections
+to the diffuse field made after that carried the production figures to
+\textbf{8162~K} at HII40 --- inside the published $7720$--$8199$~K range and
+$0.58\%$ below \Cloudy{}'s 8210~K --- and \textbf{6917~K} at HII20, which sits
+above the published $6402$--$6749$~K range but within $0.10\%$ of \Cloudy{}
+c25.00's 6910~K, itself above that range: both current-generation codes now
+run hotter than the 1995-era HII20 spread, and they agree with each other.
+A comparison of the cooling
 inventories of the other Monte Carlo photoionization codes is included; it
 turned up defects on their side as well, and one omission common to all five
 codes.
@@ -122,7 +129,13 @@ The Lexington/Meudon \HII{}-region benchmarks HII40 (40~kK blackbody) and
 HII20 (20~kK blackbody) are the standard multi-code comparison for
 photoionization codes; the published columns used here are those of Wood
 et al.\ (2004, their Table~1), which agree entry by entry with the compilation
-of Ercolano et al.\ (2003, their Tables~4 and 5).  \MoCHII{} matched the published
+of Ercolano et al.\ (2003, their Tables~4 and 5).  Nine codes participate
+(GF, HN, DP, TK, PH, RS, RR, BE and WME in the notation of that table), so
+every ``published range'' quoted in this memo is the span of those nine
+columns.  The \Cloudy{} c25.00 column, C25, is a run made for this work and is
+deliberately \emph{not} counted in it: a 2025 code is not one of the original
+participants, and keeping it separate is what makes it usable as an
+independent current-generation reference.  \MoCHII{} matched the published
 ionization structure but sat above every participating code in temperature:
 
 \begin{center}
@@ -585,39 +598,69 @@ Section~\ref{sec:limit}.
 Table~\ref{tab:bench} is the before-and-after on the two benchmark models.
 HII40 moves from $9159$~K, above every published code, to $7894$~K, inside the
 published range.  HII20 moves to $6376$~K, $0.4\%$ below the published floor.
-These are the zero-density-limit (\code{low\_density}) temperatures; the
-density-suppressed default of Section~\ref{sec:limit} raises them further, to
-8211 and 7025~K, to match \Cloudy{} c25.00.
+These are the zero-density-limit (\code{low\_density}) temperatures, which the
+density-suppressed default of Section~\ref{sec:limit} superseded one day later;
+they are kept in the table because they are what the repair of the two defects
+by itself is worth, and the audit trail of this memo is the point.  The
+\emph{current} figures, in the last column of the table, are $8162$~K at HII40
+and $6917$~K at HII20, and they change the HII20 verdict:
+
+\begin{center}
+\begin{tabular}{lcccl}
+\toprule
+ & published (nine codes) & \Cloudy{} c25.00 & \MoCHII{} & verdict \\
+\midrule
+HII40 & 7720--8199 & 8210 & \textbf{8162} & inside published; $0.58\%$ below \Cloudy{} \\
+HII20 & 6402--6749 & 6910 & \textbf{6917} & above published; $0.10\%$ above \Cloudy{} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+At HII20 it is not \MoCHII{} alone that exceeds the published range: \Cloudy{}
+c25.00 exceeds it too, by $2.4\%$, and \MoCHII{} agrees with that
+current-generation reference to $0.10\%$.  The published HII20 range is a
+1995-era spread of nine codes, and both codes written since sit above it.  The
+earlier reading of this section --- ``$0.4\%$ below the published floor'' ---
+belonged to the zero-density fits and inverted the sign of the present
+comparison; it is retained above only as the historical value.
 
 \begin{table}[htbp]
 \centering
-\caption{The Lexington/Meudon benchmarks before and after the cooling fix.
-``published'' is the range over the nine codes of the published compilation; C25 is \Cloudy{} c25.00 run on its own unmodified test-suite deck.
-\MoCHII{} runs use threshold-aligned 32 ionizing bins, the explicit Monte
-Carlo diffuse field with the \HeI{} channels, and case-B recombination-line
-tables.  The ``after'' column is the zero-density (\code{low\_density})
-cooling; the density-suppressed default raises $\langle T\rangle$ to 8211 and
-7025~K (Section~\ref{sec:limit}).}
+\caption{The Lexington/Meudon benchmarks before and after the cooling fix, and
+where they stand now.  ``published'' is the range over the nine codes of the
+published compilation, which does not include C25; C25 is \Cloudy{} c25.00 run
+on its own unmodified test-suite deck.  The $\nel \to 0$ column is the state
+directly after the fit repair --- the zero-density (\code{low\_density})
+cooling, threshold-aligned 32 ionizing bins, the explicit Monte Carlo diffuse
+field with the \HeI{} channels, case-B recombination-line tables.  The
+``current'' column is the production default: the density-suppressed
+\code{local\_ne} cooling of Section~\ref{sec:limit}, continuous stellar photon
+energies, Milne ground continua and the resolved \HeI{} diffuse cascade.  It
+first raised $\langle T\rangle$ to 8211 and 7025~K and then settled at 8162 and
+6917~K; Section~\ref{sec:limit} lists the intermediate steps.  The
+recombination fraction was a diagnostic of the photon-budget argument and was
+not re-measured for the current default.}
 \label{tab:bench}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \toprule
- & before & after & C25 & published \\
+ & before & $\nel \to 0$ & current & C25 & published \\
 \midrule
-\multicolumn{5}{l}{\textbf{HII40}} \\
-$L({\rm H}\beta)/10^{37}$ erg\,s$^{-1}$ & --- & 1.95 & 2.06 & 2.01--2.10 \\
-$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & \textbf{7894} & 8210 & 7720--8199 \\
-$T_{\rm inner}$ / K                     & ---  & 7270 & 7812 & 7370--8318 \\
-$R_{\rm out}/10^{19}$ cm                & not predicted & 1.43 & 1.47 & 1.45--1.47 \\
-$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.667 & 0.715 & 0.741 & 0.715--0.829 \\
-recombinations / $Q_{\rm H}$            & 0.888 & 0.953 & --- & --- \\
+\multicolumn{6}{l}{\textbf{HII40}} \\
+$L({\rm H}\beta)/10^{37}$ erg\,s$^{-1}$ & --- & 1.95 & 1.94 & 2.06 & 2.01--2.10 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & 7894 & \textbf{8162} & 8210 & 7720--8199 \\
+$T_{\rm inner}$ / K                     & ---  & 7270 & 7535 & 7812 & 7370--8318 \\
+$R_{\rm out}/10^{19}$ cm                & not predicted & 1.43 & 1.44 & 1.47 & 1.45--1.47 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.667 & 0.715 & 0.706 & 0.741 & 0.715--0.829 \\
+recombinations / $Q_{\rm H}$            & 0.888 & 0.953 & --- & --- & --- \\
 \midrule
-\multicolumn{5}{l}{\textbf{HII20}} \\
-$L({\rm H}\beta)/10^{36}$ erg\,s$^{-1}$ & --- & 4.70 & 4.99 & 4.83--5.04 \\
-$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & \textbf{6376} & 6910 & 6402--6749 \\
-$T_{\rm inner}$ / K                     & --- & 6752 & 7155 & 6562--7224 \\
-$R_{\rm out}/10^{18}$ cm                & --- & 8.69 & 8.97 & 8.70--9.01 \\
-$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.047 & 0.047 & 0.043 & 0.034--0.077 \\
-recombinations / $Q_{\rm H}$            & --- & 0.971 & --- & --- \\
+\multicolumn{6}{l}{\textbf{HII20}} \\
+$L({\rm H}\beta)/10^{36}$ erg\,s$^{-1}$ & --- & 4.70 & 4.70 & 4.99 & 4.83--5.04 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & 6376 & \textbf{6917} & 6910 & 6402--6749 \\
+$T_{\rm inner}$ / K                     & --- & 6752 & 6936 & 7155 & 6562--7224 \\
+$R_{\rm out}/10^{18}$ cm                & --- & 8.69 & 8.89 & 8.97 & 8.70--9.01 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.047 & 0.047 & 0.046 & 0.043 & 0.034--0.077 \\
+recombinations / $Q_{\rm H}$            & --- & 0.971 & --- & --- & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -643,8 +686,12 @@ published spread.
 \begin{table}[htbp]
 \centering
 \caption{HII40 line intensities relative to ${\rm H}\beta$ after the fix.
-``published'' is the range over the nine codes of the published compilation.
-$[\OIII{}]$ 5007+4959 was $4.28$ before the fix.}
+``published'' is the range over the nine codes of the published compilation,
+which does not include C25.
+$[\OIII{}]$ 5007+4959 was $4.28$ before the fix.  Like the $\nel \to 0$ column
+of Table~\ref{tab:bench}, these are the zero-density-limit values; the
+density-suppressed default warms the model and raises the
+temperature-sensitive optical lines.}
 \label{tab:lines}
 \begin{tabular}{lccc}
 \toprule
@@ -703,10 +750,10 @@ both exceed \Cloudy{} by $30\%$ --- so that row is a collision-data difference
 between CHIANTI v11 and \Cloudy{}'s Ne\,\textsc{iii} data, and is noted here
 as a separate open item.
 
-Run with the fits used directly, the consequence for the benchmarks was a
-slight cooling bias at $\nH = 100$: both models sat at the cool edge of the
-published range, and HII20 fell $0.4\%$ below its floor.  \MoCHII{} removes it
-by suppressing the line cooling to the local density.  A $(T, \nel)$ table,
+Run with the zero-density fits used directly, the consequence for the
+benchmarks was a slight cooling bias at $\nH = 100$: both models sat at the cool
+edge of the published range, and HII20 fell $0.4\%$ below its floor.  \MoCHII{}
+removes it by suppressing the line cooling to the local density.  A $(T, \nel)$ table,
 built once at setup (\code{nlevel\_cooling\_mod}) by solving the same
 $n$-level atom on a grid ($\log_{10}T = 2$--$6$, $\log_{10}\nel = -6$--$10$),
 stores for each ion the suppression ratio
@@ -725,7 +772,7 @@ suppression is much larger.
 
 On the fixed \Cloudy{} state the default delivers the Tier-2 column of the
 table above, $1.011\times$ \Cloudy{}'s line total in place of $1.116\times$,
-and the converged benchmarks rise to \textbf{8211}~K at HII40 --- matching
+and the converged benchmarks rose to \textbf{8211}~K at HII40 --- matching
 \Cloudy{} c25.00's 8210~K to $0.7$~K --- and 7025~K at HII20 ($+1.7\%$ against
 \Cloudy{}'s 6910~K), in place of the zero-density 7894 and 6376~K.  This
 confirms the fixed-state prediction quantitatively: removing the far-infrared
@@ -733,6 +780,48 @@ overestimate --- the difference between the $1.116\times$ and $1.011\times$
 totals --- is what carries the converged temperature the remaining distance to
 the current-generation reference.  \NeIII{} remains the one channel still $30\%$
 above \Cloudy{}, a collision-data difference rather than a density effect.
+
+\paragraph{From 8211/7025 to the current 8162/6917~K.}  The two temperatures
+above are those measured when \code{local\_ne} became the default; they are not
+the current ones, and the difference is not in the cooling.  Three later
+changes to the stellar and diffuse radiation field moved them, each recorded
+with its own gate:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{llcc}
+\toprule
+Change & Plan document in \code{docs/} & HII40 & HII20 \\
+\midrule
+zero-density fits (\code{low\_density})   & this memo & 7894 & 6376 \\
+\code{local\_ne} default                  & \code{COOLING\_LOCAL\_NE\_PLAN.md} & 8210 & 7024 \\
+\CI{}/\NI{} $n$-level, energy order       & (same) & 8211 & 7025 \\
+continuous stellar photon energies        & \code{CONTINUOUS\_ENERGY\_PHOTON\_PLAN.md} & 8194 & 6916 \\
+Milne ground continua                     & \code{MILNE\_DIFFUSE\_LYC\_IMPLEMENTATION\_PLAN.md} & 8202 & 6922 \\
+resolved \HeI{} diffuse cascade           & \code{HEI\_CASCADE\_DIFFUSE\_PLAN.md}, & \textbf{8162} & \textbf{6917} \\
+                                          & \code{HEI\_584\_CONVERSION\_PLAN.md} & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Sampling the stellar spectrum at continuous photon energies, rather than at
+band-averaged energies, removed the discretization bias in the photoheating and
+in the threshold cross sections.  Sampling the three ground recombination
+continua from the Milne free-bound spectrum
+$E^2\sigma_{\rm pi}(E)\exp[-(E-E_{\rm th})/kT]$ replaced an exponential
+approximation, and the shift is above the Monte Carlo noise: the seed-to-seed
+spread over four scrambled-Sobol ensembles is $0.002\%$ median on the line
+ratios against a $0.40\%$ median Milne shift.  Resolving the \HeI{} diffuse
+cascade replaced three constants --- statistical branch weights, a flat
+$2^1S$ two-photon spectrum, and the 584~\AA{} photon treated as ionizing with
+probability one --- by effective recombination coefficients and the
+Drake--Victor--Dalgarno $2^1S$ spectrum, which lowers the effective ionizing
+content of the helium cascade and so lowers HII40 by $40$~K.  None of this
+touches the cooling function, and none of it disturbs the conclusion of this
+memo: HII40 stays inside the published range throughout, and HII20 stays above
+it --- within $1.7\%$ of \Cloudy{} c25.00 at the \code{local\_ne} default and
+within $0.2\%$ from the continuous-energy step onward.
 
 \paragraph{The H-collider term is still low-density (needs re-baselining).}
 One line-cooling term is not yet density-suppressed: the H-impact $[\CII{}]$
@@ -1487,8 +1576,8 @@ used.  The dump starts at 1~pc, so the innermost parsec is not in the average;
 and it is a single stored run at whatever packet and iteration count produced
 it, not a converged reference in the sense of Section~\ref{sec:bench}.  Taken
 at face value it sits at the top of the $7720$--$8199$~K published range of
-Table~\ref{tab:bench}, essentially at \MoCHII{}'s density-suppressed default
-$8211$~K and \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
+Table~\ref{tab:bench}, $0.4\%$ above \MoCHII{}'s current $8162$~K and $0.2\%$
+below \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
 $7894$~K).  \code{benchmarks/HII\_region/} also holds a
 \code{lexington\_cloudy.txt} comparison profile.  Nothing here was re-run.
 
@@ -1594,9 +1683,17 @@ limit still overcooled the low-critical-density lines at $\nH = 100$;
 suppressing $\Lambda$ to the local $\nel$ with a $(T, \nel)$ table built from
 the same $n$-level solve --- now the default,
 \code{par\%cooling\_model = local\_ne} --- removes the far-infrared overestimate
-and raises the converged benchmarks to 8211 and 7025~K, matching \Cloudy{}
-c25.00 (8210, 6910~K); the zero-density fits are kept as the \code{low\_density}
-option.
+and raised the converged benchmarks at once to 8211 and 7025~K, matching
+\Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are kept as the
+\code{low\_density} option.  Later corrections to the stellar and diffuse
+radiation field, none of them in the cooling, brought the production figures to
+their current values: $8162$~K at HII40, inside the published
+$7720$--$8199$~K range and $0.58\%$ below \Cloudy{}; and $6917$~K at HII20,
+above the published $6402$--$6749$~K range but within $0.10\%$ of \Cloudy{}
+c25.00's $6910$~K, which is itself $2.4\%$ above that range.  The HII20 range is
+a 1995-era nine-code spread that both current-generation codes exceed, so the
+verdict there is agreement with \Cloudy{}, not a shortfall against the
+published floor.
 
 The same audit applied to the other Monte Carlo photoionization codes shows
 that \MoCHII{}'s inventory is now a superset of all four in the line and H/He

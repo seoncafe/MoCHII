@@ -14,25 +14,105 @@ performed to identify the origin of that residual.
 
 ## Central conclusion
 
-**The residual is not in what the diffuse field emits.**  Four independent
-corrections have now been made to the emitted diffuse spectrum --- the Milne
-free-bound shape of the three ground continua, the Drake two-photon shape, the
-temperature-dependent He I cascade branch fractions, and the local fate of the
-He I 584 A photon.  Between them they span the spectral shape of every
-continuum, the weights of every branch, and the destination of the channel's
-strongest line, and the last of them changes that channel's content by 9-11%
-rather than by a fraction of a percent.  Their combined effect on
-`r(He0 = 0.5)` is **-0.00306 pc**: 1.7% of the 0.18 pc gap, and in the wrong
-direction.
+**The residual is not in the diffuse field --- neither in what it emits nor in
+how it is transported.**
 
-That axis is therefore exhausted, not merely unproductive.  The earlier
-statement in this note --- that each correction is a correctness fix and not an
-explanation of the residual --- can now be made in the stronger form: no
-remaining refinement of the *emitted* diffuse spectrum can plausibly supply
-0.18 pc, because the corrections already made include one large enough to have
-done so and it did not.  The remaining candidates, in priority order, are in
-[Next decision](#next-decision); the leading one is the **transport** of the
-diffuse photons, the single axis this investigation never varied.
+*Emission.*  Four independent corrections have been made to the emitted diffuse
+spectrum: the Milne free-bound shape of the three ground continua, the Drake
+two-photon shape, the temperature-dependent He I cascade branch fractions, and
+the local fate of the He I 584 A photon.  Between them they span the spectral
+shape of every continuum, the weights of every branch, and the destination of
+the channel's strongest line, and the last of them changes that channel's
+content by 9-11% rather than by a fraction of a percent.  Their combined effect
+on `r(He0 = 0.5)` is **-0.00306 pc**: 1.7% of the 0.18 pc gap, and in the wrong
+direction.  No remaining refinement of the emitted spectrum can plausibly
+supply 0.18 pc, because the corrections already made include one large enough to
+have done so and it did not.
+
+*Transport.*  This was the leading candidate when the note was last revised, on
+the grounds that it was the one axis never varied.  It is now bounded from two
+directions.  The front's response to the diffuse field, calibrated two ways from
+the 584 A measurement, is 0.233-0.585 pc per unit fractional change in the total
+diffuse band luminosity, so 0.18 pc requires a **31-77%** change in that
+luminosity.  And the *entire* dynamic range of the diffuse treatment --- fully
+explicit transport at 4.11970 pc against no explicit transport at all
+(on-the-spot) at 4.18159 pc --- is **0.062 pc**, with Cloudy a further 0.124 pc
+beyond the more favorable end.  Every conceivable transport variant lies inside
+that bracket, so none of them reaches the reference.
+
+Two further candidates from the previous revision have now been measured rather
+than argued about, and both are bounded far below the gap: the He I ground-state
+photoionization cross section (a ~70% change would be needed) and the He I
+recombination rate (~23%), against a spread of at most 5% among the published
+determinations of the recombination coefficient and 0.5% between the cross
+section and its laboratory measurement.
+
+What survives is not an explanation but a signature: the discrepancy is
+He-specific and compounds with depth
+([The radial signature](#the-radial-signature)).  **The residual is still
+unexplained.**  What has changed is that the space of simple explanations has
+been closed systematically, and what remains demands an He-specific effect at
+the 15-20% level that is present in none of the rates, cross sections or fields
+checked here.
+
+## What is excluded, and how tightly
+
+Each row is a measurement or a construction, with the bound it places on
+`r(He0 = 0.5)`.  The residual to be closed is **0.18561 pc**.
+
+| candidate | how it was bounded | bound |
+| --- | --- | --- |
+| Diffuse-field **emission** | four independent corrections to the emitted spectrum, one of them removing 9-11% of the strongest channel's energy | sum **-0.00306 pc**, wrong sign: 1.7% of the gap |
+| Diffuse-field **transport** | front response calibrated two ways from the 584 A run: 0.233 pc (differential) and 0.585 pc (channel switched off) per unit fractional change in the diffuse band luminosity | closing the gap needs a **31-77%** change in that luminosity |
+| The diffuse treatment **as a whole** | explicit transport (4.11970 pc) against on-the-spot (4.18159 pc), the two limits of the treatment | full range **0.062 pc**; Cloudy 0.124 pc outside its favorable end |
+| `sigma_pi(He I)` | paired run at x0.97 | **+0.00799 pc**; **~70%** change needed |
+| He I recombination rate | paired run at x0.97 | **+0.02410 pc**; **~23%** change needed |
+| Dust | off by construction in the benchmark (`par%dust_model='none'`, `par%ion_add_dust=.false.`) | identically zero |
+| Source photon budget | `Q(>13.598 eV)` and `Q(>24.587 eV)` against Cloudy c25 | agree to **1.00005** and **1.00003** |
+| H ionization structure | `x(H0)` profile ratio to Cloudy across the ionized zone | **1-2%** at every radius |
+| Cloudy's own resolution at the front | 40 zones between 4.0 and 4.6 pc, median width 0.0106 pc, maximum 0.039 pc | reference front resolved **17x** finer than the residual |
+
+Earlier in the investigation the diagnostic energy binning, Monte Carlo noise,
+spatial resolution and the H/He recombination rate set were excluded as well;
+those measurements are under
+[Effects excluded or bounded](#effects-excluded-or-bounded).
+
+None of these bounds is an argument that the residual is small.  It is 0.18561
+pc, about 4.4% of the front radius, and it is real.  They are the statement that
+no single quantity in the list can produce it.
+
+## The radial signature
+
+The one positive result of the investigation is the *shape* of the discrepancy.
+`x(H0)` agrees with Cloudy to 1-2% throughout the ionized zone, while the
+`x(He0)` ratio grows monotonically outward:
+
+| r [pc] | 1.6 | 2.0 | 2.5 | 3.0 | 3.5 | 3.8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `x(He0)` MoCHII/Cloudy | 1.007 | 1.015 | 1.031 | 1.059 | 1.109 | **1.196** |
+| `x(H0)` MoCHII/Cloudy | 0.981 | 0.984 | 0.989 | 1.000 | 1.005 | 1.009 |
+
+This is not a normalization offset.  A wrong rate, cross section or source
+luminosity appears as a radius-independent factor; what is observed instead
+starts at 0.7% and accumulates with depth to 20%, in helium only.
+
+The accumulation is expected once something starts it.  He^0 carries most of the
+opacity above 24.6 eV in this zone --- at 30 eV,
+`kappa(He0)/[kappa(He0) + kappa(H0)]` is 0.843 at 1.6 pc and rises to 0.956 at
+4.0 pc --- so a slight excess of He^0 attenuates the He-ionizing field slightly
+more, which leaves more He^0 further out.  The He ionization structure amplifies
+its own error, and the consequence is that **the seed is small**: 0.7% at
+1.6 pc, well inside the accuracy of any individual rate.
+
+Two things follow.  First, hunting for a large error in a single He I rate or
+cross section is misdirected, and the sensitivity runs below confirm that
+quantitatively.  Second, a budget statement: moving the front outward by 4.4% in
+radius is 13.7% in volume, so a *uniform* explanation would require `Q(He0)`
+higher by ~14% or `alpha_B(He I)` lower by ~20%.  `Q(He0)` is verified against
+Cloudy to 0.003%, and no published `alpha_B(He I)` is 20% away from MoCHII's.
+No uniform explanation exists, and what is needed instead is something acting
+progressively on the He^0 population --- that is, inside the He ionization
+network.
 
 ## Common diagnostic
 
@@ -197,9 +277,12 @@ and are reported rather than reconciled:
 H I and He II agree to about 0.5%, which is the expected level for independent
 fits.  He I disagrees by 2-3.4%.  The unexplained residual is the He I front,
 so an internal inconsistency of that size in exactly the He I ground-continuum
-data is worth pursuing, though it is a lead rather than a demonstrated cause:
-a 3% error in the He I ground recombination rate is not obviously enough to
-move a front by 0.18 pc.
+data was worth pursuing.
+
+It has since been pursued, and it is closed as a candidate: the inconsistency is
+real and is between two independent atomic datasets rather than being an
+implementation error, and the front is far too insensitive to it to matter.  See
+[He I atomic data](#he-i-atomic-data-sensitivity-measured-inconsistency-located).
 
 ## The He I cascade: implemented, and it does not explain the residual either
 
@@ -423,30 +506,145 @@ the whole He I cascade off moves `r(He0 = 0.5)` by -0.103 pc, so the channel is
 large; it is the *refinements* to what it emits that are not.  The emission
 axis is exhausted.
 
+## How sensitive the front is to the diffuse field
+
+The 584 A run also calibrates the front against the diffuse field as a whole,
+which is what converts every later measurement into a bound.  Two calibrations
+are available from it, and they bracket the answer:
+
+| calibration | change in diffuse band luminosity | shift in `r(He0 = 0.5)` | implied slope |
+| --- | ---: | ---: | ---: |
+| differential: channel 4 lost 8.87% of its energy, and it is 17.6% of the diffuse field | -1.56% | -0.00363 pc | 0.233 pc |
+| channel 4 switched off entirely | -17.6% | -0.103 pc | 0.585 pc |
+
+The slope is in pc per unit fractional change in the total diffuse band
+luminosity.  The differential figure is the local derivative and the switched-off
+figure includes the nonlinear response, so the true slope for a large change is
+between them.  Either way, **0.18 pc requires the diffuse band luminosity to
+change by 31-77%.**  That is the yardstick used below: any candidate whose effect
+on the diffuse field is a few percent cannot be the explanation, whatever its
+sign.
+
+## He I atomic data: sensitivity measured, inconsistency located
+
+The `alpha_1` lead from the Milne work has been followed to its end.  It splits
+into two questions --- is MoCHII's He I data wrong, and would it matter --- and
+the answers are *no implementation error* and *no*.
+
+**Would it matter: two paired sensitivity runs.**  HII40, 68 ranks, the same
+Sobol seed as production, 38 gas iterations, outputs under
+`results/continuous_energy/hei_sensitivity/`.  Each run scales one He I quantity
+by 0.97 --- a 3% change, the size of the entire observed disagreement --- and the
+shifts are measured with the standard 0.01-pc volume-weighted shell diagnostic:
+
+| variant | dr(He0 = 0.5) | dr(C2+ = 0.5) | dr(H0 = 0.1) | pc per unit change | needed to close 0.18561 pc |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `sigma_pi(He I)` x 0.97 | **+0.00799** | +0.00518 | +0.00006 | 0.27 | **~70%** |
+| He I recombination x 0.97 | **+0.02410** | +0.02677 | -0.00285 | 0.80 | **~23%** |
+
+Both have the sign that helps, and the recombination rate is the stronger of the
+two by a factor of three.  That ordering is expected: lowering
+`sigma_pi(He I)` acts in two opposing ways --- less He^0 is ionized locally, but
+the He-ionizing photons penetrate further --- and they partly cancel, which the
+near-zero `dr(H0 = 0.1)` of that run also shows, whereas lowering the
+recombination rate reduces He^0 everywhere at once.  But 3% buys
+4.3% and 13.0% of the gap respectively, and the changes required to close it,
+70% and 23%, are an order of magnitude beyond the spread of the published data:
+the three determinations of `alpha_1(He I)` below differ by at most 5%, and
+`alpha_B(He I)` differs between MoCHII and BSS99 by 2.9%.  **He I atomic data
+cannot close the gap.**
+
+**Is MoCHII's cross section wrong: no.**  `sigma_HeI` reproduces Verner's own
+`phfit2.f` to a ratio of **1.00000** at every energy between 24.6 and 105 eV,
+with a maximum absolute difference of 0.000%, so there is no implementation
+error to find.  Its threshold value is 7.436 Mb against the measured
+7.40 +/- 0.07 Mb of Samson et al. (1994) --- 0.5% high and inside the
+experimental uncertainty.  The normalization is right, so any disagreement can
+only be in the energy dependence.
+
+**Which side of the inconsistency is the outlier: the Milne integral.**  Because
+`recomb_mod` forms `alphaB_HeII = alphaA_HeII - alpha1_HeII`, the "rates" side of
+the `milne_setup` cross-check *is* `alpha1_HeII` itself, an `rr_mao` fit, so the
+comparison is a direct one between two determinations of the same coefficient.
+A third, independent determination breaks the tie: BSS99 with J. S. Mathis, in
+the form carried by K. Wood's `ionize`,
+`alpha_1(He I) = 1.54e-13 (T/1e4)^-0.486`.
+
+| T | BSS99 / Wood | `rr_mao` (MoCHII) | Milne integral (Verner sigma) |
+| --- | ---: | ---: | ---: |
+| 5000 K | 2.157 | 2.184 (+1.3%) | 2.259 (**+4.8%**) |
+| 10^4 K | 1.540 | 1.565 (+1.6%) | 1.609 (**+4.5%**) |
+| 2x10^4 K | 1.100 | 1.128 (+2.6%) | 1.151 (**+4.7%**) |
+
+Units are 1e-13 cm^3 s^-1 and the percentages are against the BSS99 column.  The
+two recombination determinations cluster within 2.6% of each other while the
+Milne integral sits 4.5-4.8% above both, so it is the Milne integral that stands
+apart --- and He I is the only non-hydrogenic case among the three continua,
+which is consistent with the residual being in the Verner He I fit's energy
+dependence rather than in either recombination coefficient.
+
+The code reports the discrepancy at setup and rescales neither side.  That is the
+correct handling: this is an inconsistency between two independent atomic
+datasets, not a defect, and absorbing it into one of them would hide a real
+uncertainty in the data.
+
+## The source photon budget, and dust
+
+The ionizing budget entering the calculation is verified directly against the
+reference.  For the benchmark's 40 kK blackbody (`par%tstar=4.0e4`,
+`par%luminosity=1.2734e39` over 13.598-100 eV):
+
+| | MoCHII | Cloudy c25.00 | ratio |
+| --- | ---: | ---: | ---: |
+| `Q(>13.598 eV)` | 4.2656e49 s^-1 | 4.2653e49 (`Q > 1 Ryd`) | 1.00005 |
+| `Q(>24.587 eV)` | 4.6082e48 s^-1 | 4.6081e48 (`Q > 1.8 Ryd`) | 1.00003 |
+
+The two codes are illuminating the same nebula with the same number of photons
+to 0.005%, and in particular the He-ionizing budget --- the quantity that would
+have to rise by ~14% for a uniform explanation of the front --- agrees to
+0.003%.  The source normalization, the spectral shape at the two thresholds, and
+the band definition are all excluded.
+
+Dust is excluded by construction rather than by measurement: the Lexington
+benchmarks run with `par%dust_model='none'` and `par%ion_add_dust=.false.`, so
+there is no grain opacity competing for ionizing photons in either calculation
+being compared.
+
 ## Next decision
 
-Diagnostic binning, Monte Carlo noise, spatial resolution, the H/He
-recombination rate set, and the emitted diffuse spectrum as a whole are
-excluded.  What remains, in the order the evidence supports:
+Excluded: diagnostic binning, Monte Carlo noise, spatial resolution, the H/He
+recombination rate set, the emitted diffuse spectrum as a whole, the transport of
+the diffuse photons, the He I ground-state photoionization cross section, the
+He I recombination rate, dust, the source photon budget, the H ionization
+structure, and the resolution of the reference calculation at the front.  The
+bounds are tabulated in
+[What is excluded, and how tightly](#what-is-excluded-and-how-tightly).
 
-1. **The transport of the diffuse photons**, as distinct from their emission.
-   This is the one axis the investigation has never varied: every test so far
-   changed what the diffuse field radiates, and the emission axis is now
-   exhausted by four independent corrections.  How a diffuse packet is
-   propagated, where it deposits, and how its absorption is shared between H,
-   He and the metals at the front have not been examined at all.
-2. **He I ground-continuum atomic data.**  `milne_setup` reports `alpha_1`
-   from the Milne integral disagreeing with the fitted `alpha_A - alpha_B` by
-   2-3.4% for He I, against 0.5% for H I and 0.4% for He II --- an internal
-   inconsistency in exactly the continuum whose front is discrepant.  It
-   remains a lead rather than a demonstrated cause, since a 3% error in the
-   He I ground recombination rate is not obviously worth 0.18 pc.
-3. **Collisional redistribution among the n = 2 terms.**  The branch fractions
-   are effective coefficients in the low-density limit, and `p584` is an
+What remains, in the order the evidence supports:
+
+1. **The He ionization network itself** --- specifically, what Cloudy's resolved
+   He I model atom contains that MoCHII's effective treatment does not.  This is
+   where the radial signature points: the discrepancy is He-specific, absent
+   from hydrogen, seeded at the 0.7% level and amplified by He^0's own dominance
+   of the opacity above 24.6 eV, so it is a property of how the He^0 population
+   is computed rather than of any single rate feeding that computation.
+   Confirming or refuting it requires reading Cloudy's He I implementation and
+   identifying which of its channels MoCHII represents by an effective
+   coefficient.  That is a **separate task** and is the open item to record.
+2. **Collisional redistribution among the n = 2 terms**, which is the most
+   concrete instance of item 1 that MoCHII could already act on.  The branch
+   fractions are effective coefficients in the low-density limit and `p584` is an
    escape-probability closure; `hei_metastable_mod` already carries the
-   `q_31a`/`q_31b` rates that would couple the terms at finite density.  Still
-   out of scope, and density dependent, so it is unlikely to dominate at the
-   benchmark densities.
-4. **A difference outside the diffuse field entirely** --- the metal opacity at
-   the front, or a Cloudy-side modeling choice not yet identified.  This
-   becomes more plausible with every diffuse-field candidate that closes.
+   `q_31a`/`q_31b` rates that would couple the terms at finite density.  It is
+   density dependent, so it is unlikely to dominate at the benchmark densities,
+   but it is testable without leaving the code.
+3. **A difference outside the He treatment entirely** --- the metal opacity at
+   the front, or a Cloudy-side modeling choice not yet identified.
+
+The quantitative statement to keep in view while pursuing any of these: closing
+0.18561 pc means moving the front out by 4.4% in radius, hence 13.7% in volume,
+which a uniform explanation would have to supply as `Q(He0)` higher by ~14% or
+`alpha_B(He I)` lower by ~20%.  `Q(He0)` agrees with Cloudy to 0.003% and no
+published `alpha_B(He I)` is 20% from MoCHII's, so **neither is supported by the
+data**.  The explanation, if there is one on the MoCHII side, has to be
+progressive in depth rather than a change of scale.

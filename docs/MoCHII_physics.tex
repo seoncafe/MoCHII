@@ -1245,6 +1245,43 @@ count; the two are independent data and are never rescaled into agreement.
 They agree to $0.5$--$1.3\%$ for H\,\textsc{i} and $0.4\%$ for
 He\,\textsc{ii}, but differ by up to $3.4\%$ for He\,\textsc{i}.
 
+\paragraph{Which side of the He\,\textsc{i} cross-check is the outlier.}
+The disagreement is not an implementation error on the cross-section side.
+MoCHII's \code{sigma\_HeI} reproduces Verner's own \code{phfit2.f} to a ratio
+of $1.00000$ at every energy over $24.6$--$105$~eV, and its threshold value,
+$7.436$~Mb, sits $0.5\%$ above the measured $7.40\pm0.07$~Mb of Samson et
+al.\ (1994) --- inside the experimental uncertainty, so the normalization is
+right and any disagreement would have to lie in the energy dependence.  Nor
+is the comparison between unlike quantities: \code{recomb\_mod} forms
+$\alpha_B = \alpha_A - \alpha_1$ from Eq.~(\ref{eq:mao}), so the ``rates''
+side of the cross-check \emph{is} $\alpha_1$(He\,\textsc{i}) itself, and the
+$2$--$3.4\%$ separates two determinations of one number.  A third,
+independent determination decides between them: Benjamin, Skillman \& Smits
+(1999) with J.~S.\ Mathis, as carried by K.~Wood's \code{ionize}, give
+$\alpha_1({\rm He\,\textsc{i}}) = 1.54{\times}10^{-13}(T_4)^{-0.486}$
+$\cmc$.
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+$T$ & BSS99 $+$ JSM & Mao \& Kaastra & Milne integral, Verner $\sigma$ \\
+\midrule
+$5000$~K       & 2.157 & 2.184 ($+1.3\%$) & 2.259 ($+4.8\%$) \\
+$10^4$~K       & 1.540 & 1.565 ($+1.6\%$) & 1.609 ($+4.5\%$) \\
+$2{\times}10^4$~K & 1.100 & 1.128 ($+2.6\%$) & 1.151 ($+4.7\%$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+In $10^{-13}\,\cmc$, percentages against the BSS99 column.  The two
+recombination determinations cluster within $2.6\%$ of each other while the
+Milne integral sits $4.5$--$4.8\%$ above both, so \emph{the Milne integral is
+the outlier} --- and He\,\textsc{i} is the only one of the three ground
+continua that is not hydrogenic, the two that are agreeing to
+$0.5$--$1.3\%$ and $0.4\%$.  The code reports the mismatch at start-up and
+rescales neither side, which is the correct handling: it is an inconsistency
+between two independent atomic data sets, inherited by every code that pairs
+the Verner cross sections with recombination fits, not a defect in either
+implementation.
+
 Two legacy options remain.  \code{'exponential'} is the historical
 near-threshold approximation
 \begin{equation}
@@ -1301,19 +1338,106 @@ direction is not an argument against any of them.  What the sum does settle
 is the diagnosis: \emph{the $0.18$~pc residual is not in what the diffuse
 field emits.}  Four independent corrections, spanning the emitted spectrum's
 shape, its branch weights and the fate of its strongest line, together
-account for $1.7\%$ of the gap and with the wrong sign.  Four candidates
-remain, in decreasing order of plausibility:
+account for $1.7\%$ of the gap and with the wrong sign.
+
+\paragraph{Bounding the remaining candidates.}  The quantity to be explained
+is $r({\rm He^0}=0.5) = 4.11970$~pc against Cloudy c25.00's $4.30531$~pc,
+i.e.\ $-0.18561$~pc.  The front's sensitivity to the diffuse field is
+calibrated two ways from the 584~\AA{} measurement above: differentially
+(channel 4 lost $8.87\%$ of its energy, is $17.6\%$ of the diffuse field, and
+moved the front $0.00363$~pc) and by switching that channel off entirely
+($17.6\%$ of the field, $0.103$~pc), giving $0.233$ and $0.585$~pc per unit
+fractional change in the total diffuse band luminosity.  Two further
+sensitivity runs (HII40, 68 ranks, same Sobol stream, 38 iterations) scale
+the He\,\textsc{i} atomic data by $3\%$, the size of the entire spread among
+its published determinations: reducing $\sigma_{\rm pi}$(He\,\textsc{i})
+moves the front $+0.00799$~pc and reducing the He\,\textsc{i} recombination
+rate moves it $+0.02410$~pc.  Every candidate then has a number attached to
+it, and every number is too small:
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+axis & bound measured & to reach $0.18$~pc \\
+\midrule
+what the diffuse field emits & four corrections, net $-0.00306$~pc
+  & wrong sign \\
+explicit transport vs.\ on-the-spot & 4.11970 to 4.18159~pc
+  & the whole range is $0.062$~pc \\
+total diffuse band luminosity & $0.233$--$0.585$~pc per unit fraction
+  & $31$--$77\%$ \\
+$\sigma_{\rm pi}$(He\,\textsc{i}) & $+0.00799$~pc per $-3\%$ ($0.27$~pc/unit)
+  & ${\sim}70\%$ \\
+$\alpha$(He\,\textsc{i}) & $+0.02410$~pc per $-3\%$ ($0.80$~pc/unit)
+  & ${\sim}23\%$ \\
+dust & \code{dust\_model='none'} in the benchmark & excluded by construction \\
+source photon budget & $Q$ ratios $1.00005$ and $1.00003$ & $14\%$ in
+  $Q({\rm He^0})$ \\
+Cloudy-side resolution & median zone width $0.0106$~pc at the front
+  & $17\times$ finer already \\
+\bottomrule
+\end{tabular}
+\end{center}
+The transport entry is the decisive one, because it was the leading candidate:
+switching the whole diffuse treatment between its extremes --- explicit
+transport at $4.11970$~pc and the on-the-spot approximation at $4.18159$~pc
+--- spans only $0.062$~pc, and Cloudy sits $0.124$~pc beyond the more
+favorable end of that range.  No choice about how diffuse photons are
+transported can reach it.  The photon budget is verified against the same
+40-kK blackbody Cloudy was given: $Q({>}13.598~{\rm eV}) =
+4.2656{\times}10^{49}$~s$^{-1}$ against $4.2653{\times}10^{49}$ and
+$Q({>}24.587~{\rm eV}) = 4.6082{\times}10^{48}$ against
+$4.6081{\times}10^{48}$, ratios $1.00005$ and $1.00003$.  Cloudy resolves the
+front with 40 zones between 4.0 and 4.6~pc, median width $0.0106$~pc and
+maximum $0.039$~pc, so the reference position is not a resolution artifact
+either.
+
+\paragraph{The radial signature.}  What the residual does have is a shape.
+The hydrogen structure agrees with Cloudy throughout the ionized zone; only
+the helium structure drifts, and it drifts monotonically outward:
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\toprule
+$r$ [pc] & 1.6 & 2.0 & 2.5 & 3.0 & 3.5 & 3.8 \\
+\midrule
+$x({\rm He^0})$, MoCHII/Cloudy & 1.007 & 1.015 & 1.031 & 1.059 & 1.109
+  & 1.196 \\
+$x({\rm H^0})$, MoCHII/Cloudy  & 0.981 & 0.984 & 0.989 & 1.000 & 1.005
+  & 1.009 \\
+\bottomrule
+\end{tabular}
+\end{center}
+A normalization difference in a rate or a cross section would be
+radius-independent; this one compounds with depth.  That is what a $0.7\%$
+seed at 1.6~pc must do when He$^0$ carries almost all of the opacity above
+24.6~eV: at 30~eV,
+$\kappa({\rm He^0})/[\kappa({\rm He^0})+\kappa({\rm H^0})]$ rises from
+$0.843$ at 1.6~pc to $0.956$ at 4.0~pc, so any excess He$^0$ shortens the
+mean free path of the very photons that would have removed it.  The
+signature therefore identifies a small helium-specific seed, amplified
+geometrically, rather than a large error anywhere.
+
+Closing $0.18$~pc is $4.4\%$ in radius and $13.7\%$ in volume, which asks for
+$Q({\rm He^0})$ higher by ${\sim}14\%$ or $\alpha_B$(He\,\textsc{i}) lower by
+${\sim}20\%$.  $Q({\rm He^0})$ is verified to $0.003\%$, and MoCHII's
+$\alpha_B$(He\,\textsc{i}) differs from the BSS99 value by $2.9\%$, with no
+published determination anywhere near $20\%$ away.  \emph{The residual is
+therefore unexplained}, and what has been achieved is the systematic closing
+of the space of simple explanations: it is not in what the diffuse field
+emits, not in how those photons are transported, not in the He\,\textsc{i}
+photoionization cross section, not in the He\,\textsc{i} recombination rate,
+not in dust, not in the source photon budget, and not in the reference
+calculation's resolution.  It demands a helium-specific effect at the
+$15$--$20\%$ level that is in none of the rates, cross sections or fields
+checked.  Two candidates survive:
 \begin{enumerate}
-\item the \emph{transport} of the diffuse photons rather than their
-  emission --- the one axis never varied in this sequence;
-\item the He\,\textsc{i} ground-continuum atomic data.  \code{milne\_setup}
-  reports the $\alpha_1$ of the Milne integral disagreeing with the fitted
-  $\alpha_A-\alpha_B$ by $2$--$3.4\%$ for He\,\textsc{i}, against $0.5\%$ for
-  H\,\textsc{i} and $0.4\%$ for He\,\textsc{ii} --- in exactly the continuum
-  whose front is discrepant;
-\item collisional redistribution among the $n=2$ He\,\textsc{i} terms, which
-  is density dependent and not implemented;
-\item a difference outside the diffuse field entirely --- the metal opacity
+\item the helium ionization network itself --- what Cloudy's resolved
+  He\,\textsc{i} model atom contains that MoCHII's effective treatment does
+  not.  Collisional redistribution among the $n=2$ terms, resolved
+  excited-level populations and their feedback on the ionization balance all
+  live here.  Deciding it requires reading Cloudy's He\,\textsc{i}
+  implementation and comparing network to network, which is a separate task
+  and is the open item;
+\item a difference outside the helium network entirely --- the metal opacity
   at the front, or a Cloudy-side modeling choice not yet identified.
 \end{enumerate}
 

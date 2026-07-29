@@ -1,7 +1,9 @@
 
 # Plan: line cooling from level populations at the local electron density
 
-Status: not started (written 2026-07-25).
+Status: **implemented and the default since `4f9ddd3` (2026-07-26)**
+(`par%cooling_model='local_ne'`; `'low_density'` keeps the `n_e -> 0` fits).
+Outcome and the grading of section 8's predictions are in section 12 below.
 Owner document for the last structural difference between MoCHII's thermal
 balance and the other photoionization codes (MOCASSIN, TORUS, CMacIonize,
 Wood's `ionize`), identified in `docs/MoCHII_cooling_analysis.pdf`.
@@ -391,3 +393,62 @@ list and the physics-based naming rule):
 
 C3 (the default flip and the re-baseline) and C5 (documents) stay with the
 Advisor: they are judgment, not implementation.
+
+## 12. Outcome (2026-07-30)
+
+### 12.1 What the change delivered
+
+`4f9ddd3` made `local_ne` the default. On the fixed Cloudy state the line total
+went from 1.116x Cloudy's to 1.011x, and the converged benchmarks moved as
+follows.
+
+| quantity | before | predicted | delivered | published range |
+|---|---|---|---|---|
+| HII40 `<T[NpNe]>` | 7894 K | ~8100 K (+2.6%) | **8210 K** (+4.0%) | 7720-8199 (Cloudy c25: 8210) |
+| HII20 `<T[NpNe]>` | 6376 K | ~6550 K (+2.7%) | **7024 K** (+10.2%) | 6402-6749 (Cloudy c25: 6910) |
+| fixed-state total / Cloudy | 1.116 | ~1.01 | **1.011** | --- |
+| `L(Hbeta)` HII40 | 1.946e37 | slightly lower | 1.9365e37 (-0.5%) | 2.01-2.10e37 |
+
+What followed carried these to the current **8162 K** and **6917 K**, and none of
+it was a cooling change --- every later step is on the radiation-field side:
+
+| step | HII40 | HII20 |
+|---|---|---|
+| zero-density fits (this memo's starting point) | 7894 | 6376 |
+| `local_ne` default (this plan) | 8210 | 7024 |
+| C I/N I n-level models | 8211 | 7025 |
+| continuous stellar photon energies | 8194 | 6916 |
+| Milne ground continua | 8202 | 6922 |
+| resolved He I diffuse cascade | **8162** | **6917** |
+
+Note that for HII20 the single largest correction after this plan was the switch
+to continuous stellar photon energies, which took 7025 K back down to 6916 K.
+The `local_ne` gain and that loss are independent, and it is their sum, not this
+plan alone, that sets where HII20 finally sits.
+
+### 12.2 The predictions, graded
+
+The fixed-state prediction was excellent: 1.011 against ~1.01. The converged
+temperatures were not.
+
+- **HII40: right.** +4.0% delivered against +2.6% predicted, and the result lands
+  inside the published range and within 0.6% of Cloudy c25.00.
+- **HII20: the magnitude was underestimated by a factor of four.** +10.2%
+  delivered against +2.7% predicted. The sign was right and the endpoint is
+  within 0.10% of Cloudy c25.00 --- but section 8 set an explicit acceptance
+  guard, *"If T_e moves the wrong way, or by much more than ~4%, the D2 wiring is
+  [suspect]"*, and 10.2% tripped it. **That flag was never followed up.** It is
+  recorded here as an open item rather than retro-fitted into a pass.
+
+  Why the two benchmarks diverge so much is the substance of the flag: the same
+  fractional cooling reduction moved HII20 two and a half times further than
+  HII40. HII20 is the cooler, softer-spectrum model, where the metal fine-structure
+  channels carry a larger share of the cooling and the density suppression
+  therefore bites harder. That is a plausible reading, not a verified one.
+
+- **Consequence for the benchmark verdict.** HII20 now sits **above** the nine
+  published Lexington codes (6402-6749 K). So does Cloudy c25.00 (6910 K), and
+  MoCHII agrees with it to 0.10%, so the modern references agree with each other
+  and both exceed the 1995-era range. Documentation that still reports HII20 as
+  "0.4% below the published floor" is quoting the pre-`local_ne` value and
+  inverting the verdict.
