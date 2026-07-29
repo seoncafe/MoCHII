@@ -461,11 +461,11 @@ HII20 = [
 CAPTION = {
     "hii40": r"""Lexington \HII{} region benchmark HII40 (40~kK blackbody):
 the published multi-code results of \citet[][their Table 1]{wood2004}, with a
-current \textsc{Cloudy} c25.00 run and the \MoCHII{} result appended.  Line
+\textsc{Cloudy} c25.00 calculation and the \MoCHII{} result appended.  Line
 intensities are relative to H$\beta$.\label{tab:wood40}""",
     "hii20": r"""Lexington \HII{} region benchmark HII20 (20~kK blackbody):
 the published multi-code results of \citet[][their Table 2]{wood2004}, with a
-current \textsc{Cloudy} c25.00 run and the \MoCHII{} result appended.  Line
+\textsc{Cloudy} c25.00 calculation and the \MoCHII{} result appended.  Line
 intensities are relative to H$\beta$.\label{tab:wood20}""",
 }
 
@@ -476,9 +476,9 @@ RS = Sutherland's \textsc{Mappings}; RR = Rubin's \textsc{Nebula};
 BE = Ercolano's \textsc{Mocassin}; WME = the code of \citet{wood2004}
 itself.  Columns GF--BE agree entry by entry with Tables 4 and 5 of
 \citet{ercolano2003}, the compilation of the published columns.
-C25 is \textsc{Cloudy} c25.00 \citep{cloudy2025} run for this paper, and
-is included because the published GF column dates from the 1990s version of
-the same code, so the two together measure how far that reference has moved.
+C25 is \textsc{Cloudy} c25.00 \citep{cloudy2025} run for this paper and
+provides a uniform one-dimensional reference alongside the published
+multi-code spread.
 Its physics input is the unmodified c25.00 test-suite file
 \code{tsuite/auto/hii\_paris.in} (HII40) or \code{hii\_coolstar.in} (HII20)
 --- \textsc{Cloudy}'s own maintained version of these benchmarks --- with

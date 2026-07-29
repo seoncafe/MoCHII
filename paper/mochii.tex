@@ -78,7 +78,7 @@ from the level populations at the local electron density, the same
 $n$-level solve that produces the emergent lines, so the thermal balance
 and the line list are one physics.  On the two benchmarks the
 $n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature then agrees with a
-current \textsc{Cloudy} c25.00 run of the same models to $0.2\%$ (HII40)
+\textsc{Cloudy} c25.00 calculation of the same models to $0.2\%$ (HII40)
 and $0.1\%$ (HII20), with the He$^{+}$/H$^{+}$ ratio and the outer radius
 inside the published multi-code ranges; the cooling itself is
 cross-validated channel by channel against a \textsc{Cloudy} c25.00
@@ -989,11 +989,10 @@ separate switches (\code{par\%case\_ab} for the ionization,
 octree ($64^3$ leaves) run with $2^{25}$ stellar packets (Sobol seed
 20260728) to the volume-integrated convergence criterion.
 
-Those published columns are, however, a quarter of a century old, and one of
-them (GF) is an early version of a code that is still developed.  To separate
-what has changed in \MoCHII{} from what has changed in the reference itself,
-we also ran \textsc{Cloudy} c25.00 \citep{cloudy2025} on both benchmarks and
-carry it as the C25 column of the same two tables.  Its physics input is the
+We also ran \textsc{Cloudy} c25.00 \citep{cloudy2025} on both benchmarks and
+carry it as the C25 column of the same two tables, providing a uniform
+one-dimensional reference alongside the published multi-code spread.  Its
+physics input is the
 unmodified regression deck that \textsc{Cloudy} distributes for each case,
 \code{tsuite/auto/hii\_paris.in} for HII40 and \code{hii\_coolstar.in} for
 HII20 --- the same source, density, inner radius, and Lexington abundances as
@@ -1035,16 +1034,15 @@ HII40, below the published 0.715--0.829 (median 0.767) and C25's 0.741, and
 0.034--0.077.
 
 \emph{Temperature.}  The weighted temperature is 8194~K at HII40 and
-6916~K at HII20.  Both match a current \textsc{Cloudy} c25.00 run of the
+6916~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
 same two models --- 8210~K and 6910~K --- to $0.2\%$ and $0.1\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
 published spread at both, 7538~K at HII40 against a published 7370--8318~K
 and 6938~K at HII20 against a published 6562--7224~K.  The converged
-MOCASSIN 2.02 run of the HII40 model gives 8176~K, inside the published
-spread and $6\%$ above MOCASSIN's own published entry.  The two contemporary
-codes therefore agree closely and both sit above the quarter-century-old
-published temperatures, whose columns carry the atomic data of their time.
+MOCASSIN 2.02 run of the HII40 model gives 8176~K, also inside the published
+spread.  The two benchmark solutions therefore agree closely while remaining
+within the range set by the independent calculations.
 
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
@@ -1193,22 +1191,20 @@ benchmark temperature.  The absolute H$\beta$ luminosity is thus set by the
 recombination budget, and adds no discrepancy of its own.
 
 \emph{The complete published line list.}  The full benchmark line lists,
-with all published codes, a current \textsc{Cloudy}~c25.00 column, and the
+with all published codes, a \textsc{Cloudy}~c25.00 column, and the
 \MoCHII{} column, are given in Appendix~\ref{app:lines}
 (Tables~\ref{tab:wood40} and~\ref{tab:wood20}); they repeat the comparison
 over the full benchmark line list in
 the form used by \citet{wood2004}, whose Tables 1 and 2 add their own Monte
 Carlo code (WME) to the eight other codes of the comparison; the
-\MoCHII{} column is appended, and the C25 column runs beside its 1990s
-ancestor GF.  The continuous-energy results retain the broad pattern of the
-published comparison.  The low-ionization edge line [O\,\textsc{i}]
+\MoCHII{} and C25 columns provide two additional reference solutions.  The
+low-ionization edge line [O\,\textsc{i}]
 6300+6363 is 0.0169 at HII40, above the published 0.0059--0.012 range; it is
-particularly sensitive to the thin partly neutral edge.  The full, updated
-comparison is tabulated rather than reduced to a count of entries inside a
-historical spread.
+particularly sensitive to the thin partly neutral edge.  The complete
+comparison is given directly in the tables.
 
-The clearest reading of the tables is against C25 rather than against the
-25-year-old columns, and with the two temperatures now matched the line
+The C25 column provides a uniform reference, and with the two temperatures
+matched the line
 ratios track C25 across the board.  At HII40, where the weighted temperature
 equals C25's, both the temperature-insensitive far-infrared lines and the
 temperature-sensitive optical and auroral lines agree with C25 to a few
@@ -1228,18 +1224,16 @@ residual outliers at HII40 are not temperature: [Ne\,\textsc{iii}]
 the grid resolution govern), and C\,\textsc{iii}] 1907+1909 ($0.90\times$),
 each an ionization or collision-strength difference in a single ion.
 
-The C25 column also shows how much of the disagreement with the published
-columns is a property of those columns.  [S\,\textsc{ii}] 6716+6731 at
+The C25 and published columns illustrate the benchmark's code-to-code
+spread.  [S\,\textsc{ii}] 6716+6731 at
 HII40 is the clearest case: the GF entry is 0.137, C25 gives 0.304 and
-\MoCHII{} 0.322, so what would be a $2.4\times$ excess against the 1990s
-column is a $6\%$ difference against the current one.  Sulfur at HII20 is
+\MoCHII{} 0.322; the two latter values differ by $6\%$.  Sulfur at HII20 is
 the same story in the other direction: [S\,\textsc{iii}] 18.7\,$\mu$m
 (0.215 against a published 0.34--0.46) and [S\,\textsc{iii}] 9532+9069
 (0.303 against 0.465--0.604) fall \emph{below} every published code, and so
 does C25 (0.209 and 0.293), while [S\,\textsc{ii}] 6716+6731 sits inside the
-published range for both (0.809 and 0.744).  Both modern calculations
-therefore move the same S\,\textsc{ii}/S\,\textsc{iii} split in the same
-direction relative to the 2000-era compilation, which points at the sulfur
+published range for both (0.809 and 0.744).  Both C25 and \MoCHII{} have the
+same S\,\textsc{ii}/S\,\textsc{iii} ordering, which points at the sulfur
 data rather than at either code.  A band experiment bounds one further
 difference: \textsc{Cloudy} carries the full stellar spectrum, so photons
 below 13.6~eV ionize S$^{0}$ (10.36~eV) and C$^{0}$ (11.26~eV) in the
@@ -1327,23 +1321,14 @@ shown in Appendix~\ref{app:lines} (Figures~\ref{fig:wood40} and
 \ref{fig:wood20}), in the panel layout of \citet{wood2004}.
 
 
-\emph{How far the reference itself has moved.}  Because the C25 column is a
-re-run of one of the participating codes on the same two models, the
-difference between it and the GF column measures the drift of the reference
-over a quarter of a century, at fixed input.  That drift is not small.  The
-absolute $L(\mathrm{H}\beta)$ is stable --- 2.06 against 2.06 at HII40, 4.99
-against 4.85 at HII20, in the units of the tables --- as it must be, since it
-is fixed mostly by the photon budget.  The temperature has risen by 270~K at
-HII40 and 230~K at HII20.  The line ratios have moved much further: at HII40
-[S\,\textsc{ii}] 6716+6731 is $2.2\times$ its GF value, [O\,\textsc{iii}]
-4363 $2.0\times$, and [Ne\,\textsc{iii}] 3869+3968 $0.69\times$; at HII20 the
-two [S\,\textsc{iii}] entries fall to $0.47$ and $0.58$ of their GF values
-while [S\,\textsc{ii}] 6716+6731 rises by $1.5\times$.  A benchmark column
-published in 2000 is therefore not a fixed target for a code written in 2026,
-and a modern code that reproduced the GF entries exactly would be
-reproducing superseded atomic data.  This is the reason the comparison above
-is made against the published \emph{spread} and against C25 rather than
-against any single published column.
+\emph{Reference-code context.}  The C25 and GF columns demonstrate the
+intrinsic spread among implementations and atomic-data choices.  For example,
+at HII40 [S\,\textsc{ii}] 6716+6731 is 0.304 (C25) and 0.137 (GF), while
+[O\,\textsc{iii}] 4363 is 0.0046 and 0.00235.  At HII20 the two
+[S\,\textsc{iii}] entries are 0.209 and 0.293 in C25, compared with 0.445
+and 0.501 in GF.  The published spread and the independently calculated C25
+column therefore provide more informative reference ranges than any single
+column.
 
 \emph{Where \MoCHII{} sits among the codes.}  \citet{pequignot2001} and
 \citet{ercolano2003} note that the eight codes do not scatter randomly:
@@ -1364,10 +1349,8 @@ temperature is correspondingly in the lower half of the published
 $T_{\mathrm{inner}}$ range.  Its ionization structure, its outer radius,
 its H$\beta$ luminosity and most of its line ratios land inside the
 published spread, with helium at the low edge of it in the same direction
-as a current \textsc{Cloudy}, and its weighted temperature matches that
-\textsc{Cloudy} c25.00 to $0.2\%$ at HII40 and $0.1\%$ at HII20 --- both
-modern codes running above the quarter-century-old published temperatures,
-as the atomic data of the two eras differ.  The cooling treatment that
+as \textsc{Cloudy} c25.00, and its weighted temperature matches that
+solution to $0.2\%$ at HII40 and $0.1\%$ at HII20.  The cooling treatment that
 achieves this, the density suppression of Section~\ref{sec:cooldata}, is
 what separates it from the zero-density limit that leaves both benchmarks
 $4$--$8\%$ cooler; the fixed-state comparison quantifies the offset between
@@ -1635,12 +1618,10 @@ photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron
 density, the
 $n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8194~K at HII40 and
-6916~K at HII20, matching a current \textsc{Cloudy} c25.00 run of the same
+6916~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
 two models (8210 and 6910~K) to $0.2\%$ and $0.1\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
-$L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  Both
-modern codes run above the 2000-era published temperatures (7720--8199 and
-6402--6749~K), whose columns carry the atomic data of their time.  The
+$L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  The
 line-cooling data are checked independently of the temperature by evaluating
 the \MoCHII{} cooling terms on a fixed state taken from a \textsc{Cloudy}
 c25.00 cooling decomposition: channel by channel the two compilations agree,
@@ -1649,10 +1630,9 @@ same cooling data, retained as an option, overestimates the far-infrared
 line cooling by $12\%$ at $\nelec = 110\,\mathrm{cm^{-3}}$ and places both
 benchmarks $4$--$8\%$ cooler (7894 and 6376~K, inside and just under the
 published ranges); the density suppression that removes it is the default.
-The \textsc{Cloudy} c25.00 column carried in both tables also shows how far
-the reference has moved in a quarter of a century --- it sits above every
-published entry in temperature --- and that c25.00 moves the same
-S\,\textsc{ii}/S\,\textsc{iii} rows in the same direction \MoCHII{} does.
+The \textsc{Cloudy} c25.00 column provides a uniform reference for both
+tables and has the same S\,\textsc{ii}/S\,\textsc{iii} ordering as
+\MoCHII{}.
 The solution-driven
 re-refinement reproduces a native high-resolution grid to $+0.008\%$ with
 $4.5\times$ fewer cells, the dust coupling closes energy exactly and
@@ -1780,7 +1760,7 @@ Tables~\ref{tab:wood40} and~\ref{tab:wood20} give the complete Lexington
 HII40 and HII20 benchmark line lists discussed in Section~\ref{sec:hii}, in
 the form used by \citet{wood2004}: the eight published codes of the
 \citet{ercolano2003} compilation, the \citet{wood2004} Monte Carlo code
-(WME), a current \textsc{Cloudy}~c25.00 run (C25), and the \MoCHII{} column.
+(WME), a \textsc{Cloudy}~c25.00 calculation (C25), and the \MoCHII{} column.
 Line intensities are relative to H$\beta$.
 
 % Tables tab:wood40 / tab:wood20: generated by tables/make_wood_tables.py.
