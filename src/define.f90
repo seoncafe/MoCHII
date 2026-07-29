@@ -804,6 +804,10 @@ public
      !--- packets are emitted from every leaf and transported; forces
      !--- case A rates (case B double-counts the on-the-spot absorption).
      logical            :: diffuse_field = .false.
+     !--- ground-recombination continuum spectrum: 'exponential' samples
+     !--- E=Eth+kT Exp(1), the current near-edge approximation; 'threshold'
+     !--- emits at Eth and is a sensitivity diagnostic, not a physical model.
+     character(len=16)  :: diffuse_energy_model = 'exponential'
      logical            :: use_metals   = .false.
      !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
      !--- 16/34 levels) instead of the compact 13/14-level defaults.

@@ -177,6 +177,12 @@ contains
         'ERROR: par%recomb_model must be ''badnell_mao'' (default) or ''hui_gnedin''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%diffuse_energy_model) /= 'exponential' .and. &
+      trim(par%diffuse_energy_model) /= 'threshold') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: par%diffuse_energy_model must be ''exponential'' or ''threshold''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
   if (trim(par%cooling_model) /= 'low_density' .and. &
       trim(par%cooling_model) /= 'local_ne') then
      if (mpar%p_rank == 0) write(*,'(a)') &

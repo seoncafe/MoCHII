@@ -80,11 +80,11 @@ contains
        nHeIII  = nH*par%He_abund*xHeIII
        !--- channel energy luminosities [erg/s]
        a1 = alphaA_HII(T)   - alphaB_HII(T)
-       dif_ch(1,il) = ne*nHII   *a1*(eth_HI  + kT_eV)*ev2erg*vol
+       dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(eth_HI, kT_eV)*ev2erg*vol
        a1 = alphaA_HeII(T)  - alphaB_HeII(T)
-       dif_ch(2,il) = ne*nHeII_n*a1*(eth_HeI + kT_eV)*ev2erg*vol
+       dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(eth_HeI, kT_eV)*ev2erg*vol
        a1 = alphaA_HeIII(T) - alphaB_HeIII(T)
-       dif_ch(3,il) = ne*nHeIII *a1*(eth_HeII+ kT_eV)*ev2erg*vol
+       dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(eth_HeII, kT_eV)*ev2erg*vol
        !--- channel 4: He I EXCITED-level recombination radiation
        !--- (par%hei_diffuse): all case-B He II recombinations cascade to
        !--- n = 2 and decay with the AGN3 branching; only the H-ionizing
@@ -164,7 +164,8 @@ contains
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
-       eph = eph + kT_eV*(-log(max(rand_number(), tinest)))
+       if (trim(par%diffuse_energy_model) == 'exponential') &
+            eph = eph + kT_eV*(-log(max(rand_number(), tinest)))
        eph = min(eph, par%eion_max*0.999_wp)
     else
        ub = rand_number()*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
@@ -260,7 +261,8 @@ contains
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
-       eph = eph + kT_eV*(-log(max(u(8), tinest)))
+       if (trim(par%diffuse_energy_model) == 'exponential') &
+            eph = eph + kT_eV*(-log(max(u(8), tinest)))
        eph = min(eph, par%eion_max*0.999_wp)
     else
        ub = u(8)*( HEI_F3S*HEI_E3S + HEI_F1P*HEI_E1P &
@@ -285,5 +287,11 @@ contains
     photon%from_external = .false.      ! diffuse packets peel isotropically
     photon%icell_amr = il
   end subroutine gen_diffuse_photon_qmc
+
+  elemental real(kind=wp) function ground_mean_energy(eth, kT_eV) result(mean_e)
+    real(kind=wp), intent(in) :: eth, kT_eV
+    mean_e = eth
+    if (trim(par%diffuse_energy_model) == 'exponential') mean_e = eth + kT_eV
+  end function ground_mean_energy
 
 end module diffuse_mod
