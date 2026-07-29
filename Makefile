@@ -129,6 +129,8 @@ MoCHII.x: $(OBJECTS)
 	$(FC) -o $@ $(OBJECTS) $(LDFLAGS)
 
 clean:
-	rm -f $(SRCDIR)/*.o $(SRCDIR)/*.mod MoCHII.x
+	# Module files belong in $(SRCDIR) (set by MODFLAG); remove stale legacy
+	# root-level modules as well so an old manual build cannot shadow them.
+	rm -f $(SRCDIR)/*.o $(SRCDIR)/*.mod *.mod MoCHII.x
 
 .PHONY: default clean

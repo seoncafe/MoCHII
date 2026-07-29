@@ -4,6 +4,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo"
+results="$repo/results/continuous_energy/rqmc_ensemble"
+mkdir -p "$results"
 exe=${MOCHII_EXE:-./MoCHII.x}
 ranks=${MOCHII_RANKS:-68}
 seeds=(101 202 303 404)
@@ -23,10 +25,10 @@ for tag in "${cases[@]}"; do
         trap 'rm -f "$work"' EXIT
         sed \
             -e "s/par%qmc_seed        = 20260728/par%qmc_seed        = ${seed}/" \
-            -e "s/${tag}_continuous.h5/${tag}_rqmc_${seed}.h5/" \
+            -e "s#${tag}_continuous.h5#${results}/${tag}_rqmc_${seed}.h5#" \
             "$input" > "$work"
         echo "=== ${tag}: qmc_seed=${seed}, ranks=${ranks} ==="
-        mpirun -np "$ranks" "$exe" "$work" | tee "${tag}_rqmc_${seed}.log"
+        mpirun -np "$ranks" "$exe" "$work" | tee "$results/${tag}_rqmc_${seed}.log"
         rm -f "$work"
         trap - EXIT
     done

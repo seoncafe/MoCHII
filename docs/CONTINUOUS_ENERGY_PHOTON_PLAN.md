@@ -77,8 +77,15 @@ Implementation progress as of 2026-07-28:
   passed at 1, 2, 3, 5, 8, and 68 ranks.  The 68-rank tests used the 72-thread
   node while reserving four hardware threads.  Multi-node execution is also
   verified on lart2/lart3/lart4.
-- Next: update the paper manuscript, its numerical Tables and text, and
-  Figures 14--15 from the accepted continuous production outputs.
+- Safe sequence 16.11 step 32 complete: the paper manuscript, its HII20/HII40
+  tables, Figures 14--15, captions, and continuous-energy discussion now use
+  the accepted production outputs.  The paper records `2^25` packets, Sobol
+  seed 20260728, continuous Planck-CDF energy sampling, exact-energy cross
+  sections, and the diagnostic-only role of `nnu_ion`.  Generated outputs are
+  organized under `results/continuous_energy/`, with the paper reading the
+  `production/` subset.
+- Next: update `README.md` immediately before the single final push, then
+  commit and push the completed release-validation sequence.
 
 ## 1. Required physical model
 
@@ -1134,6 +1141,11 @@ resource behavior rather than claiming strong scaling at production size.
     Immediately before the single push after this stage, update the
     `Last updated:` date and time in `README.md` and include that edit in the
     final commit.
+
+Implementation result (2026-07-29): complete.  The generated outputs reside
+under `results/continuous_energy/production/` (paper inputs),
+`bin_independence/`, `rqmc_ensemble/`, `mpi_scaling/`, and `mpi_multinode/`.
+The production checker and both paper generators read the production paths.
 
 ### 16.12 Cleanup only after release validation
 

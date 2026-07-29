@@ -4,6 +4,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo"
+results="$repo/results/continuous_energy/mpi_scaling"
+mkdir -p "$results"
 exe=${MOCHII_EXE:-./MoCHII.x}
 ranks=(1 2 3 5 8 68)
 cases=("$@")
@@ -21,14 +23,14 @@ for tag in "${cases[@]}"; do
             -e 's/par%no_print        = 33554432/par%no_print        = 100000/' \
             -e 's/par%gas_niter       = 100/par%gas_niter       = 3/' \
             -e 's/par%require_convergence = .true./par%require_convergence = .false./' \
-            -e "s/${tag}_continuous.h5/${tag}_mpi_np${rank}.h5/" \
+            -e "s#${tag}_continuous.h5#${results}/${tag}_mpi_np${rank}.h5#" \
             "$input" > "$work"
         echo "=== ${tag}: MPI ranks=${rank} ==="
         /usr/bin/time -f 'elapsed_s=%e max_rss_kb=%M' \
-            -o "${tag}_mpi_np${rank}.time" \
-            mpirun -np "$rank" "$exe" "$work" > "${tag}_mpi_np${rank}.log" 2>&1
-        tail -n 4 "${tag}_mpi_np${rank}.log"
-        cat "${tag}_mpi_np${rank}.time"
+            -o "$results/${tag}_mpi_np${rank}.time" \
+            mpirun -np "$rank" "$exe" "$work" > "$results/${tag}_mpi_np${rank}.log" 2>&1
+        tail -n 4 "$results/${tag}_mpi_np${rank}.log"
+        cat "$results/${tag}_mpi_np${rank}.time"
         rm -f "$work"
         trap - EXIT
     done

@@ -242,8 +242,11 @@ def check_case(tag, continuous_path, grouped_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hii20", type=Path, default=REPO / "hii20_continuous_rates.h5")
-    parser.add_argument("--hii40", type=Path, default=REPO / "hii40_continuous_rates.h5")
+    production = REPO / "results" / "continuous_energy" / "production"
+    parser.add_argument("--hii20", type=Path,
+                        default=production / "hii20_continuous_rates.h5")
+    parser.add_argument("--hii40", type=Path,
+                        default=production / "hii40_continuous_rates.h5")
     args = parser.parse_args()
     ok20 = check_case(
         "hii20", args.hii20, REPO / "tests/g2_hii/hii20_bench_rates.h5"

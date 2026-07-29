@@ -4,6 +4,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo"
+results="$repo/results/continuous_energy/mpi_multinode"
+mkdir -p "$results"
 exe=${MOCHII_EXE:-$repo/MoCHII.x}
 hosts=${MOCHII_HOSTS:-lart2,lart3,lart4}
 ppn=${MOCHII_PPN:-68}
@@ -24,15 +26,15 @@ for tag in "${cases[@]}"; do
         -e 's/par%no_print        = 33554432/par%no_print        = 100000/' \
         -e 's/par%gas_niter       = 100/par%gas_niter       = 3/' \
         -e 's/par%require_convergence = .true./par%require_convergence = .false./' \
-        -e "s/${tag}_continuous.h5/${tag}_mpi_multinode.h5/" \
+        -e "s#${tag}_continuous.h5#${results}/${tag}_mpi_multinode.h5#" \
         "$input" > "$work"
     echo "=== ${tag}: hosts=${hosts}, ppn=${ppn}, total=${total} ==="
     I_MPI_HYDRA_BOOTSTRAP=ssh /usr/bin/time -f 'elapsed_s=%e max_rss_kb=%M' \
-        -o "${tag}_mpi_multinode.time" \
+        -o "$results/${tag}_mpi_multinode.time" \
         mpirun -hosts "$hosts" -ppn "$ppn" -np "$total" "$exe" "$work" \
-        > "${tag}_mpi_multinode.log" 2>&1
-    tail -n 4 "${tag}_mpi_multinode.log"
-    cat "${tag}_mpi_multinode.time"
+        > "$results/${tag}_mpi_multinode.log" 2>&1
+    tail -n 4 "$results/${tag}_mpi_multinode.log"
+    cat "$results/${tag}_mpi_multinode.time"
     rm -f "$work"
     trap - EXIT
 done

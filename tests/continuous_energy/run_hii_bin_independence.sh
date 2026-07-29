@@ -8,6 +8,8 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo"
+results="$repo/results/continuous_energy/bin_independence"
+mkdir -p "$results"
 
 exe=${MOCHII_EXE:-./MoCHII.x}
 ranks=${MOCHII_RANKS:-68}
@@ -27,10 +29,10 @@ for tag in "${cases[@]}"; do
         trap 'rm -f "$work"' EXIT
         sed \
             -e "s/par%nnu_ion         = 32/par%nnu_ion         = ${nbin}/" \
-            -e "s/${tag}_continuous.h5/${tag}_continuous_n${nbin}.h5/" \
+            -e "s#${tag}_continuous.h5#${results}/${tag}_continuous_n${nbin}.h5#" \
             "$input" > "$work"
         echo "=== ${tag}: nnu_ion=${nbin}, ranks=${ranks} ==="
-        mpirun -np "$ranks" "$exe" "$work" | tee "${tag}_continuous_n${nbin}.log"
+        mpirun -np "$ranks" "$exe" "$work" | tee "$results/${tag}_continuous_n${nbin}.log"
         rm -f "$work"
         trap - EXIT
     done
