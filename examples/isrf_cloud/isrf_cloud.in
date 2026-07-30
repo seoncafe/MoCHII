@@ -49,7 +49,6 @@
  par%distance_unit = 'pc'
  par%dust_model    = 'global_dgr'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 16             ! ionizing bins; they stay empty (FUV-only field)
  par%add_fuv       = .true.         ! required by an ISRF preset
  par%efuv_min      = 6.0            ! lower FUV edge [eV]

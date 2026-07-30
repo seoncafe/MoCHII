@@ -14,7 +14,6 @@
  par%distance_unit = 'pc'            ! boxlen 2.0 -> 2 pc
 
  !--- ionizing band
- par%use_ion_band  = .true.
  par%nnu_ion       = 16
  par%eion_min      = 13.598
  par%eion_max      = 100.0

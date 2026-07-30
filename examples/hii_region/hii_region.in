@@ -24,7 +24,6 @@
  par%distance_unit = 'pc'
  par%dust_model    = 'none'         ! gas-only
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 1.353758e39    ! ionizing-band luminosity [erg/s]

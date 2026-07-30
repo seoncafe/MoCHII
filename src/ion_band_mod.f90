@@ -490,7 +490,7 @@ contains
     else
        if (eff_T <= 0.0_wp) then     ! no file and no positive temperature anywhere
           if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: use_ion_band needs a spectrum: set par%tstar > 0, '// &
+             'ERROR: the ionizing band needs a spectrum: set par%tstar > 0, '// &
              'par%ion_spectrum, or a component spectrum (src_spectrum_file / '// &
              'src_tstar / ext_spectrum / ext_tstar).'
           call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)

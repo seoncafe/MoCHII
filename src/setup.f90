@@ -552,12 +552,7 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
-  !--- ionizing band (the ionizing transport mode).
-  if (.not. par%use_ion_band) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: MoCHII requires par%use_ion_band = .true.'
-     call MPI_FINALIZE(ierr);  stop
-  endif
+  !--- ionizing band
   if (par%eion_max <= par%eion_min .or. par%nnu_ion < 1) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: need par%eion_max > par%eion_min and par%nnu_ion >= 1.'
@@ -567,7 +562,7 @@ contains
       len_trim(par%src_spectrum_file) == 0 .and. &
       len_trim(par%ext_spectrum) == 0 .and. par%ext_tstar <= 0.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: use_ion_band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
+        'ERROR: the ionizing band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
         'par%src_spectrum_file, par%ext_spectrum, or par%ext_tstar > 0.'
      call MPI_FINALIZE(ierr);  stop
   endif

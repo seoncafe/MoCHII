@@ -29,7 +29,6 @@
  par%distance_unit = 'pc'
  par%dust_model    = 'none'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%ion_spectrum  = 'star_llam.txt'   ! stellar SED, physical units (see below)
  par%spectrum_type = 'per_ang'         ! col1 lambda [A], col2 L_lambda [erg/s/A]

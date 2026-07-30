@@ -12,7 +12,6 @@
  par%amr_file      = 'tng_uniform.fits.gz'
  par%distance_unit = 'kpc'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 3.178e42       ! ionizing-band luminosity [erg/s]

@@ -75,9 +75,6 @@ public
 ! maximum number of observers
   integer, parameter :: MAX_OBSERVERS = 181
 
-! maximum number of albedo/asymmetry-factor values in a single-run (a,g) scan
-  integer, parameter :: MAX_SCAN = 32
-
 ! maximum number of stellar source components (multi-population SED)
   integer, parameter :: MAX_SRC = 16
   integer, parameter :: MAX_METAL_TRANSITIONS = 64
@@ -118,7 +115,6 @@ public
      real(kind=wp) :: nx,ny,nz
      real(kind=wp) :: mx,my,mz
      integer       :: icell,jcell,kcell
-     integer       :: icell_clump = 0    ! current/owner clump index (0 = vacuum; clump grid only)
      integer       :: icell_amr   = 0    ! current leaf index (0 = unknown/outside; amr grid only)
      integer       :: nscatt
      real(kind=wp) :: wgt
@@ -331,9 +327,13 @@ public
      real(kind=wp)      :: slab_top_source = 0.0_wp ! I [erg/s/cm^2/sr] (iso) or F_n [erg/s/cm^2] (beam)
      real(kind=wp)      :: slab_bot_source = 0.0_wp
      integer            :: slab_nmu       = 20      ! emergent I(mu) boundary bins
-     !--- shared memory & master-slave algorithm
+     !--- master-slave algorithm.  There is deliberately no shared-memory switch
+     !--- here.  A global one was tried and dropped: ranks accumulate into the
+     !--- tally arrays, so placing those in one MPI shared window races.  Which
+     !--- arrays are shared is therefore fixed at the allocation site, where the
+     !--- read-only structure (octree connectivity, Cartesian face and opacity
+     !--- arrays) calls create_shared_mem directly for one copy per node.
      integer       :: num_send_at_once   = 10000
-     logical       :: use_shared_memory  = .false.
      logical       :: use_master_slave   = .true.
      logical       :: use_reduced_wgt    = .true.
      !--- Dust-related parameters
@@ -342,10 +342,6 @@ public
      real(kind=wp) :: cext_dust     = 1.6059e-21
      logical       :: use_stokes    = .true.
      character(len=128) :: scatt_mat_file = ''
-     !--- (albedo, asymmetry-factor) scan: one run, many (a,g).  See Seon 2010, PKAS, 25, 177.
-     !--- When use_ag_list = .true., par%hgg is the simulated g0; the scattered image
-     !--- becomes a 4-D array scatt(x,y,albedo_list,hgg_list).  Empty (NaN) lists are
-     !--- auto-filled with the canonical paper grids (a=0.1..1.0, g=0.0..0.9).
      !--- SED (multi-wavelength) mode.  When
      !--- use_sed = .true., a single run transports photons over a log-spaced
      !--- wavelength grid [lambda_min, lambda_max] (um) with nlambda bins.
@@ -472,25 +468,10 @@ public
      !--- R0*rho*kappa (nearest-wall optical depth); ~2 is typical.
      logical            :: use_mrw       = .false.
      real(kind=wp)      :: mrw_gamma     = 2.0_wp
-     logical       :: use_ag_list   = .false.
-     real(kind=wp) :: albedo_list(MAX_SCAN) = nan64
-     real(kind=wp) :: hgg_list(MAX_SCAN)    = nan64
-     !--- polychromatic optical-depth (tau) scan: one run, many tau.  See Jonsson 2006,
-     !--- MNRAS, 372, 2 (eqs. 29-32).  When use_tau_list = .true., par%taumax is the
-     !--- simulated reference tau0 and the scattered image gains a tau axis
-     !--- scatt(x,y,albedo,hgg,tau) while the direct image becomes direc(x,y,tau).
-     !--- Composes with use_ag_list (the a/g axes collapse to length 1 when it is off).
-     !--- tau_list holds target taumax values; the reference par%taumax is auto-inserted
-     !--- if absent.  An empty (NaN) list is auto-filled with sqrt(2)-spaced
-     !--- tau/taumax in [0.5, 2].
-     logical       :: use_tau_list  = .false.
-     real(kind=wp) :: tau_list(MAX_SCAN)     = nan64
-     !--- grid-type selector (modeled on LaRT v2.10).  'car' = Cartesian (default);
-     !--- 'clump' = clumpy spherical dust medium (Part B); 'amr' reserved (Part A).
-     !--- Legacy booleans use_clump_medium / use_amr_grid are mapped to grid_type
-     !--- in read_input for backward compatibility.
+     !--- grid-type selector: 'car' = single-level Cartesian with the DDA walk
+     !--- (default), 'amr' = octree.  read_input maps 'uniform' onto 'car' and
+     !--- rejects anything else.
      character(len=8) :: grid_type        = 'car'
-     logical          :: use_clump_medium = .false.
      logical          :: use_amr_grid     = .false.
      !--- AMR octree grid.  Leaf data are read from a generic AMR
      !--- file (FITS/HDF5/text) produced by the Python builders/converters;
@@ -505,36 +486,7 @@ public
      real(kind=wp)      :: Z_global   = 0.0134_wp
      real(kind=wp)      :: Z_ref      = 0.0134_wp
      real(kind=wp)      :: f_ion_dust = 0.01_wp
-     !--- clumpy-medium parameters (dust only).
-     !--- A sphere of
-     !--- radius par%rmax holds N non-overlapping dust clumps of radius
-     !--- clump_radius; the inter-clump medium is vacuum (par%rmin carves an
-     !--- inner cavity).  Clump count: one of clump_f_cov / clump_f_vol /
-     !--- clump_N_clumps.  Dust opacity of each clump kappa_c: one of clump_tau0
-     !--- (dimensionless, center->surface) / clump_ndust / clump_nH; otherwise
-     !--- back-solved from the system target par%taumax or par%tauhomo.
-     real(kind=wp) :: clump_radius   = -1.0_wp
-     real(kind=wp) :: clump_f_cov    = -1.0_wp
-     real(kind=wp) :: clump_f_vol    = -1.0_wp
-     integer       :: clump_N_clumps = -1
-     real(kind=wp) :: clump_tau0     = -1.0_wp
-     real(kind=wp) :: clump_ndust    = -1.0_wp
-     real(kind=wp) :: clump_nH       = -1.0_wp
-     logical       :: clump_fully_inside = .true.
-     !--- optional spatial profiles (geometry only): constant|powerlaw|gaussian|exponential|file
-     character(len=16) :: clump_radius_profile  = 'constant'
-     character(len=16) :: clump_density_profile = 'constant'
-     character(len=16) :: clump_number_profile  = 'constant'
-     real(kind=wp) :: clump_radius_alpha  = 0.0_wp
-     real(kind=wp) :: clump_radius_r0     = -1.0_wp
-     real(kind=wp) :: clump_density_alpha = 0.0_wp
-     real(kind=wp) :: clump_density_r0    = -1.0_wp
-     real(kind=wp) :: clump_number_alpha  = 0.0_wp
-     real(kind=wp) :: clump_number_r0     = -1.0_wp
-     character(len=128) :: clump_profile_file = ''
      real(kind=wp) :: cone_opening    = 0.0_wp
-     character(len=128) :: clump_input_file = ''
-     logical       :: save_clump_info = .false.
      !--- output-related parameters
      logical       :: save_direc0   = .false.
      character(len=10)  :: output_normalization = 'luminosity'
@@ -564,11 +516,13 @@ public
      real(kind=wp) :: dxim  = nan64
      real(kind=wp) :: dyim  = nan64
      !--- MoCHII: ionizing frequency band (nu >= 13.6 eV) and gas leaf state.
-     !--- With gas_niter = 0 the neutral fractions are fixed (no equilibrium
-     !--- feedback); the band transports source packets and tallies J_nu per
-     !--- leaf, from which the photoionization rates Gamma_i and photoheating
-     !--- H_i follow.
-     logical            :: use_ion_band = .false.
+     !--- The band always transports source packets and tallies J_nu per leaf,
+     !--- from which the photoionization rates Gamma_i and photoheating H_i
+     !--- follow; with gas_niter = 0 the neutral fractions are held fixed, so
+     !--- there is no equilibrium feedback but the band still runs.  MoCafe
+     !--- carried a use_ion_band switch here because a dust continuum code can
+     !--- run without any of this; in MoCHII there is no such mode, so the
+     !--- switch is gone rather than accepting one legal value.
      integer            :: nnu_ion      = 16          ! diagnostic ionizing-energy bins in continuous mode; solver bins in grouped mode
      real(kind=wp)      :: eion_min     = 13.598_wp   ! band lower edge [eV]
      real(kind=wp)      :: eion_max     = 100.0_wp    ! band upper edge [eV]
@@ -858,12 +812,6 @@ public
      real(kind=wp) :: steradian_pix
      real(kind=wp), pointer :: tau(:,:)    => null()
      real(kind=wp), pointer :: scatt(:,:)  => null()
-     !--- 4-D scattered image (nxim,nyim,n_albedo,n_hgg) used only when par%use_ag_list = .true.
-     real(kind=wp), pointer :: scatt_ag(:,:,:,:) => null()
-     !--- 5-D scattered image (nxim,nyim,n_albedo,n_hgg,n_tau) used when par%use_tau_list = .true.
-     real(kind=wp), pointer :: scatt_agt(:,:,:,:,:) => null()
-     !--- 3-D direct image (nxim,nyim,n_tau) used when par%use_tau_list = .true.
-     real(kind=wp), pointer :: direc_t(:,:,:) => null()
      !--- 3-D wavelength-resolved images (nxim,nyim,nlambda) used when par%use_sed = .true.
      real(kind=wp), pointer :: scatt_sed(:,:,:)  => null()
      real(kind=wp), pointer :: direc_sed(:,:,:)  => null()

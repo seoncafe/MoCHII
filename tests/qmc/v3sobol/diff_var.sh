@@ -29,7 +29,6 @@ gen () {  # $1=tag $2=mode(random|sobol) $3=seed
  par%rmax          = 1.9
  par%dust_model    = 'none'
  par%distance_unit = 'pc'
- par%use_ion_band  = .true.
  par%nnu_ion       = 16
  par%eion_min      = 13.598
  par%eion_max      = 100.0

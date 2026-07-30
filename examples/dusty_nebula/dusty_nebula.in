@@ -21,7 +21,6 @@
  par%rmax          = 3.8            ! sphere radius (pc); nH = 0 outside
  par%distance_unit = 'pc'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]

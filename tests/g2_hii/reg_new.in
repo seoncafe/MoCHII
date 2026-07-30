@@ -7,7 +7,6 @@
  par%amr_file      = 'hii20_L6.fits'
  par%dust_model    = 'none'
  par%distance_unit = 'pc'
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%eion_min      = 13.598
  par%eion_max      = 100.0

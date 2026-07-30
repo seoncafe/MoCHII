@@ -11,7 +11,7 @@ module sed_mod
 !--- factor sed_sext(il) = C_ext(il)/C_ext(lambda_ref) (photon%s_ext):
 !--- the grid rhokap is the opacity at the reference wavelength, and every
 !--- optical depth is scaled by s_ext (same mathematics as the Jonsson 2006
-!--- tau scan), so the raytrace routines (car/clump/amr) need no changes.
+!--- tau scan), so the raytrace routines (car/amr) need no changes.
   use define
   use random,  only : random_alias_setup, rand_alias_choise
   implicit none

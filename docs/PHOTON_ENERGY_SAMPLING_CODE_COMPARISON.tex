@@ -69,6 +69,78 @@ The MOCASSIN value is decoded from \texttt{data/radrec.dat}, replicating the rea
 
 \section{TORUS}
 \texttt{spectrum\_mod.f90:getWavelength} draws $r$, locates it in \texttt{spectrum\%prob}, and linearly interpolates adjacent tabulated wavelengths; \texttt{photon\_mod.f90:initPhoton} uses it.  Searches of active \texttt{torus/src} found no Wood/CMacIonize-like H--He reemission handler, temperature-indexed free-bound LyC CDF, or HII recombination-ionizing-packet emission call.  This is an absence of exposed HII diffuse-LyC physics, not evidence for a threshold approximation.
+\section{Where each code cuts the band}\label{sec:band}
+Every one of these codes fixes a lower and an upper photon energy and samples the
+blackbody only between them; none integrates over $(0,\infty)$.  What differs, by
+orders of magnitude, is where the lower cut sits, and with it whether the
+non-ionizing continuum exists in the calculation at all.
+
+\begin{table}[t]
+\centering
+\caption{Photon-energy band for a blackbody source.  ``Set where'' distinguishes
+a hardcoded band from one the user can change.\label{tab:band}}
+\begin{tabular}{lllc}
+\hline
+code & band & set where & FUV?\\
+\hline
+Wood \texttt{ionize} & 13.6--54.4 eV & \texttt{planckset.f}, hardcoded & no\\
+CMacIonize & 13.6--54.4 eV & \texttt{PlanckPhotonSourceSpectrum.cpp}, hardcoded & no\\
+MOCASSIN & $1.4\times10^{-4}$--204 eV & \texttt{nuMin}, \texttt{nuMax} in the input & yes\\
+TORUS & $\ge1.2\times10^{-3}$ eV & \texttt{photoion\_mod.F90}, hardcoded & yes\\
+MoCHII & 13.598--100 eV & \texttt{par\%eion\_min}, \texttt{par\%eion\_max} & optional\\
+\hline
+\end{tabular}
+\end{table}
+
+\emph{Wood and CMacIonize: the ionizing band only.}  \texttt{planckset.f} sets
+\texttt{numin=3.289e15} Hz, the Lyman limit, and \texttt{numax=4} \emph{in units
+of numin}, then lays the grid down as
+\texttt{nu(i)=1.+(i-1)*(numax-1)/(nfreq-1)}.  The band is therefore 1 to 4 Ryd,
+13.6 to 54.4 eV --- it stops at the He\,\textsc{ii} threshold and never reaches
+below the hydrogen one.  CMacIonize copies it, comments included:
+\texttt{max\_frequency = 4.}\ carries ``in units 13.6 eV (corresponds to 54.4
+eV)'' and \texttt{min\_frequency = 3.289e15} carries ``13.6 eV in Hz''.
+
+\emph{MOCASSIN: the full continuum, and the stellar packets are launched across
+it.}  \texttt{set\_input\_mod.f90} defaults to \texttt{nuMin}~$=1.001\times10^{-5}$
+and \texttt{nuMax}~$=15$ Ryd, both readable from the model input.  A wide grid
+alone would not settle the question, since a code can tabulate a continuum for
+its dust and diffuse output while launching only ionizing packets; MOCASSIN does
+not.  Its emission CDF is accumulated from the first bin,
+\texttt{inSpectrumProbDen(iS,i) = inSpectrumProbDen(iS,i-1) +
+inSpSumErg(i)*widFlx(i)/normConstantErg} over \texttt{i = 2, nbins}, and only the
+photon-count normalization \texttt{normConstantPhot} starts at the Lyman-limit bin
+\texttt{lymanP}.  Non-ionizing photons are emitted and transported.
+
+\emph{TORUS: the same, from the sub-millimeter up.}
+\texttt{photoion\_mod.F90} sets \texttt{nuStart = cSpeed/(1000.e4*1.d-8)}, a
+wavelength of 1 mm, and \texttt{nuEnd = 2*maxval(grid\%ion\%nuThresh)}, twice the
+highest threshold in the active ion list, with 1000 logarithmic bins between
+them.  Packets are drawn over the whole range and the code counts which of them
+are ionizing; the branch that would have skipped the rest,
+\texttt{if ((thisFreq*hcgs*ergtoev) < 13.6) cycle mainloop}, is present but
+commented out, so the choice to transport them is deliberate.
+
+\emph{MoCHII: Wood's band by default, with an opt-in extension.}  The default
+\texttt{par\%eion\_min} $=13.598$ eV places MoCHII with Wood and CMacIonize, and
+\texttt{par\%add\_fuv} adds \texttt{nnu\_fuv} $=8$ bins down to
+\texttt{par\%efuv\_min} $=6$ eV below the ionizing ones, off by default.
+
+\emph{What the lower cut excludes.}  A band floor at the hydrogen threshold is not
+a matter of resolution: it removes physics.  Every excited level of He\,\textsc{i}
+has an ionization potential below 13.6 eV --- $2^3$S at 4.767, $2^1$S at 3.971,
+$2^3$P at 3.623 and $2^1$P at 3.369 eV --- so a code banded from 13.598 eV upward
+cannot photoionize any of them, whatever their populations.  MoCHII says so at
+run time when the metastable diagnostic is active,
+\texttt{NOTE: hei\_metastable band floor 13.598 eV > 4.78 eV -> Phi\_3 misses
+[4.78, floor); set add\_fuv}.  Wood and CMacIonize share the limitation and do not
+report it; MOCASSIN and TORUS do not have it.  Section~\ref{sec:heirec}'s estimate
+puts the missing $2^3$S channel at 0.2--0.6\% of the ground-state ionization rate
+for the Lexington HII40 conditions, so it is small there --- but the reason to
+keep \texttt{add\_fuv} available, and to turn it on, is that the calculations where
+sub-Lyman photons do work (photodissociation regions, the metastable diagnostics)
+are exactly the ones a 13.6 eV floor silently truncates.
+
 \section{Implication}\label{sec:implication}
 MoCHII already evaluates transport cross sections at each sampled source energy, unlike frequency-pointer approaches.  Its ground-state diffuse continuum, formerly the distinct limitation, now follows the Milne relation with the same threshold-aware cross section transport uses, interpolating the CDF in temperature before a single inversion --- the prescription \S\ref{sec:accurate} argues for, and one step beyond both Wood (nearest temperature row, grid frequency) and CMacIonize (interpolation between frequencies drawn from two temperature rows).  The measured outcome confirms the prediction made here: the converged HII40 calculation moves the He I front by only $+0.00063$ pc, closing $0.3\%$ of the Cloudy residual.  The exact sampler was physically required and it did not remove the residual.  Three further corrections have followed inside the He I excited cascade: the Drake two-photon shape, $-0.00030$ pc; one consistent set of branch coefficients, $+0.00024$ pc; and the 584 \AA{} escape-probability split, $-0.00363$ pc, the largest of the four and six times the Milne step.  Four independent improvements to what the diffuse field \emph{emits} are therefore worth $-0.00306$ pc in total, while the channel's mere presence is worth $0.10$ pc: $r({\rm He^0}=0.5)$ moves from 4.12333 to 4.11970 pc against the Cloudy c25.00 value of 4.30531 pc, so the sum is 1.7\% of the $0.18$ pc gap and points away from Cloudy rather than toward it.  Each of the four is separately required --- the acceptance criterion is physical correctness, not agreement with a particular reference calculation --- and together they settle the diagnosis: \textbf{the residual is not in what the diffuse field emits.}  The shape of the emitted spectrum, its branch weights and the fate of its strongest line have each been corrected independently, against an external implementation or an exact relation, and their sum is negligible and of the wrong sign.  The two candidates named next in earlier versions of this report --- the \emph{transport} of those photons and the He\,\textsc{i} ground-continuum atomic data --- have since been bounded quantitatively, and both are excluded.
 

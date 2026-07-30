@@ -17,7 +17,6 @@
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1e49 s^-1 (mean E = 19.834 eV)
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%eion_min      = 13.598
  par%eion_max      = 100.0

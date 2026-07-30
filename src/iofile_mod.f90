@@ -145,7 +145,7 @@ contains
   ! with an error listing the attempted names.
   !
   ! Used by inputs that may legitimately be served from any of the supported
-  ! file formats (AMR grid file, clump input file). Inputs whose extension
+  ! file formats (e.g. the AMR grid file). Inputs whose extension
   ! changes the *meaning* of the data (e.g. par%dens_file: .fits → 3D cube,
   ! .dat → 1D radial profile) must NOT use this resolver.
   !---------------------------------------------------------------------------

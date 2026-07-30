@@ -18,7 +18,6 @@
 
  !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=3.082e39 erg/s
  !--- (40 kK, 41.3% of the bolometric luminosity) -> Q_H = 4.265e49 s^-1
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%eion_min      = 13.598
  par%add_fuv       = .true.

@@ -17,7 +17,6 @@
  par%distance_unit = 'kpc'
 
  !--- ionizing band: Q_H = 1e53 (mean E = 19.834 eV at 40 kK)
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%eion_min      = 13.598
  par%eion_max      = 100.0

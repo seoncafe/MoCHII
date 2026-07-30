@@ -18,7 +18,6 @@
 
  !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=6.005e39 erg/s
  !--- (20 kK) -> Q_H = 1.004e49 s^-1
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%eion_min      = 13.598
  par%eion_max      = 100.0

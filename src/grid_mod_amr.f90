@@ -223,12 +223,10 @@ contains
   !--- MoCHII: persist the gas leaf state (nH, ion fractions) BEFORE the
   !--- transient read arrays are deallocated below.  MoCafe deallocates
   !--- nH/xHI after the dust-density step; the gas physics needs them.
-  if (par%use_ion_band) then
-     if (have_xHI) then
-        call gas_state_setup(nH, nleaf, xHI=xHIarr)
-     else
-        call gas_state_setup(nH, nleaf)
-     end if
+  if (have_xHI) then
+     call gas_state_setup(nH, nleaf, xHI=xHIarr)
+  else
+     call gas_state_setup(nH, nleaf)
   end if
 
   !--- grey dust opacity of each leaf (h_rank=0 fills the shared array).

@@ -33,7 +33,6 @@
  par%distance_unit = 'pc'
  par%dust_model    = 'none'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 32
  par%add_fuv       = .true.         ! add a soft-UV band below 13.6 eV
  par%efuv_min      = 4.78           ! down to the 2^3S threshold [eV]

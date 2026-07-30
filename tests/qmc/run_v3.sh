@@ -20,7 +20,6 @@ gen_input () {   # $1=tag $2=nphot $3=mode(random|sobol) $4=seedval
  par%amr_file      = '$FITS'
  par%dust_model    = 'none'
  par%distance_unit = 'pc'
- par%use_ion_band  = .true.
  par%nnu_ion       = 16
  par%ion_align_edges = .false.
  par%eion_min      = 13.598

@@ -14,7 +14,6 @@
  par%dust_model      = 'none'
  par%distance_unit   = 'pc'
 
- par%use_ion_band    = .true.
  par%ion_energy_mode = 'continuous'
  par%source_cdf_tol  = 1.0e-8
  par%nnu_ion         = 32

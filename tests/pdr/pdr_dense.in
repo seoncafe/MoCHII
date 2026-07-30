@@ -26,7 +26,6 @@
  par%distance_unit = 'pc'
  par%dust_model    = 'global_dgr'
 
- par%use_ion_band  = .true.
  par%nnu_ion       = 16
  par%add_fuv       = .true.
  par%efuv_min      = 6.0
