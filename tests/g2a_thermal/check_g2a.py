@@ -50,7 +50,9 @@ import h5py
 sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
                                  "..", "..", "tools", "python"))
 from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII, gbar_ff,
-                          sigma_HI, sigma_HeI, sigma_HeII)
+                          sigma_HI, sigma_HeI, sigma_HeII,
+                          betaB_HII, beta_HeII, beta_HeIII,
+                          ci_HI, ci_HeI, ci_HeII)
 
 EV2ERG = 1.602176634e-12
 KB     = 1.380649e-16
@@ -64,27 +66,14 @@ RSPH_PC         = 4.0
 TE_MIN, TE_MAX  = 3.0e3, 5.0e4
 
 
-def betaB_HII(T):
-    lam = 2.0*157807.0/T
-    return 3.435e-30*T*lam**1.970/(1.0 + (lam/2.250)**0.376)**3.720
 
 
-def beta_HeII_B(T):  return KB*T*alphaB_HeII(T)
 
 
-def beta_HeIII_B(T):
-    lam = 2.0*631515.0/T
-    return 2.0*3.435e-30*T*lam**1.970/(1.0 + (lam/2.250)**0.376)**3.720
 
 
-def voronov(T, dE, P, A, X, K):
-    U = dE*EV2ERG/(KB*T)
-    return A*(1.0 + P*np.sqrt(U))*U**K*np.exp(-U)/(X + U)
 
 
-def ci_HI(T):   return voronov(T, 13.6, 0.0, 2.91e-8, 0.232, 0.39)
-def ci_HeI(T):  return voronov(T, 24.6, 0.0, 1.75e-8, 0.180, 0.35)
-def ci_HeII(T): return voronov(T, 54.4, 1.0, 2.05e-9, 0.265, 0.25)
 
 
 def load_tier1(path):
@@ -147,8 +136,8 @@ def cooling_total(T, ne, xHI, xHeI, xHeII):
     xHeIII = max(0.0, 1.0 - xHeI - xHeII)
     nHI, nHII = NH*xHI, NH*(1.0 - xHI)
     nHeI, nHeII_n, nHeIII = NH*YHE*xHeI, NH*YHE*xHeII, NH*YHE*xHeIII
-    cool = ne*(nHII*betaB_HII(T) + nHeII_n*beta_HeII_B(T)
-               + nHeIII*beta_HeIII_B(T))
+    cool = ne*(nHII*betaB_HII(T) + nHeII_n*beta_HeII(T)
+               + nHeIII*beta_HeIII(T))
     #--- free-free: Z = 1 for H II and He II, Z = 2 (so Z^2 = 4) for He III.
     cool += 1.42554e-27*np.sqrt(T)*ne*((nHII + nHeII_n)*gbar_ff(T, 1)
                                        + 4.0*nHeIII*gbar_ff(T, 2))

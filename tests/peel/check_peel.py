@@ -8,7 +8,17 @@ with L_b the Planck bin luminosities on the stored bin grid.  The point
 source must land in exactly the central pixel and the scattered image
 must be identically zero.
 
-Gate record (2026-07-12, 4e7 packets, 32 ranks): +0.017%.
+sigma_HI comes from tools/python/mochii_rates.py, which mirrors
+src/photo_xsec.f90 -- the exact hydrogenic expression, not the VFKY96 fit this
+gate used to carry.  The fit is 0.775% high at the H I threshold, which is
+where tau is largest here, so the reference was not the attenuation the run
+transported.  tests/rates/check_python_rates.py holds the module to the
+Fortran.
+
+Gate record (2026-07-30, the stored 4e7-packet run): +0.0195%.  The earlier
+record of +0.017% predates the stored output; with the reference carrying the
+fitted H I cross section this same run read +0.1507%, nearly all of it the fit's
+0.775% error at the threshold where tau is largest.
 
 NOTE the converged-Stromgren variant (peel_free.in) is NOT a
 quantitative gate: the neutral shell absorbs every ionizing photon
@@ -20,28 +30,19 @@ ionizing photons — but ill-conditioned as a test).
 Run:  python3 check_peel.py [peel_thin]
 """
 
+import os
 import sys
 import numpy as np
 import h5py
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "tools", "python"))
+from mochii_rates import sigma_HI
+
 BASE = sys.argv[1] if len(sys.argv) > 1 else "peel_thin"
 
-MB2CM2 = 1.0e-18
 NH, XHI, RSPH = 100.0, 1.0e-4, 4.0          # sphere of the test grid
 LBAND, TSTAR = 3.177837e38, 4.0e4
-
-
-def vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, float)
-    x = E / E0 - y0
-    z = np.sqrt(x * x + y1 * y1)
-    Q = 5.5 - 0.5 * P
-    Fy = ((x - 1.0)**2 + yw**2) * z**(-Q) * (1.0 + np.sqrt(z / ya))**(-P)
-    return np.where(E >= Eth, s0 * Fy * MB2CM2, 0.0)
-
-
-def sig_HI(E):
-    return vfky96(E, 13.598, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
 
 
 with h5py.File(f"{BASE}_rates.h5", "r") as f:
@@ -56,7 +57,7 @@ with h5py.File(f"{BASE}_image.h5", "r") as f:
 sr_pix = np.deg2rad(at["DXIM"])**2
 d_cm = at["DIST"] * dist_cm
 
-tau = NH * XHI * sig_HI(Eb) * RSPH * dist_cm
+tau = NH * XHI * sigma_HI(Eb) * RSPH * dist_cm
 
 
 def planck_w(E, T):

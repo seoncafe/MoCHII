@@ -26,6 +26,13 @@ module cooling_mod
   public :: cooling_setup, cooling_total, cooling_eval
   public :: cooling_fit_type, cooling_load, cool_HI_fit
   public :: gbar_ff
+  !--- The recombination-cooling coefficients are public so that the analytic
+  !--- gates can build their 1D references from the same expressions the code
+  !--- evaluates, and so tests/rates/check_python_rates.py can hold the Python
+  !--- copies to them.  A reference that carries its own copy drifts silently
+  !--- when one of these changes, which is how three such mismatches reached
+  !--- the published gate numbers before they were found.
+  public :: betaA_HII, betaB_HII, beta_HeII, beta_HeIII
 
   interface
      subroutine getGauntFF(z, log10Te, xlf, g, iflag)

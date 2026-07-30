@@ -3,39 +3,31 @@
 the fixed-state G0 attenuation gate.  Cell-wise Gamma_HI relative error vs the
 analytic cell-averaged reference (reused from tests/g0_gamma/check_g0_gamma.py),
 plus a radial-profile error where launch RQMC is expected to help most.
+
+The cross sections come from tools/python/mochii_rates.py, which mirrors
+src/photo_xsec.f90: H I and He II from the exact hydrogenic expression, He I
+from VFKY96.  This study used to evaluate H I from the VFKY96 fit instead,
+which is 0.775% high at the H I threshold, so the reference the variance is
+measured against was not the rate integral the runs computed.
+tests/rates/check_python_rates.py holds the module to the Fortran.
 """
-import glob, re
+import glob, os, re, sys
 import numpy as np
 import h5py
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "tools", "python"))
+from mochii_rates import sigma_HI, sigma_HeI
 
 EV2ERG = 1.602176634e-12
 HP = 6.62607015e-27
 KB = 1.380649e-16
 PC2CM = 3.0856776e18
-ETH_HI, ETH_HeI = 13.598, 24.587
 NNU, EMIN, EMAX = 16, 13.598, 100.0
 TSTAR, LBAND = 1.0e5, 1.0e38
 NH, XHI, XHEI, YHE = 1.0, 0.1, 1.0, 0.1
 RSPH_CM = 1.0 * PC2CM
 HALF_PC = 1.0 / 32.0
-
-
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, float)
-    x = E / E0 - y0
-    z = np.sqrt(x * x + y1 * y1)
-    Q = 5.5 - 0.5 * P
-    s = s0 * ((x - 1.0)**2 + yw**2) * z**(-Q) * (1.0 + np.sqrt(z / ya))**(-P) * 1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):
-    return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def sig_HeI(E):
-    return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188, 2.039,
-                        4.434e-1, 2.136)
 
 
 def band_bins(nnu, emin, emax, nsub=32):
@@ -51,9 +43,9 @@ def band_bins(nnu, emin, emax, nsub=32):
 
 
 def gamma_ana(r_cm, ec, lum):
-    kap = NH * (XHI * sig_HI(ec) + YHE * XHEI * sig_HeI(ec))
+    kap = NH * (XHI * sigma_HI(ec) + YHE * XHEI * sigma_HeI(ec))
     tau = np.outer(np.minimum(r_cm, RSPH_CM), kap)
-    return np.sum(lum * sig_HI(ec) / (ec * EV2ERG) * np.exp(-tau), axis=1) \
+    return np.sum(lum * sigma_HI(ec) / (ec * EV2ERG) * np.exp(-tau), axis=1) \
         / (4 * np.pi * r_cm**2)
 
 

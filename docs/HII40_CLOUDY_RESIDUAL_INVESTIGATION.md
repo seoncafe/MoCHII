@@ -1274,3 +1274,50 @@ what a cross-section difference biases, and there the alignment showed a bias of
 +0.077% where the mismatched reference had reported +0.004% -- the old figure was
 the reference's 0.073% overestimate cancelling against the true bias. Nothing
 about the run changed; only what it was compared against.
+
+### Completing the alignment, and what it revealed about RQMC
+
+Four more files carried copies: `tests/qmc/check_v3.py`, `paper/python/make_qmc.py`,
+`tests/peel/check_peel.py` and `tests/peel_ext/check_peel_ext.py`. Three used the
+Verner et al. (1996) fit for H I; `peel_ext` already had its own exact hydrogenic
+form and its output is bit-for-bit unchanged, which is the control that the
+module reproduces what a correct copy did.
+
+The two transport tests were expected to be insensitive. They were not.
+
+| | before | after |
+|---|---|---|
+| `peel` analytic-attenuation ratio - 1 | +0.1507% | **+0.0195%** |
+| `qmc` RQMC mean \|bias\|, N = 2^20 | 0.062% | **0.011%** |
+| `qmc` radial-profile RQMC rms, N = 2^20 | 0.119% | **0.032%** |
+| `qmc` radial-profile gain, N = 2^20 | 4.12x | **30.17x** |
+| `qmc` cell-wise gain, N = 2^20 | 222.5x | **231.1x** |
+
+The peel deviation was almost entirely the fit's 0.775% error at the threshold,
+where the optical depth is largest -- an order of magnitude of apparent transport
+error that was the reference's.
+
+The RQMC case is the more interesting one. The scrambled-Sobol launch had been
+reported as carrying a residual bias of about 0.06%, and that bias was the
+reference, not the sampler: with the cross sections aligned it is 0.011%. The
+radial-profile variance-reduction gain had been floored by it at 4.1x and is
+30.2x once it is gone. **The variance reduction was understated because the thing
+it was measured against was wrong.** The manuscript's gains are corrected to
+28.8, 66.7, 143 and 231 times at N = 2^17 to 2^20.
+
+`sig_HI_pow` in `peel_ext` was kept and renamed `hydrogenic_power_law`: it is a
+deliberate foil, showing that the measured optical-depth ratio follows the exact
+hydrogenic shape to 0.00% and a textbook E^-3 power law only to 9.65%. A
+reference the code is *not* meant to match has to be labelled as such, or the
+next reader aligns it too.
+
+### The recombination-cooling and collisional-ionization coefficients
+
+`betaA_HII`, `betaB_HII`, `beta_HeII` and `beta_HeIII` are now exported from
+`cooling_mod`, and the Voronov collisional-ionization rates were already public,
+so all seven live in the shared module and
+`tests/rates/check_python_rates.py` holds them to the Fortran along with
+everything else -- 23 quantities, all to machine precision. Those expressions
+agreed before the move, so the G2a numbers are unchanged by it; what changes is
+that they can no longer drift apart silently, which is how the three mismatches
+above reached the published gate numbers in the first place.

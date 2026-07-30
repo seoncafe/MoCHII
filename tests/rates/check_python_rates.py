@@ -44,6 +44,8 @@ NAMES = ["alphaA_HII", "alphaB_HII", "alpha1_HII",
          "alphaA_HeIII", "alphaB_HeIII", "alpha1_HeIII"]
 GNAMES = ["gbar_ff(Z=1)", "gbar_ff(Z=2)", "gbar_ff(Z=3)", "gbar_ff(Z=4)"]
 SNAMES = ["sigma_HI", "sigma_HeI", "sigma_HeII"]
+CNAMES = ["betaA_HII", "betaB_HII", "beta_HeII", "beta_HeIII",
+          "ci_HI", "ci_HeI", "ci_HeII"]
 
 OBJS = ("define.o", "utility.o", "photo_xsec.o", "recomb_mod.o", "gaunt.o",
         "gaunt_vh14_mod.o", "nlevel_mod.o", "nlevel_cooling_mod.o",
@@ -54,7 +56,8 @@ program rates_dump
   use define
   use recomb_mod
   use photo_xsec, only : sigma_HI, sigma_HeI, sigma_HeII
-  use cooling_mod, only : cooling_setup, gbar_ff
+  use cooling_mod, only : cooling_setup, gbar_ff, &
+                         betaA_HII, betaB_HII, beta_HeII, beta_HeIII
   use mpi
   implicit none
   integer, parameter :: NT = 61, NG = 81, NE = 60
@@ -96,6 +99,17 @@ program rates_dump
      end do
   end do
 
+  !--- recombination cooling and collisional ionization over 3e3-5e4 K,
+  !--- the span the thermal gates solve over
+  do i = 1, NT
+     T = 10.0_wp**(3.0_wp + 2.0_wp*real(i-1,wp)/real(NT-1,wp))
+     !--- es26.16e3: ci_HI falls below 1e-100 at the cold end and a
+     !--- two-digit exponent field drops the E
+     write(14,'(8es26.16e3)') T, betaA_HII(T), betaB_HII(T), &
+        beta_HeII(T, .false.), beta_HeIII(T, .false.), &
+        ci_HI(T), ci_HeI(T), ci_HeII(T)
+  end do
+
   call MPI_FINALIZE(ierr)
 end program rates_dump
 """
@@ -117,7 +131,7 @@ def fortran_tables():
     subprocess.run(cmd, check=True, capture_output=True)
     subprocess.run([exe], check=True, capture_output=True, text=True, cwd=d)
     out = []
-    for unit in (11, 12, 13):
+    for unit in (11, 12, 13, 14):
         with open(os.path.join(d, "fort.%d" % unit)) as fh:
             out.append(np.array([[float(x) for x in ln.split()]
                                  for ln in fh if ln.strip()]))
@@ -141,7 +155,7 @@ def report(label, names, fort, py):
 
 
 def main():
-    rec, gff, sig = fortran_tables()
+    rec, gff, sig, cool = fortran_tables()
 
     T = rec[:, 0]
     py_rec = np.column_stack([R.alphaA_HII(T), R.alphaB_HII(T), R.alpha1_HII(T),
@@ -154,10 +168,17 @@ def main():
     E = sig[:, 1]
     py_sig = np.column_stack([R.sigma_HI(E), R.sigma_HeI(E), R.sigma_HeII(E)])
 
+    Tc = cool[:, 0]
+    py_cool = np.column_stack([R.betaA_HII(Tc), R.betaB_HII(Tc),
+                               R.beta_HeII(Tc), R.beta_HeIII(Tc),
+                               R.ci_HI(Tc), R.ci_HeI(Tc), R.ci_HeII(Tc)])
+
     print("  max |python/fortran - 1|")
     ok = report("recombination, 1e3-1e5 K", NAMES, rec[:, 1:], py_rec)
     ok &= report("free-free Gaunt, 1e2-1e6 K", GNAMES, gff[:, 1:], py_gff)
     ok &= report("cross sections, threshold-1 keV", SNAMES, sig[:, 2:], py_sig)
+    ok &= report("cooling and collisional ionization, 1e3-1e5 K",
+                 CNAMES, cool[:, 1:], py_cool)
     print()
     print("GATE (Python rates match the Fortran): " + ("PASS" if ok else "FAIL"))
     sys.exit(0 if ok else 1)

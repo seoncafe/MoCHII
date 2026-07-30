@@ -266,3 +266,57 @@ def gbar_ff(T, Z=1):
                    GFF_LOGT.size - 2)
     w = (lt - GFF_LOGT[i]) / (GFF_LOGT[i + 1] - GFF_LOGT[i])
     return GFF_Z[i, iz] * (1.0 - w) + GFF_Z[i + 1, iz] * w
+
+
+#===========================================================================
+# Recombination cooling and collisional ionization, as `src/cooling_mod.f90`
+# and `src/recomb_mod.f90` evaluate them.  Exported from the Fortran for this
+# purpose; see the `public` note above `betaA_HII` in cooling_mod.
+#===========================================================================
+def betaA_HII(T):
+    """`betaA_HII` in cooling_mod: Hui & Gnedin case-A recombination cooling."""
+    lam = 2.0 * T_TR_HI / np.asarray(T, dtype=float)
+    return 1.778e-29 * T * lam ** 1.965 / (1.0 + (lam / 0.541) ** 0.502) ** 2.697
+
+
+def betaB_HII(T):
+    """`betaB_HII` in cooling_mod: the case-B counterpart."""
+    lam = 2.0 * T_TR_HI / np.asarray(T, dtype=float)
+    return 3.435e-30 * T * lam ** 1.970 / (1.0 + (lam / 2.250) ** 0.376) ** 3.720
+
+
+def beta_HeII(T, caseA=False):
+    """`beta_HeII` in cooling_mod: k_B T alpha, Hui & Gnedin's recommendation."""
+    a = alphaA_HeII(T) if caseA else alphaB_HeII(T)
+    return KB_CGS * np.asarray(T, dtype=float) * a
+
+
+def beta_HeIII(T, caseA=False):
+    """`beta_HeIII` in cooling_mod: the hydrogenic Z = 2 form, 2 x the H fit."""
+    lam = 2.0 * T_TR_HEII / np.asarray(T, dtype=float)
+    if caseA:
+        return 2.0 * 1.778e-29 * T * lam ** 1.965 / (1.0 + (lam / 0.541) ** 0.502) ** 2.697
+    return 2.0 * 3.435e-30 * T * lam ** 1.970 / (1.0 + (lam / 2.250) ** 0.376) ** 3.720
+
+
+#--- collisional ionization: Voronov (1997) with the optional Dere hybrid
+#--- rescale.  `ci_dere_ratio` returns 1 unless par%ci_model = 'dere_hybrid',
+#--- which is not the default, so these are the Voronov rates as the code uses
+#--- them.  The ratio is not reproduced here; a reference built for a
+#--- 'dere_hybrid' run would have to add it.
+def voronov(T, dE_eV, P, A, X, Kexp):
+    """`voronov` in recomb_mod."""
+    U = dE_eV * EV2ERG / (KB_CGS * np.asarray(T, dtype=float))
+    return A * (1.0 + P * np.sqrt(U)) * U ** Kexp * np.exp(-U) / (X + U)
+
+
+def ci_HI(T):
+    return voronov(T, 13.6, 0.0, 2.91e-8, 0.232, 0.39)
+
+
+def ci_HeI(T):
+    return voronov(T, 24.6, 0.0, 1.75e-8, 0.180, 0.35)
+
+
+def ci_HeII(T):
+    return voronov(T, 54.4, 1.0, 2.05e-9, 0.265, 0.25)

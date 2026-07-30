@@ -24,6 +24,13 @@ Two runs:
       recovers the chord optical depth tau(E) = nH*sigma_HI(E)*L, L = 2*zmax,
       whose wavelength dependence must follow the H I cross section.
 
+sigma_HI comes from tools/python/mochii_rates.py, which mirrors
+src/photo_xsec.f90 -- the exact hydrogenic expression.  This gate already had
+that expression written out and its values are unchanged; taking it from the
+module is what keeps it that way, so a later change on the Fortran side cannot
+leave the reference behind.  tests/rates/check_python_rates.py holds the module
+to the Fortran.
+
 Run:  python3 check_peel_ext.py [peel_ext_thin | peel_ext_tau | both]
 """
 import os
@@ -32,11 +39,12 @@ import numpy as np
 import h5py
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "python"))
+from mochii_rates import ETH_HI, sigma_HI
+
 PC2CM = 3.0856776e18
 EV2ERG = 1.602176634e-12
 KB = 1.380649e-16
-SIG0_HI = 6.30e-18          # exact hydrogenic threshold cross section [cm^2]
-ETH_HI = 13.598             # eV
 
 
 def parse_in(fname):
@@ -55,24 +63,19 @@ def parse_in(fname):
     return vals
 
 
-def sig_HI_exact(E):
-    """Exact ground-state hydrogenic H I cross section (Osterbrock & Ferland
-    2006 Eq. 2.4), the same formula the code now uses."""
-    E = np.asarray(E, float)
-    out = np.zeros_like(E)
-    m = E >= ETH_HI
-    eps = np.sqrt(np.maximum(E[m] / ETH_HI - 1.0, 0.0))
-    eps = np.where(eps < 1e-30, 1e-30, eps)
-    num = np.exp(4.0 - 4.0 * np.arctan(eps) / eps)
-    den = 1.0 - np.exp(-2.0 * np.pi / eps)
-    out[m] = SIG0_HI * (ETH_HI / E[m])**4 * num / den
-    return out
+def hydrogenic_power_law(E):
+    """Simple E^-3 power law near threshold.
 
-
-def sig_HI_pow(E):
-    """Simple E^-3 power law near threshold."""
+    A deliberate contrast, NOT a reference the code has to match: the measured
+    tau(E)/tau(E1) is compared with both this and the exact hydrogenic shape to
+    show that it follows the latter (0% deviation) and not the textbook power
+    law (~10%).  It stays independent of mochii_rates on purpose, and is
+    normalized to the exact threshold value only so the two curves start
+    together.
+    """
     E = np.asarray(E, float)
-    return np.where(E >= ETH_HI, SIG0_HI * (E / ETH_HI)**(-3.0), 0.0)
+    sig0 = float(sigma_HI(ETH_HI))
+    return np.where(E >= ETH_HI, sig0 * (E / ETH_HI)**(-3.0), 0.0)
 
 
 def load_rates(base):
@@ -163,8 +166,8 @@ def gate_tau(base="peel_ext_tau", nblk=10, nlow=6):
     idx = np.where(ion)[0][:nlow]
     tau_meas = -np.log(db[idx] / d0[idx])
     E = Eb[idx]
-    tau_exact = nH * sig_HI_exact(E) * L
-    tau_pow = nH * sig_HI_pow(E) * L
+    tau_exact = nH * sigma_HI(E) * L
+    tau_pow = nH * hydrogenic_power_law(E) * L
     print(f"  (b) central-chord tau (block {2*nblk+1}x{2*nblk+1}, L = "
           f"{L/PC2CM:.3f} pc):")
     print(f"      {'E[eV]':>8} {'tau_meas':>9} {'tau_exact':>10} "
@@ -173,7 +176,7 @@ def gate_tau(base="peel_ext_tau", nblk=10, nlow=6):
         print(f"      {e:8.3f} {tm:9.4f} {te:10.4f} {tp:9.4f} "
               f"{tm/te:11.4f}")
     # first-bin absolute check vs nH*sig0*L and vs exact
-    tau1_sig0 = nH * SIG0_HI * L
+    tau1_sig0 = nH * float(sigma_HI(ETH_HI)) * L
     print(f"      tau(bin1) measured     = {tau_meas[0]:.4f}")
     print(f"      nH*6.3e-18*L (sigma_0) = {tau1_sig0:.4f}  "
           f"(ratio {tau_meas[0]/tau1_sig0:.4f}, expect <1: center>threshold)")
