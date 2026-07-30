@@ -17,7 +17,7 @@ module ion_balance_mod
 ! Only the node-local rank 0 runs the solve (the inputs are ALLREDUCEd
 ! tallies, so every node's rank 0 is identical); it writes the shared
 ! arrays directly and broadcasts max|delta x_HII| to the other node ranks,
-! which skip the per-leaf work entirely.
+! which skip that work entirely.
 !---------------------------------------------------------------------------
   use define
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
@@ -297,7 +297,7 @@ contains
     !--- only the node-local rank 0 solves.  jt_ion is ALLREDUCEd over
     !--- MPI_COMM_WORLD, so every node's rank 0 sees the identical tally and
     !--- produces identical values; the other node ranks skip the (expensive)
-    !--- per-leaf solve and receive the state through shared memory + the
+    !--- solve for each leaf and receive the state through shared memory + the
     !--- convergence metrics by broadcast.
     if (mpar%h_rank == 0) then
     allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &

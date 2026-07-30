@@ -63,6 +63,8 @@
 
  !--- metals: default C/N/O/Ne/S abundances plus gas-phase Mg (FUV-ionizable)
  par%use_metals    = .true.
+!--- explicit rather than inherited, so this template states its own physics.
+ par%metal_heat    = .true.
  par%atomic_dir    = '../../data/atomic'
  par%abund_Mg      = 3.0e-6
  par%ion_metal_abs = .true.         ! metal photoionization opacity in the band

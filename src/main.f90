@@ -67,7 +67,7 @@ program main
   call grid_create_amr(grid)
   !--- species BEFORE ion_setup: with par%ion_align_edges the band setup
   !--- queries the active metal photoionization thresholds.  species_setup
-  !--- does not depend on the band (that use is inside the per-leaf loops).
+  !--- does not depend on the band (that use is inside the loops over leaves).
   !--- species also BEFORE opacity: with par%ion_metal_abs the opacity fill
   !--- consumes the registry stage fractions.
   if (par%use_metals) call species_setup(amr_grid%nleaf)

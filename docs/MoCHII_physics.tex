@@ -1544,7 +1544,49 @@ plus its cooling and $n$-level files.
 founding plan lists metals feeding back on $n_e$ and on the opacity as a
 non-goal, but the production inputs run with \code{par\%metal\_ne},
 \code{par\%ion\_metal\_abs} and \code{par\%metal\_heat} all true, so both
-feedbacks are active: \code{species\_opacity\_add} sums over \emph{all}
+feedbacks are active --- and since 2026-07-31 the first and third are also the
+shipped defaults, for the reason measured below.
+
+\begin{table}[htb]
+\centering
+\caption{What the two metal feedbacks are worth on the benchmarks.  Each run
+changes only the named switch; same inputs, same Sobol seed.  Fronts from the
+volume-weighted 0.01-pc shell diagnostic.}
+\label{tab:metalsw}
+\small
+\begin{tabular}{llrrrr}
+\hline
+\code{metal\_ne} & \code{metal\_heat} & $\langle T[N_{\rm p}N_{\rm e}]\rangle$ [K]
+ & $L({\rm H}\beta)$ & $r({\rm He}^0{=}0.5)$ & $r({\rm H}^0{=}0.1)$ \\
+\hline
+\multicolumn{6}{l}{\emph{HII40}}\\
+on  & on  & 8168.9 & 1.9293e37 & 4.1278 & 4.6111 \\
+on  & off & 8147.9 & 1.9306e37 & 4.1248 & 4.6090 \\
+off & on  & 8168.7 & 1.9291e37 & 4.1291 & 4.6123 \\
+off & off & 8147.6 & 1.9304e37 & 4.1259 & 4.6100 \\
+\multicolumn{6}{l}{\emph{HII20}}\\
+on  & on  & 6924.5 & 4.6837e36 & 1.2408 & 2.8352 \\
+on  & off & 6918.8 & 4.6839e36 & 1.2406 & 2.8345 \\
+off & on  & 6924.4 & 4.6836e36 & 1.2408 & 2.8358 \\
+off & off & 6918.7 & 4.6838e36 & 1.2407 & 2.8352 \\
+\hline
+\end{tabular}
+\end{table}
+
+The two switches separate cleanly and add.  Switching both off costs
+$21.3$~K ($0.26\%$) at HII40 and $5.8$~K ($0.084\%$) at HII20;
+\code{metal\_heat} carries nearly all of it ($-21.1$ and $-5.7$~K) and
+\code{metal\_ne} almost none ($-0.2$ and $-0.1$~K), with the fronts moving by
+at most $0.003$~pc.  The smallness of \code{metal\_ne} is not an argument that
+metal electrons do not matter: the metal stages hold about $0.1\%$ of the
+electrons in the ionized gas, and $\langle T[N_{\rm p}N_{\rm e}]\rangle$ is
+weighted by $N_{\rm p}N_{\rm e}$, which suppresses exactly the neutral gas
+where the metal stages are the \emph{only} electron source and $n_e$ would
+collapse without them.  That is why the bound above does not transfer past the
+ionization front, and why both now default on: an approximation is worth
+keeping only where its cost is known, and beyond the front it is not.
+
+Concretely, \code{species\_opacity\_add} sums over \emph{all}
 active stages with their VFKY96 cross sections and the self-consistent stage
 fractions, and the sum is iterated together with the opacity it changes.
 The cross sections themselves are not in question.  For the eight ions that

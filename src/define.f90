@@ -565,10 +565,12 @@ public
      !--- 0.103 pc per unit added.  Also the only GAS opacity in the FUV bins
      !--- (Mg I 7.65, C I 11.26, S I 10.36, Fe I 7.90 eV).
      logical            :: ion_metal_abs = .true.
-     !--- PDR-zone physics (each defaults off so the recorded gates
-     !--- reproduce; turn all three on together with add_fuv for
-     !--- meaningful PDR temperatures).
-     !--- DOMAIN OF VALIDITY of leaving metal_ne and metal_heat off, measured
+     !--- PDR-zone physics.  metal_ne and metal_heat default ON: they are real
+     !--- physics, they are what the published benchmark runs used, and the
+     !--- measurement below is what settled it.  grain_pe still defaults off
+     !--- (it needs add_fuv and a dust model to mean anything).  Inputs that
+     !--- must reproduce a recorded gate set the two explicitly to .false.
+     !--- COST OF SWITCHING THEM OFF, and the domain over which it is known,
      !--- 2026-07-31 on the Lexington benchmarks with only these two switches
      !--- changed (docs/METAL_COUPLING_PLAN.md, gate G-M2).  Switching both off
      !--- lowers <T[NpNe]> by 21.3 K (0.26%) at HII40 and 5.8 K (0.084%) at
@@ -591,8 +593,8 @@ public
      !---              cooling (Bakes & Tielens 1994 fits) driven by the
      !---              local FUV field in Habing units (needs add_fuv);
      !---              scaled by pe_scale x DGR relative to MW dust.
-     logical            :: metal_ne     = .false.
-     logical            :: metal_heat   = .false.
+     logical            :: metal_ne     = .true.
+     logical            :: metal_heat   = .true.
      logical            :: grain_pe     = .false.
      real(kind=wp)      :: pe_scale     = 1.0_wp
      !--- He I EXCITED-level recombination radiation as a fourth diffuse

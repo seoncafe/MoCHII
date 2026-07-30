@@ -33,6 +33,10 @@
  par%gas_niter        = 0
  par%te_fixed         = 1.0e4
  par%use_metals       = .true.
+!--- explicit since the default flipped to .true. (docs/METAL_COUPLING_PLAN.md,
+!--- gate G-M2); pinned .false. so the recorded gate numbers are unchanged.
+ par%metal_ne      = .false.
+ par%metal_heat    = .false.
  par%source_geometry  = 'point'
  par%file_format      = 'hdf5'
  par%out_file         = 'grouped_plumbing.h5'

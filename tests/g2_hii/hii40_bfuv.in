@@ -50,6 +50,10 @@
  par%gas_tol_te    = 1.0e-2
  par%atomic_dir    = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
  par%use_metals    = .true.
+!--- explicit since the default flipped to .true. (docs/METAL_COUPLING_PLAN.md,
+!--- gate G-M2); pinned .false. so the recorded gate numbers are unchanged.
+ par%metal_ne      = .false.
+ par%metal_heat    = .false.
  par%abund_C       = 2.2e-4
  par%abund_N       = 4.0e-5
  par%abund_O       = 3.3e-4

@@ -541,7 +541,7 @@ parameter & default & meaning \\
 \bottomrule
 \endlastfoot
 \code{ion\_peel} & F & after convergence, one extra transport pass peels direct (stellar + diffuse) and dust-scattered contributions toward the observers $\rightarrow$ \code{\_image} (blocks \code{direct\_ion}/\code{scatt\_ion}, plus \code{\_fuv} with \code{add\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] \\
-\code{peel\_bins} & F & bin-resolved cubes \code{direct\_cube}/\code{scatt\_cube} $(n_x, n_y, n_\nu)$ in addition to the band-integrated channel images (hardness maps, synthetic EUV/FUV photometry); the third (bin) axis is labelled by the \code{E\_bin}/\code{dE\_bin} [eV] and \code{wl\_bin} [\AA] arrays written once into the same file \\
+\code{peel\_bins} & F & bin-resolved cubes \code{direct\_cube}/\code{scatt\_cube} $(n_x, n_y, n_\nu)$ in addition to the band-integrated channel images (hardness maps, synthetic EUV/FUV photometry); the third (bin) axis is labeled by the \code{E\_bin}/\code{dE\_bin} [eV] and \code{wl\_bin} [\AA] arrays written once into the same file \\
 \code{save\_direc0} & F & also write the unattenuated direct image (\code{direc0\_ion}/\code{\_fuv}, and \code{direc0\_cube} with \code{peel\_bins}): the direct source with the path extinction $e^{-\tau}$ omitted, so \code{direc0/direct}$=e^{+\tau}$ is the line-of-sight optical depth toward the observer \\
 \code{obsx,obsy,obsz} & unset & observer positions (or directions) in code units; or use \code{alpha/beta/gamma} angle lists [deg]; default: one observer on $+z$ far away \\
 \code{distance} & auto & observer distance (code units) \\

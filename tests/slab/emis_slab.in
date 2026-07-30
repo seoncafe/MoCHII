@@ -31,6 +31,10 @@
  par%te_min=3.0e3
  par%te_max=3.0e4
  par%use_metals=.true.
+!--- explicit since the default flipped to .true. (docs/METAL_COUPLING_PLAN.md,
+!--- gate G-M2); pinned .false. so the recorded gate numbers are unchanged.
+ par%metal_ne      = .false.
+ par%metal_heat    = .false.
  par%atomic_dir='../../data/atomic'
  par%abund_C=2.2e-4
  par%abund_N=4.0e-5

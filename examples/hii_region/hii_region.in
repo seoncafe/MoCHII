@@ -40,6 +40,9 @@
  par%te_min        = 3.0e3
  par%te_max        = 3.0e4
  par%use_metals    = .true.
+!--- explicit rather than inherited, so this template states its own physics.
+ par%metal_ne      = .true.
+ par%metal_heat    = .true.
  par%atomic_dir    = '../../data/atomic'
  par%abund_C       = 2.2e-4
  par%abund_N       = 4.0e-5

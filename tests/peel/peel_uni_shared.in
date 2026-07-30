@@ -38,6 +38,10 @@
  par%solve_te      = .true.
  par%atomic_dir    = '../../data/atomic'
  par%use_metals    = .true.
+!--- explicit since the default flipped to .true. (docs/METAL_COUPLING_PLAN.md,
+!--- gate G-M2); pinned .false. so the recorded gate numbers are unchanged.
+ par%metal_ne      = .false.
+ par%metal_heat    = .false.
  par%abund_Mg      = 3.0e-6
  par%abund_Fe      = 3.0e-7
  par%ion_metal_abs = .true.

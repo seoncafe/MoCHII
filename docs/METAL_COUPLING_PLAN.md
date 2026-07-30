@@ -622,7 +622,13 @@ numbers.
 
 **Gate G-M1f (new).**  A cell at `x_HII` between 0.01 and 0.05 must converge to
 the same state as repeated whole-cell solves, to <= 1e-10 relative, inside the
-pass cap.  Add it to `tests/charge_exchange/` when the fix lands.
+pass cap.  Add it to `tests/charge_exchange/` when the fix lands.  The options,
+their trade-offs, the algorithms, and what the five reference codes actually do
+for this same fixed point are in `docs/ION_BALANCE_CONVERGENCE_PLAN.md`; the
+short version is that none of them uses Newton or secant on the ionization
+state, while Cloudy solves `n_e` -- the scalar MoCHII substitutes -- with a
+safeguarded bracketing root find, and Wood already guards a near-cancellation
+of exactly this kind by reformulating rather than by iterating harder.
 
 ## 4. Stage M2 — measure what the trace separation costs
 
