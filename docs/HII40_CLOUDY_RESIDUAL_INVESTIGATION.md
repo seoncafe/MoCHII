@@ -1169,3 +1169,44 @@ MoCHII sits within 0.3% of Cloudy and with the clustered three of the four
 determinations.  **Neither is supported by the data on MoCHII's side.**  The
 explanation, if there is one there, has to be progressive in depth rather than a
 change of scale.
+
+## The G2a thermal claim: bisected, and it was never a regression
+
+The manuscript carried a median `|dTe|` of 0.14% and a mean bias of +0.006% for
+the G2a pure H/He thermal gate. The gate reports 0.97% and +1.02%. The gap was
+traced by rebuilding the code at `29b4a46` (2026-07-26), the commit whose
+manuscript first carried the 0.14%, in a separate worktree and rerunning the same
+case with the period's own gate script:
+
+| code | median `|dev|` | mean bias | max `|dev|` |
+|---|---|---|---|---|
+| `29b4a46` (2026-07-26) | 0.994% | +1.051% | 3.337% |
+| current | 0.969% | +1.016% | 3.108% |
+
+So the gate has reported about one percent since at least 2026-07-26, the
+0.14% / +0.006% pair was never produced by it, and the alpha_1 correction made
+today **improved** the agreement by 0.025 percentage points rather than degrading
+it. There is no regression to find; the manuscript carried a number the gate does
+not measure.
+
+What the ~1% is made of, measured rather than assumed:
+
+- **0.19 percentage points** is a data-source mismatch in the gate itself. Its 1D
+  reference uses the Hui & Gnedin (1997) case-B recombination coefficient while
+  the run uses the Badnell total with the Milne ground-level rate, and the two
+  differ by 1.2% at the 19--24 kK of this test. Rerunning the same case with
+  `par%recomb_model = 'hui_gnedin'`, matching the reference, gives a median of
+  0.776%.
+- **The remainder** is the reference's own free-free Gaunt approximation, which
+  `check_g2a.py` documents in its header as 1--2% of a cooling term worth about
+  10% of the total.
+
+The comparison is therefore a bound on the 1D reference, not a resolution of the
+Monte Carlo solution, and the manuscript now says so. Tightening it would mean
+giving the reference the same recombination set and a proper Gaunt factor; that
+is a gate-side change and is recorded as an open item rather than done here,
+because it would move every G2a number ever published.
+
+The same class of mismatch exists in the G1 Stromgren gate, whose 1D reference
+also uses Hui & Gnedin while the run uses Badnell (0.86% apart at 10^4 K, which
+maps to 0.29% in radius against a reported deviation of +0.60%).

@@ -1082,14 +1082,16 @@ reproduces it to four decimals, while a center-refined control (coarsest
 cells at the front) deviates by $+2.34\%$ --- the ionization front is the
 one place needing resolution (Figure~\ref{fig:g1}).  With the thermal
 balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.97\%$
-and a mean bias $+1.02\%$ (Figure~\ref{fig:g2a}).  Part of that offset is a
-data-source difference rather than a transport error: the 1D reference carries
-the \citet{huignedin1997} case-B recombination coefficient while the run uses the
-Badnell total with the Milne ground-level rate, and the two differ by $1.2\%$
-at the 19--24~kK of this test.  Running the same case with the reference's own
-coefficient set gives a median $0.78\%$, so $0.19$ percentage points of the
-deviation is that mismatch; the remainder is not, and is an open item.  Without
-metals the
+and a mean bias $+1.02\%$ (Figure~\ref{fig:g2a}).  Both figures are set by the
+reference rather than by the transport.  The 1D reference carries the
+\citet{huignedin1997} case-B recombination coefficient while the run uses the
+Badnell total with the Milne ground-level rate, and the two differ by $1.2\%$ at
+the 19--24~kK of this test; running the same case with the reference's own
+coefficients gives a median $0.78\%$, so $0.19$ percentage points is that
+mismatch.  The remainder is the reference's own free-free Gaunt approximation,
+which it documents as $1$--$2\%$ of a cooling term worth $\sim$$10\%$ of the
+total.  The comparison is therefore a bound on the 1D reference, not a
+resolution of the Monte Carlo solution.  Without metals the
 metal-free nebula runs at 19--24~kK, the known overshoot that motivates the
 trace-metal cooling.
 
