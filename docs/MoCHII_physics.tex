@@ -364,8 +364,8 @@ $0.43\%$ (He\,\textsc{ii}), and $\sigma_{\rm HeI} = 7.43$~Mb (VFKY96).
 
 \subsection{H/He recombination}
 \label{sec:hherec}
-The recombination coefficients in the ionization balance are chosen by
-\code{par\%recomb\_model}.  The default \code{'badnell\_mao'} takes the
+Recombination coefficients in the ionization balance are chosen by
+\code{par\%recomb\_model}.  The default \code{'badnell\_milne'} takes the
 total (case A) radiative recombination $\alpha_A$ from the same Badnell
 (2023) RR fit used for the metals [Eq.~(\ref{eq:badnellrr})], obtains the
 ground-level ($n{=}1$) direct-capture rate $\alpha_1$ from the Milne
@@ -384,9 +384,11 @@ $10^{-10}\,\cmc$),
 but the coefficients are fitted to that Milne integral instead of being
 taken from Mao \& Kaastra; \S\ref{sec:diffuse} lists them with their fit
 residuals and gives the measurement that forced the replacement.  The
-namelist value \code{'badnell\_mao'} and the routine name \code{rr\_mao}
-in \code{recomb\_mod} therefore record the functional form and the
-history, not the origin of the numbers.  Because $\alpha_1$ and the
+routine name \code{rr\_mao} in \code{recomb\_mod} therefore records the
+functional form, not the origin of the numbers, while the namelist value
+names the two determinations the default combines --- Badnell's total and
+the Milne ground level --- and so records that $\alpha_B$ here is a
+difference rather than a fit of its own.  Because $\alpha_1$ and the
 ground-continuum emissivity of \S\ref{sec:diffuse} are now one integral
 over one cross section, the case A/B split and the diffuse packet count
 cannot drift apart.  He\,\textsc{ii}$\to$He\,\textsc{i} adds

@@ -304,7 +304,7 @@ def self_check():
     assert 1e3 < ncrit < 1e4, ncrit
 
     # (iii) alpha_3 vs 0.75 alpha_B(He II) consistency (diffuse_mod HEI_F3S).
-    # alpha_B(He II, badnell_mao) at 1e4 K = 2.807e-13 -> 0.75x = 2.105e-13.
+    # alpha_B(He II, badnell_milne) at 1e4 K = 2.807e-13 -> 0.75x = 2.105e-13.
     print("  alpha_3(1e4)/(0.75 alpha_B_HeII=2.11e-13) = %.4f (expect ~1.00)"
           % (a3 / 2.105e-13))
 

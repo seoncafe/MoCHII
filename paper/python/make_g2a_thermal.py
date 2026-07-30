@@ -23,7 +23,7 @@ figure reports is partly a difference between two atomic datasets rather than a
 property of the transport.  Three such differences were removed:
 
   - recombination, which mirrors src/recomb_mod.f90 for the default
-    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    par%recomb_model = 'badnell_milne' (Badnell total minus the Milne
     ground-level rate); the run plotted is case B (par%case_ab = 'B').  This
     generator used to carry its own Hui & Gnedin (1997) case-B coefficients,
     which over the 19-24 kK of this test differ by 1.2% and made 0.20 of the

@@ -757,10 +757,13 @@ to 1%.  Reinstating the old Mao He I coefficients makes it fail on both counts
 (3.886e-2 from the quadrature, 2.383% from Cloudy) and it passes again on
 reverting, so the defect cannot be reintroduced silently.
 
-`par%recomb_model = 'badnell_mao'` is now a historical name --- `alpha_1` is no
-longer Mao data.  Renaming the namelist value would break existing input files
-and examples, so it was left alone and the module header records that the name is
-historical.
+The namelist value was `'badnell_mao'` and is now **`'badnell_milne'`**, because
+`alpha_1` is no longer Mao data.  The first reason recorded here for keeping the
+old name --- that renaming it would break existing input files and examples ---
+was wrong and is withdrawn: no input file in the repository sets `recomb_model`
+at all, the value is reached as a default, so the rename touched twenty mentions
+and needed no namelist migration.  Only the fit FORM of `alpha_1` remains Mao &
+Kaastra's, which is why `recomb_mod` still calls it `rr_mao`.
 
 ### Measured effect, and the prediction graded
 

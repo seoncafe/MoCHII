@@ -20,7 +20,7 @@ deviation it reports is partly a difference between two atomic datasets rather
 than a property of the transport.  Two such differences were removed:
 
   - recombination, which mirrors src/recomb_mod.f90 for the default
-    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    par%recomb_model = 'badnell_milne' (Badnell total minus the Milne
     ground-level rate); the two runs here are case B (par%case_ab = 'B').
     This check used to carry its own Hui & Gnedin (1997) case-B coefficients,
     which differ by 0.86% in alpha_B(H I) at 10^4 K;

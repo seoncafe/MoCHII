@@ -214,7 +214,7 @@ Notes:
   `HEI_F3S = 0.75` for the He I diffuse triplet branch.  At $10^4$ K,
   $\alpha_3 = 2.10\times10^{-13}$ vs
   $0.75\,\alpha_B({\rm He\,II}) = 0.75\times2.807\times10^{-13} =
-  2.11\times10^{-13}$ (badnell_mao) — consistent to 0.2%.  Document this;
+  2.11\times10^{-13}$ (badnell_milne) — consistent to 0.2%.  Document this;
   no re-derivation needed.
 - **Draine (2026, ApJ 999, 3) cross-check (2026-07-24)** — resonant
   scattering of the 1.0833 um triplet in H II regions, directly this

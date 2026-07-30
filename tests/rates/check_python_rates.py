@@ -10,7 +10,7 @@ Three groups are compared, each against the production objects through a small
 driver:
 
   recombination   recomb_mod's alpha_A, alpha_B, alpha_1 for H II, He II and
-                  He III at par%recomb_model = 'badnell_mao'.  Both sides
+                  He III at par%recomb_model = 'badnell_milne'.  Both sides
                   evaluate the same closed form, so they must agree to
                   roundoff;
   free-free       cooling_mod's gbar_ff(T, Z) for Z = 1..4.  The Python side
@@ -67,7 +67,7 @@ program rates_dump
   real(kind=wp) :: T, E
   integer :: i, ich, iz, ierr
   call MPI_INIT(ierr)
-  par%recomb_model = 'badnell_mao'
+  par%recomb_model = 'badnell_milne'
   par%atomic_dir = '@ATOMIC@'
   par%data_dir   = '@DATA@'
   call cooling_setup()

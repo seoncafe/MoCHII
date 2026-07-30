@@ -203,7 +203,7 @@ forms online):
    exactly the Mao & Kaastra alpha_1, which is more correct than the
    Hui & Gnedin difference.
 4. **Keep Hui & Gnedin available** behind a switch (e.g.
-   `par%recomb_model = 'badnell_mao' | 'hui_gnedin'`, default the new one) so
+   `par%recomb_model = 'badnell_milne' | 'hui_gnedin'`, default the new one) so
    the recorded gates can be reproduced and the He II swap can be A/B tested in
    place, exactly as `par%ci_model` did for collisional ionization.
 

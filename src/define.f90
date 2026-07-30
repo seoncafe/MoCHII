@@ -723,10 +723,11 @@ public
      !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
      !--- ratio per stage, Cloudy c23.01 DereRatio).
      character(len=16)  :: ci_model     = 'voronov'
-     !--- H/He recombination: 'badnell_mao' (default) = Badnell 2023 RR
-     !--- (+DR for He II) total alpha_A, Mao & Kaastra 2016 n=1 ground-level
-     !--- alpha_1, case B = alpha_A - alpha_1; 'hui_gnedin' = Hui & Gnedin 1997.
-     character(len=16)  :: recomb_model = 'badnell_mao'
+     !--- H/He recombination: 'badnell_milne' (default) = Badnell 2023 RR
+     !--- (+DR for He II) total alpha_A, n=1 ground-level alpha_1 from the Milne
+     !--- relation on the transport photoionization cross sections, case B =
+     !--- alpha_A - alpha_1; 'hui_gnedin' = Hui & Gnedin 1997 case-A/B fits.
+     character(len=16)  :: recomb_model = 'badnell_milne'
      !--- line cooling: 'local_ne' (default) = the Tier-1 line-cooling fits
      !--- suppressed by the level populations at the leaf electron density via a
      !--- precomputed (T, n_e) table built at setup from the n-level atom files

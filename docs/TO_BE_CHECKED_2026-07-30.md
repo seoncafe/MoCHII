@@ -123,17 +123,12 @@ discretization.
 **Recommendation: second priority.** One run, and it either closes the item or
 turns it into something specific.
 
-### A4. `par%recomb_model = 'badnell_mao'` is a historical name
+### A4. Numbered here so the section reads continuously; see C and D
 
-`alpha_1` is no longer Mao & Kaastra data. Renaming the namelist value would
-break existing input files and the examples, so the value stays and
-`src/recomb_mod.f90`'s header records the fact. Revisit only with a namelist
-migration.
-
-Note that the argument for keeping it is not the one that was rejected for
-`use_ion_band` in A5: `recomb_model` selects between implementations that all
-exist, and only its *name* is stale, whereas `use_ion_band` had no second
-implementation to select.
+The item that stood here -- `par%recomb_model = 'badnell_mao'` is a historical
+name, left alone because renaming it would break input files -- is closed. The
+name is now `'badnell_milne'` (section C) and the reason given for keeping it was
+false (section D, item 6).
 
 ### A5. Thirty-seven namelist parameters are read nowhere
 
@@ -207,6 +202,8 @@ recommended shape whenever the item is opened.
 | `par%use_ion_band` | **removed** -- MoCHII has no mode that runs without the ionizing band, so the switch had exactly one legal value and `read_input` aborted on the other; gone from `define.f90`, `setup.f90`, `grid_mod_amr.f90`, `ion_band_mod.f90` and 199 input files |
 | `par%use_shared_memory` | **removed** -- never read. A global switch was tried and dropped because ranks accumulate into the tally arrays and one shared window races; sharing is fixed at the allocation site, where read-only structure calls `create_shared_mem` directly. The 177 bare occurrences of the name are *local* variables in `memory_mod_mpi.f90` fed by its optional `shared_memory` argument, which is what made the knob look live to a grep |
 | the (a, g) and tau scan knobs | **removed** -- `use_ag_list`, `albedo_list`, `hgg_list`, `use_tau_list`, `tau_list`, the constant `MAX_SCAN`, and the `observer_type` arrays that existed only for them (`scatt_ag`, `scatt_agt`, `direc_t`, never allocated) |
+| `par%recomb_model = 'badnell_mao'` | **renamed to `'badnell_milne'`** -- only the fit FORM of `alpha_1` is still Mao & Kaastra's, so `recomb_mod` keeps `rr_mao` while the namelist value now names the two determinations it combines, Badnell's total and the Milne ground level. The name also records that `alpha_B` here is a difference rather than a fit, which is where the He I defect entered. Twenty mentions, no namelist migration |
+| the `recomb_model` dispatch | **made exhaustive** -- the six coefficient functions read `if hui_gnedin ... else <Badnell>`, so any other string was served the Badnell rate. They now `select case` on both names with no catch-all: a third model added to `read_input`'s whitelist but not to these functions returns NaN instead of silently getting Badnell's |
 | the clumpy-medium knobs | **removed** -- 22 `clump_*` parameters plus `use_clump_medium`, `save_clump_info` and `photon_type%icell_clump`. `read_input` accepts only `grid_type` = `car` or `amr`, so a clumpy setup silently produced a uniform medium; the `grid_type` comment claiming `clump` as a legal value and a backward-compatible mapping of the legacy booleans was false and is corrected |
 
 ## D. Retractions recorded during this session
@@ -232,3 +229,10 @@ measured, and each is now marked withdrawn where it appeared:
    that approximation is accurate to 0.06-0.6% for Z = 1 against the code's own
    tabulated values, and adding the charge dependence moved the median by 0.003
    percentage points.
+6. "Renaming `par%recomb_model = 'badnell_mao'` would break existing input files
+   and the examples, so the stale name stays." Wrong on the premise -- **no input
+   file in the repository sets `recomb_model` at all**. It was reached as a
+   default, so the rename to `'badnell_milne'` touched twenty mentions, only two
+   of them executable, and needed no namelist migration. The error was carrying
+   over the cost of removing `use_ion_band`, which 199 input files did set,
+   without checking whether this parameter was set anywhere.

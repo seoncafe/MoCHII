@@ -4,21 +4,24 @@ module recomb_mod
 !
 ! Recombination — selected by par%recomb_model, for H II, He II, He III as
 ! functions of T [K].
-!   'badnell_mao' (default): total radiative recombination alpha_A from the
+!   'badnell_milne' (default): total radiative recombination alpha_A from the
 !     Badnell (2023) RR fit; the ground-level (n=1) direct-capture alpha_1
 !     from the Milne relation applied to the transport photoionization cross
 !     sections (see alpha1_* below); case B alpha_B = alpha_A - alpha_1.
 !     He II -> He I includes the Badnell three-term DR sum (negligible below
-!     ~5e4 K); H II and He III have no DR.  The name is historical: the alpha_1
-!     fit FORM is still Mao & Kaastra's, only its coefficients are Milne-derived.
-!   'hui_gnedin': Hui & Gnedin (1997, MNRAS 292, 27) case-A/B fits, retained
-!     so the recorded gates reproduce.
+!     ~5e4 K); H II and He III have no DR.  The name carries both sources
+!     because the two coefficients come from two determinations, and that
+!     alpha_B is a difference rather than a fit is what the name records.
+!     Only the FIT FORM of alpha_1 is still Mao & Kaastra's, hence rr_mao.
+!   'hui_gnedin': Hui & Gnedin (1997, MNRAS 292, 27) case-A/B fits, where one
+!     source supplies both alpha_A and alpha_B directly.  Retained so the
+!     recorded gates reproduce.
 !
 ! Collisional ionization — Voronov (1997, ADNDT 65, 1) fits for H I, He I,
 ! He II:  k(T) = A (1 + P sqrt(U)) U^K exp(-U) / (X + U),  U = dE/T_eV.
 ! Negligible next to photoionization at ~1e4 K but kept in the balance.
 !---------------------------------------------------------------------------
-  use define, only : wp, kboltz_cgs, ev2erg, par
+  use define, only : wp, kboltz_cgs, ev2erg, nan64, par
   implicit none
   private
 
@@ -34,63 +37,84 @@ module recomb_mod
 contains
 
   !=========================================================================
-  ! Public recombination coefficients: dispatch on par%recomb_model.
-  ! 'hui_gnedin' -> the hg_* fits; anything else -> the badnell_mao (default)
-  ! path (Badnell 2023 total RR + the Milne-relation alpha_1).
+  ! Public recombination coefficients: dispatch on par%recomb_model, which
+  ! read_input has already restricted to the two names named here.  Each model
+  ! is matched by name and there is no catch-all branch: a third model added to
+  ! that whitelist but not to these select constructs returns NaN, where the
+  ! former 'anything that is not hui_gnedin' would have served it the
+  ! badnell_milne rate and reported success.
   !=========================================================================
   elemental real(kind=wp) function alphaA_HII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaA_HII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = rr_badnell(T, 8.318e-11_wp, 0.7472_wp, 2.965_wp, 7.001e5_wp, 0.0_wp, 0.0_wp)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaA_HII(T)
+    case default
+       a = nan64
+    end select
   end function alphaA_HII
 
   elemental real(kind=wp) function alphaB_HII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaB_HII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = alphaA_HII(T) - alpha1_HII(T)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaB_HII(T)
+    case default
+       a = nan64
+    end select
   end function alphaB_HII
 
   elemental real(kind=wp) function alphaA_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaA_HeII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = rr_badnell(T, 5.235e-11_wp, 0.6988_wp, 7.301_wp, 4.475e6_wp, 0.0829_wp, 1.682e5_wp) &
            + dr_HeII_badnell(T)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaA_HeII(T)
+    case default
+       a = nan64
+    end select
   end function alphaA_HeII
 
   elemental real(kind=wp) function alphaB_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaB_HeII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = alphaA_HeII(T) - alpha1_HeII(T)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaB_HeII(T)
+    case default
+       a = nan64
+    end select
   end function alphaB_HeII
 
   elemental real(kind=wp) function alphaA_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaA_HeIII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = rr_badnell(T, 1.818e-10_wp, 0.7492_wp, 1.017e1_wp, 2.786e6_wp, 0.0_wp, 0.0_wp)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaA_HeIII(T)
+    case default
+       a = nan64
+    end select
   end function alphaA_HeIII
 
   elemental real(kind=wp) function alphaB_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
-    if (trim(par%recomb_model) == 'hui_gnedin') then
-       a = hg_alphaB_HeIII(T)
-    else
+    select case (trim(par%recomb_model))
+    case ('badnell_milne')
        a = alphaA_HeIII(T) - alpha1_HeIII(T)
-    end if
+    case ('hui_gnedin')
+       a = hg_alphaB_HeIII(T)
+    case default
+       a = nan64
+    end select
   end function alphaB_HeIII
 
   !=========================================================================

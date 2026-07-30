@@ -58,7 +58,7 @@ program check_alpha1
   logical :: ok
 
   call MPI_INIT(ierr)
-  par%recomb_model = 'badnell_mao'
+  par%recomb_model = 'badnell_milne'
   eth = [eth_HI, eth_HeI, eth_HeII]
   ok  = .true.
 

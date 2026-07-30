@@ -171,10 +171,10 @@ contains
         'ERROR: par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (trim(par%recomb_model) /= 'badnell_mao' .and. &
+  if (trim(par%recomb_model) /= 'badnell_milne' .and. &
       trim(par%recomb_model) /= 'hui_gnedin') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%recomb_model must be ''badnell_mao'' (default) or ''hui_gnedin''.'
+        'ERROR: par%recomb_model must be ''badnell_milne'' (default) or ''hui_gnedin''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%diffuse_energy_model) /= 'exponential' .and. &

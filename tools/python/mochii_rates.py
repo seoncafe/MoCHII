@@ -11,7 +11,7 @@ and their free-free cooling used one Gaunt factor for every ion where the code
 resolves the net charge, which at 10^4 K is 6.5% on the He III term.
 
 Recombination mirrors `src/recomb_mod.f90` for `par%recomb_model =
-'badnell_mao'`, the default:
+'badnell_milne'`, the default:
 
   alpha_A  Badnell/Strathclyde TAMOC radiative recombination (`rr_badnell`),
            plus the He II dielectronic term for He I;
