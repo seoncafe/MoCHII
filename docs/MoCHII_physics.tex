@@ -853,6 +853,12 @@ The correction raises the HII40 doubly/triply-ionized fractions
 fractions with the underconverged MOCASSIN baseline was partly
 fortuitous.
 
+With the shipped abundances 29 of these reactions are active --- 7 in the
+$\mathrm{H}^+ \to \mathrm{H}^0$ direction (C, N, O, Mg, Si, S, Fe, all at
+the neutral stage) and 22 in the reverse --- and every one of them enters
+hydrogen's balance as well as the metal's
+(\S\ref{sec:ioneq}, \code{par\%charge\_exchange}).
+
 \subsection{Cooling fits}
 \label{sec:cool}
 Collisional line cooling for the thermal loop uses the EXHALE
@@ -1349,6 +1355,86 @@ $n_e = n_{\rm H}[x_{\rm HII} + y_{\rm He}(x_{\rm HeII} +
 2x_{\rm HeIII})]$ and solved by a damped fixed point on $n_e$ (mixing
 $\tfrac12$, converged at $10^{-10}$, $\leq 200$ iterations).
 
+\emph{Two-way charge exchange} (\code{par\%charge\_exchange =
+'two\_way'}, the default).  Each reaction
+$\mathrm{X}^{i+} + \mathrm{H}^+ \leftrightarrow
+\mathrm{X}^{(i+1)+} + \mathrm{H}^0$ (\S\ref{sec:cx}) moves one unit of
+charge between a metal and hydrogen, so hydrogen's balance carries it too:
+\begin{equation}
+  n_{\rm HI}\,(\Gamma_{\rm H} + n_e C_{\rm H} + R_{\rm cx}^{\rm out})
+  \;=\; (\alpha_{\rm H} n_e + R_{\rm cx}^{\rm in})\,n_{\rm HII},
+  \label{eq:hcx}
+\end{equation}
+with the sums running over every registry element and transition,
+\begin{equation}
+  R_{\rm cx}^{\rm in} = \sum_{\rm el}\sum_i
+    k^{\rm CX}_{{\rm ion},i}\,n(\mathrm{X}^{i+}), \qquad
+  R_{\rm cx}^{\rm out} = \sum_{\rm el}\sum_i
+    k^{\rm CX}_{{\rm rec},i}\,n(\mathrm{X}^{(i+1)+}),
+\end{equation}
+in $\mathrm{s}^{-1}$: $R_{\rm cx}^{\rm in}$ neutralizes an H$^+$,
+$R_{\rm cx}^{\rm out}$ ionizes an H$^0$.  Eliminating
+$n_{\rm HII} = n_{\rm H}(1-\xHI)$ keeps the closed form,
+\begin{equation}
+  \xHI = \frac{\alpha_{\rm H} n_e + R_{\rm cx}^{\rm in}}
+              {\Gamma_{\rm H} + (C_{\rm H} + \alpha_{\rm H})\,n_e
+               + R_{\rm cx}^{\rm in} + R_{\rm cx}^{\rm out}},
+  \label{eq:hbalance-cx}
+\end{equation}
+so no matrix and no Newton step are needed; \emph{both} charge-exchange
+terms appear in the denominator, $R_{\rm cx}^{\rm in}$ for the same reason
+$\alpha_{\rm H} n_e$ does.  The two sums come from the same walk of the
+stage chain that produces the metal electrons
+(\code{species\_metal\_sums}) and read the same cached coefficients the
+cascade reads, so the charge each reaction moves is conserved in the
+reacting pair by construction rather than to a tolerance; the gate
+\code{tests/charge\_exchange/} forms all 29 active reactions from both
+sides and finds them equal to $6\times10^{-16}$ relative.  The stage
+densities are taken from the previous iterate of the $n_e$ fixed point,
+since they depend on $n_{\rm HI}$ and $n_{\rm HII}$ themselves.  The
+value \code{'metal\_only'} keeps the charge exchange in the metal cascade
+alone --- the earlier bookkeeping, which does not conserve charge --- and
+is retained only to reproduce the recorded gates.
+
+The correction is small on these benchmarks, and the reason is worth
+stating because it is not the usual abundance argument.  Where the
+near-resonant $\mathrm{O}^{0} + \mathrm{H}^{+}$ pair locks oxygen to
+hydrogen --- that is, where $\Gamma_{\mathrm{O}}$ and
+$n_e\alpha_{\mathrm{O}}$ are negligible beside the charge-exchange terms
+--- detailed balance of the pair gives
+$R_{\rm out}/R_{\rm in} = n_{\rm HII}/n_{\rm HI}$, and substituting that
+into Eq.~(\ref{eq:hbalance-cx}) returns
+$x_{\rm HI} = \alpha_H n_e / [\Gamma_H + (C_H+\alpha_H)n_e]$ exactly: the
+two terms cancel identically.  What survives is only the departure from
+that lock.  Measured with one switch changed and the same Sobol seed,
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ moves by $-1.41$~K at HII40 and
+$-0.13$~K at HII20, $L({\rm H}\beta)$ by $+0.045\%$ and $+0.007\%$, and
+$r({\rm He}^0\!=\!0.5)$ by $-0.0002$ and $-0.0000$~pc.  All of these are
+inside the tolerance the runs were converged to
+(\code{par\%gas\_tol\_te} $=10^{-2}$, i.e.\ 82~K at HII40) by factors of
+58 and 533, so the recorded benchmark tables are not re-baselined on them.
+
+The same cancellation has a numerical consequence that is recorded here
+rather than hidden: the slope of the substitution map at its fixed point
+is $R_{\rm in}/(R_{\rm in} + \alpha_H n_e)$, which tends to unity wherever
+$R_{\rm in} \gg \alpha_H n_e$, so in partially neutral gas the cell
+iteration is marginally stable.  At $T=10^4$~K, $n_{\rm H}=100$ and the
+HII20 abundances it needs 124 passes at $x_{\rm HII}=0.18$, 239 at
+$0.10$ and 1285 at $0.021$, against the 200-pass cap; a capped cell leaves
+the loop with $x_{\rm HII}$ high by about $8\%$.  Cells with
+$x_{\rm HII}\gtrsim 0.1$ converge inside the cap, and the benchmark
+diagnostics are weighted by $n_{\rm p}n_{\rm e}\propto x_{\rm HII}^2$, so
+the numbers above are unaffected; what is affected is the shadow beyond
+the front, which must be resolved before a photodissociation-region result
+is quoted from this term.
+
+Because the written state is under-relaxed (\code{par\%ion\_relax}) while
+the metal stage fractions written alongside are evaluated at the written
+$n_e$ and $T_e$, the residual of Eq.~(\ref{eq:hcx}) on that state is not
+identically zero; \code{hydrogen\_balance\_residual} reports it each gas
+iteration as the maximum over leaves and the volume-weighted mean.  It is
+a printed diagnostic and does not gate convergence.
+
 \subsection{Thermal balance}
 \label{sec:thermal}
 When \code{par\%solve\_te} is set, \code{gas\_thermal\_update} replaces
@@ -1436,8 +1522,7 @@ volume-integrated per \code{par\%conv\_crit}).
 \subsection{The trace-metal cascade}
 \label{sec:cascade}
 The registry (\code{species\_mod}) activates an element when its
-abundance is positive.  In the trace approximation (no feedback on
-$n_e$ or opacity), stage fractions follow the product chain
+abundance is positive.  Stage fractions follow the product chain
 \begin{equation}
   \frac{n_{i+1}}{n_i} \;=\;
   \frac{\Gamma_i + n_e C_i + n_{\rm HII}\,k^{\rm CX}_{{\rm ion},i}}
@@ -1445,8 +1530,13 @@ $n_e$ or opacity), stage fractions follow the product chain
         + n_{\rm HI}\,k^{\rm CX}_{{\rm rec},i+1}},
 \end{equation}
 with metal $\Gamma_i$ computed once per iteration from the same band
-tally.  Adding an ion is one entry in the data generators plus its
-cooling and $n$-level files.
+tally.  The chain is evaluated on a known H/He and thermal state rather
+than solved jointly with it, but the metals are not excluded from the
+ionizing opacity (\S\ref{sec:metalop}), from $n_e$
+(\code{par\%metal\_ne}), or from hydrogen's own balance: the two
+$k^{\rm CX}$ terms above enter Eq.~(\ref{eq:hcx}) as well
+(\S\ref{sec:ioneq}).  Adding an ion is one entry in the data generators
+plus its cooling and $n$-level files.
 
 \subsection{Metal opacity in the He-ionizing window}
 \label{sec:metalop}

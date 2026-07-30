@@ -524,8 +524,8 @@ Dust is absent from the photoionization path --- a case-insensitive search of
 the ionization, temperature and state-calculator sources returns nothing.  It
 exists instead as a separate hardwired mode whose own documentation calls it
 a first-year lab project (\code{src/CMacIonize.cpp}:50--53), with grey
-per-band constants, a forced first interaction, single-observer peel-off and
-Stokes imaging.  There is no dust temperature and no infrared emission
+constants in each band, a forced first interaction, single-observer peel-off
+and Stokes imaging.  There is no dust temperature and no infrared emission
 anywhere in the tree.
 
 Synthetic observations are the weakest axis.  The ionization mode offers
@@ -583,7 +583,7 @@ Parallelism is the most developed of the four: MPI decomposes the grid
 itself, with packets shipped between ranks in batched stacks, plus extra
 ranks assigned as duplicates of busy domains apportioned by measured packet
 crossings (\code{loadbalance\_mod.F90}:16--219), and OpenMP threads the
-per-cell equilibrium solve (\code{:3855--3864}).  \MoCHII{} distributes only
+equilibrium solve over cells (\code{:3855--3864}).  \MoCHII{} distributes only
 transport and keeps one grid copy per node; \Torus{} distributes the state.
 
 Convergence is a nested pair: an inner alternation of ionization and thermal
@@ -678,9 +678,10 @@ iteration count) & cell-maximum $\Delta\Te$, packet doubling on undersampling
 & cell-maximum or volume-integrated, tolerance-gated \\
 
 Metals & tallied, no opacity, no electrons & tallied, no opacity, no
-electrons; no collisional ionization & 22 ions with charge exchange, no
-collisional ionization & registry with opacity, optional electrons and
-heating, two collisional-ionization models \\
+electrons; no collisional ionization & 22 ions, no opacity, electrons
+counted, charge exchange data for five ions only, no collisional ionization &
+registry with opacity, optional electrons and heating, two
+collisional-ionization models \\
 
 Dust & none & none on this path & absorption, Mie scattering, equilibrium
 $T_{\rm dust}$, gas--grain exchange & absorption, scattering, live survival,
@@ -703,7 +704,8 @@ Section~\ref{sec:hlines} shows, missing helium lines entirely.  \MoCHII{}
 sits with \Torus{} on transport and observation and with \Mocassin{} on gas
 microphysics, and it is the only one of the five whose thermal balance and
 emergent line list are computed from the same level populations at the same
-electron density.
+electron density.  How each of them actually solves the ionization state, and
+where the metals enter it, is Section~\ref{sec:ionsolve}.
 
 %==============================================================================
 \section{Radiative-transfer algorithms}
@@ -926,6 +928,369 @@ percent among reputable collision-strength and $A$-value compilations,
 especially for iron.  The decisive test is therefore ion-by-ion
 comparison with direct database evaluation and observation, not vintage
 alone.
+
+\subsection{How the ionization system is actually solved: no code couples
+the elements}
+\label{sec:ionsolve}
+
+Comparisons of this family normally stop at the atomic data and the thermal
+solver, and leave the structure of the ionization solve as an assumption:
+that the established codes solve the ionization of every element as one
+coupled nonlinear system, and that \MoCHII{}'s element-by-element cascade is
+a reduction of that.  Five codes were read in their own sources to settle it
+--- \Mocassin{}, \CMI{}, \Torus{}, \Wood{}, and \Cloudy{} c25.00 --- and
+\emph{none of them does}.  Every one solves one element at a time inside
+nested outer iterations, and four of the five use the same nearest-neighbor
+ratio chain \MoCHII{} uses.  The electron temperature is an outer root find
+in all five; it is never an unknown of the ionization system.  The ratio
+chain is therefore the standard method of the field, not a
+\MoCHII{}-specific approximation.  \Cloudy{} departs from it on exactly two
+axes, both identified below, and neither of them is element coupling.
+\Mappings{} and \Mthree{} were not part of this audit, and no claim is made
+here about their solve structure.
+
+In \Mocassin{}, \code{ionBalance} (\code{update\_\allowbreak mod.f90}:1321) forms the
+adjacent-stage ratio \code{ionRatio(elem,ion)}~$=X_{i+1}/X_i$ (declared
+\code{:1356}, formed \code{:1495--1499}), accumulates it into cumulative
+products (\code{:1506--1517}), and closes each element with a single
+normalization scalar, \code{denominator(elem)}, dimensioned
+\code{(nElements)} (\code{:1348--1349}, formed \code{:1520--1527}, fractions
+\code{:1537--1544}).  There is no ionization matrix in the tree at all: the
+only LU factorization, \code{luSlv}/\code{lured}
+(\code{emission\_\allowbreak mod.f90}:2126--2164), is called from \code{:2091} inside
+\code{equilibrium} for the bound-level populations of the forbidden lines.
+The element solves are tied together only by an outer fixed-point recursion,
+\code{nIterateX} with \code{maxIterateX = 25} (\code{update\_\allowbreak mod.f90}:84--85,
+recursive self-call \code{:1608}).  \CMI{} writes the same chain out by hand,
+one \code{\#ifdef} block for each element:
+\code{compute\_\allowbreak ionization\_\allowbreak states\_\allowbreak metals}
+(\code{Ionization\allowbreak State\allowbreak Calculator.cpp}:323--501, the scheme documented at
+\code{:280--310}), with carbon at \code{:392--403} as
+\code{C21 = jCp1/(ne*alphaC[0])}, \code{C31 = C32*C21},
+\code{sumC\_inv = 1./(1.\,+\,C21\,+\,C31)}, and independent blocks for C
+(\code{:389--404}), N (\code{:406--434}), O (\code{:436--455}), Ne
+(\code{:457--471}) and S (\code{:473--500}); the metals are solved only after
+H/He has been frozen (\code{:116--185}).  \Torus{} blocks its flat ion list
+by nuclear charge (\code{photoion\allowbreak AMR\_\allowbreak mod.F90}:6859--6867), forms the same
+ratio (\code{:6880--6881}), chains it (\code{:6891}), renormalizes each
+element (\code{:6902--6904}), and under-relaxes the update by 0.6
+(\code{:6853}, \code{:6914}).  \Wood{} is the extreme case: the chain is
+written out for carbon at \code{ionize2.f}:68--77 and as three links for
+nitrogen and sulfur at \code{:96--98}, each metal block reads only \code{ne},
+\code{h0} and \code{he0} from the already-converged H/He solution and never
+another metal's state, and there is no iteration on the metal fractions at
+all --- one pass for each cell in each Monte Carlo iteration.  Its only
+matrix, \code{SIMQ} in \code{SIMQ2.f}, again belongs to the five-level bound
+populations of the cooling function (\code{linecool1.f}:110).  \MoCHII{} does
+exactly what those four do: \code{species\_fractions}
+(\code{src/species\_\allowbreak mod.f90}:810--840) takes $\Te$, $\nelec$, $n_{\rm HI}$
+and $n_{\rm HII}$ as inputs and returns the chain product for one element.
+
+\begingroup\footnotesize\setlength{\tabcolsep}{3pt}
+\begin{longtable}{P{0.13\textwidth}P{0.145\textwidth}P{0.08\textwidth}P{0.09\textwidth}P{0.09\textwidth}P{0.08\textwidth}P{0.115\textwidth}P{0.11\textwidth}}
+\caption{How the ionization system is solved in the five codes read in source
+for this subsection, with \MoCHII{} as the last row.  Entries describe the
+connected photoionization path, not what exists in the tree.  ``not audited''
+means the axis was not read for that code and no claim is made about it.}
+\label{tab:ionsolve}\\
+\toprule
+Code & Ionization solve & Elements & Two-way charge exchange & Metals in
+$\nelec$ & Metal opacity & Metal diffuse & $\Te$ solve \\
+\midrule
+\endfirsthead
+\multicolumn{8}{l}{\small\itshape Table~\ref{tab:ionsolve} continued.}\\
+\toprule
+Code & Ionization solve & Elements & Two-way charge exchange & Metals in
+$\nelec$ & Metal opacity & Metal diffuse & $\Te$ solve \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\Mocassin{} & nearest-neighbor ratio chain & separate & no & yes,
+charge-weighted & yes, all shells & continua trans\-ported, lines discarded &
+outer secant, 25 passes \\
+
+\CMI{} & chain, hand-written for each element & separate, metals after H/He &
+no & no & no & no metal channel & outer three-point power law, off by
+default \\
+
+\Torus{} & chain, under-relaxed 0.6 & separate & no & yes, weight $Z-N$ &
+no; H I and He I only & not audited & outer Brent, under-relaxed \\
+
+\Wood{} & chain, one pass, no metal iteration & separate, metals after H/He &
+no & no & no & not audited & outer secant in $\log$, from iteration 5 \\
+
+\Cloudy{} c25.00 & $N\times N$ LU with iterative refinement & separate & yes,
+into hydrogen's own rows & yes, summed then Brent root find & yes, all shells
+& continua and lines, both re-ionize & outer Brent inside the pressure
+loop \\
+
+\MoCHII{} & nearest-neighbor ratio chain & separate & no & optional, damped
+fixed point & yes, default on & H/He channels only & outer bisection in
+$\log\Te$ \\
+\end{longtable}
+\endgroup
+
+\Cloudy{}'s first difference is the matrix, and its reason is physical rather
+than numerical.  It allocates a square matrix \code{xmat} of order
+\code{ion\_range = IonHigh-IonLow+1} (\code{ion\_solver.cpp}:70--72),
+assembles it in \code{fill\_array()} (\code{:538--748}), and factorizes it at
+\code{:233} through \code{newton\_step.cpp}:346--400
+(\code{getrf\_wrapper}/\code{getrs\_wrapper}, with \code{nrefine = 3} rounds
+of iterative refinement), one row being replaced by abundance conservation
+(\code{:883--889}).  The matrix is deliberately not tridiagonal: the
+ionization block at \code{:727--736} runs the destination stage from
+\code{ion\_from+1} up to \code{IonHigh} and fills arbitrary super-diagonal
+entries, because Auger multi-electron ejection removes several electrons in
+one event and therefore couples stage $i$ to $i+2,\,i+3,\dots$
+(\code{:661--668}).  A nearest-neighbor chain cannot represent that, which is
+exactly why the \MoCHII{} hard-spectrum plan of Section~\ref{sec:hardplan}
+replaces the chain with a small $n_{\rm stage}\times n_{\rm stage}$ matrix in
+its HS6 increment, at the point where an inner-shell channel opens.  Two
+consequences are worth recording.  The legacy chain solver is still in the
+file --- \code{solveions()} at \code{:1317--1364}, with the tridiagonal
+matrix drawn in the comment at \code{:1290--1315} --- and it is dead code,
+never called in c25.  And the matrix buys \Cloudy{} nothing in element
+coupling: \code{ConvBase} loops \code{nelem} from \code{ipHYDROGEN} to
+\code{LIMELM} calling \code{ion\_wrapper(nelem)}
+(\code{conv\_base.cpp}:557--566), one solve for each element, inside an inner
+repeat loop of \code{nconv}~$=3$ passes (\code{:475}, \code{:539}).
+
+The second difference is the one that matters physically for the codes
+compared here: \Cloudy{}'s charge transfer is two-way in the bookkeeping.  A
+reaction $X^{i+1}+{\rm H}^0\rightarrow X^{i}+{\rm H}^{+}$ recombines the
+metal and ionizes the hydrogen in the same event, so it is a source and a
+sink on both sides.  \code{iso\_\allowbreak charge\_\allowbreak transfer\_\allowbreak update()}
+(\code{iso\_\allowbreak ionize\_\allowbreak recombine.cpp}:18--50), called at the top of every ion
+solve (\code{ion\_solver.cpp}:68), accumulates hydrogen's charge transfer
+ionization and recombination totals over all heavier elements and all their
+stages, each weighted by the partner ion density (\code{:38--45}), with the
+source comments naming the symmetry outright (``charge transfer ionization of
+nelem1, recombination for other species'').  Those totals then enter
+hydrogen's own matrix rows: \code{ction} at \code{ion\_solver.cpp}:687 with
+its off-diagonal pair at \code{:696--697}, and \code{ctrec} at \code{:709}
+with \code{:723--724}; the H-like level matrix carries the same terms under
+\code{if(nelem==ipHYDROGEN)} (\code{iso\_level.cpp}:121--124).  Both sides
+read the \emph{same} \code{Char\allowbreak Exc\allowbreak Ion\allowbreak Of}/\code{Char\allowbreak Exc\allowbreak Rec\allowbreak To} arrays, and
+\code{ChargTranEval()} is called once in each outer loop precisely so that
+they do, as its own comment states: ``charge transfer evaluation needs to be
+here so that same rate coefficient used for H ion and other recombination''
+(\code{conv\_base.cpp}:498--502).  \Cloudy{} then \emph{checks} the balance
+instead of assuming it: \code{:578--583} forms the net rate
+\code{netion[nlo][nhi]} as the difference of the two directions, and a
+failure declares the zone unconverged with the reason ``\code{CX
+inconsistency}'' (\code{:611--620}).  The honest caveat is that within a
+single LU the partner's density is a frozen coefficient, so exact charge
+conservation is reached by the outer iteration together with that check, not
+inside one matrix solve.
+
+The other four codes are all one-way in that bookkeeping, and so is
+\MoCHII{}.  The evidence is specific in each case.  In \Mocassin{} the
+four-parameter table \code{chex(nElements,\allowbreak nstages,4)}
+(\code{update\_\allowbreak mod.f90}:1358--1359) is populated for He through Fe at
+\code{:1392--1451}, fitted at \code{:1462--1463}, hard-zeroed outside
+6000--50\,000~K at \code{:1466}, and enters the \emph{metal} denominator as
+\code{chex(elem,ion,1)\allowbreak *Hden*ionDen(H0)} (\code{:1498--1499}) --- but
+\code{chex(1,\dots)} is never assigned anywhere in the tree, so it keeps the
+zero it was initialized with at \code{:1392}.  Hydrogen's equation is the
+same generic line \code{:1495--1499} evaluated at \code{elem=1, ion=1}, which
+reduces to photoionization plus collisional ionization over
+$\nelec\alpha_{\rm tot}$ and contains no charge transfer term.  Helium does
+carry one against H$^0$ (\code{chex(2,1,:)}, \code{chex(2,2,:)}, set
+\code{:1395--1396}), but one-way, and with \code{deltaE\_k(2,*) = 0} it has no
+reverse rate; the reverse rate is nonzero only for N I and O I, the only two
+entries ever set (\code{deltaE\_k(7,1) = 10863.},
+\code{deltaE\_k(8,1) = 2205.} at \code{:1448--1449}, gated \code{:1475}).  In
+\CMI{}, a search for \code{charge\_transfer} returns no hit above line 501 of
+\code{Ionization\allowbreak State\allowbreak Calculator.cpp}, that is, none inside the H/He solve
+(\code{:649--753}), whose only term beyond photoionization and radiative
+recombination is the helium Lyman-$\alpha$ on-the-spot term \code{ch2}
+(\code{:672--674}, used \code{:712}); \code{Charge\allowbreak Transfer\allowbreak Rates.cpp}:49--52
+and \code{:196--199} even \code{cmac\_error()} on a request for hydrogen with
+itself.  In \Torus{}, \code{get\allowbreak Charge\allowbreak Exchange\allowbreak Recomb} holds data for N IV,
+O II and O III only (\code{photoion\_\allowbreak utils\_\allowbreak mod.F90}:840--868) and
+\code{get\allowbreak Charge\allowbreak Exchange\allowbreak Ion} for N I and O I only (\code{:885--906}); both
+initialize to zero and fall through for every other nuclear charge
+(\code{:838}, \code{:883}), and the hydrogen balance calls those same
+routines with \code{parentIon = grid\%ion(2)} and \code{grid\%ion(1)}
+(\code{photoion\allowbreak AMR\_\allowbreak mod.F90}:6872--6878), which return zero, so hydrogen
+reduces to photoionization over recombination (\code{:6880--6881}).  In
+\Wood{}, \code{ct1.f} is the Kingdon \& Ferland package itself
+(\code{HCTRecom} at \code{:3}, \code{HCTIon} at \code{:37},
+\code{block data ctdata} at \code{:72}, covering $Z = 2$--30) and it is
+called in the metal denominators (O \code{ionize2.f}:136--138, N
+\code{:83--85}), but \code{h0find.f} has no charge transfer argument in its
+interface (\code{:1}), its stated equation set (\code{:6--13}) contains only
+hydrogen photoionization, recombination and the helium 2s--2p resonance term,
+and neither \code{HCTIon} nor \code{HCTRecom} appears in the file.  In
+\MoCHII{}, \code{species\_fractions} adds \code{nHII*cx\_rate(cxi)} and
+\code{nHI*cx\_rate(cxr)} to the metal rates
+(\code{src/species\_\allowbreak mod.f90}:823--827) while \code{solve\_ion\_cell}
+(\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:72--96) has no charge transfer term at all.
+
+Physically this means the same thing in all five: charge is not conserved in
+the hydrogen-plus-metal pair.  Every charge transfer recombination of a metal
+ion that these codes count also ionizes a hydrogen atom, and that hydrogen
+ionization is never entered.  The magnitude in \MoCHII{} is
+\emph{unmeasured}, and should not be quoted as small until it is measured.
+It is expected to be negligible in the fully ionized core, where the hydrogen
+photoionization rate dominates the balance; it should be expected to matter at
+and beyond the ionization front, where $x({\rm H}^0)$ rises and the missing
+term is proportional to it.
+
+On two axes \MoCHII{} is ahead of three of the four chain codes.  The first is
+opacity.  \MoCHII{} attenuates the ionizing field with the metal cross
+sections by default (\code{par\%ion\_metal\_abs = .true.}); \CMI{}, \Torus{}
+and \Wood{} do not.  \CMI{}'s \code{get\_optical\_depth} returns
+$ds\,n\,[\sigma({\rm H^0})x({\rm H^0})+\sigma_{\rm He,corr}x({\rm He^0})]$
+and nothing else (\code{DensityGrid.hpp}:117--140), with the task-based path
+identical (\code{Density\allowbreak SubGrid.hpp}:557--583), while mean-intensity integrals
+are nevertheless accumulated for every ion including the metals
+(\code{DensityGrid.hpp}:162--181).  \Torus{} calls \code{phfit2} exactly
+twice, for H I and He I --- not even He II
+(\code{amr\_mod.F90}:16301--16309) --- and forms
+\code{kappaAbsGas = (kappaH + kappaHe)} (\code{:16311}), which is what sets
+the packet's optical depth in the cell
+(\code{photoion\allowbreak AMR\_\allowbreak mod.F90}:4762, \code{:4741--4743}); its metal cross
+sections (\code{ion\_mod.F90}:172) are consumed only to build
+\code{photoIonCoeff} (\code{photoion\allowbreak AMR\_\allowbreak mod.F90}:6688--6692).  \Wood{}
+carries only $n_{\rm HI}\sigma_{\rm H}+A_{\rm He}n_{\rm HeI}\sigma_{\rm He}$
+in \code{tauint.f}:159--161 and in the sub-cell step-back at \code{:169--171},
+while computing the Verner metal cross sections at every frequency
+(\code{opacset.f}:20--55) and accumulating them into the metal
+photoionization rates in the same loop (\code{tauint.f}:194--216).  In all
+three the metal photoionizations are counted as rates while the photons are
+never removed from the beam: they are sinks that consume no ionizing budget.
+\Mocassin{} and \Cloudy{} do remove them.  \code{addOpacity}
+(\code{ionization\_\allowbreak mod.f90}:349, called \code{:127} from
+\code{ionizationDriver} and driven cell by cell from
+\code{iteration\_\allowbreak mod.f90}:142) loops all metals and all shells
+(\code{:409--411}) into \code{putOpacity} (\code{:430--439}, \code{:476}),
+and that \code{grid\%opacity} is what transport reads
+(\code{photon\_\allowbreak mod.f90}:1390, \code{:1442}); \Cloudy{} does the same through
+\code{opacity\_\allowbreak addtotal.cpp}:284--291 and
+\code{opacity\_\allowbreak add1element.cpp}:41--62 into \code{opac.opacity\_abs[]}, which
+attenuates the beam in \code{rt\_continuum.cpp}:182--197.
+
+The size of that omission was measured for this memo and it is not small.
+Switching \code{par\%ion\_\allowbreak metal\_\allowbreak abs} off at HII40 moves
+$r({\rm He^0}=0.5)$ inward by 0.615~pc: the stages with thresholds between 21
+and 40~eV (Ne I 21.56, S II 23.33, C II 24.38, N II 29.60, S III 34.83,
+O II 35.12~eV) preferentially remove the softest helium-ionizing photons,
+while $\sigma(\HeI{})/\sigma(\HI{})$ rises from 6.1 at 25~eV to 19.9 at
+95~eV.  The response is asymmetric and saturates upward: 0.615~pc for a unit
+of metal opacity removed against 0.103~pc for a unit added.
+
+The second axis is $\nelec$.  \CMI{} and \Wood{} do not count metal electrons
+at all: \code{ne = ntot*(1.-h0\allowbreak +AHe*(1.-he0))}
+(\code{Ionization\allowbreak State\allowbreak Calculator.cpp}:134, identically
+\code{Temperature\allowbreak Calculator.cpp}:275, whose comment at \code{:273--274} says
+``we neglect free electrons coming from ionization of coolants'', the same
+assumption being documented at
+\code{Ionization\allowbreak State\allowbreak Calculator.cpp}:576--586), and
+\code{ne=n*(1.-h0\allowbreak +AHe*(1.-he0))} (\code{ioneng.f}:45, also
+\code{ionize2.f}:54), which \Wood{} states as a deliberate approximation at
+\code{tbal1.f}:39--41.  \Mocassin{} sums the charge-weighted contribution of
+every switched-on element (\code{update\_\allowbreak mod.f90}:1564--1577, written back
+\code{:1592--1594}), with the caveats that ions below a fraction of
+$10^{-10}$ are silently dropped and stages above \code{nstages} cannot
+contribute at all; \Torus{} does the same with weight $Z-N$
+(\code{ion\_mod.F90}:1418--1421) and recomputes it after every ionization
+update (\code{photoion\allowbreak AMR\_\allowbreak mod.F90}:6916, \code{:5941}).  In \Cloudy{},
+$\nelec$ is not an unknown of the matrix either: \code{eden\_sum.cpp}:51--62
+builds \code{dense.EdenTrue} as a diagnostic sum over all 30 elements plus
+deuterium, molecular and grain electrons (\code{:74}, \code{:78}), and the
+electron density actually used changes in exactly one place,
+\code{EdenError()} (\code{conv\_\allowbreak eden\_\allowbreak ioniz.cpp}:271--276), as the residual of
+a van Wijngaarden--Dekker--Brent root find (\code{:44--150}) each of whose
+residuals re-solves the ionization of every element through
+\code{ConvIoniz()} (\code{:283--288}).
+
+\MoCHII{}'s metal contribution to $\nelec$ is optional
+(\code{par\%metal\_ne}, default off), but when it is on it is solved as a
+scalar fixed point rather than evaluated once:
+\code{charge\_\allowbreak neutrality\_\allowbreak ne} (\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:98--123)
+solves
+\begin{equation}
+ \nelec = \nelec({\rm H,He}) + n_{\rm H}\sum_{\rm el} A_{\rm el}
+          \sum_i (i-1)\,f_i(\nelec)
+ \label{eq:metalne}
+\end{equation}
+with the same damped iteration and tolerance as the H/He closure.  The reason
+is recorded at \code{:105--108} and is worth restating, because the cheaper
+choice is wrong for a specific physical reason rather than merely
+inaccurate: evaluating the metal sum once at the H/He-only electron density
+is the $\nelec\to0$ limit beyond the front, where the H/He term vanishes,
+nothing recombines, and every low-ionization-potential metal comes out fully
+ionized.
+
+On one axis \MoCHII{} is behind.  Metal recombination continua are not
+transported --- \code{src/diffuse\_\allowbreak mod.f90} contains no metal channel.
+Measured for this memo they are $0.29\%$ of diffuse channel~2, so the
+approximation is justified, but it is an approximation and belongs in the
+record as one, because two codes here do not make it.  \Mocassin{} builds
+\code{gammaHeavies} in \code{fb\_ff} over \code{do elem = 3, 19}
+(\code{emission\_\allowbreak mod.f90}:474, its own comment at \code{:472--473} noting
+that $Z>19$ is neglected) from the Milne relation with the true subshell
+cross section (\code{:519--521}), folds it into the continuum
+(\code{:126--128}) and into \code{sumDiffuseHI} (\code{:983}) and the
+cumulative diffuse PDF \code{recPDF} (\code{:1175--1196}), which
+\code{new\allowbreak Photon\allowbreak Packet} samples (\code{photon\_\allowbreak mod.f90}:958) and propagates
+(\code{:461--466}).  \Cloudy{} goes further and feeds both continua and lines
+back into the field, where they genuinely re-ionize: metal recombination
+continua are emitted as diffuse radiation from the stored Milne-inverted
+metal cross sections (\code{rt\_diffuse.cpp}:196--270), metal recombination
+Lyman-$\alpha$ and Balmer photons enter the on-the-spot field
+(\code{rt\_ots.cpp}:362--406), both are added into \code{rfield.SummedCon}
+(\code{:588--592}), and \code{SummedCon} is exactly what
+\code{GammaK}/\code{GammaBn} integrate against the cross sections
+(\code{cont\_\allowbreak gammas.cpp}:125, \code{:143}, \code{:409}) to produce
+\code{ionbal.Photo\allowbreak Rate\_\allowbreak Shell} (\code{ion\_photo.cpp}:100--110) --- feedback
+onto hydrogen included.
+
+Finally, eight properties of the reference codes surfaced in this audit that
+change what a comparison against them means, and that a reader using them as
+validation references has to know about:
+
+\begin{itemize}[leftmargin=2em]
+\item \Mocassin{} substitutes \emph{oxygen's} dielectronic recombination rate
+  wherever an element's own rate is missing:
+  \code{if (diRec(elem,ion) == 0.)\allowbreak   diRec(elem,ion) = diRec(8,ion)}
+  (\code{update\_\allowbreak mod.f90}:1648).
+\item \Mocassin{}'s ionization convergence test examines H$^0$, He$^0$ and
+  He$^+$ only (\code{:1598--1604}, \code{limit = 0.01} at \code{:1337}).  No
+  metal ion fraction is ever tested, so a converged \Mocassin{} zone carries
+  no statement at all about its metal ionization.
+\item \Mocassin{} discards its metal line photons in production.  The choice
+  between a line and the continuum is made (\code{photon\_\allowbreak mod.f90}:925), but
+  the line identity is thrown away with \code{nuP = 0} outside \code{lgDebug}
+  (\code{:926--941}) and the packet is dumped into \code{linePackets} and
+  terminated without transport (\code{:468--475}).  The line PDF is built
+  only under \code{lgDebug} (\code{emission\_\allowbreak mod.f90}:1209, metals
+  \code{:1251--1289}), \code{grid\%Jdif} is accumulated only under
+  \code{lgDebug} (\code{photon\_\allowbreak mod.f90}:1491--1493, \code{:1730--1732})
+  with everything otherwise landing in \code{Jste} (\code{:1488--1489},
+  \code{:1727--1728}), and \code{nPhotoDif} enters the ion balance only in
+  the \code{lgDebug} branch (\code{update\_\allowbreak mod.f90}:1489 versus
+  \code{:1495}).  \code{lgDebug} defaults to \code{.false.}
+  (\code{set\_\allowbreak input\_\allowbreak mod.f90}:44).
+\item \Mocassin{} truncates every element at \code{nstages = 7}
+  (\code{set\_\allowbreak input\_\allowbreak mod.f90}:82) while carrying \code{nElements = 30}
+  (\code{constants\_\allowbreak mod.f90}:54), so iron stops at Fe VII.
+\item \Torus{} creates all four of its ``Ar I--IV'' ions with $n = 18$: all
+  four are neutral argon (\code{ion\_mod.F90}:331--340).
+\item \CMI{}'s argon exists only as an enumeration.
+  \code{ElementNames.hpp}:142--151 declares the ion names, no solver
+  references them, and \code{HAS\_ARGON} is defined only under
+  \code{ADDITIONAL\_\allowbreak COOLANTS} (\code{:46--49}).
+\item \Torus{} omits He II from the opacity, as above, so its
+  helium-ionizing continuum is attenuated by neutral helium alone.
+\item \Wood{} runs effectively isothermal for its first four iterations.  The
+  thermal solve is entered only \code{if(iter.ge.5)} (\code{itbal.f}:27--41),
+  and before that \code{ionize2.f}:30 takes the temperature as given, which
+  is the \code{Tconst = 8000.} seed of the shipped deck
+  (\code{input.params}:6, passed at \code{mcionize.f}:115).
+\end{itemize}
 
 \subsection{Electron distributions and secondary processes}
 

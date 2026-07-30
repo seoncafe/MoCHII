@@ -453,6 +453,7 @@ parameter & default & meaning \\
 \code{abund\_Ar/Mg/Fe} & 0 & further registry elements (gas-phase values; Mg/Fe are heavily depleted) \\
 \code{abund\_Si/Cl/Ca} & 0 & five-stage registry elements (gas-phase; Si and especially Ca heavily depleted, Cl nearly undepleted --- Orion-like 3e-6 / 3e-7 / 2e-8); adds [Si\,\textsc{ii}] 34.8\,$\mu$m, Si\,\textsc{iii/iv}, [Cl\,\textsc{ii/iii/iv}] (5518/5538 density pair), Ca\,\textsc{ii}, [Ca\,\textsc{v}] \\
 \code{ion\_metal\_abs} & T & metal photoionization absorption in the band opacity (active with \code{use\_metals}); the only gas opacity in the FUV bins \\
+\code{charge\_exchange} & 'two\_way' & charge exchange $\mathrm{X}^{i+}+\mathrm{H}^+ \leftrightarrow \mathrm{X}^{(i+1)+}+\mathrm{H}^0$ in hydrogen's balance as well as the cascade's, so the charge each reaction moves is conserved in the reacting pair: $n_{\rm HI}(\Gamma_{\rm H}+n_eC_{\rm H}+R_{\rm cx}^{\rm out}) = (\alpha_{\rm H}n_e+R_{\rm cx}^{\rm in})n_{\rm HII}$ with the sums over all 29 active reactions.  'metal\_only' keeps them in the cascade alone (the earlier bookkeeping, which does not conserve charge); it is a reproduction value, not a physics option \\
 \end{longtable}
 }
 {\small

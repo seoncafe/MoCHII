@@ -20,7 +20,8 @@ module ion_balance_mod
 ! which skip the per-leaf work entirely.
 !---------------------------------------------------------------------------
   use define
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_nleaf
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
+                            gas_Te, gas_nleaf
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             sec_dgamma_HI, sec_dgamma_HeI
   use recomb_mod
@@ -28,6 +29,7 @@ module ion_balance_mod
   private
 
   public :: gas_equilibrium_update, solve_ion_cell, charge_neutrality_ne
+  public :: hydrogen_balance_residual, hydrogen_balance_residual_grid
 
 contains
 
@@ -39,9 +41,18 @@ contains
   ! With par%metal_ne and the optional leaf index il, electrons from the
   ! metal cascade join the n_e closure (species_ne; beyond the I-front
   ! they are the only electrons, e.g. n_e ~ n_CII in the PDR zone).
+  !
+  ! With par%charge_exchange = 'two_way' the reactions
+  !     X^i + H^+ -> X^(i+1) + H^0        (rate R_cx_in  per H^+)
+  !     X^(i+1) + H^0 -> X^i + H^+        (rate R_cx_out per H^0)
+  ! enter hydrogen's balance as well as the metal cascade's, so the charge
+  ! they move is conserved in the reacting pair:
+  !     n_HI (Gamma_H + C_H n_e + R_cx_out) = (alpha_H n_e + R_cx_in) n_HII.
+  ! Eliminating n_HII = n_H (1 - x_HI) keeps the closed form; BOTH terms
+  ! appear in the denominator, R_cx_in for the same reason alpha_H n_e does.
   subroutine solve_ion_cell(gH, gHe1, gHe2, nH, T, caseA, &
                             xHI, xHeI, xHeII, ne, il)
-    use species_mod, only : species_ne_prepare, species_ne_cached, n_elements
+    use species_mod, only : species_ne_prepare, species_metal_sums, n_elements
     real(kind=wp), intent(in)    :: gH, gHe1, gHe2, nH, T
     logical,       intent(in)    :: caseA
     real(kind=wp), intent(inout) :: xHI, xHeI, xHeII
@@ -49,16 +60,23 @@ contains
     integer,       intent(in), optional :: il
     real(kind=wp) :: aH, aHe2, aHe3, cH, cHe1, cHe2, yHe
     real(kind=wp) :: ne_old, xHeIII, r1, r2, denH
-    logical :: with_metal_ne
+    real(kind=wp) :: nem, r_cx_in, r_cx_out
+    logical :: with_metal_ne, with_metal_cx
     integer :: it
 
+    !--- the two feedbacks are independent: counting the metal electrons is
+    !--- par%metal_ne, conserving charge in the charge-exchange pair is
+    !--- par%charge_exchange.  Either one needs the (leaf, T) rate cache.
     with_metal_ne = .false.
-    if (present(il)) with_metal_ne = par%metal_ne .and. par%use_metals &
-                                     .and. n_elements > 0
+    with_metal_cx = .false.
+    if (present(il) .and. par%use_metals .and. n_elements > 0) then
+       with_metal_ne = par%metal_ne
+       with_metal_cx = trim(par%charge_exchange) == 'two_way'
+    end if
     !--- T is fixed inside the fixed point: evaluate the metal rate
-    !--- coefficients once (species_ne_cached reduces each iteration
+    !--- coefficients once (species_metal_sums reduces each iteration
     !--- below to multiply-adds).
-    if (with_metal_ne) call species_ne_prepare(il, T)
+    if (with_metal_ne .or. with_metal_cx) call species_ne_prepare(il, T)
 
     yHe = par%He_abund
     if (caseA) then
@@ -71,11 +89,34 @@ contains
     xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
     ne = nH * ((1.0_wp - xHI) + yHe*(xHeII + 2.0_wp*xHeIII))
     ne = max(ne, 1.0e-12_wp*nH)
+    nem = 0.0_wp;  r_cx_in = 0.0_wp;  r_cx_out = 0.0_wp
     do it = 1, 200
        ne_old = ne
-       denH = gH + (cH + aH)*ne
+       !--- the stage densities the two charge-exchange sums need depend on
+       !--- n_HI and n_HII through the charge-exchange terms of the cascade
+       !--- itself, so they are taken from the previous iterate of this fixed
+       !--- point — the same lag the electron sum carries.
+       !--- Domain of validity of that lag: where the charge-exchange terms
+       !--- dominate hydrogen's balance the iteration still converges, but
+       !--- slowly.  Measured at T = 1e4 K, n_H = 100 with the HII20
+       !--- abundances, the exit test below is met after 124 passes at
+       !--- x_HII = 0.18, 239 at 0.10 and 1285 at 0.021, against the 200-pass
+       !--- cap — so a partially neutral cell (x_HII below ~0.1) can leave
+       !--- this loop still moving, with x_HII high by ~8% and a few 1e-3
+       !--- residual in the balance.  Repeated whole-cell solves converge it
+       !--- (the outer gas iteration does exactly that), and
+       !--- hydrogen_balance_residual reports what is left.
+       if (with_metal_ne .or. with_metal_cx) then
+          call species_metal_sums(nH, ne_old, nH*xHI, nH*(1.0_wp - xHI), &
+                                  nem, r_cx_in, r_cx_out)
+          if (.not. with_metal_cx) then
+             r_cx_in  = 0.0_wp
+             r_cx_out = 0.0_wp
+          end if
+       end if
+       denH = gH + (cH + aH)*ne + r_cx_in + r_cx_out
        if (denH > 0.0_wp) then
-          xHI = aH*ne / denH
+          xHI = (aH*ne + r_cx_in) / denH
        else
           xHI = 1.0_wp
        end if
@@ -88,8 +129,7 @@ contains
        xHeII  = xHeI * r1
        xHeIII = xHeII * r2
        ne = nH * ((1.0_wp - xHI) + yHe*(xHeII + 2.0_wp*xHeIII))
-       if (with_metal_ne) &
-          ne = ne + species_ne_cached(nH, ne_old, nH*xHI, nH*(1.0_wp - xHI))
+       if (with_metal_ne) ne = ne + nem
        ne = max(0.5_wp*(ne + ne_old), 1.0e-12_wp*nH)
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
     end do
@@ -139,6 +179,96 @@ contains
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
     end do
   end function charge_neutrality_ne
+
+  !=========================================================================
+  ! Relative residual of hydrogen's ionization balance on the WRITTEN state
+  ! of leaf il, including both charge-exchange terms:
+  !
+  !   eps = | n_HI (Gamma_H + C_H n_e + R_cx_out) - (alpha_H n_e + R_cx_in) n_HII |
+  !         / [ n_HI (Gamma_H + C_H n_e + R_cx_out) ]
+  !
+  ! Inside solve_ion_cell the two sides of every charge-exchange pair are
+  ! formed from the same cached coefficients and the same stage densities, so
+  ! the pair balances by construction there.  What this measures is the state
+  ! actually written out, which differs from the solved one because the H/He
+  ! fractions are under-relaxed toward it (par%ion_relax) while the metal
+  ! stage fractions written alongside are evaluated at the written n_e and T.
+  !
+  ! With par%charge_exchange = 'metal_only' the two R_cx terms are dropped
+  ! here as well, so the residual always measures the equation the run
+  ! actually solves.
+  !
+  ! Domain of validity: the state carries x_HI, so n_HII = n_H (1 - x_HI) has
+  ! the relative precision eps/(1 - x_HI) and the residual cannot resolve
+  ! anything below that.  In a fully neutral leaf 1 - x_HI rounds to zero and
+  ! eps saturates at 1 whatever the physics does; such leaves are excluded
+  ! from the reported maximum and mean by XHII_FLOOR below rather than being
+  ! allowed to set them.
+  !=========================================================================
+  real(kind=wp) function hydrogen_balance_residual(il, T, nH, xHI, ne) result(eps)
+    use species_mod, only : species_ne_prepare, species_metal_sums, n_elements
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, xHI, ne
+    real(kind=wp) :: aH, cH, nHI, nHII, nem, r_cx_in, r_cx_out, loss, gain
+
+    r_cx_in  = 0.0_wp
+    r_cx_out = 0.0_wp
+    if (par%use_metals .and. n_elements > 0 .and. &
+        trim(par%charge_exchange) == 'two_way') then
+       call species_ne_prepare(il, T)
+       call species_metal_sums(nH, ne, nH*xHI, nH*(1.0_wp - xHI), &
+                               nem, r_cx_in, r_cx_out)
+    end if
+    if (trim(par%case_ab) == 'A') then
+       aH = alphaA_HII(T)
+    else
+       aH = alphaB_HII(T)
+    end if
+    cH   = ci_HI(T)
+    nHI  = nH*xHI
+    nHII = nH*(1.0_wp - xHI)
+    loss = nHI*(gamma_HI(il) + sec_dgamma_HI(il) + cH*ne + r_cx_out)
+    gain = (aH*ne + r_cx_in)*nHII
+    eps  = abs(loss - gain) / max(loss, tinest)
+  end function hydrogen_balance_residual
+
+  !=========================================================================
+  ! The same residual over the grid: its maximum over leaves and its
+  ! volume-weighted mean, over the leaves where it resolves anything
+  ! (x_HII above XHII_FLOOR, so n_HII = n_H (1 - x_HI) keeps at least six
+  ! significant digits).  Diagnostic only — it is printed, not acted on.
+  !=========================================================================
+  subroutine hydrogen_balance_residual_grid(eps_max, eps_vol)
+    use mpi
+    use octree_mod, only : leaf_half
+    implicit none
+    real(kind=wp), intent(out) :: eps_max, eps_vol
+    real(kind=wp), parameter :: XHII_FLOOR = 1.0e-10_wp
+    real(kind=wp) :: eps, vol, sum_ev, sum_v
+    integer :: il, ierr
+
+    eps_max = 0.0_wp
+    eps_vol = 0.0_wp
+    !--- the gas state is node-shared and every node's rank 0 holds the same
+    !--- values, so one rank per node evaluates and broadcasts.
+    if (mpar%h_rank == 0) then
+       sum_ev = 0.0_wp
+       sum_v  = 0.0_wp
+       do il = 1, gas_nleaf
+          if (gas_nH(il) <= 0.0_wp) cycle
+          if (1.0_wp - gas_xHI(il) < XHII_FLOOR) cycle
+          eps = hydrogen_balance_residual(il, gas_Te(il), gas_nH(il), &
+                                          gas_xHI(il), gas_ne(il))
+          eps_max = max(eps_max, eps)
+          vol = (2.0_wp*leaf_half(il))**3
+          sum_ev = sum_ev + vol*eps
+          sum_v  = sum_v  + vol
+       end do
+       eps_vol = sum_ev / max(sum_v, tinest)
+    end if
+    call MPI_BCAST(eps_max, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(eps_vol, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+  end subroutine hydrogen_balance_residual_grid
 
   !=========================================================================
   ! Returns both convergence measures (par%conv_crit picks which gates the

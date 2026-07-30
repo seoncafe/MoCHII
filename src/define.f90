@@ -567,7 +567,21 @@ public
      logical            :: ion_metal_abs = .true.
      !--- PDR-zone physics (each defaults off so the recorded gates
      !--- reproduce; turn all three on together with add_fuv for
-     !--- meaningful PDR temperatures):
+     !--- meaningful PDR temperatures).
+     !--- DOMAIN OF VALIDITY of leaving metal_ne and metal_heat off, measured
+     !--- 2026-07-31 on the Lexington benchmarks with only these two switches
+     !--- changed (docs/METAL_COUPLING_PLAN.md, gate G-M2).  Switching both off
+     !--- lowers <T[NpNe]> by 21.3 K (0.26%) at HII40 and 5.8 K (0.084%) at
+     !--- HII20, moves the fronts by at most 0.003 pc and L(Hbeta) by at most
+     !--- 0.07%.  The two separate cleanly and add: metal_heat carries nearly
+     !--- all of it (-21.1 and -5.7 K), metal_ne almost none (-0.2 and -0.1 K),
+     !--- because the metal stages hold about 0.1% of the electrons and
+     !--- <T[NpNe]> is weighted by n_p n_e.  That weighting is exactly why the
+     !--- bound does NOT extend beyond the ionization front: there the metal
+     !--- stages are the only electron source and n_e collapses without
+     !--- metal_ne, so a PDR or neutral-gas run must switch them on.  The
+     !--- published benchmark runs set both .true.
+     !--- (tests/continuous_energy/hii{40,20}_continuous.in).
      !--- metal_ne:    electrons from the metal cascade join the n_e
      !---              closure (the only electrons beyond the I-front);
      !--- metal_heat:  metal photoheating joins the thermal balance
@@ -736,6 +750,18 @@ public
      !--- Tier-1 fits used directly (the n_e -> 0 statistical-equilibrium limit,
      !--- retained to reproduce the earlier gates).  As n_e -> 0 the two coincide.
      character(len=16)  :: cooling_model = 'local_ne'
+     !--- charge exchange with hydrogen, X^i + H^+ <-> X^(i+1) + H^0.  Each
+     !--- reaction moves one unit of charge between a metal and hydrogen, so
+     !--- both partners must see it.  'two_way' (default) puts hydrogen's
+     !--- side into the H balance,
+     !---   n_HI (Gamma_H + C_H n_e + R_cx_out) = (alpha_H n_e + R_cx_in) n_HII,
+     !--- with R_cx_in = sum k_CXI n(X^i) and R_cx_out = sum k_CXR n(X^(i+1))
+     !--- read from the same cached coefficients the metal cascade uses, so
+     !--- charge is conserved in the reacting pair.  'metal_only' keeps the
+     !--- charge exchange in the metal cascade alone, which does not conserve
+     !--- charge; it is retained only to reproduce the recorded gates and the
+     !--- published benchmark numbers, and is NOT a physics option.
+     character(len=16)  :: charge_exchange = 'two_way'
      !--- thermal balance.  solve_te replaces the fixed-Te solve
      !--- with heating = cooling bisection in [te_min, te_max]; convergence
      !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling

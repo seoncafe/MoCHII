@@ -29,7 +29,8 @@ program main
                               heat_HI, heat_HeI, heat_HeII, secion_apply, &
                               run_converged, run_iters, run_final_dx, &
                               run_final_dte, run_field_consistent
-  use ion_balance_mod, only : gas_equilibrium_update
+  use ion_balance_mod, only : gas_equilibrium_update, &
+                              hydrogen_balance_residual_grid
   use thermal_mod,     only : gas_thermal_update
   use cooling_mod,     only : cooling_setup
   use nlevel_cooling_mod, only : nlevel_cooling_report
@@ -47,6 +48,7 @@ program main
   integer(kind=int64) :: ip, n_done, n_step
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol
   real(kind=wp)       :: thermal_t0, thermal_dt
+  real(kind=wp)       :: eps_hmax, eps_hvol
   real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
   logical             :: converged, use_vol, use_sobol
   integer             :: ierr, iter, niter, nd_qmc
@@ -175,6 +177,13 @@ program main
            '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
            ',  vol = ', dx_vol
      end if
+     !--- residual of hydrogen's ionization balance on the written state,
+     !--- including both charge-exchange terms: a reported diagnostic, it
+     !--- does not gate convergence.
+     call hydrogen_balance_residual_grid(eps_hmax, eps_hvol)
+     if (mpar%p_rank == 0) write(6,'(a,2(a,es12.4))') &
+        '                 ', ' max H balance residual = ', eps_hmax, &
+        ',  vol = ', eps_hvol
      call gas_opacity_fill()
      !--- solution-driven I-front re-refinement (one event).
      if (par%refine_front .and. iter == par%refine_iter) then

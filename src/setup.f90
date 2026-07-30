@@ -171,6 +171,13 @@ contains
         'ERROR: par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%charge_exchange) /= 'two_way' .and. &
+      trim(par%charge_exchange) /= 'metal_only') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%charge_exchange must be ''two_way'' (default) or '// &
+        '''metal_only'' (reproduction only).'
+     call MPI_FINALIZE(ierr);  stop
+  endif
   if (trim(par%recomb_model) /= 'badnell_milne' .and. &
       trim(par%recomb_model) /= 'hui_gnedin') then
      if (mpar%p_rank == 0) write(*,'(a)') &

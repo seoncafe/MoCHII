@@ -240,35 +240,71 @@ coefficient obtained from those cross sections through the Milne relation
 that \textsc{Cloudy} uses --- rather than the older compilations still
 carried by \textsc{Mocassin}.
 
-The metal-treatment axis is the clearest algorithmic difference.
-\textsc{Mocassin}, \textsc{M}$^{3}$, \textsc{CMacIonize}, and the 1D codes
-solve a \emph{full network}: the ionization of every element is one coupled
-nonlinear system in which the metal opacity consumes photons from the
-radiation field, the metal electrons enter $\nelec$, and the metal
-photoheating enters the thermal balance, all iterated to self-consistency
-(radiation field $\leftrightarrow$ all ions $\leftrightarrow$ $\nelec$
-$\leftrightarrow$ $T$).  \MoCHII{} instead adopts a \emph{trace-species}
-treatment: because the metals are present at abundances
-$\sim$$10^{-4}$--$10^{-3}$, they are separated as a perturbation on the
-H/He (and dust) skeleton --- the radiation field and $\nelec$ are set by
-H, He, and dust, and each element's ionization cascade is an independent,
-effectively linear chain evaluated on the converged
-$(J_\nu, \nelec, T)$.  The one feedback that is \emph{not} dropped is metal
-line cooling, which enters the thermal balance because the \HII-region
-temperature is itself largely the result of metal cooling
-(Section~\ref{sec:cooldata}).  Where the trace separation genuinely breaks
-down, it is restored selectively by switches (the default is trace, with
-recoupling only where the physics demands it): \code{ion\_metal\_abs} adds
-the metal photoionization opacity to the band (on by default),
-\code{metal\_ne} feeds the metal electrons into the $\nelec$ closure ---
-essential in neutral photodissociation-region gas, where carbon dominates
-the electron budget, and which the calculation of Section~\ref{sec:pdr}
-uses --- and \code{metal\_heat} adds metal photoheating to the thermal
-balance.  The design payoff is that, with each element an independent
-linear chain, adding an ion is a data-file addition rather than a change
-to a coupled solver (the registry of Section~\ref{sec:atomic}), and the
-cell solve stays at the level of closed-form evaluations rather than a
-coupled-network iteration.
+The metal-treatment axis is easy to state wrongly, so we state it from the
+distributed sources.  It is tempting to say that the established codes solve
+one coupled nonlinear system over every element while \MoCHII{} treats the
+metals as a perturbation.  That is not what the codes do.  None of
+\textsc{Mocassin}, \textsc{CMacIonize}, \textsc{Torus}, the code of
+\citet{wood2004}, or even \textsc{Cloudy} assembles the elements into a joint
+system; all five advance one element at a time inside nested outer
+iterations, with $T$ an outer root find in every case.  Four of the five use
+the same nearest-neighbor ratio chain \MoCHII{} uses, adjacent-stage ratios
+$f_{i+1}/f_i$ chained and normalized.  \textsc{Cloudy} does build a matrix,
+but one per element, and needs it because Auger ejection jumps several stages
+at once, which no adjacent-stage chain can represent.  The ratio chain is
+therefore the standard method of the field rather than a \MoCHII{}
+approximation, and these codes differ not in how the stage populations are
+obtained but in which feedbacks are wired in.
+
+On that axis \MoCHII{} is ahead of three of the four Monte Carlo codes.  It
+attenuates the ionizing field with the metal photoionization opacity
+(\code{ion\_metal\_abs}), where \textsc{CMacIonize}, \textsc{Torus}, and
+\citet{wood2004} accumulate metal photoionization rates while never removing
+those photons from the beam, so that a metal photoionization costs the
+radiation field nothing.  That is not a small choice: switching the opacity
+off moves $r(\mathrm{He}^{0}\!=\!0.5)$ inward by 0.615~pc at HII40, because
+the stages with thresholds between 21 and 40~eV preferentially remove the
+softest helium-ionizing photons while $\sigma(\HeI)/\sigma(\HI)$ rises from
+6.1 at 25~eV to 19.9 at 95~eV, so the hardened surviving field is taken up by
+$\mathrm{He}^{0}$ rather than $\mathrm{H}^{0}$.  \MoCHII{} also solves the
+metal contribution to $\nelec$ as a fixed point rather than a single
+evaluation (\code{metal\_ne}), since the stage fractions depend on $\nelec$
+themselves and one evaluation at the H/He-only electron density is the
+$\nelec \to 0$ limit in which nothing recombines; \textsc{CMacIonize} and
+\citet{wood2004} count no metal electrons at all.  \code{metal\_heat} adds
+metal photoheating, which \textsc{Mocassin} includes and those two omit.
+These switches default off so the recorded gates reproduce, but the benchmark
+runs of Section~\ref{sec:hii} enable all of them, so every metal feedback
+\MoCHII{} implements is active in those numbers; the trace separation
+describes the default configuration and the solution method, not the physics
+of the benchmark.
+
+One feedback the other four Monte Carlo codes also omit is charge exchange
+being two-way in the bookkeeping:
+$\mathrm{X}^{i+} + \mathrm{H}^{+} \to \mathrm{X}^{(i+1)+} + \mathrm{H}^{0}$
+recombines the metal and ionizes hydrogen in the same event, so it is a source
+and a sink on both sides, and \textsc{Cloudy} alone puts hydrogen's side into
+hydrogen's own balance.  \MoCHII{} now does too
+(\code{par\%charge\_exchange}, the default); a fixed-state gate holds all 29
+reactions to $6.5\times10^{-16}$ between the two sides.  The correction is
+small here for a structural reason: where the near-resonant
+$\mathrm{O}^{0}/\mathrm{H}^{+}$ pair locks oxygen to hydrogen, the two terms
+cancel identically in hydrogen's balance, so what survives is the departure
+from that lock.  Measured,
+$\langle T[N_{\mathrm{p}}N_{\mathrm{e}}]\rangle$ moves $-1.4$~K at HII40 and
+$-0.1$~K at HII20, and every front by under $0.001$~pc --- 58 and 533 times
+inside the tolerance these runs were converged to, so
+Tables~\ref{tab:wood40} and~\ref{tab:wood20} are not re-baselined on them.
+The same near-cancellation makes the cell iteration marginally stable in
+partially neutral gas, which is recorded with its measured pass counts and
+must be resolved before a photodissociation-region result is quoted.  The one
+remaining absence is metal recombination continua as a diffuse source, worth
+0.29\% of the explicit diffuse channel that dominates the helium budget; it
+and the measurements that size it are planned in
+\code{docs/METAL\_COUPLING\_PLAN.md}, and the full source-level comparison is
+in \code{docs/MoCHII\_code\_comparison.tex}.  What the registry buys is
+unchanged: adding an ion remains a data-file addition rather than a change to
+a coupled solver (Section~\ref{sec:atomic}).
 
 A related but separate axis is the cooling inventory --- which channels a
 code carries at all, since that is what sets the equilibrium temperature.
@@ -297,7 +333,9 @@ it.
 photoionization codes.  ``OTS'' = on-the-spot (case B); ``explicit'' =
 transported diffuse field.  This table compares design, not the breadth
 of local microphysics, on which the 1D codes and \textsc{Mocassin} are
-more complete.\label{tab:compare}}
+more complete.  The two metal rows are read from the distributed sources
+for \MoCHII{}, \textsc{Mocassin}, \textsc{CMacIonize}, and \textsc{Cloudy};
+the \textsc{M}$^{3}$ entries follow its documentation.\label{tab:compare}}
 \tablewidth{0pt}
 \tabletypesize{\footnotesize}
 \tablehead{\colhead{} & \colhead{\MoCHII{}} & \colhead{MOCASSIN} &
@@ -308,7 +346,8 @@ Grid & octree AMR + Cartesian DDA & uniform Cartesian & uniform Cartesian & Voro
 Solution-driven refinement & yes (I-front) & no & no & static AMR & 1D shells \\[2pt]
 Diffuse field & OTS default; explicit MC option & explicit MC & explicit MC & explicit MC & outward-only / OTS \\[2pt]
 Recombination data & Badnell 2023 + Milne $\alpha_1$ & Verner \& Ferland 1996 & MAPPINGS V & Verner / Badnell & Badnell / internal \\[2pt]
-Metal treatment & trace-species registry (data-driven) & full network & full MAPPINGS network & full network & full network \\[2pt]
+Metal ionization solve & ratio chain, one element at a time & ratio chain, one element at a time & MAPPINGS network & ratio chain, one element at a time & matrix, one element at a time (\textsc{Cloudy}) \\[2pt]
+Metal feedbacks wired in & opacity, $\nelec$, photoheating, free-free, line cooling & opacity, $\nelec$, photoheating, line cooling & MAPPINGS set & line cooling only & all, plus two-way charge exchange \\[2pt]
 Dust / PAH & absorption + forward scattering + equilibrium + stochastic + PAH survival & absorption + emission & MAPPINGS grains & absorption + emission & detailed grains/PAH \\[2pt]
 Parallelism & MPI-3 shared memory & MPI & MPI & task-based / MPI & OpenMP / serial \\[2pt]
 Synthetic output & peel-off images, line maps, IR SED & line maps, images & line maps & line maps, images & 1D spectra \\

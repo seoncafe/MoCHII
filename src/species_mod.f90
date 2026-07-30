@@ -8,8 +8,19 @@ module species_mod
 ! parameters, Voronov collisional ionization, Badnell RR + DR of the
 ! recombining ion, and charge exchange with H (first transition).
 !
-! Trace approximation: metals never feed back on n_e or on the ionizing
-! opacity.  After the H/He + thermal state of a cell is known, the cascade
+! Trace approximation, and its three exceptions.  The cascade is evaluated on
+! a known H/He and thermal state rather than solved jointly with it, but the
+! metals are NOT excluded from the ionizing opacity, from n_e, or from
+! hydrogen's own balance: par%ion_metal_abs is on by default and removing it
+! moves the HII40 He front 0.615 pc; par%metal_ne feeds the stage charges into
+! the n_e closure as a fixed point (charge_neutrality_ne); and with
+! par%charge_exchange = 'two_way' the k_CXI and k_CXR terms below enter
+! hydrogen's balance as well as the cascade's, so the charge each reaction
+! moves is conserved in the reacting pair (species_metal_sums,
+! ion_balance_mod::solve_ion_cell; docs/METAL_COUPLING_PLAN.md, Stage M1).
+! An earlier version of this comment claimed metals never feed back on n_e or
+! on the opacity; it is withdrawn.
+! After the H/He + thermal state of a cell is known, the cascade
 !     n_i (Gamma_i + C_i n_e + k_CXI n_HII) =
 !     n_{i+1} (alpha_{i+1} n_e + k_CXR n_HI)
 ! gives the stage fractions as a product chain (same structure as He).
@@ -32,7 +43,8 @@ module species_mod
   public :: metal_cooling, metal_freefree, species_write, species_resize
   public :: species_opacity_add, species_ne, metal_heating
   public :: metal_cooling_H
-  public :: species_ne_prepare, species_ne_cached
+  public :: species_ne_prepare, species_ne_cached, species_metal_sums
+  public :: species_cx_coefficients
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
   public :: species_shadow_setup, species_shadow_reset, species_shadow_score
   public :: species_shadow_score_exact
@@ -108,7 +120,7 @@ module species_mod
   !--- rate cache for the n_e fixed point at one (leaf, T): all the
   !--- transition coefficients are functions of T (and the leaf Gammas)
   !--- only, so species_ne_prepare evaluates them ONCE and
-  !--- species_ne_cached reduces each fixed-point iteration to
+  !--- species_metal_sums reduces each fixed-point iteration to
   !--- multiply-adds.  Without this, solve_ion_cell with par%metal_ne
   !--- re-evaluated every Badnell/Voronov/CX fit up to 200 times per
   !--- trial temperature (the 185-minute L6 PDR run).
@@ -646,16 +658,51 @@ implicit none
   end subroutine species_ne_prepare
 
   !=========================================================================
-  ! Metal electrons from the cached rates (same product chain and the
-  ! same arithmetic order as species_fractions, so the results are
-  ! identical to the uncached path).
+  ! The three sums over the metal cascade that hydrogen's balance and the
+  ! n_e closure need, from ONE walk of the stage chain (same product chain
+  ! and the same arithmetic order as species_fractions, so the results are
+  ! identical to the uncached path):
+  !
+  !   nem      = sum_el n_H A_el sum_i (i-1) f_i          [cm^-3]
+  !              electrons released by the cascade (par%metal_ne);
+  !   r_cx_in  = sum_el sum_it k_CXI(el,it) n(X_el^it)    [s^-1]
+  !              rate at which one H^+ is neutralized by charge exchange,
+  !              X^it + H^+ -> X^(it+1) + H^0;
+  !   r_cx_out = sum_el sum_it k_CXR(el,it) n(X_el^(it+1)) [s^-1]
+  !              rate at which one H^0 is ionized by the reverse reaction,
+  !              X^(it+1) + H^0 -> X^it + H^+.
+  !
+  ! The two charge-exchange sums are hydrogen's side of the reactions whose
+  ! metal side the chain above already carries (the k_CXI n_HII and
+  ! k_CXR n_HI terms in rion/rrec).  Both sides read the same cached
+  ! coefficient here, so the pair conserves charge by construction rather
+  ! than by a tolerance (par%charge_exchange = 'two_way',
+  ! ion_balance_mod::solve_ion_cell).
+  !
+  ! cx_in_stage / cx_out_stage optionally return the same two sums resolved
+  ! by reaction, cx_in_stage(it,ie) = k_CXI(it,ie) n(X_el^it) and
+  ! cx_out_stage(it,ie) = k_CXR(it,ie) n(X_el^(it+1)) [s^-1]: which reaction
+  ! moves the charge, and the form the conservation gate compares against the
+  ! cascade's own side (tests/charge_exchange).
   !=========================================================================
-  real(kind=wp) function species_ne_cached(nH, ne, nHI, nHII) result(nem)
+  subroutine species_metal_sums(nH, ne, nHI, nHII, nem, r_cx_in, r_cx_out, &
+                                cx_in_stage, cx_out_stage)
     implicit none
-    real(kind=wp), intent(in) :: nH, ne, nHI, nHII
-    real(kind=wp) :: r(MAX_ST), rion, rrec, s, prod, fr
+    real(kind=wp), intent(in)  :: nH, ne, nHI, nHII
+    real(kind=wp), intent(out) :: nem, r_cx_in, r_cx_out
+    real(kind=wp), intent(out), optional :: cx_in_stage(MAX_ST, MAX_EL)
+    real(kind=wp), intent(out), optional :: cx_out_stage(MAX_ST, MAX_EL)
+    real(kind=wp) :: r(MAX_ST), rion, rrec, s, prod, fr, nX
     integer :: ie, it, i, ns
+    logical :: resolved
     nem = 0.0_wp
+    r_cx_in  = 0.0_wp
+    r_cx_out = 0.0_wp
+    resolved = present(cx_in_stage) .and. present(cx_out_stage)
+    if (resolved) then
+       cx_in_stage  = 0.0_wp
+       cx_out_stage = 0.0_wp
+    end if
     do ie = 1, n_elements
        ns = elems(ie)%nstage
        do it = 1, ns-1
@@ -670,12 +717,59 @@ implicit none
           prod = prod*r(i)
           s = s + prod
        end do
+       nX = elems(ie)%abund*nH
        fr = 1.0_wp/s
+       !--- fr is now the stage-1 fraction; the CXI reaction of transition 1
+       !--- ionizes that stage.
+       if (ns > 1) then
+          r_cx_in = r_cx_in + cch_cxi(1,ie)*nX*fr
+          if (resolved) cx_in_stage(1,ie) = cch_cxi(1,ie)*nX*fr
+       end if
        do i = 2, ns
-          fr = fr*r(i-1)
+          fr = fr*r(i-1)                          ! fraction of stage i
           nem = nem + elems(ie)%abund*nH*fr*real(i-1, wp)
+          !--- stage i is the recombining partner of transition i-1 and the
+          !--- ionized partner of transition i.
+          r_cx_out = r_cx_out + cch_cxr(i-1,ie)*nX*fr
+          if (i < ns) r_cx_in = r_cx_in + cch_cxi(i,ie)*nX*fr
+          if (resolved) then
+             cx_out_stage(i-1,ie) = cch_cxr(i-1,ie)*nX*fr
+             if (i < ns) cx_in_stage(i,ie) = cch_cxi(i,ie)*nX*fr
+          end if
        end do
     end do
+  end subroutine species_metal_sums
+
+  !=========================================================================
+  ! Charge-exchange rate coefficients [cm^3 s^-1] of transition it of element
+  ! ie at temperature T, evaluated from the registry data:
+  !   k_cxi  for  X^it + H^+ -> X^(it+1) + H^0,
+  !   k_cxr  for  X^(it+1) + H^0 -> X^it + H^+,
+  ! zero where the registry carries no determination for that direction.
+  !=========================================================================
+  subroutine species_cx_coefficients(ie, it, T, k_cxi, k_cxr)
+    implicit none
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(in)  :: T
+    real(kind=wp), intent(out) :: k_cxi, k_cxr
+    k_cxi = 0.0_wp
+    k_cxr = 0.0_wp
+    if (ie < 1 .or. ie > n_elements) return
+    if (it < 1 .or. it > elems(ie)%nstage-1) return
+    if (elems(ie)%cxi_form(it) > 0) &
+       k_cxi = cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+    if (elems(ie)%cxr_form(it) > 0) &
+       k_cxr = cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+  end subroutine species_cx_coefficients
+
+  !=========================================================================
+  ! Metal electrons alone, for the n_e closure of charge_neutrality_ne.
+  !=========================================================================
+  real(kind=wp) function species_ne_cached(nH, ne, nHI, nHII) result(nem)
+    implicit none
+    real(kind=wp), intent(in) :: nH, ne, nHI, nHII
+    real(kind=wp) :: r_cx_in, r_cx_out
+    call species_metal_sums(nH, ne, nHI, nHII, nem, r_cx_in, r_cx_out)
   end function species_ne_cached
 
   !=========================================================================
