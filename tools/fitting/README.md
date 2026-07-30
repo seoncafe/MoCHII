@@ -13,6 +13,7 @@ at runtime.
 | `fit_cooling.py` | `data/atomic/cooling_<ion>.txt` | Tier-1 cooling fits Lambda(T) = T^-1/2 sum A_i exp(-T_i/T), 1e3-1e5 K, in the n_e -> 0 limit of statistical equilibrium; for the G2 thermal loop |
 | `fit_nlevel.py` | `data/atomic/nlevel_<ion>.txt` | Tier-2 n-level data: level energies/weights, A-values, Upsilon(T) as Chebyshev fits in Burgess-Tully scaled space; for output-time diagnostics |
 | `make_cooling_table.py` | `data/atomic/cooling_fit_parameters.txt` | collects the Tier-1 coefficient files into one listing |
+| `fit_alpha1_milne.py` | `src/recomb_mod.f90` `alpha1_*` coefficients | ground-level alpha_1 from the Milne relation applied to the transport photoionization cross sections (the same integral the diffuse ground continua are sampled from), fitted to the Mao & Kaastra (2016) form over 1e3-1e5 K; agrees with Cloudy c25.00's level-resolved values to <= 0.4%. Gate `tests/milne/check_alpha1.f90` |
 | `verify_nlevel_pyneb.py` | (report) | end-to-end check: reads the fitted files, solves statistical equilibrium as the Fortran will, compares diagnostic ratios against PyNeb |
 
 ## Current ion set (2026-07-26)

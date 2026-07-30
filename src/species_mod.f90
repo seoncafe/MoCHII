@@ -530,9 +530,13 @@ implicit none
   !=========================================================================
   ! Metal photoionization absorption added to kap_ion (par%ion_metal_abs):
   ! kap(inu,il) += n_H abund Sum_i frac_i sigma_VFKY96,i(E_inu) per code
-  ! length.  Negligible next to H/He above 13.6 eV; with par%add_fuv it is
-  ! the only GAS opacity in the FUV bins (Mg I 7.65, C I 11.26, S I 10.36,
-  ! Fe I 7.90 eV thresholds).  Stage fractions come from the current state
+  ! length.  Small next to H/He above 13.6 eV, but NOT negligible for the
+  ! He front: removing it moves r(He^0 = 0.5) inward by 0.615 pc at HII40 by
+  ! softening the He-ionizing field (see the par%ion_metal_abs comment in
+  ! define.f90 for the mechanism and the measured derivatives).  With
+  ! par%add_fuv it is also the only GAS opacity in the FUV bins (Mg I 7.65,
+  ! C I 11.26, S I 10.36, Fe I 7.90 eV thresholds).
+  ! Stage fractions come from the current state
   ! (same product chain as the cooling and the output), so the opacity
   ! feedback iterates them exactly like x_HI.  Caller: gas_opacity_fill on
   ! h_rank 0 (kap lives in node-shared memory).

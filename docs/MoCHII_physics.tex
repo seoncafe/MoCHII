@@ -34,9 +34,9 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8211$~K at HII40 and 7025~K at
+the MOCASSIN Lexington benchmarks ($T_e = 8169$~K at HII40 and 6925~K at
 HII20 with the density-suppressed cooling default, matching a current
-\textsc{Cloudy} c25.00 run to 0.7~K and 1.7\%; the zero-density limit
+\textsc{Cloudy} c25.00 run to $0.50\%$ and $0.22\%$; the zero-density limit
 gives 7894 and 6376~K, and both modern codes sit above the 2000-era
 published ranges); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
@@ -367,34 +367,42 @@ $0.43\%$ (He\,\textsc{ii}), and $\sigma_{\rm HeI} = 7.43$~Mb (VFKY96).
 The recombination coefficients in the ionization balance are chosen by
 \code{par\%recomb\_model}.  The default \code{'badnell\_mao'} takes the
 total (case A) radiative recombination $\alpha_A$ from the same Badnell
-(2023) RR fit used for the metals [Eq.~(\ref{eq:badnellrr})], the
-ground-level ($n{=}1$) direct-capture rate $\alpha_1$ from the
-level-resolved parameterization of Mao \& Kaastra (2016, A\&A 587, A84),
-and forms case B by removing the ground term,
-$\alpha_B = \alpha_A - \alpha_1$.  The Mao \& Kaastra level fit is
-($T_{\rm eV} = k_B T$; $a_0$ in $10^{-10}\,\cmc$)
+(2023) RR fit used for the metals [Eq.~(\ref{eq:badnellrr})], obtains the
+ground-level ($n{=}1$) direct-capture rate $\alpha_1$ from the Milne
+relation applied to the \emph{same} photoionization cross sections the
+transport absorbs with [Eq.~(\ref{eq:milne-alpha1})], and forms case B by
+removing the ground term, $\alpha_B = \alpha_A - \alpha_1$.  At run time
+$\alpha_1$ is evaluated from the seven-coefficient functional form of
+Mao \& Kaastra (2016, A\&A 587, A84) ($T_{\rm eV} = k_B T$; $a_0$ in
+$10^{-10}\,\cmc$),
 \begin{equation}
   \alpha_1(T) = a_0\,10^{-10}\,
   T_{\rm eV}^{-b_0 - c_0\ln T_{\rm eV}}\,
-  \frac{1 + a_2\,T_{\rm eV}^{-b_2}}{1 + a_1\,T_{\rm eV}^{-b_1}};
+  \frac{1 + a_2\,T_{\rm eV}^{-b_2}}{1 + a_1\,T_{\rm eV}^{-b_1}},
   \label{eq:mao}
 \end{equation}
-for the H-like ions (H\,\textsc{ii}$\to$H\,\textsc{i},
-He\,\textsc{iii}$\to$He\,\textsc{ii}) it is derived from the same exact
-hydrogenic cross sections as Eq.~(\ref{eq:sighyd}) under detailed
-balance, so $\alpha_1$ is exact.  He\,\textsc{ii}$\to$He\,\textsc{i} adds
-the Badnell three-term dielectronic sum (negligible below
+but the coefficients are fitted to that Milne integral instead of being
+taken from Mao \& Kaastra; \S\ref{sec:diffuse} lists them with their fit
+residuals and gives the measurement that forced the replacement.  The
+namelist value \code{'badnell\_mao'} and the routine name \code{rr\_mao}
+in \code{recomb\_mod} therefore record the functional form and the
+history, not the origin of the numbers.  Because $\alpha_1$ and the
+ground-continuum emissivity of \S\ref{sec:diffuse} are now one integral
+over one cross section, the case A/B split and the diffuse packet count
+cannot drift apart.  He\,\textsc{ii}$\to$He\,\textsc{i} adds
+the Badnell three-term dielectronic sum to $\alpha_A$ (negligible below
 $\sim5{\times}10^4$~K); H\,\textsc{ii} and He\,\textsc{iii} are bare
 nuclei with no DR.  The coefficients at $10^4$~K
-($10^{-13}\,\cmc$) are
+($10^{-13}\,\cmc$), with the independently level-resolved Cloudy c25.00
+values in parentheses, are
 \begin{center}\small
 \begin{tabular}{lrrr}
 \toprule
 reaction & $\alpha_A$ & $\alpha_1$ & $\alpha_B$ \\
 \midrule
-H\,\textsc{ii}$\to$H\,\textsc{i}     & 4.19 & 1.59 & 2.61 \\
-He\,\textsc{ii}$\to$He\,\textsc{i}   & 4.37 & 1.57 & 2.81 \\
-He\,\textsc{iii}$\to$He\,\textsc{ii} & 21.9 & 6.54 & 15.4 \\
+H\,\textsc{ii}$\to$H\,\textsc{i}     & 4.19 (4.16) & 1.579 (1.584) & 2.61 \\
+He\,\textsc{ii}$\to$He\,\textsc{i}   & 4.37 (4.36) & 1.609 (1.603) & 2.76 \\
+He\,\textsc{iii}$\to$He\,\textsc{ii} & 21.9 (21.8) & 6.512 (6.515) & 15.4 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -414,8 +422,8 @@ for H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}):
 He\,\textsc{iii} hydrogenic ($Z{=}2$).  These are retained so the
 recorded gates reproduce; they agree with the default to $<0.6\%$ for
 H\,\textsc{ii} and He\,\textsc{iii}, but give
-He\,\textsc{ii}$\to$He\,\textsc{i} $7\%$ lower ($\alpha_B = 2.62$ vs
-$2.81{\times}10^{-13}\,\cmc$).
+He\,\textsc{ii}$\to$He\,\textsc{i} $5\%$ lower ($\alpha_B = 2.62$ vs
+$2.76{\times}10^{-13}\,\cmc$).
 Recombination \emph{cooling} uses the companion fits
 \begin{equation}
   \beta_B^{\rm HII} = 3.435{\times}10^{-30}\,T\,\lambda^{1.970}
@@ -436,11 +444,13 @@ H\,\textsc{i}/He\,\textsc{ii}; MOCASSIN fits them with VFKY96 (agreeing
 with the exact curve to $<1\%$), and Cloudy resolves them from its
 iso-electronic H-like/He-like model atoms.  For the recombination that
 closes the ionization balance (Table~\ref{tab:codecmp}), MoCHII's default
-(Badnell RR $+$ Mao \& Kaastra $\alpha_1$) and Cloudy (Badnell,
-level-resolved) share the modern Strathclyde data; MOCASSIN uses the
+takes $\alpha_A$ from the modern Strathclyde (Badnell) data and splits off
+$\alpha_1$ with the Milne relation, which is how Cloudy resolves its
+H-like and He-like recombination level by level; MOCASSIN uses the
 older Verner \& Ferland (1996) total; EXHALE, a planetary-atmosphere
-code, adopted the same Badnell RR $+$ Mao \& Kaastra construction as its
-default on 2026-07-17 (Hui \& Gnedin remains a legacy option).  MOCASSIN
+code, adopted the Badnell RR $+$ Mao \& Kaastra $\alpha_1$ construction as
+its default on 2026-07-17, before the $\alpha_1$ correction of
+\S\ref{sec:diffuse} (Hui \& Gnedin remains a legacy option).  MOCASSIN
 and Cloudy always work in
 case A and transport the diffuse ground-recombination field explicitly,
 whereas MoCHII defaults to case B (on-the-spot) with an optional explicit
@@ -457,24 +467,135 @@ apply).}
 code & source & H\,\textsc{ii}$\to$\textsc{i}
      & He\,\textsc{ii}$\to$\textsc{i} & He\,\textsc{iii}$\to$\textsc{ii} \\
 \midrule
-MoCHII (default)          & Badnell RR $+$ Mao\,\&\,Kaastra $\alpha_1$ & 4.19 / 2.61 & 4.37 / 2.81 & 21.9 / 15.4 \\
+MoCHII (default)          & Badnell RR $+$ Milne $\alpha_1$            & 4.19 / 2.61 & 4.37 / 2.76 & 21.9 / 15.4 \\
 MoCHII (\code{hui\_gnedin})& Hui \& Gnedin 1997                        & 4.30 / 2.59 & 4.23 / 2.62 & 22.3 / 15.5 \\
 EXHALE (default)           & Badnell RR $+$ Mao\,\&\,Kaastra $\alpha_1$ & -- / 2.61   & -- / 2.81   & -- / 15.4   \\
 EXHALE (\code{legacy\_hhe\_rates}) & Hui \& Gnedin 1997 (case B)         & -- / 2.59   & -- / 2.62   & -- / 15.5   \\
 MOCASSIN                   & Verner \& Ferland 1996 (case A)           & 4.19        & 4.84        & 21.9        \\
-Cloudy                     & Badnell RR $+$ DR (case A)                & 4.19        & 4.37        & 21.9        \\
+Cloudy c25.00              & level-resolved Milne, own $\sigma_{\rm pi}$ (case A) & 4.16 & 4.36 & 21.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
 The H\,\textsc{ii} and He\,\textsc{iii} rates agree across all four codes
 to within a few percent.  The one substantive difference is
-He\,\textsc{ii}$\to$He\,\textsc{i}: MoCHII's new default ($4.37$) and
-Cloudy's Badnell value coincide, MOCASSIN's Verner \& Ferland value
-($4.84$) is the high outlier, and the earlier Hui \& Gnedin ($4.23$) was
-low.  Moving MoCHII onto the modern Badnell value therefore raises its
-He recombination by $\sim7\%$, in the direction that reduces the He
-over-ionization seen relative to converged MOCASSIN in the HII40
-benchmark (\S\ref{sec:validation} discusses that residual).
+He\,\textsc{ii}$\to$He\,\textsc{i}: MoCHII's Badnell total ($4.37$) and
+Cloudy's explicit sum over levels ($4.36$) agree to $0.3\%$, MOCASSIN's
+Verner \& Ferland value ($4.84$) is the high outlier, and the earlier
+Hui \& Gnedin ($4.23$) was low.  Moving MoCHII onto the modern Badnell
+value therefore raises its case-B He recombination by $\sim5\%$, in the
+direction that reduces the He over-ionization seen relative to converged
+MOCASSIN in the HII40 benchmark (\S\ref{sec:validation} discusses that
+residual).  Because that $11\%$ spread in a single coefficient is the
+largest code-to-code difference anywhere in the H/He data, \S\ref{sec:henetwork}
+takes it apart.
+
+\subsection{The helium ionization network, code by code}
+\label{sec:henetwork}
+Neutral helium is the one species in the H/He inventory on which the
+photoionization codes disagree at more than the percent level.  Reading
+each code's own data rather than its published description gives, for
+$\alpha_A$(He\,\textsc{i}) at $10^4$~K,
+\begin{center}\small
+\begin{tabular}{@{}llrr@{}}
+\toprule
+code & how $\alpha_A$(He\,\textsc{i}) is obtained
+     & $10^{-13}\,\cmc$ & vs.\ Cloudy \\
+\midrule
+Cloudy c25.00 & level-by-level Milne from its own $\sigma_{\rm pi}$,
+                total cached & 4.3583 & --- \\
+MoCHII        & Badnell RR total $+$ DR & 4.3719 & $+0.3\%$ \\
+Wood \code{ionize} / CMacIonize
+              & sum of the four BSS99 \emph{effective} coefficients
+              & 4.2630 & $-2.2\%$ \\
+MOCASSIN      & Verner \& Ferland 1996 total fit & 4.8394 & $+11.0\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The MOCASSIN entry is decoded from \code{data/radrec.dat}, replicating the
+read order of \code{update\_mod.f90} lines 1707--1735; the decode is
+validated on the two channels whose answer is known independently, giving
+H\,\textsc{i} $4.1923$ against Cloudy's $4.1642{\times}10^{-13}$ ($+0.7\%$)
+and He\,\textsc{ii} $2.1880$ against $2.1817{\times}10^{-12}$ ($+0.3\%$).
+
+\paragraph{The spread is not the extent of the cascade sum.}  A natural
+first reading of an $11\%$ spread is that the codes stop the recombination
+cascade at different levels.  None of them does.  Three treatments are in
+play and all three are complete: Cloudy sums explicitly over resolved
+levels; MoCHII and MOCASSIN use totals over all $n$ (Badnell, VF96); Wood
+and CMacIonize use \emph{effective} coefficients, in which the cascades
+from higher levels are already folded into the $n = 2$ terms.  MoCHII's
+Badnell total agrees with Cloudy's explicit level sum to $0.3\%$, which is
+what a truncation on either side would break.  (The 20-level list in
+Cloudy's \code{source/sanity\_check.cpp} is a unit test of threshold cross
+sections, not the extent of its recombination sum.)
+
+The control that settles it is the electron count:
+\begin{center}\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+species & electrons & code-to-code spread in $\alpha_A$ \\
+\midrule
+H\,\textsc{i}   & 1 (hydrogenic) & $0.7\%$ \\
+He\,\textsc{ii} & 1 (hydrogenic) & $0.3\%$ \\
+He\,\textsc{i}  & \textbf{2}     & $\mathbf{11}$--$\mathbf{13\%}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The one-electron species have an exact analytic solution, so there is
+nothing for two calculations to disagree about, and they do not; the
+two-electron one has no closed form and carries screening and the
+singlet/triplet structure, and it spreads by $11$--$13\%$.  The disagreement
+is therefore in the atomic data for a two-electron atom, not in how far
+anybody sums.
+
+\paragraph{Three of the four cluster.}  Within He\,\textsc{i} the values are
+not scattered but split three-to-one: Cloudy's level sum $4.3583$, Badnell
+$4.3719$ and BSS99 $4.2630{\times}10^{-13}\,\cmc$ all lie within $2.5\%$ of
+each other, and Verner \& Ferland (1996) alone sits at
+$4.8394{\times}10^{-13}$.  MOCASSIN applies its \code{radRecFit} uniformly
+with no special case for H or He
+(\code{source/update\_mod.f90:1636--1639}, whose own comment names
+``H-like, He-like, Li-like, Na-like --- Verner \& Ferland, 1996, ApJS, 103,
+467''), and adds dielectronic recombination only for
+$Z_{\rm elem} \ge 3$, so its He\,\textsc{i} rate is the VF96 radiative
+value alone.  Offered as reasoning rather than as a verified claim: VF96's
+He-like fits lean on hydrogenic scaling for the excited levels, and $Z = 2$
+is where that approximation is worst, since neutral helium is exactly where
+screening and the singlet/triplet splitting matter most.
+
+\paragraph{A caution for the MOCASSIN regression suite.}  MOCASSIN's
+11-case suite is used here as a three-dimensional validation reference.
+Every helium comparison against it inherits a known $+11\%$ in
+$\alpha_A$(He\,\textsc{i}), and that difference has been traced to VF96
+by the first-principles Cloudy determination above, so it should be
+subtracted before a disagreement in a helium ionization front or a helium
+line intensity is attributed to transport or geometry.  The same
+comparison across the metal registry, where no such independent
+determination is available, is in \S\ref{sec:recaudit}.
+
+\paragraph{Excited He\,\textsc{i} levels are not a hidden channel.}  What
+Cloudy's resolved He\,\textsc{i} model atom has and an effective treatment
+does not is a population in the $n = 2$ terms that can itself be ionized.
+MoCHII cannot photoionize those levels at all: the band floor is
+\code{par\%eion\_min} $= 13.598$~eV while every excited He\,\textsc{i}
+level has an ionization potential below it ($2^3$S 4.767, $2^1$S 3.971,
+$2^3$P 3.623, $2^1$P 3.369~eV).  The size of what is missed is bounded by
+the metastable population, since $2^1$S decays by two-photon emission at
+$51.3\,{\rm s^{-1}}$ and is left $10^7$ times less populated than $2^3$S:
+with $n(2^3{\rm S})/n({\rm He^0}) = 6.2{\times}10^{-5}$ at $r = 3$~pc,
+$Q({>}4.767~{\rm eV})/Q({>}24.587~{\rm eV}) = 33.8$ for a 40-kK blackbody
+and Cloudy's own $2^3$S threshold cross section of
+$5.48{\times}10^{-18}\,{\rm cm^2}$, the extra ionization is
+$0.2$--$0.6\%$, and collisional ionization out of $2^3$S adds a comparable
+${\sim}0.6\%$.
+
+Taken together with the front sensitivity measured in
+\S\ref{sec:diffuse} ($0.80$~pc per unit fractional change in the
+He\,\textsc{i} recombination rate), the $11$--$13\%$ code spread is worth
+$0.09$~pc --- half the HII40 front residual against Cloudy --- but MoCHII
+itself lies within $0.3\%$ of Cloudy, so that lever is not available to
+MoCHII: it measures how much of a helium front comparison between two
+arbitrary codes can be recombination data alone.
 
 \subsection{Collisional ionization (Voronov 1997)}
 \begin{equation}
@@ -526,17 +647,145 @@ CHIANTI~11 still carries the Abdel-Naby et al.\ (2012) DR, whose
 $\sim$$10^4$-K resonance is stronger, so the 2023 refit lowers the
 total $\mathrm{Si}^+ + e \to \mathrm{Si}^0$ recombination to $0.48\times$
 the CHIANTI value at $10^4$~K.  Ions Badnell does not tabulate (the low
-Ar/Fe/Cl/Ca stages, confirmed absent at every $M$) fall back to the
-CHIANTI files.
-Where CHIANTI carries no Badnell DR (Ar\,\textsc{ii},
-Ar\,\textsc{iii}), the \code{.drparams} type-2 entries are the Shull \&
+Ar/Fe/Cl/Ca stages, confirmed absent at every $M$) are taken from the
+CHIANTI files instead.
+Where CHIANTI carries no Badnell DR (Ar\,\textsc{ii}, Ar\,\textsc{iii},
+Cl\,\textsc{ii}, Ca\,\textsc{ii}, Ca\,\textsc{iv}, Ca\,\textsc{v}), the
+\code{.drparams} type-2 entries are the Shull \&
 Van Steenberg (1982) form
 $\alpha_{\rm DR} = A\,T^{-3/2} e^{-T_0/T}(1 + B\,e^{-T_1/T})$, written
 as \code{DR2} lines and supported by the same reader (negligible at
 nebular temperatures; kept for completeness).  One further CHIANTI RR
-type appears with iron: the Fe\,\textsc{ii} \code{.rrparams} is a
-type-3 power law, written as \code{RR2} lines and evaluated as
-$\alpha_{\rm RR} = A\,(T/10^4\,{\rm K})^{-\eta}$.
+type appears with iron and the higher calcium stages: the
+Fe\,\textsc{ii}--\textsc{iv}, Ca\,\textsc{iv} and Ca\,\textsc{v}
+\code{.rrparams} are type-3 power laws, written as \code{RR2} lines and
+evaluated as $\alpha_{\rm RR} = A\,(T/10^4\,{\rm K})^{-\eta}$.
+Section~\ref{sec:recaudit} audits all of this entry by entry.
+
+\subsection{Recombination data across the registry: an audit}
+\label{sec:recaudit}
+The $\alpha_1$ source-mixing defect of \S\ref{sec:diffuse} was found in the
+H/He channels, and it prompted a sweep of every recombination coefficient the
+code carries --- 32 registry entries over 11 elements, plus the hardcoded H/He
+channels.  Three questions were put to them: is each coefficient the one its
+provenance header claims, is the functional form the best available for that
+ion, and how far does the answer depend on which data set is used.
+
+\paragraph{Transcription: no errors.}  Of the 32 registry entries, 22 take
+their coefficients from the Badnell tables, and all 22 reproduce
+\code{data/atomic/badnell\_\{rr,dr\}.dat} at $10^4$~K to a ratio of $1.0000$.
+The key is fixed by the registry convention: \code{TRANSITION} $i$ of element
+$Z$ is the recombination of the ion of charge $i$, so the Badnell row is
+$(Z,\ N = Z - i,\ M = 1)$.  MoCHII's hardcoded H\,\textsc{i} coefficients
+($8.318{\times}10^{-11}$, $0.7472$, $2.965$, $7.001{\times}10^{5}$) are exactly
+the $Z = 1$, $N = 0$ row of the same table.  There is no transcription error
+anywhere in the registry, and no coefficient traceable to the wrong ion.
+
+\paragraph{The older forms cannot be migrated, and should not be.}  Badnell's
+tabulation covers $N \le 15$ (through the Al-like sequence) plus $N = 18$
+(Ar-like) for $Z \ge 20$.  Every use of \code{RR2} or \code{DR2} in the
+registry falls at a $(Z, N)$ outside that coverage.  Where Badnell has nothing,
+\code{tools/fitting/make\_element\_data.py} takes CHIANTI v11.0.2 and writes
+\emph{exactly the functional form CHIANTI declares}: \code{rrparams} types 1
+and 2 are the Badnell form and become \code{RR}, type 3 is the power law and
+becomes \code{RR2}; \code{drparams} type 1 becomes \code{DR}, and type 2, the
+Shull \& Van Steenberg (1982) form, becomes \code{DR2}.  Checked against the
+CHIANTI file of the recombining ion, entry by entry:
+\begin{center}\small
+\begin{tabular}{@{}llccc@{}}
+\toprule
+registry entry & recombining ion & $N$ & Badnell & CHIANTI
+  \code{rr}/\code{dr} type $\to$ form \\
+\midrule
+Ar 1        & Ar\,\textsc{ii}    & 17 & absent  & 2 / 2 $\to$ \code{RR} $+$ \code{DR2} \\
+Ar 2        & Ar\,\textsc{iii}   & 16 & absent  & 1 / 2 $\to$ \code{RR} $+$ \code{DR2} \\
+Ar 3        & Ar\,\textsc{iv}    & 15 & covered & 2 / 1 $\to$ \code{RR} $+$ \code{DR}  \\
+Cl 1        & Cl\,\textsc{ii}    & 16 & absent  & 1 / 2 $\to$ \code{RR} $+$ \code{DR2} \\
+Ca 1        & Ca\,\textsc{ii}    & 19 & absent  & 1 / 2 $\to$ \code{RR} $+$ \code{DR2} \\
+Ca 2        & Ca\,\textsc{iii}   & 18 & covered & 2 / 1 $\to$ \code{RR} $+$ \code{DR}  \\
+Ca 3        & Ca\,\textsc{iv}    & 17 & absent  & 3 / 2 $\to$ \code{RR2} $+$ \code{DR2} \\
+Ca 4        & Ca\,\textsc{v}     & 16 & absent  & 3 / 2 $\to$ \code{RR2} $+$ \code{DR2} \\
+Fe 1, 2, 3  & Fe\,\textsc{ii}--\textsc{iv} & 25, 24, 23 & absent
+  & 3 / 1 $\to$ \code{RR2} $+$ \code{DR} \\
+\bottomrule
+\end{tabular}
+\end{center}
+Ar\,\textsc{iv} and Ca\,\textsc{iii} are the controls: Badnell covers $N = 15$,
+and $N = 18$ for $Z \ge 20$, and the registry duly uses \code{RR} $+$
+\code{DR} at both.  So the Shull \& Van Steenberg form is not a stale choice
+made in preference to Badnell --- it is what CHIANTI itself still ships for
+those ions.  There is nothing to migrate, and the registry already uses the
+best source available at every element and stage.  A suggestion recorded
+earlier, to move the \code{RR2} and \code{DR2} entries onto Badnell, is
+therefore withdrawn on both counts: Badnell has no row for them, and CHIANTI's
+current data for them is in those forms.
+
+\paragraph{Code to code: variance between data sets, not an error bar on
+MoCHII.}  What transcription cannot settle is which data set is right.
+Comparing radiative recombination only --- dielectronic recombination is
+excluded on both sides, because MOCASSIN adds it separately and keeping it on
+one side alone would compare unlike quantities --- MoCHII's Badnell/CHIANTI
+values against the Verner \& Ferland (1996) fits MOCASSIN uses, at $10^4$~K:
+\begin{center}\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+recombination forming & MoCHII / VF96 \\
+\midrule
+C\,\textsc{ii}, C\,\textsc{iii}, N\,\textsc{ii}, Ne\,\textsc{ii}
+  & $0.999$--$1.016$ \\
+N\,\textsc{i}                   & 0.971 \\
+Si\,\textsc{iv} (Na-like)       & 0.932 \\
+Ne\,\textsc{i}                  & 0.898 \\
+C\,\textsc{i}                   & 0.861 \\
+O\,\textsc{i}                   & 0.837 \\
+Mg\,\textsc{ii} (Na-like)       & 0.791 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Eleven ions: seven within $10\%$, ten within $20\%$, median $0.971$.  The
+spread is concentrated in the rates that form \emph{neutral atoms}, which is
+where He\,\textsc{i} sits as well, at $11\%$ (\S\ref{sec:henetwork}).
+
+What that table is has to be stated precisely.  It is the variance between two
+data sets, \emph{not} a measured error in MoCHII, and for the metals there is
+no third arbiter available here: Cloudy ships \code{data/badnell\_rr.dat} and
+\code{badnell\_dr.dat} md5-identical to MoCHII's copies and evaluates them with
+\code{RR\_Badnell\_rate\_coef} and \code{DR\_Badnell\_rate\_coef} in
+\code{source/ion\_recomb.cpp}, so Cloudy and MoCHII agree on metal
+recombination by construction and Cloudy cannot adjudicate.  With only two
+determinations in play, which one is right for C\,\textsc{i}, O\,\textsc{i},
+Ne\,\textsc{i} or Mg\,\textsc{ii} is undetermined.
+
+He\,\textsc{i} is the one exception, and there MoCHII is demonstrably right.
+Cloudy does \emph{not} use Badnell for the He-like and H-like sequences; it
+derives them level by level from its own photoionization cross sections through
+the Milne relation, which is an independent first-principles determination.
+Against it, Badnell (MoCHII) is $+0.3\%$ and VF96 (MOCASSIN) is $+11.0\%$
+(\S\ref{sec:henetwork}), so for He\,\textsc{i} the spread is attributable to
+VF96.  One may reason by analogy that the metal neutrals behave the same way
+--- Badnell (2006) is the later and more careful calculation, VF96 (1996) leans
+on simplified treatments of many-electron systems, and He\,\textsc{i} is the
+case where that was actually demonstrated --- but that is inference, not
+measurement.  Settling it needs an independent determination for each ion:
+R-matrix values for C\,\textsc{i}, O\,\textsc{i} and Ne\,\textsc{i}
+recombination, or CHIANTI totals that do not derive from Badnell.
+
+An earlier phrasing, ``a $10$--$20\%$ uncertainty in MoCHII's
+neutral-forming recombination rates'', is withdrawn as imprecise: it reads a
+spread between two data sets as an error bar on one of them.  The two accurate
+statements are that MoCHII's He\,\textsc{i} rate agrees with an independent
+first-principles calculation to $0.3\%$ while the VF96 set MOCASSIN uses is
+$11\%$ high (measured), and that for the metal neutrals Badnell and VF96 differ
+by $10$--$16\%$ with no third source in this configuration able to say which is
+right (a code-to-code spread).
+
+\paragraph{What the audit establishes, and what it does not.}  It found no
+defect in MoCHII's recombination data: no transcription error, no form that a
+better source could replace, and no coefficient attached to the wrong ion.
+That is not the same statement as ``the data are accurate''.  For H and He an
+independent determination exists and MoCHII matches it to $0.3$--$0.7\%$; for
+the metals no arbiter is available in this configuration, so the verdict there
+is the absence of a defect found, not accuracy established.
 
 \subsection{Charge exchange with hydrogen}
 \label{sec:cx}
@@ -1197,6 +1446,114 @@ with metal $\Gamma_i$ computed once per iteration from the same band
 tally.  Adding an ion is one entry in the data generators plus its
 cooling and $n$-level files.
 
+\subsection{Metal opacity in the He-ionizing window}
+\label{sec:metalop}
+``Trace'' names the \emph{data} treatment, not a switched-off feedback.  The
+founding plan lists metals feeding back on $n_e$ and on the opacity as a
+non-goal, but the production inputs run with \code{par\%metal\_ne},
+\code{par\%ion\_metal\_abs} and \code{par\%metal\_heat} all true, so both
+feedbacks are active: \code{species\_opacity\_add} sums over \emph{all}
+active stages with their VFKY96 cross sections and the self-consistent stage
+fractions, and the sum is iterated together with the opacity it changes.
+The cross sections themselves are not in question.  For the eight ions that
+carry the He-ionizing window --- C\,\textsc{i}--\textsc{iii},
+N\,\textsc{ii}, O\,\textsc{ii}, Ne\,\textsc{i}, S\,\textsc{ii},
+S\,\textsc{iii} --- MoCHII reproduces Verner's own \code{phfit2.f} to
+$10^{-6}$ relative, the single-precision round-off of \code{phfit2} itself.
+
+What is genuinely absent is metal recombination continua as a diffuse
+\emph{source}: the diffuse field has exactly four channels
+(\code{dif\_ch(4, nleaf)}) and all four are H/He.  Summing the metal
+ground-state recombination continua whose photons lie above 24.587~eV
+(C\,\textsc{iv}, N\,\textsc{iii}, N\,\textsc{iv}, O\,\textsc{iii},
+O\,\textsc{iv}, Ne\,\textsc{iii}, Ne\,\textsc{iv}, S\,\textsc{iii},
+S\,\textsc{iv}) gives $0.29\%$ of the He\,\textsc{i} ground-continuum
+channel, about $0.001$~pc of front position.  Metals as secondary-ionization
+absorbers are absent as well, but \code{par\%use\_sec\_ion} is off in the
+benchmarks.
+
+\paragraph{The measured lever.}  Scaling the summed metal cross section on
+the converged HII40 model (68 ranks, same Sobol seed, $0.01$-pc shell
+diagnostic) gives
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+variant & $r({\rm He^0}{=}0.5)$ [pc] & $\Delta r$ & pc per unit fraction \\
+\midrule
+production                 & 4.11970 & ---      & ---   \\
+metal $\sigma \times 0.70$ & 4.04764 & $-0.07206$ & 0.240 \\
+metal $\sigma \times 1.30$ & 4.15063 & $+0.03093$ & 0.103 \\
+metal absorption off       & 3.50470 & $-0.61500$ & 0.615 \\
+metals off entirely        & 1.93335 & $-2.18635$ & (also removes all metal
+  cooling; $T_e$ 8162 $\to$ 18681~K) \\
+\bottomrule
+\end{tabular}
+\end{center}
+The response is strongly asymmetric and saturating: removing metal opacity
+costs $0.615$~pc per unit while adding it gains only $0.103$~pc per unit.
+Extrapolating the upward branch, closing the $0.178$~pc Cloudy residual of
+\S\ref{sec:diffuse} would take $+180\%$ metal opacity ($\times 2.8$), and the
+saturation means still more.  That is not available, and it retires the
+metal opacity as a single-parameter explanation.
+
+The prediction recorded before these runs was ``metal opacity $\times 1.30$
+moves $r({\rm He^0}{=}0.5)$ outward, $\times 0.70$ inward, of order
+$0.1$--$0.2$~pc''.  The \emph{sign} was right both ways; the
+\emph{magnitude} was wrong by factors of $1.5$--$6$, because the prediction
+extrapolated the on/off bound of $0.615$~pc as if the response were
+symmetric.  An on/off bound measures what removal costs and says little
+about what addition could gain.  The companion statement that ``a ${\sim}30\%$
+error in the metal opacity would be worth ${\sim}0.18$~pc'' is accordingly
+withdrawn: $30\%$ is worth $0.031$--$0.072$~pc.
+
+\paragraph{Mechanism: spectral hardening, not cooling.}  The metal stages
+with thresholds inside $21$--$40$~eV (Ne\,\textsc{i} 21.56,
+S\,\textsc{ii} 23.33, C\,\textsc{ii} 24.38, N\,\textsc{ii} 29.60,
+S\,\textsc{iii} 34.83, O\,\textsc{ii} 35.12~eV) preferentially remove the
+\emph{softest} He-ionizing photons, and
+$\sigma({\rm He\,\textsc{i}})/\sigma({\rm H\,\textsc{i}})$ rises steeply
+with energy --- $6.1$ at 25~eV, $9.0$ at 35, $13.9$ at 55, $19.9$ at
+95~eV.  The hardened surviving field is therefore taken up by He$^0$ rather
+than H$^0$ and the He$^+$ zone extends; remove the metal opacity and the
+field stays soft, H$^0$ takes a larger share, and the zone collapses.  The
+alternative readings are excluded by the same runs: between production and
+\code{ion\_metal\_abs = .false.}\ the hydrogen structure and the mean
+temperature barely move ($r({\rm H^0}{=}0.1) = 4.61633$ vs.\ $4.61551$~pc;
+$T_e$ 8162 vs.\ 8183~K), so the $0.615$~pc is neither a thermal effect nor a
+change in the hydrogen solution.
+
+\paragraph{What Cloudy has here that MoCHII does not.}  Cloudy's base is the
+same Verner \code{phfit}.  Its
+\code{opacity\_\allowbreak createall.cpp} then adds
+channels MoCHII has no equivalent for: N$^+$ excited-level photoionization
+(Henry 1970), O\,\textsc{i} valence replaced wholesale by \code{ofit} when
+PHFIT96 is in use, O\,\textsc{i} $^1$S, O$^{2+}$ $^1$D and $^1$S,
+photoionization into excited states of O$^+$, and a Mg$^+$ excited level,
+several of them fitted to Opacity Project data.  So Cloudy photoionizes
+metals out of excited levels and MoCHII only out of the ground level.  As
+opacity these are small: the excited-level populations are
+$10^{-5}$--$10^{-4}$ of the ground, so the O$^{2+}$ $^1$D opacity is of order
+$10^{-4}$ of the O$^+$ ground opacity.
+
+An independent Opacity Project comparison is possible for C, N and O
+through the TOPbase tables carried by \code{sirocco}.  Photon-weighted with
+a 40-kK blackbody over $24.587$--$54.4$~eV, OP/VFKY96 is $0.946$
+(C\,\textsc{ii}), $0.978$ (N\,\textsc{ii}) and $0.863$ (O\,\textsc{ii}) ---
+OP is $2$--$14\%$ \emph{lower}.  With the measured upward derivative that is
+$-0.005$ to $-0.03$~pc, the wrong direction for the residual.  Ne and S are
+absent from that table and were not checked.
+
+\paragraph{A justification that had to be retracted in the code.}  Two
+comments --- at the \code{ion\_metal\_abs} declaration in \code{define.f90}
+and above \code{species\_opacity\_add} --- used to justify the metal opacity
+as ``negligible next to H/He above 13.6~eV''.  The measurement above
+contradicts that, and both now carry the measured derivatives instead: the
+opacity is small in \emph{magnitude} but not in \emph{effect}, because it
+acts on the spectral shape in the band where He$^0$ and H$^0$ compete.  An
+on/off statement is the form such a justification has to take here, since
+the response is asymmetric and a single number in either direction
+misstates it.
+
 \subsection{Explicit diffuse LyC field and packet sampling}
 \label{sec:diffuse}
 Case B on the spot is replaced by case A rates plus explicit emission of
@@ -1240,47 +1597,178 @@ so the spectrum and the emission rate are not independent assumptions.
 Equation~(\ref{eq:milne-alpha1}) reproduces
 $\alpha_{1s}({\rm H\,\textsc{i}},10^4~{\rm K})=1.579\times10^{-13}$
 cm$^3$\,s$^{-1}$ against the tabulated $1.58\times10^{-13}$.  The code
-reports it at start-up against the $\alpha_A-\alpha_B$ that sets the packet
-count; the two are independent data and are never rescaled into agreement.
-They agree to $0.5$--$1.3\%$ for H\,\textsc{i} and $0.4\%$ for
-He\,\textsc{ii}, but differ by up to $3.4\%$ for He\,\textsc{i}.
+reports that integral at start-up against the $\alpha_A-\alpha_B$ that sets
+the packet count and rescales neither side.  Since the correction described
+next, the largest disagreement over the three channels is $0.01\%$.  It was
+$3.44\%$ before, all of it in He\,\textsc{i}, and that number is what
+exposed the defect.
 
-\paragraph{Which side of the He\,\textsc{i} cross-check is the outlier.}
-The disagreement is not an implementation error on the cross-section side.
-MoCHII's \code{sigma\_HeI} reproduces Verner's own \code{phfit2.f} to a ratio
-of $1.00000$ at every energy over $24.6$--$105$~eV, and its threshold value,
-$7.436$~Mb, sits $0.5\%$ above the measured $7.40\pm0.07$~Mb of Samson et
-al.\ (1994) --- inside the experimental uncertainty, so the normalization is
-right and any disagreement would have to lie in the energy dependence.  Nor
-is the comparison between unlike quantities: \code{recomb\_mod} forms
-$\alpha_B = \alpha_A - \alpha_1$ from Eq.~(\ref{eq:mao}), so the ``rates''
-side of the cross-check \emph{is} $\alpha_1$(He\,\textsc{i}) itself, and the
-$2$--$3.4\%$ separates two determinations of one number.  A third,
-independent determination decides between them: Benjamin, Skillman \& Smits
-(1999) with J.~S.\ Mathis, as carried by K.~Wood's \code{ionize}, give
-$\alpha_1({\rm He\,\textsc{i}}) = 1.54{\times}10^{-13}(T_4)^{-0.486}$
-$\cmc$.
-\begin{center}
-\begin{tabular}{lrrr}
+\paragraph{The $\alpha_1$ source-mixing defect.}  \code{recomb\_mod} took
+$\alpha_A$ from the Badnell total, $\alpha_1$ from the \emph{level-resolved}
+Mao \& Kaastra fit, and then defined $\alpha_B = \alpha_A - \alpha_1$.  That
+subtraction crosses two unrelated determinations.  Nothing in the
+construction forces the Mao $n{=}1$ value to be the ground term of the
+Badnell total it is subtracted from, and whatever separates them lands
+entirely in $\alpha_B$ --- and, through $\alpha_1$, in the diffuse packet
+count as well.
+
+The cross-section side is not the error.  MoCHII's \code{sigma\_HeI}
+reproduces Verner's own \code{phfit2.f} to a ratio of $1.00000$ at every
+energy over $24.6$--$105$~eV, and its threshold value, $7.436$~Mb, sits
+$0.5\%$ above the measured $7.40\pm0.07$~Mb of Samson et al.\ (1994),
+inside the experimental uncertainty.  Nor is the start-up comparison between
+unlike quantities: because $\alpha_B = \alpha_A - \alpha_1$, the ``rates''
+side of it \emph{is} $\alpha_1$(He\,\textsc{i}) itself, so the $3.44\%$
+separated two determinations of one number.
+
+\paragraph{Cloudy settles which side is right.}  Cloudy c25.00 derives its
+H-like and He-like recombination level by level from its \emph{own}
+photoionization cross sections through the exact Milne relation
+(\code{source/iso\_radiative\_recomb.cpp}), caching the result in
+\code{data/h\_iso\_recomb.dat} and \code{data/he\_iso\_recomb.dat}.  In those
+files row 0 of each element is the ground level and the last row is the
+total --- verified on hydrogen, where row 0 is $1.5840{\times}10^{-13}$ and
+the last row $4.1642{\times}10^{-13}$ against the known
+$\alpha_{1s} = 1.58{\times}10^{-13}$ and
+$\alpha_A = 4.18{\times}10^{-13}\,\cmc$.  At $10^4$~K, in
+$10^{-13}\,\cmc$:
+\begin{center}\small
+\begin{tabular}{@{}lrrrrr@{}}
 \toprule
-$T$ & BSS99 $+$ JSM & Mao \& Kaastra & Milne integral, Verner $\sigma$ \\
+& \multicolumn{2}{c}{$\alpha_A$} & \multicolumn{3}{c}{$\alpha_1$} \\
+\cmidrule(r){2-3}\cmidrule(l){4-6}
+channel & MoCHII & Cloudy & Mao \& Kaastra & Milne integral & Cloudy \\
 \midrule
-$5000$~K       & 2.157 & 2.184 ($+1.3\%$) & 2.259 ($+4.8\%$) \\
-$10^4$~K       & 1.540 & 1.565 ($+1.6\%$) & 1.609 ($+4.5\%$) \\
-$2{\times}10^4$~K & 1.100 & 1.128 ($+2.6\%$) & 1.151 ($+4.7\%$) \\
+H\,\textsc{i}   & 4.1933 & 4.1642 & 1.5873          & 1.5790 & 1.5840 \\
+He\,\textsc{i}  & 4.3719 & 4.3583 & \textbf{1.5650} & 1.6086 & 1.6032 \\
+He\,\textsc{ii} & 21.895 & 21.817 & 6.5366          & 6.5116 & 6.5145 \\
 \bottomrule
 \end{tabular}
 \end{center}
-In $10^{-13}\,\cmc$, percentages against the BSS99 column.  The two
-recombination determinations cluster within $2.6\%$ of each other while the
-Milne integral sits $4.5$--$4.8\%$ above both, so \emph{the Milne integral is
-the outlier} --- and He\,\textsc{i} is the only one of the three ground
-continua that is not hydrogenic, the two that are agreeing to
-$0.5$--$1.3\%$ and $0.4\%$.  The code reports the mismatch at start-up and
-rescales neither side, which is the correct handling: it is an inconsistency
-between two independent atomic data sets, inherited by every code that pairs
-the Verner cross sections with recombination fits, not a defect in either
-implementation.
+Badnell's totals are accurate to $0.3$--$0.7\%$ on all three channels, and
+the Mao $n{=}1$ values to $0.2$--$0.3\%$ for H\,\textsc{i} and
+He\,\textsc{ii} --- but He\,\textsc{i} is $2.38\%$ low, and the subtraction
+propagates that into $\alpha_B$(He\,\textsc{i}) as $+1.88\%$.  MoCHII's own
+Milne integral matches Cloudy to $0.3\%$, $0.34\%$ and $0.04\%$.  The Milne
+relation is exact, Cloudy applies it to a He$^0$ ground cross section that
+agrees with Verner's to the $0.4\%$ implied by the $\alpha_1$ agreement, and
+so \emph{the Milne route is the correct one and the level-resolved fit is
+the low side}.
+
+\paragraph{An earlier reading of the same numbers, withdrawn.}  This
+document previously concluded the opposite --- that the Milne integral was
+the outlier --- from the third determination available at the time,
+Benjamin, Skillman \& Smits (1999) with J.~S.\ Mathis as carried by
+K.~Wood's \code{ionize},
+$\alpha_1({\rm He\,\textsc{i}}) = 1.54{\times}10^{-13}(T_4)^{-0.486}$
+$\cmc$:
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+$T$ & BSS99 $+$ JSM & Mao \& Kaastra & Milne integral & Cloudy c25.00 \\
+\midrule
+$5000$~K       & 2.157 & 2.184 ($+1.3\%$) & 2.259 ($+4.8\%$) & --- \\
+$10^4$~K       & 1.540 & 1.565 ($+1.6\%$) & 1.609 ($+4.5\%$) & 1.603 ($+4.1\%$) \\
+$2{\times}10^4$~K & 1.100 & 1.128 ($+2.6\%$) & 1.151 ($+4.7\%$) & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+In $10^{-13}\,\cmc$, percentages against the BSS99 column.  The arithmetic
+was right --- the Milne integral does sit $4.5$--$4.8\%$ above BSS99 and
+$2.8\%$ above Mao while the two fits cluster within $2.6\%$ of each other
+--- but the inference was a majority vote taken on the mutual closeness of
+two fits, which is not evidence that either reproduces the cross sections in
+use.  Cloudy, computing the same quantity level by level from its own cross
+sections, lands within $0.34\%$ of the Milne integral.  The earlier
+conclusion is withdrawn.
+
+\paragraph{The correction.}  \code{tools/fitting/fit\_alpha1\_milne.py}
+evaluates Eq.~(\ref{eq:milne-alpha1}) on the cross sections the transport
+actually uses --- exact hydrogenic for H\,\textsc{i} and He\,\textsc{ii}
+(\code{sigma\_hydrogenic}, $Z = 1$ and 2; note that \code{sigma\_HI} in
+\code{src/photo\_xsec.f90} is the exact hydrogenic form, not VFKY96) and
+VFKY96 for He\,\textsc{i} --- at 241 temperatures over $10^3$--$10^5$~K, and
+refits the same seven coefficients of Eq.~(\ref{eq:mao}), so that no Fortran
+structure changes:
+\begin{center}\small
+\begin{tabular}{@{}lp{112mm}@{}}
+\toprule
+function & $(a_0,\,b_0,\,c_0,\,a_1,\,b_1,\,a_2,\,b_2)$ \\
+\midrule
+\code{alpha1\_HII}   & $1.87007{\times}10^{-2}$, $1.29077$,
+  $-2.17465{\times}10^{-3}$, $1.29189{\times}10^{1}$,
+  $8.05060{\times}10^{-1}$, $8.44399{\times}10^{-2}$,
+  $5.93940{\times}10^{-4}$ \\
+\code{alpha1\_HeII}  & $3.26862{\times}10^{-3}$, $6.97361{\times}10^{-1}$,
+  $3.14907{\times}10^{-4}$, $5.76341{\times}10^{1}$, $1.18534$,
+  $2.58417{\times}10^{1}$, $9.90134{\times}10^{-1}$ \\
+\code{alpha1\_HeIII} & $2.61525{\times}10^{-1}$, $1.39527$,
+  $-3.22079{\times}10^{-4}$, $6.40708{\times}10^{1}$,
+  $8.97582{\times}10^{-1}$, $5.01551{\times}10^{-1}$,
+  $1.21533{\times}10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The largest $|{\rm fit}/{\rm Milne}-1|$ is $0.019\%$ (H\,\textsc{i}),
+$0.001\%$ (He\,\textsc{i}) and $0.006\%$ (He\,\textsc{ii}) over
+$10^3$--$10^5$~K, and $0.0075\%$, $0.0004\%$, $0.0021\%$ over the production
+range $3{\times}10^3$--$3{\times}10^4$~K, so the functional form is not the
+limiting approximation.  At $10^4$~K the fitted $\alpha_1$ is $1.5791$,
+$1.6086$ and $6.5117{\times}10^{-13}\,\cmc$: within $0.35\%$ of Cloudy on
+all three channels, with He\,\textsc{i} corrected from $-2.38\%$ to
+$+0.34\%$.  The code's own cross-check confirms it, \code{milne\_setup}
+reporting a largest $\alpha_1$ disagreement of $3.44\%$ before and $0.01\%$
+after.
+
+The gate is \code{tests/milne/check\_alpha1.f90}, wired into
+\code{tests/milne/run\_check.sh}.  It re-implements the Milne quadrature
+independently from \code{photo\_xsec}, checks the three channels at 81
+temperatures over $10^3$--$10^5$~K to $10^{-3}$, checks
+$\alpha_1 < \alpha_A$ everywhere (largest $\alpha_1/\alpha_A$ $0.560$,
+$0.496$, $0.445$), and checks all three against the hardcoded Cloudy c25.00
+values to $1\%$.  Reinstating the old Mao He\,\textsc{i} coefficients makes
+it fail on both counts ($3.886{\times}10^{-2}$ from the quadrature, $2.383\%$
+from Cloudy) and it passes again after reverting.
+
+\paragraph{Effect on the benchmarks, graded against the prediction.}  What
+was recorded before the runs: ``$\alpha_1$(He\,\textsc{i}) rises $2.4\%$, so
+channel 2 emits more; $\alpha_B$(He\,\textsc{i}) falls $1.9\%$, so there is
+less case-B recombination.  Both push the front outward, toward Cloudy, by
+of order $0.015$--$0.02$~pc.''  Measured on the paired HII40/HII20
+production runs (68 ranks, same Sobol seed, converged in 38 and 27
+iterations as before):
+\begin{center}\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & HII40 & HII20 \\
+\midrule
+$\Delta r({\rm He^0}{=}0.5)$ & $+0.00811$~pc & $+0.00210$~pc \\
+Cloudy residual & $-0.18561 \to -0.17750$~pc & --- \\
+$\Delta L({\rm H}\beta)$ & $-0.3713\%$ & $-0.4159\%$ \\
+mean $T_e(\xHI < 0.95)$ & $9053.4 \to 9051.7$~K & $8522.3 \to 8528.7$~K \\
+\bottomrule
+\end{tabular}
+\end{center}
+The \emph{sign} was right, outward and toward Cloudy on both benchmarks.
+The \emph{magnitude} was about half the low end of the predicted range,
+$+0.0081$ against $0.015$--$0.02$~pc, so the prediction was roughly a factor
+two high.  \code{tests/continuous\_energy/check\_hii\_production.py} passes
+on both, with energy closure $1.5{\times}10^{-16}$ and $0$.  The published
+benchmark quantities move by less than the width of the published spread:
+$\langle T[N_pN_e]\rangle$ from 8162 to 8169~K at HII40 and 6917 to 6925~K
+at HII20, $T_{\rm inner}$ from 7535 to 7536 and 6936 to 6938~K, and $R_{\rm
+out}$ from $8.89$ to $8.88{\times}10^{18}$~cm at HII20 with
+$1.44{\times}10^{19}$~cm unchanged at HII40.
+
+$L({\rm H}\beta)$ moves the \emph{wrong} way.  It falls $0.37$--$0.42\%$
+($1.94 \to 1.93{\times}10^{37}$ and $4.70 \to 4.68{\times}10^{36}\,{\rm
+erg\,s^{-1}}$), taking MoCHII from about $3\%$ below the published
+$2.01$--$2.10{\times}10^{37}$ at HII40 to slightly further below.  The
+likely route is channel 1: $\alpha_1$(H\,\textsc{i}) drops $0.52\%$ from the
+Mao value to the Milne one, so the H\,\textsc{i} ground continuum recycles
+marginally fewer H-ionizing photons.  This is not an argument against the
+change --- the acceptance criterion is physical correctness, and an exact
+relation was being violated --- but it is recorded rather than buried.
 
 Two legacy options remain.  \code{'exponential'} is the historical
 near-threshold approximation
@@ -1341,34 +1829,46 @@ shape, its branch weights and the fate of its strongest line, together
 account for $1.7\%$ of the gap and with the wrong sign.
 
 \paragraph{Bounding the remaining candidates.}  The quantity to be explained
-is $r({\rm He^0}=0.5) = 4.11970$~pc against Cloudy c25.00's $4.30531$~pc,
-i.e.\ $-0.18561$~pc.  The front's sensitivity to the diffuse field is
+is $r({\rm He^0}=0.5) = 4.12781$~pc against Cloudy c25.00's $4.30531$~pc,
+i.e.\ $-0.17750$~pc after the $\alpha_1$ correction above.  The sensitivity
+runs below were measured against the pre-correction production point,
+$4.11970$~pc; the $0.008$~pc between the two baselines changes no lever, and
+the raw front positions are quoted as measured.  The front's sensitivity to
+the diffuse field is
 calibrated two ways from the 584~\AA{} measurement above: differentially
 (channel 4 lost $8.87\%$ of its energy, is $17.6\%$ of the diffuse field, and
 moved the front $0.00363$~pc) and by switching that channel off entirely
 ($17.6\%$ of the field, $0.103$~pc), giving $0.233$ and $0.585$~pc per unit
 fractional change in the total diffuse band luminosity.  Two further
 sensitivity runs (HII40, 68 ranks, same Sobol stream, 38 iterations) scale
-the He\,\textsc{i} atomic data by $3\%$, the size of the entire spread among
-its published determinations: reducing $\sigma_{\rm pi}$(He\,\textsc{i})
+the He\,\textsc{i} atomic data by $3\%$: reducing
+$\sigma_{\rm pi}$(He\,\textsc{i})
 moves the front $+0.00799$~pc and reducing the He\,\textsc{i} recombination
 rate moves it $+0.02410$~pc.  Every candidate then has a number attached to
 it, and every number is too small:
 \begin{center}\small
 \begin{tabular}{@{}lll@{}}
 \toprule
-axis & bound measured & to reach $0.18$~pc \\
+axis & bound measured & to reach $0.178$~pc \\
 \midrule
 what the diffuse field emits & four corrections, net $-0.00306$~pc
   & wrong sign \\
 explicit transport vs.\ on-the-spot & 4.11970 to 4.18159~pc
   & the whole range is $0.062$~pc \\
 total diffuse band luminosity & $0.233$--$0.585$~pc per unit fraction
-  & $31$--$77\%$ \\
+  & $30$--$76\%$ \\
 $\sigma_{\rm pi}$(He\,\textsc{i}) & $+0.00799$~pc per $-3\%$ ($0.27$~pc/unit)
   & ${\sim}70\%$ \\
 $\alpha$(He\,\textsc{i}) & $+0.02410$~pc per $-3\%$ ($0.80$~pc/unit)
   & ${\sim}23\%$ \\
+$\alpha_A$, $\alpha_1$, $\alpha_B$(He\,\textsc{i})
+  & $0.3\%$, $0.34\%$, $1.9\%$ from Cloudy (\S\ref{sec:henetwork})
+  & already there; code spread is $11\%$ \\
+metal opacity & $0.103$~pc/unit upward, $0.615$ downward
+  (\S\ref{sec:metalop}) & $+180\%$, and saturating \\
+metal recombination continua & $0.29\%$ of channel 2 & ${\sim}0.001$~pc \\
+He\,\textsc{i} excited-level ionization & $0.2$--$0.6\%$ extra, and below the
+  band floor & structurally absent \\
 dust & \code{dust\_model='none'} in the benchmark & excluded by construction \\
 source photon budget & $Q$ ratios $1.00005$ and $1.00003$ & $14\%$ in
   $Q({\rm He^0})$ \\
@@ -1390,6 +1890,39 @@ $4.6081{\times}10^{48}$, ratios $1.00005$ and $1.00003$.  Cloudy resolves the
 front with 40 zones between 4.0 and 4.6~pc, median width $0.0106$~pc and
 maximum $0.039$~pc, so the reference position is not a resolution artifact
 either.
+
+\paragraph{The He-ionizing photon budget.}  Where the sensitivity lives is
+visible in the budget itself.  Integrated over the He$^+$ zone of the
+converged HII40 model:
+\begin{center}\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+HII40 & s$^{-1}$ \\
+\midrule
+stellar $Q({>}24.587$~eV) & $4.6082{\times}10^{48}$ \\
+diffuse He\,\textsc{i} ground continuum, recycled & $1.6135{\times}10^{48}$ \\
+total He-ionizing supply & $6.2217{\times}10^{48}$ \\
+He$^0$ photoionizations $=$ case-A recombinations & $4.7008{\times}10^{48}$ \\
+absorbed by H$^0$ or metals, or escaped
+  & $1.5210{\times}10^{48} = 24.4\%$ of the supply \\
+\bottomrule
+\end{tabular}
+\end{center}
+Nearly a quarter of the He-ionizing supply is lost to absorbers other than
+He$^0$, and halving that loss fraction alone would move the front
+$0.211$~pc.  The H$^0$/He$^0$ competition is therefore the one place where a
+few-percent difference has the leverage to matter, which is consistent with
+the radial signature below and with the metal-opacity mechanism of
+\S\ref{sec:metalop}.  The budget also closes geometrically: with the leaf
+volume computed correctly the summed gas volume matches the geometric shell
+$0.972$--$4.729$~pc to $0.25\%$.  (\code{LeafSize} in the output is the leaf
+\emph{full} width, and the residual analysis script had used
+$(2\,\mathrm{size})^3$, eight times the cell volume.  Because it enters only
+as a relative weight within a shell, every front position reported from it is
+unaffected and re-running after the fix reproduces all of them identically;
+the expression was nevertheless wrong and is now $\mathrm{size}^3$.  The
+table generator, the Python readers and the g1/g4 gates all used the
+convention correctly and were never affected.)
 
 \paragraph{The radial signature.}  What the residual does have is a shape.
 The hydrogen structure agrees with Cloudy throughout the ionized zone; only
@@ -1416,30 +1949,42 @@ mean free path of the very photons that would have removed it.  The
 signature therefore identifies a small helium-specific seed, amplified
 geometrically, rather than a large error anywhere.
 
-Closing $0.18$~pc is $4.4\%$ in radius and $13.7\%$ in volume, which asks for
+Closing $0.178$~pc is $4.1\%$ in radius and $13\%$ in volume, which asks for
 $Q({\rm He^0})$ higher by ${\sim}14\%$ or $\alpha_B$(He\,\textsc{i}) lower by
 ${\sim}20\%$.  $Q({\rm He^0})$ is verified to $0.003\%$, and MoCHII's
-$\alpha_B$(He\,\textsc{i}) differs from the BSS99 value by $2.9\%$, with no
+$\alpha_A$, $\alpha_1$ and $\alpha_B$(He\,\textsc{i}) now sit within $0.3\%$,
+$0.34\%$ and $1.9\%$ of Cloudy's own level-resolved values, with no
 published determination anywhere near $20\%$ away.  \emph{The residual is
 therefore unexplained}, and what has been achieved is the systematic closing
 of the space of simple explanations: it is not in what the diffuse field
 emits, not in how those photons are transported, not in the He\,\textsc{i}
 photoionization cross section, not in the He\,\textsc{i} recombination rate,
-not in dust, not in the source photon budget, and not in the reference
-calculation's resolution.  It demands a helium-specific effect at the
-$15$--$20\%$ level that is in none of the rates, cross sections or fields
-checked.  Two candidates survive:
-\begin{enumerate}
-\item the helium ionization network itself --- what Cloudy's resolved
-  He\,\textsc{i} model atom contains that MoCHII's effective treatment does
-  not.  Collisional redistribution among the $n=2$ terms, resolved
-  excited-level populations and their feedback on the ionization balance all
-  live here.  Deciding it requires reading Cloudy's He\,\textsc{i}
-  implementation and comparing network to network, which is a separate task
-  and is the open item;
-\item a difference outside the helium network entirely --- the metal opacity
-  at the front, or a Cloudy-side modeling choice not yet identified.
-\end{enumerate}
+not in the metal opacity, not in the metal recombination continua, not in
+He\,\textsc{i} excited-level ionization, not in dust, not in the source
+photon budget, and not in the reference calculation's resolution.
+
+The two candidates named in earlier revisions have both been examined and
+neither survives as a single parameter.  The helium ionization
+\emph{network} has been compared code to code (\S\ref{sec:henetwork}): every
+code sums the full cascade, MoCHII's $\alpha_A$(He\,\textsc{i}) agrees with
+Cloudy's explicit level sum to $0.3\%$, and the He\,\textsc{i} excited levels
+that a resolved model atom carries are worth $0.2$--$0.6\%$ of extra
+ionization.  The metal opacity has been measured
+(\S\ref{sec:metalop}): its upward derivative is $0.103$~pc per unit, so
+closing the gap would need $+180\%$ against cross sections that reproduce
+Verner's to $10^{-6}$ and an Opacity Project comparison that runs $2$--$14\%$
+the other way.
+
+What remains is the one hypothesis that no single-parameter experiment can
+reproduce: several differences of a few percent each --- in the He\,\textsc{i}
+recombination rate, in the shape of $\sigma_{\rm pi}$(He\,\textsc{i}), in the
+metal opacity of the $21$--$40$~eV window, in Cloudy-side modeling choices
+not yet identified --- acting together through the He$^0$ optical depth,
+which compounds them with depth exactly as the radial signature shows.  Each
+is individually below its own measured lever; their product over $24.4\%$ of
+the He-ionizing supply lost to competing absorbers is not bounded by any of
+the experiments above.  Testing it requires varying several ingredients
+jointly, not one at a time, and that is the open item.
 
 All diffuse packets carry the same luminosity as direct packets,
 $L_{\rm pkt}=L_{\rm band}/N_{\rm pkt}$, so their number is
@@ -2297,15 +2842,15 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 7025 K & 6376 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8211 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 6925 K & 6376 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8169 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8211$~K (HII40) and 7025~K (HII20),
-matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to 0.7~K
-and 1.7\%.  Both modern codes sit a few hundred K \emph{above} the
+local\_ne}) MoCHII gives $T_e = 8169$~K (HII40) and 6925~K (HII20),
+matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
+$0.50\%$ and $0.22\%$.  Both modern codes sit a few hundred K \emph{above} the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
 $6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
@@ -2334,7 +2879,10 @@ $+0.2\%$) were excluded.  Regenerating the fits from the
 $n_e\rightarrow0$ statistical-equilibrium limit with observed energies
 gives HII40 7894~K and HII20 6376~K (the \code{low\_density} option);
 restoring the density suppression at the local $n_e$ (the
-\code{local\_ne} default) raises them to 8211 and 7025~K.  The former
+\code{local\_ne} default) raises them to 8211 and 7025~K, and the
+subsequent corrections to the diffuse field --- the Milne ground continua,
+the He\,\textsc{i} cascade and the $\alpha_1$ correction of
+\S\ref{sec:diffuse} --- settle them at 8169 and 6925~K.  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -2746,12 +3294,31 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8211~K, HII20 7025~K) matches a current \textsc{Cloudy}
-  c25.00 run to 0.7~K and 1.7\%, the earlier excess having been traced to
-  two Tier-1 cooling defects (D1/D2) and the missing density suppression,
+  MoCHII (HII40 8169~K, HII20 6925~K) matches a current \textsc{Cloudy}
+  c25.00 run to $0.50\%$ and $0.22\%$, the earlier excess having been traced
+  to two Tier-1 cooling defects (D1/D2) and the missing density suppression,
   all fixed.  The one remaining note is that both modern codes sit a few
   hundred K above the 2000-era published Lexington temperatures --- a
   data-vintage difference, not a code defect.
+\item The HII40 He\,\textsc{i} front sits $0.178$~pc inside the
+  \textsc{Cloudy} c25.00 one and that difference is unexplained
+  (Section~\ref{sec:diffuse}).  Every single-parameter candidate is now
+  excluded by measurement, including the two that were still open --- the
+  helium ionization network (Section~\ref{sec:henetwork}) and the metal
+  opacity (Section~\ref{sec:metalop}).  The untested hypothesis is a
+  combination of several few-percent differences compounding through the
+  He$^0$ optical depth, which needs a joint rather than a one-at-a-time
+  experiment.
+\item The registry-wide recombination audit (Section~\ref{sec:recaudit})
+  found no defect --- no transcription error, and no form a better source
+  could replace --- but it leaves one question open: the rates that form
+  \emph{neutral} atoms differ between Badnell and Verner \& Ferland (1996)
+  by $10$--$16\%$, and for the metals no third determination is available
+  to say which is right.  Adjudicating it needs an independent
+  determination for each ion (R-matrix C\,\textsc{i}/O\,\textsc{i}/%
+  Ne\,\textsc{i} recombination, or CHIANTI totals not derived from
+  Badnell).  For He\,\textsc{i}, where such a determination does exist,
+  MoCHII is within $0.3\%$ of it.
 \item Further metal ions as science needs them.
 \end{itemize}
 

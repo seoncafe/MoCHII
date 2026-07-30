@@ -66,20 +66,21 @@ octree together with a dedicated Cartesian digital-differential-analyzer
 forward scattering, and observer peel-off imaging.  The atomic data are
 fitted offline and evaluated online: exact hydrogenic \HI/\HeII{} cross
 sections, Verner et al.\ (1996) fits for the remaining ions, Badnell
-(2023) radiative and dielectronic recombination with a Mao \& Kaastra
-(2016) ground-level split for case A/B, Voronov collisional ionization,
+(2023) radiative and dielectronic recombination with the case A/B
+ground-level split taken from the Milne relation on those same cross
+sections, Voronov collisional ionization,
 and charge exchange, so that adding a metal ion is a data operation
 rather than a code operation.  We validate the code against analytic
 attenuation (rate-integral bias $+0.004\%$), the Str\"omgren sphere
-(ionized volume $+0.56\%$ versus an exact 1D reference; AMR identical to
-a uniform grid), a thermal H/He nebula (median $0.14\%$ in $\Te$), and
+(ionized volume $+0.60\%$ versus an exact 1D reference; AMR identical to
+a uniform grid), a thermal H/He nebula (median $0.97\%$ in $\Te$), and
 the Lexington 2000 \HII{} region benchmarks.  Its line cooling is taken
 from the level populations at the local electron density, the same
 $n$-level solve that produces the emergent lines, so the thermal balance
 and the line list are one physics.  On the two benchmarks the
 $n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature then agrees with a
-\textsc{Cloudy} c25.00 calculation of the same models to $0.2\%$ (HII40)
-and $0.1\%$ (HII20), with the He$^{+}$/H$^{+}$ ratio and the outer radius
+\textsc{Cloudy} c25.00 calculation of the same models to $0.5\%$ (HII40)
+and $0.2\%$ (HII20), with the He$^{+}$/H$^{+}$ ratio and the outer radius
 inside the published multi-code ranges; the cooling itself is
 cross-validated channel by channel against a \textsc{Cloudy} c25.00
 decomposition on a fixed $(\Te, \nelec, \mathrm{ionization})$ state, where
@@ -233,10 +234,11 @@ comparison.
 
 The atomic-data axis reflects vintage.  \MoCHII{} uses exact hydrogenic
 cross sections, Verner et al.\ (1996) fits, Badnell (2023) recombination,
-CHIANTI v11 collision strengths, and Mao \& Kaastra (2016)
-level-resolved radiative recombination --- the same modern data that
-\textsc{Cloudy} uses --- rather than the older compilations still carried
-by \textsc{Mocassin}.
+CHIANTI v11 collision strengths, and a ground-level recombination
+coefficient obtained from those cross sections through the Milne relation
+--- the same modern data, and the same construction of the case A/B split,
+that \textsc{Cloudy} uses --- rather than the older compilations still
+carried by \textsc{Mocassin}.
 
 The metal-treatment axis is the clearest algorithmic difference.
 \textsc{Mocassin}, \textsc{M}$^{3}$, \textsc{CMacIonize}, and the 1D codes
@@ -305,7 +307,7 @@ Dimensionality & 3D & 3D & 3D & 3D & 1D \\[2pt]
 Grid & octree AMR + Cartesian DDA & uniform Cartesian & uniform Cartesian & Voronoi / adaptive Cartesian & spherical / plane-parallel \\[2pt]
 Solution-driven refinement & yes (I-front) & no & no & static AMR & 1D shells \\[2pt]
 Diffuse field & OTS default; explicit MC option & explicit MC & explicit MC & explicit MC & outward-only / OTS \\[2pt]
-Recombination data & Badnell 2023 + Mao \& Kaastra 2016 & Verner \& Ferland 1996 & MAPPINGS V & Verner / Badnell & Badnell / internal \\[2pt]
+Recombination data & Badnell 2023 + Milne $\alpha_1$ & Verner \& Ferland 1996 & MAPPINGS V & Verner / Badnell & Badnell / internal \\[2pt]
 Metal treatment & trace-species registry (data-driven) & full network & full MAPPINGS network & full network & full network \\[2pt]
 Dust / PAH & absorption + forward scattering + equilibrium + stochastic + PAH survival & absorption + emission & MAPPINGS grains & absorption + emission & detailed grains/PAH \\[2pt]
 Parallelism & MPI-3 shared memory & MPI & MPI & task-based / MPI & OpenMP / serial \\[2pt]
@@ -534,10 +536,12 @@ the transport absorbs with, so a packet is absorbed with the cross section
 it was emitted with.  Restoring the Milne prefactor turns the integral of
 Equation~(\ref{eq:milne}) into $\alpha_1(T)$ itself, which recovers
 $\alpha_{1s}(\HI, 10^4~\mathrm{K}) = 1.579 \times 10^{-13}$~cm$^3$\,s$^{-1}$
-against the tabulated $1.58 \times 10^{-13}$; the code reports that integral
+against the tabulated $1.58 \times 10^{-13}$.  \MoCHII{} takes $\alpha_1$
+from that integral, so the case A/B split, the emitted spectrum and the
+packet count all rest on one cross section; the code reports the integral
 against the $\alpha_A - \alpha_B$ used for the emission rate without
-rescaling either, and they agree to $0.5$--$1.3$\% for \HI{} and $0.4$\%
-for \HeII{} while differing by up to $3.4$\% for \HeI{}.  Because packets
+rescaling either, and the two agree to $0.01$\% on all three channels.
+Because packets
 are equal-energy and their number follows the channel's \emph{energy}
 luminosity, their energies are drawn from $E\,n(E)$ rather than $n(E)$,
 which makes the represented photon rate exactly $n_e n_{\rm ion}\alpha_1 V$.
@@ -621,24 +625,64 @@ explicit transport puts the front at 4.1197~pc and the on-the-spot
 approximation at 4.1816~pc, a total range of 0.062~pc, with \textsc{Cloudy}
 0.124~pc beyond the nearer end.  The \HeI{} ground-continuum atomic data are
 bounded by measured sensitivity: scaling $\sigma_{\rm pi}$(\HeI) or the \HeI{}
-recombination rate by $3\%$, the size of the entire spread among published
-determinations, moves the front by $0.008$ and $0.024$~pc, so $0.18$~pc would
-take $70\%$ and $23\%$.  Outside the diffuse field, the source photon budget
-reproduces the \textsc{Cloudy} $Q({>}13.6~\mathrm{eV})$ and
-$Q({>}24.6~\mathrm{eV})$ to $0.003\%$, and the benchmark runs dust free.
+recombination rate by $3\%$ moves the front by $0.008$ and $0.024$~pc, so
+$0.18$~pc would take $70\%$ and $23\%$.  Outside the diffuse field, the
+source photon budget reproduces the \textsc{Cloudy}
+$Q({>}13.6~\mathrm{eV})$ and $Q({>}24.6~\mathrm{eV})$ to $0.003\%$, and the
+benchmark runs dust free.
 What the residual does have is a signature: $x(\mathrm{H^{0}})$ agrees with
 \textsc{Cloudy} to 1--2\% throughout the ionized zone, while the
 $x(\mathrm{He^{0}})$ ratio grows monotonically outward, 1.007 at 1.6~pc to
 1.196 at 3.8~pc.  That is not a normalization offset, which would be
 radius-independent, but a small helium-specific difference compounding with
 depth, as it must when He$^{0}$ carries 84--96\% of the opacity above
-24.6~eV.  Closing $4.4\%$ in radius is $13.7\%$ in volume, asking for $14\%$
+24.6~eV and $24\%$ of the He-ionizing supply is taken by other absorbers.
+Closing $4.1\%$ in radius is $13\%$ in volume, asking for $14\%$
 in $Q(\mathrm{He^{0}})$ or $20\%$ in $\alpha_B$(\HeI), and neither is
-available.  The residual is thus unexplained while the simple explanations
-for it are quantitatively excluded; the candidate left is the helium
-ionization network itself --- what \textsc{Cloudy}'s resolved \HeI{} model
-atom contains that an effective branch treatment does not --- which calls for
-a network-to-network code comparison.  At HII40 the diffuse band luminosity
+available.
+
+That bounding exercise did expose one defect.  $\alpha_1$ had been taken
+from a level-resolved fit \citep{mao2016} while $\alpha_A$ came from the
+Badnell total, so $\alpha_B = \alpha_A - \alpha_1$ crossed two unrelated
+determinations; \textsc{Cloudy} c25.00 \citep{cloudy2025}, which derives the
+same quantity level by level from its own cross sections through the Milne
+relation, puts that fit $2.4\%$ low for \HeI.  Replacing it by the Milne
+integral over the transport cross sections brings all three channels within
+$0.35\%$ of \textsc{Cloudy} and the start-up cross-check from $3.4\%$ to
+$0.01\%$.  The front moves outward by $0.008$~pc, leaving the residual at
+$0.178$~pc; $L(\mathrm{H}\beta)$ falls $0.4\%$, marginally further from the
+published values, which is recorded but is not an argument against restoring
+an exact relation.
+
+The helium ionization network has since been compared network to network,
+and it does not supply the residual either.  At $10^{4}$~K,
+$\alpha_A$(\HeI) is $4.358 \times 10^{-13}\,\cmc$ in \textsc{Cloudy}'s
+explicit sum over levels, $4.372$ in \MoCHII, $4.263$ in the effective
+coefficients of \citet{benjamin1999} used by \citet{wood2004} and
+\textsc{CMacIonize}, and $4.839$ in \textsc{Mocassin}'s Verner \& Ferland
+(1996) fit.  No code truncates the cascade --- all three treatments run over every
+level --- and the $11\%$ spread is confined to \HeI: the one-electron species
+agree to $0.7\%$ (\HI) and $0.3\%$ (\HeII), where an exact analytic solution
+leaves nothing to disagree about, so what spreads is the two-electron atomic
+data itself.  \MoCHII{} sits within $0.3\%$ of \textsc{Cloudy}, which also
+means any helium comparison against \textsc{Mocassin} inherits that
+difference.  The \HeI{} excited levels a resolved model atom carries lie
+below \MoCHII's 13.598~eV band floor and are worth $0.2$--$0.6\%$ of extra
+ionization.  Nor is the metal opacity, the one candidate outside helium,
+large enough: scaling the summed metal cross section by $\pm30\%$ moves the
+front $+0.031$ and $-0.072$~pc, an asymmetric and saturating response worth
+$0.103$~pc per unit fractional increase, so $0.178$~pc would need $+180\%$
+against cross sections that reproduce the \citet{verner1996} fits to
+$10^{-6}$.
+
+The residual is therefore unexplained while every single-parameter
+explanation for it is quantitatively excluded.  What is untested is a
+combination of several few-percent differences --- in the \HeI{}
+recombination rate, in the shape of $\sigma_{\rm pi}$(\HeI), in the metal
+opacity of the 21--40~eV window --- acting together through the He$^{0}$
+optical depth, which compounds them with depth exactly as the signature
+shows, and which no experiment varying one ingredient at a time can
+reproduce.  At HII40 the diffuse band luminosity
 converges to $\sim$$0.5\,L_\star$.
 
 \subsection{Quasi-random photon launching}
@@ -782,19 +826,20 @@ recombination fit,
   b = B + C\,e^{-T_2/T},
   \label{eq:badnellrr}
 \end{gather}%
-the ground-level ($n=1$) direct-capture rate $\alpha_1$ from the
-level-resolved parameterization of \citet{mao2016}, and forms case B by
-removing the ground term, $\alpha_B = \alpha_A - \alpha_1$.  For the
-H-like ions this $\alpha_1$ is derived from the exact hydrogenic cross
-sections (Eq.~\ref{eq:sighyd}) under detailed balance, so it is exact; the
-$\HeII\to\HeI$ channel adds the Badnell three-term dielectronic sum.  This
+the ground-level ($n=1$) direct-capture rate $\alpha_1$ from the Milne
+relation applied to the same photoionization cross sections the transport
+absorbs with (Section~\ref{sec:diffuse}), and forms case B by
+removing the ground term, $\alpha_B = \alpha_A - \alpha_1$.  It is
+evaluated at run time from the seven-coefficient form of \citet{mao2016}
+with coefficients refitted to that integral; the $\HeII\to\HeI$ channel
+adds the Badnell three-term dielectronic sum.  This
 construction mirrors how \textsc{Cloudy} splits case A and case B (total
 minus resolved ground) and reuses the same modern data.  An alternative
 setting selects the \citet{huignedin1997} fits; the two agree to $<$0.6\% for
 \HII{} and \HeIII{}, the one substantive difference being
 $\HeII\to\HeI$, where the Badnell value ($4.37\times10^{-13}\,\cmc$ at
-$10^4$~K) is $\sim$7\% higher and coincides with \textsc{Cloudy}, while
-the older \citet{huignedin1997} value is low and the
+$10^4$~K) is $\sim$5\% higher in case B and coincides with
+\textsc{Cloudy}, while the older \citet{huignedin1997} value is low and the
 \textsc{Mocassin} Verner \& Ferland value ($4.84$) is the high outlier.
 For the metal cascade, total recombination is the \citet{badnell2006}
 radiative recombination plus the Badnell-group dielectronic fits
@@ -1031,13 +1076,20 @@ $R_S = [3\QH/(4\pi \nH^2 \alpha_B)]^{1/3} = 3.153$~pc, from which the
 full solution differs physically (helium consumes photons; the front has
 a finite width).  The 1D reference
 gives an effective ionized radius $R_{\mathrm{eff}} = (3V_{\mathrm{ion}}/
-4\pi)^{1/3} = 3.0365$~pc; a uniform level-6 octree gives 3.0534~pc
-($+0.56\%$), and a front-refined octree with $3.5\times$ fewer cells
+4\pi)^{1/3} = 3.0365$~pc; a uniform level-6 octree gives 3.0546~pc
+($+0.60\%$), and a front-refined octree with $3.5\times$ fewer cells
 reproduces it to four decimals, while a center-refined control (coarsest
-cells at the front) deviates by $+2.35\%$ --- the ionization front is the
+cells at the front) deviates by $+2.34\%$ --- the ionization front is the
 one place needing resolution (Figure~\ref{fig:g1}).  With the thermal
-balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.14\%$
-and a mean bias $+0.006\%$ (Figure~\ref{fig:g2a}); without metals the
+balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.97\%$
+and a mean bias $+1.02\%$ (Figure~\ref{fig:g2a}).  Part of that offset is a
+data-source difference rather than a transport error: the 1D reference carries
+the \citet{huignedin1997} case-B recombination coefficient while the run uses the
+Badnell total with the Milne ground-level rate, and the two differ by $1.2\%$
+at the 19--24~kK of this test.  Running the same case with the reference's own
+coefficient set gives a median $0.78\%$, so $0.19$ percentage points of the
+deviation is that mismatch; the remainder is not, and is an open item.  Without
+metals the
 metal-free nebula runs at 19--24~kK, the known overshoot that motivates the
 trace-metal cooling.
 
@@ -1135,18 +1187,18 @@ assign all photons in a bin one representative energy and hence bias both
 the threshold budget and the opacity.  The production calculations avoid
 that approximation: they sample the Planck probability density continuously
 and use the cross section at each sampled energy.  The resulting
-$\langle\mathrm{He^{+}}\rangle/\langle\mathrm{H^{+}}\rangle$ is 0.703 at
+$\langle\mathrm{He^{+}}\rangle/\langle\mathrm{H^{+}}\rangle$ is 0.712 at
 HII40, below the published 0.715--0.829 (median 0.767) and C25's 0.741, and
-0.046 at HII20, near the published median of 0.048 inside a spread of
+0.047 at HII20, near the published median of 0.048 inside a spread of
 0.034--0.077.
 
-\emph{Temperature.}  The weighted temperature is 8162~K at HII40 and
-6918~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
-same two models --- 8210~K and 6910~K --- to $0.6\%$ and $0.1\%$, and both
+\emph{Temperature.}  The weighted temperature is 8169~K at HII40 and
+6925~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
+same two models --- 8210~K and 6910~K --- to $0.5\%$ and $0.2\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
-published spread at both, 7533~K at HII40 against a published 7370--8318~K
-and 6936~K at HII20 against a published 6562--7224~K.  The converged
+published spread at both, 7536~K at HII40 against a published 7370--8318~K
+and 6938~K at HII20 against a published 6562--7224~K.  The converged
 MOCASSIN 2.02 run of the HII40 model gives 8176~K, also inside the published
 spread.  The two benchmark solutions therefore agree closely while remaining
 within the range set by the independent calculations.
@@ -1154,7 +1206,7 @@ within the range set by the independent calculations.
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
 density-suppressed cooling used above --- the level populations at the local
-$\nelec$, Section~\ref{sec:cooldata} --- gives the 8162 and 6918~K that
+$\nelec$, Section~\ref{sec:cooldata} --- gives the 8169 and 6925~K that
 track \textsc{Cloudy}; the zero-density limit of the same fits, retained as
 an option, overestimates the far-infrared line cooling at
 $\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so places \MoCHII{} instead at
@@ -1232,7 +1284,7 @@ power --- \textsc{Cloudy} balances its own heating at the unscaled
 temperature, and the photoheating of the two codes agrees --- gives 7784~K
 against \textsc{Cloudy}'s 8210~K, close to the 7894~K the converged
 zero-density run reaches.  Removing the overestimate, the density-suppressed
-default reaches 8162~K, matching \textsc{Cloudy} to $0.6\%$
+default reaches 8169~K, matching \textsc{Cloudy} to $0.5\%$
 (Section~\ref{sec:hii}).  The far-infrared overestimate, not the atomic
 data, is thus what separates the two limits, and the $(\Te,\nelec)$ table of
 Section~\ref{sec:cooldata} removes it.
@@ -1288,9 +1340,9 @@ accordingly: summing the case-B recombinations over the converged solutions
 gives $0.950\,\QH$ and $0.970\,\QH$.  What hydrogen does not absorb is
 taken up by helium, which at HII40 absorbs $0.112\,\QH$ and returns most of
 it to hydrogen through the \HeI{} diffuse channels.  The predicted
-$L(\mathrm{H}\beta) = 1.94\times10^{37}$ and
-$4.71\times10^{36}\,\mathrm{erg\,s^{-1}}$ are about $5\%$ below the
-published medians (some $4\%$ below the lowest published values),
+$L(\mathrm{H}\beta) = 1.93\times10^{37}$ and
+$4.68\times10^{36}\,\mathrm{erg\,s^{-1}}$ are $4$--$6\%$ below the
+published medians (some $3$--$4\%$ below the lowest published values),
 consistent with the $5.0\%$ and $3.0\%$ of $\QH$ that the recombination
 budget assigns to helium rather than to hydrogen, together with the weak
 temperature dependence of the effective H$\beta$ emissivity at the higher
@@ -1318,28 +1370,28 @@ temperature-sensitive optical and auroral lines agree with C25 to a few
 percent: among the infrared lines [O\,\textsc{iii}] 52+88\,$\mu$m is
 $1.01\times$ C25, [N\,\textsc{iii}] 57.3\,$\mu$m $1.01\times$ and
 [S\,\textsc{iii}] 18.7\,$\mu$m $1.01\times$; among the optical ones
-[O\,\textsc{iii}] 5007+4959 is $0.96\times$, its auroral 4363 $0.96\times$
-and [O\,\textsc{ii}] 3726+3729 $1.00\times$ --- the same optical and auroral
+[O\,\textsc{iii}] 5007+4959 is $0.96\times$, its auroral 4363 $0.94\times$
+and [O\,\textsc{ii}] 3726+3729 $0.98\times$ --- the same optical and auroral
 lines that the zero-density cooling, running $3.8\%$ cooler, had suppressed
 to $0.72$--$0.84\times$.  That the temperature-sensitive lines fall into
 line with C25 exactly when the temperature does is the line-level
-counterpart of the cooling match.  At HII20, where \MoCHII{} is $0.1\%$
+counterpart of the cooling match.  At HII20, where \MoCHII{} is $0.2\%$
 hotter than C25, [O\,\textsc{ii}] 3726+3729 is $1.01\times$ C25.  The
 residual outliers at HII40 are not temperature: [Ne\,\textsc{iii}]
-15.5\,$\mu$m ($1.31\times$) and 3869+3968 ($1.22\times$),
-[O\,\textsc{i}] 6300+6363 ($1.51\times$, on a line the thin neutral edge and
-the grid resolution govern), and C\,\textsc{iii}] 1907+1909 ($0.90\times$),
+15.5\,$\mu$m ($1.32\times$) and 3869+3968 ($1.22\times$),
+[O\,\textsc{i}] 6300+6363 ($1.55\times$, on a line the thin neutral edge and
+the grid resolution govern), and C\,\textsc{iii}] 1907+1909 ($0.89\times$),
 each an ionization or collision-strength difference in a single ion.
 
 The C25 and published columns illustrate the benchmark's code-to-code
 spread.  [S\,\textsc{ii}] 6716+6731 at
 HII40 is the clearest case: the GF entry is 0.137, C25 gives 0.304 and
-\MoCHII{} 0.322; the two latter values differ by $6\%$.  Sulfur at HII20 is
+\MoCHII{} 0.320; the two latter values differ by $5\%$.  Sulfur at HII20 is
 the same story in the other direction: [S\,\textsc{iii}] 18.7\,$\mu$m
-(0.215 against a published 0.34--0.46) and [S\,\textsc{iii}] 9532+9069
-(0.303 against 0.465--0.604) fall \emph{below} every published code, and so
+(0.216 against a published 0.34--0.46) and [S\,\textsc{iii}] 9532+9069
+(0.304 against 0.465--0.604) fall \emph{below} every published code, and so
 does C25 (0.209 and 0.293), while [S\,\textsc{ii}] 6716+6731 sits inside the
-published range for both (0.809 and 0.744).  Both C25 and \MoCHII{} have the
+published range for both (0.780 and 0.744).  Both C25 and \MoCHII{} have the
 same S\,\textsc{ii}/S\,\textsc{iii} ordering, which points at the sulfur
 data rather than at either code.  A band experiment bounds one further
 difference: \textsc{Cloudy} carries the full stellar spectrum, so photons
@@ -1457,7 +1509,7 @@ $T_{\mathrm{inner}}$ range.  Its ionization structure, its outer radius,
 its H$\beta$ luminosity and most of its line ratios land inside the
 published spread, with helium at the low edge of it in the same direction
 as \textsc{Cloudy} c25.00, and its weighted temperature matches that
-solution to $0.2\%$ at HII40 and $0.1\%$ at HII20.  The cooling treatment that
+solution to $0.5\%$ at HII40 and $0.2\%$ at HII20.  The cooling treatment that
 achieves this, the density suppression of Section~\ref{sec:cooldata}, is
 what separates it from the zero-density limit that leaves both benchmarks
 $4$--$8\%$ cooler; the fixed-state comparison quantifies the offset between
@@ -1484,7 +1536,7 @@ On the Str\"omgren configuration, starting at level 5 and rebuilding to
 level 7 at iteration 15 (32\,768 $\to$ 464\,311 leaves), the re-refined
 grid gives $R_{\mathrm{eff}} = 3.0432$~pc against a native uniform level-7
 grid's 3.0430~pc (2\,097\,152 leaves) --- agreement to $+0.008\%$ with
-$4.5\times$ fewer cells, and both improve on level 6 ($+0.56\%$), as
+$4.5\times$ fewer cells, and both improve on level 6 ($+0.60\%$), as
 resolution convergence expects (Figure~\ref{fig:g4refine}).  The front
 profiles overlie exactly.
 
@@ -1536,8 +1588,8 @@ extinction table \citep{weingartner2001,draine2003} covering the EUV, where
 $C_{\mathrm{abs}}/\mathrm{H} = 1.75\times10^{-21}$ at 13.6~eV falls to
 $3.96\times10^{-22}\,\mathrm{cm^2}$ at 100~eV.  On the dusty Str\"omgren
 test, against a 1D reference carrying identical dust absorption, the full
-MW dust gives $R_{\mathrm{eff}} = 2.206$~pc versus the reference 2.198~pc
-($+0.34\%$), reproducing the classic dusty reduction $R/R_0 = 0.722$
+MW dust gives $R_{\mathrm{eff}} = 2.205$~pc versus the reference 2.198~pc
+($+0.31\%$), reproducing the classic dusty reduction $R/R_0 = 0.722$
 (Figure~\ref{fig:duststrom}); dust absorbs $\sim$60\% of the band luminosity
 there.
 
@@ -1546,7 +1598,7 @@ the extinction (in-band Henyey--Greenstein asymmetry $g = 0.67$--$0.99$,
 strongly forward), and interactions are sampled by a forced-first-flight
 scheme after the analytic direct walk, with an albedo weight at each
 interaction and Russian roulette.  The full-scattering Str\"omgren radius,
-2.197~pc, is within $0.4\%$ of the absorption-only 2.206~pc: the in-band
+2.196~pc, is within $0.4\%$ of the absorption-only 2.205~pc: the in-band
 dust is strongly forward-throwing, so a scattered photon is barely deflected
 and scattering acts almost as pure transmission, exactly as expected.
 
@@ -1719,14 +1771,14 @@ data-driven trace-metal registry with modern atomic data, first-class dust
 absorption/scattering and equilibrium/stochastic emission with PAH physics,
 and peel-off synthetic imaging --- distinguish it from the uniform-grid and
 1D codes.  It reproduces analytic attenuation to $+0.004\%$, the Str\"omgren
-sphere to $+0.56\%$, and a thermal H/He nebula to $0.14\%$.  On the
+sphere to $+0.60\%$, and a thermal H/He nebula to $0.97\%$.  On the
 Lexington 2000 \HII{} region benchmarks, with continuously sampled Planck
 photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron
 density, the
-$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8162~K at HII40 and
-6918~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
-two models (8210 and 6910~K) to $0.6\%$ and $0.1\%$; both models are
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8169~K at HII40 and
+6925~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
+two models (8210 and 6910~K) to $0.5\%$ and $0.2\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
 $L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  The
 line-cooling data are checked independently of the temperature by evaluating

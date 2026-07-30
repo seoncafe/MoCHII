@@ -600,8 +600,16 @@ public
      real(kind=wp)      :: abund_Ca     = 0.0_wp
      !--- metal photoionization absorption in kap_ion (active with
      !--- use_metals): sum over stages of n_el frac_i sigma_VFKY96,i(E).
-     !--- Negligible next to H/He above 13.6 eV; the only GAS opacity in
-     !--- the FUV bins (Mg I 7.65, C I 11.26, S I 10.36, Fe I 7.90 eV).
+     !--- Small next to H/He above 13.6 eV but NOT negligible for the He
+     !--- front: switching it off moves r(He^0 = 0.5) inward by 0.615 pc at
+     !--- HII40, because the stages with thresholds in 21-40 eV (Ne I 21.56,
+     !--- S II 23.33, C II 24.38, N II 29.60, S III 34.83, O II 35.12 eV)
+     !--- preferentially remove the softest He-ionizing photons, and
+     !--- sigma(He I)/sigma(H I) rises from 6.1 at 25 eV to 19.9 at 95 eV, so
+     !--- the hardened surviving field is taken up by He^0 rather than H^0.
+     !--- The response saturates upward: 0.615 pc per unit removed against
+     !--- 0.103 pc per unit added.  Also the only GAS opacity in the FUV bins
+     !--- (Mg I 7.65, C I 11.26, S I 10.36, Fe I 7.90 eV).
      logical            :: ion_metal_abs = .true.
      !--- PDR-zone physics (each defaults off so the recorded gates
      !--- reproduce; turn all three on together with add_fuv for

@@ -1,6 +1,7 @@
 #!/bin/bash
-#--- Build and run the Milne ground-continuum sampler gate against the
-#--- already-compiled MoCHII objects.  Exits nonzero when the gate fails.
+#--- Build and run the Milne gates against the already-compiled MoCHII
+#--- objects: the ground-continuum sampler, and the ground-level alpha_1 the
+#--- same relation fixes.  Exits nonzero when a gate fails.
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$R"
@@ -12,4 +13,8 @@ $FC -cpp -DMPI -ipo -O2 -module src -Isrc -o tests/milne/check_milne.x \
     tests/milne/check_milne.f90 \
     src/define.o src/photo_xsec.o src/recomb_mod.o \
     src/milne_recomb_spectrum_mod.o
+$FC -cpp -DMPI -ipo -O2 -module src -Isrc -o tests/milne/check_alpha1.x \
+    tests/milne/check_alpha1.f90 \
+    src/define.o src/photo_xsec.o src/recomb_mod.o
 ./tests/milne/check_milne.x
+./tests/milne/check_alpha1.x

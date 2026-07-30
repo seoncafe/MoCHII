@@ -40,7 +40,7 @@ module milne_recomb_spectrum_mod
 !
 ! TEMPERATURE INTERPOLATION.  Tables are indexed by x = (E - E_th)/kT, so the
 ! shape varies only weakly with temperature.  The CDF is interpolated in
-! log T first and inverted once.  Inverting two neighbouring temperature rows
+! log T first and inverted once.  Inverting two neighboring temperature rows
 ! and interpolating the resulting energies (as some codes do) does not sample
 ! any single distribution; taking the nearest row loses the interpolation
 ! altogether.

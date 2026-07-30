@@ -495,8 +495,9 @@ the Planck spectrum with a Sobol sequence (seed 20260728), and evaluates
 photoionization cross sections at each sampled energy; the 32-bin ionizing
 array is a diagnostic tally only.  It uses the explicit Monte Carlo diffuse
 field including the \HeI{} channels (case~A, matching the transfer treatment
-of the published codes), and Badnell 2023 recombination with the Mao \&
-Kaastra 2016 ground-level split, at $2^{25}$ stellar packets with the
+of the published codes), and Badnell 2023 total recombination with the
+ground-level rate from the Milne relation applied to the same photoionization
+cross sections the transport uses, at $2^{25}$ stellar packets with the
 volume-integrated convergence criterion; the ionizing luminosity is set from
 the benchmark $L({\rm BB})$ so that $Q({\rm H})$ matches the specification;
 blends are the sum of the

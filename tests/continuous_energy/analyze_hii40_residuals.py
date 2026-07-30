@@ -25,7 +25,11 @@ def read_mochii(path):
         xyz = handle["LeafXYZ/data"][:]
         size = handle["LeafSize/data"][:]
         radius = np.sqrt(np.sum(xyz * xyz, axis=0))
-        volume = (2.0 * size) ** 3
+        #--- LeafSize is the leaf FULL width (see the EXTNAME comment in
+        #--- gas_rates_mod.f90), so the cell volume is size^3, not (2 size)^3.
+        #--- Only shell-relative weights are taken below, so the factor cancels
+        #--- in the fronts, but the expression has to be the volume.
+        volume = size ** 3
         fields = {
             "H0": handle["x_HI/data"][:],
             "He0": handle["x_HeI/data"][:],

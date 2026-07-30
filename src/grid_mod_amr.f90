@@ -10,7 +10,7 @@ module grid_mod_amr
 ! built (grid_create) only so the observer/output code runs unchanged --
 ! the transport uses amr_grid, not grid%rhokap.
 !
-! The box is recentred on the origin (box centered at 0).
+! The box is recentered on the origin (box centered at 0).
 !---------------------------------------------------------------------------
   use grid_mod
   use octree_mod

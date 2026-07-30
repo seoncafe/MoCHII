@@ -125,7 +125,7 @@ contains
 
     !--- 4a. conservation report.  These are integrals over the whole box
     !--- and are preserved exactly by the overlap weights, so anything above
-    !--- roundoff is a coding error rather than a modelling choice.
+    !--- roundoff is a coding error rather than a modeling choice.
     call conservation_report(nold, half, s_nH, s_x1, s_x2, s_x3, &
                              s_ne, s_te, s_rk)
 
