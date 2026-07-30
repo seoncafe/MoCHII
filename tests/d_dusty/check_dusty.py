@@ -13,11 +13,33 @@ implicit solution of Petrosian-type photon accounting.
 Cases: full dust (global_dgr) — gate |R_eff(MC)/R_eff(1D) - 1| < 1%;
 laursen09_live (dust ~ n_HI + 0.01 n_HII) — must land near the
 dust-free radius (interior dust vanishes with the computed x_HII).
+
+Rate coefficients and cross sections come from tools/python/mochii_rates.py, so
+that the reference absorbs and recombines as the run did; otherwise the
+deviation it reports is partly a difference between two atomic datasets rather
+than a property of the transport.  Two such differences were removed:
+
+  - recombination, which mirrors src/recomb_mod.f90 for the default
+    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    ground-level rate); the two runs here are case B (par%case_ab = 'B').
+    This check used to carry its own Hui & Gnedin (1997) case-B coefficients,
+    which differ by 0.86% in alpha_B(H I) at 10^4 K;
+  - the H I and He II photoionization cross sections, which photo_xsec takes
+    from the exact hydrogenic expression where this check used the VFKY96 fit.
+    The fit is 0.775% high at the H I threshold, and a hot star's rate integral
+    carries most of its weight there.  He I is VFKY96 on both sides.
+
+tests/rates/check_python_rates.py holds the module to the Fortran.
 """
 import sys
 import numpy as np
 import h5py
 import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "tools", "python"))
+from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII,
+                          sigma_HI, sigma_HeI, sigma_HeII)
 
 EV2ERG = 1.602176634e-12
 KB     = 1.380649e-16
@@ -29,34 +51,10 @@ NH, YHE, TE     = 100.0, 0.1, 1.0e4
 RSPH_PC         = 4.0
 CEXT_REF        = 4.868e-22       # D03 C_ext/H at 0.55 um (par%cext_dust)
 KEXT = "../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003"
-R_EFF_FREE_1D = 3.0365            # G1 1D reference, no dust
-
-
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, dtype=float)
-    x = E/E0 - y0
-    z = np.sqrt(x*x + y1*y1)
-    Q = 5.5 - 0.5*P
-    s = s0*((x-1.0)**2 + yw**2)*z**(-Q)*(1.0 + np.sqrt(z/ya))**(-P)*1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):   return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-def sig_HeI(E):  return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188, 2.039, 4.434e-1, 2.136)
-def sig_HeII(E): return sigma_vfky96(E, ETH_HeII, 1.720, 1.369e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def alphaB_HII(T):
-    lam = 2.0*157807.0/T
-    return 2.753e-14*lam**1.500/(1.0 + (lam/2.740)**0.407)**2.242
-
-
-def alphaB_HeII(T):  return 1.260e-14*(2.0*285335.0/T)**0.750
-
-
-def alphaB_HeIII(T):
-    lam = 2.0*631515.0/T
-    return 2.0*2.753e-14*lam**1.500/(1.0 + (lam/2.740)**0.407)**2.242
+#--- G1 1D reference with no dust, from tests/g1_stromgren/check_g1_stromgren.py.
+#--- It moved from 3.0365 pc when that check took its recombination from
+#--- mochii_rates instead of Hui & Gnedin, so refresh it whenever G1 moves.
+R_EFF_FREE_1D = 3.0243
 
 
 def voronov(T, dE, P, A, X, K):
@@ -130,7 +128,7 @@ def solve_ion(gH, gHe1, gHe2, xs):
 
 def reference_1d(dust="full", nr=8000, nsweep=3):
     ec, lum = band_bins()
-    sH, sHe1, sHe2 = sig_HI(ec), sig_HeI(ec), sig_HeII(ec)
+    sH, sHe1, sHe2 = sigma_HI(ec), sigma_HeI(ec), sigma_HeII(ec)
     sd = dust_sabs(ec)*CEXT_REF          # C_abs,dust(E)/H [cm^2]
     hnu = ec*EV2ERG
     dr_cm = (RSPH_PC/nr)*PC2CM

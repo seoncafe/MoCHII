@@ -1210,3 +1210,67 @@ because it would move every G2a number ever published.
 The same class of mismatch exists in the G1 Stromgren gate, whose 1D reference
 also uses Hui & Gnedin while the run uses Badnell (0.86% apart at 10^4 K, which
 maps to 0.29% in radius against a reported deviation of +0.60%).
+
+## Aligning the analytic gate references with the code
+
+The G2a finding above -- that a fifth of its deviation was the gate's reference
+using a different recombination set -- turned out to be one of three such
+mismatches. The gates and the paper's figure generators each carried their own
+copy of the code's physics, and the copies had drifted:
+
+| axis | reference carried | the run uses | size |
+|---|---|---|---|
+| recombination | Hui & Gnedin (1997) case B | Badnell total minus the Milne ground-level rate | 0.86% at 10^4 K, 1.2% at 19-24 kK |
+| free-free Gaunt | frequency-averaged fit, no charge dependence | `gbar_ff(T, Z)` with Z = 1 and Z = 2 separated | 6.5% between Z = 1 and Z = 2 at 10^4 K |
+| photoionization | Verner et al. (1996) fits for H I and He II | the exact hydrogenic expression | 0.775% at the H I threshold |
+
+All three are gate-side. The Fortran is correct in each case --
+`cooling_mod.f90:257` separates the charge states exactly as its own header
+states, and `photo_xsec.f90` uses the exact hydrogenic form for both hydrogenic
+species.
+
+`tools/python/mochii_rates.py` now holds all three, taken from the code's own
+routines, and the seven files that had copies import from it.
+`tests/rates/check_python_rates.py` compiles a driver against the production
+objects and checks the module against the Fortran: recombination to 8.9e-16,
+`gbar_ff` to 2.2e-16, cross sections to 1.3e-15.
+
+### What each alignment was worth
+
+| stage | G0 `Gamma_HI` bias | G1 level 6 | G2a median | dusty full / l09 |
+|---|---|---|---|---|
+| before | +0.004% | +0.60% | 0.969% | +0.31% / +0.57% |
+| + recombination | --- | +1.00% | 0.765% | +0.66% / +0.98% |
+| + Gaunt charge dependence | --- | --- | 0.762% | --- |
+| + cross sections | +0.077% | +1.0011% | 0.773% | +0.66% / +0.98% |
+
+**Only the recombination mattered.** The Gaunt charge dependence moved the G2a
+median by 0.003 percentage points, because a 40 kK blackbody leaves almost no
+photons above 54.4 eV and the Z = 2 term is therefore negligible; the cross
+sections moved it 0.011, and in the wrong direction. The earlier attribution of
+the G2a remainder to the reference's Gaunt approximation is **withdrawn**: that
+approximation is accurate to 0.06-0.6% for Z = 1, measured against the code's
+own tabulated values.
+
+### The G1 criterion moved to level 7
+
+Aligning the reference pulled its R_eff from 3.0365 to 3.0243 pc while the
+level-6 Monte Carlo value stayed at 3.0546 pc, so the level-6 deviation went
+from +0.60% to +1.0011% and crossed the gate's documented 1% criterion. The
+former margin was two errors cancelling.
+
+The +1.00% is not an error but the finite front width on a 0.147 pc cell against
+a front at 3.02 pc, about a fifth of a cell. A uniform level-7 run
+(`tests/g1_stromgren/g1_stromgren_l7.in`, 2 097 152 leaves) gives
+R_eff = 3.0448 pc, **+0.6789%**, and the criterion now sits there with level 6
+reported alongside as the resolution it is. The convergence from +1.00% to
++0.68% on halving the cell is what identifies the effect as discretization.
+
+The gate also only printed its result; it now computes a verdict and exits
+nonzero on failure, like the others.
+
+The G0 case is the clean counter-example to G1. Its rate integral is exactly
+what a cross-section difference biases, and there the alignment showed a bias of
++0.077% where the mismatched reference had reported +0.004% -- the old figure was
+the reference's 0.073% overestimate cancelling against the true bias. Nothing
+about the run changed; only what it was compared against.

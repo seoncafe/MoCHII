@@ -10,16 +10,48 @@ uses x from the previous sweep; converges in a few sweeps).
 
 Gate criteria:
   (1) R_eff = (3 V_ion / 4 pi)^(1/3) from the MC leaves (V_ion = sum of
-      x_HII * V_cell) within 1% of the 1D reference R_eff;
+      x_HII * V_cell) within 1% of the 1D reference R_eff, evaluated on the
+      uniform level-7 grid.  Level 6 is reported alongside it and is not the
+      criterion: its cell is 0.147 pc against a front at 3.02 pc, and the
+      finite front width biases R_eff outward by +1.00%, which level 7 halves
+      to +0.68%.  The criterion sat on level 6 while the 1D reference used a
+      different recombination set, and the two errors cancelled to +0.60%;
+      with the reference aligned the level-6 bias stands alone and exceeds 1%,
+      so the criterion moved to the grid that resolves the front;
   (2) x_HI(r) profile tracks the 1D reference (shell medians);
   (3) refined-grid run (levels 4-6) matches the uniform level-6 run
       (AMR <-> uniform methodology, PLAN section 5).
 
+Rate coefficients and cross sections come from tools/python/mochii_rates.py, so
+that the reference absorbs and recombines as the run did; otherwise the
+deviation it reports is partly a difference between two atomic datasets rather
+than a property of the transport.  Two such differences were removed:
+
+  - recombination, which mirrors src/recomb_mod.f90 for the default
+    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    ground-level rate); the runs here are case B (par%case_ab = 'B').  This check used
+    to carry its own Hui & Gnedin (1997) case-B coefficients, which differ by
+    0.86% in alpha_B(H I) at 10^4 K;
+  - the H I and He II photoionization cross sections, which photo_xsec takes
+    from the exact hydrogenic expression where this check used the VFKY96 fit.
+    The fit is 0.775% high at the H I threshold, and a hot star's rate integral
+    carries most of its weight there.  He I is VFKY96 on both sides.
+
+tests/rates/check_python_rates.py holds the module to the Fortran.
+
 Run after:  mpirun -np 8 ../../MoCHII.x g1_stromgren.in
             mpirun -np 8 ../../MoCHII.x g1_stromgren_ref.in
 """
+import os as _os
+import sys as _sys
+
 import numpy as np
 import h5py
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                  "..", "..", "tools", "python"))
+from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII,
+                          sigma_HI, sigma_HeI, sigma_HeII)
 
 EV2ERG = 1.602176634e-12
 KB     = 1.380649e-16
@@ -30,30 +62,6 @@ NNU, EMIN, EMAX = 32, 13.598, 100.0
 TSTAR, LBAND    = 4.0e4, 3.177837e38
 NH, YHE, TE     = 100.0, 0.1, 1.0e4
 RSPH_PC         = 4.0
-
-
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, dtype=float)
-    x = E/E0 - y0
-    z = np.sqrt(x*x + y1*y1)
-    Q = 5.5 - 0.5*P
-    s = s0*((x-1.0)**2 + yw**2)*z**(-Q)*(1.0 + np.sqrt(z/ya))**(-P)*1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):   return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-def sig_HeI(E):  return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188, 2.039, 4.434e-1, 2.136)
-def sig_HeII(E): return sigma_vfky96(E, ETH_HeII, 1.720, 1.369e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def hui_gnedin_B(T, TTR, pref, lam0, p1, p2):
-    lam = 2.0*TTR/T
-    return pref*lam**p1/(1.0 + (lam/lam0)**0.407)**p2
-
-
-def alphaB_HII(T):   return hui_gnedin_B(T, 157807.0, 2.753e-14, 2.740, 1.500, 2.242)
-def alphaB_HeII(T):  return 1.260e-14*(2.0*285335.0/T)**0.750
-def alphaB_HeIII(T): return 2.0*hui_gnedin_B(T, 631515.0, 2.753e-14, 2.740, 1.500, 2.242)
 
 
 def voronov(T, dE, P, A, X, K):
@@ -110,7 +118,7 @@ def reference_1d(nr=20000, nsweep=4):
     Returns r_pc, x profiles.
     """
     ec, lum = band_bins()
-    sH, sHe1, sHe2 = sig_HI(ec), sig_HeI(ec), sig_HeII(ec)
+    sH, sHe1, sHe2 = sigma_HI(ec), sigma_HeI(ec), sigma_HeII(ec)
     hnu = ec*EV2ERG
     dr_pc = RSPH_PC/nr
     dr_cm = dr_pc*PC2CM
@@ -170,7 +178,9 @@ print(f"1D reference: R(x_HI=0.5)      = {r1d[i05]:.4f} pc")
 print(f"1D reference: R_eff (V_ion)    = {R_eff_1d:.4f} pc")
 
 runs = {}
+devs = {}
 for tag, fname, hcell in (("uniform L6", "g1_stromgren_rates.h5", None),
+                          ("uniform L7", "g1_stromgren_l7_rates.h5", None),
                           ("refined 4-6", "g1_stromgren_ref_rates.h5", None),
                           ("front 4-6", "g1_stromgren_front_rates.h5", None)):
     try:
@@ -181,7 +191,9 @@ for tag, fname, hcell in (("uniform L6", "g1_stromgren_rates.h5", None),
     # cell half sizes from leaf spacing: uniform grid -> constant; refined ->
     # recover from the level structure via nearest-neighbor spacing is
     # fragile, so store half size from the run resolution instead:
-    if run["nleaf"] == 262144:
+    if run["nleaf"] == 2097152:
+        half = np.full(run["nleaf"], 4.0/128)     # level 7, boxlen 8
+    elif run["nleaf"] == 262144:
         half = np.full(run["nleaf"], 4.0/64)      # level 6, boxlen 8
     else:
         # refined grid: infer level from cell volume via nH>0 leaf spacing —
@@ -201,6 +213,7 @@ for tag, fname, hcell in (("uniform L6", "g1_stromgren_rates.h5", None),
     runs[tag] = (run, half)
     Re = r_eff(run, half)
     dev = Re/R_eff_1d - 1.0
+    devs[tag] = dev
     print(f"[{tag:12s}] nleaf = {run['nleaf']:7d}   R_eff = {Re:.4f} pc   "
           f"dev vs 1D = {dev*100:+.2f}%")
 
@@ -212,7 +225,7 @@ import matplotlib.pyplot as plt
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 ax1.plot(r1d, xHI1d, "k-", lw=1.5, label="1D exact")
 ax1.plot(r1d, 1.0 - xHI1d, "k--", lw=1.0)
-colors = {"uniform L6": "C0", "refined 4-6": "C1", "front 4-6": "C2"}
+colors = {"uniform L6": "C0", "uniform L7": "C3", "refined 4-6": "C1", "front 4-6": "C2"}
 for tag, (run, half) in runs.items():
     sel = run["ne"] > 0
     ax1.plot(run["r"][sel], run["xHI"][sel], ".", ms=1.0,
@@ -236,3 +249,34 @@ ax2.set_title(r"He ionization structure")
 fig.tight_layout()
 fig.savefig("g1_stromgren_check.png", dpi=140)
 print("wrote g1_stromgren_check.png")
+
+
+#--- Criterion (1): the level-7 grid, the one that resolves the front.  Level 6
+#--- is informational; see the criteria note in the module docstring.
+TOL_L7 = 0.01
+gate_ok = True
+print()
+if "uniform L7" in devs:
+    d = devs["uniform L7"]
+    ok = abs(d) <= TOL_L7
+    gate_ok = gate_ok and ok
+    print(f"  criterion (1) uniform L7 within {TOL_L7*100:.0f}% of the 1D "
+          f"reference: {d*100:+.4f}%   {'PASS' if ok else 'FAIL'}")
+else:
+    gate_ok = False
+    print("  criterion (1) FAIL: g1_stromgren_l7_rates.h5 is missing")
+if "uniform L6" in devs:
+    print(f"  (level 6, informational: {devs['uniform L6']*100:+.4f}% -- the "
+          f"finite front width on a 0.147 pc cell)")
+#--- Criterion (3): the refined grid must reproduce the uniform run it refines.
+if "front 4-6" in devs and "uniform L6" in devs:
+    d = abs(devs["front 4-6"] - devs["uniform L6"])
+    ok = d <= 1.0e-3
+    gate_ok = gate_ok and ok
+    print(f"  criterion (3) front-refined matches uniform level 6 to "
+          f"{d*100:.4f}%   {'PASS' if ok else 'FAIL'}")
+
+print()
+print("GATE (G1 Stromgren): " + ("PASS" if gate_ok else "FAIL"))
+#--- The gate must fail the PROCESS, not just print.
+_sys.exit(0 if gate_ok else 1)

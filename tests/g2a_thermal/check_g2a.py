@@ -8,19 +8,49 @@ the SAME thermal balance as thermal_mod/cooling_mod:
   - photoheating from the attenuated bin fluxes;
   - recombination cooling (Hui & Gnedin 1997 case B; He II as kT alpha;
     He III hydrogenic x2);
-  - free-free with gbar approximated by 1.1 + 0.34 exp(-(5.5-logT)^2/3)
-    (the Fortran integrates the ported Hummer getGauntFF; the difference
-    is ~1-2% of a ~10% cooling term — noted in the report);
+  - free-free on the code's own gbar(T, Z), Z = 1 for H II and He II and
+    Z = 2 for He III;
   - collisional-ionization cooling;
   - H I line cooling from the SAME Tier-1 file data/atomic/cooling_h_1.txt.
 
 Expected physics: without metal cooling Te ~ 13-20 kK (the known pure-H/He
 overshoot, docs/PLAN.md section 8).  Gate: median |Te_MC/Te_1D - 1| < 1%
 over the ionized interior (0.3 < r < 2.8 pc).
+
+Rate coefficients come from tools/python/mochii_rates.py, so that the reference
+recombines and radiates at the rates the run used; otherwise the deviation it
+reports is partly a difference between two atomic datasets rather than a
+property of the transport.  Three such differences were removed:
+
+  - recombination, which mirrors src/recomb_mod.f90 for the default
+    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    ground-level rate); the run here is case B (par%case_ab = 'B').  This
+    check used to carry its own Hui & Gnedin (1997) case-B coefficients, which
+    over the 19-24 kK of this test differ by 1.2% and made 0.20 of the 0.97
+    percentage points of median deviation atomic data rather than transport;
+  - the free-free Gaunt factor, which cooling_mod resolves by net charge.  The
+    1.1 + 0.34 exp[-(5.5-logT)^2/3] approximation this check used to carry is
+    within 0.06-0.6% of the code at Z = 1, so its T dependence was never the
+    problem; using it for He III as well was, since gbar(Z=2) is 6.5% below
+    gbar(Z=1) at 10^4 K;
+  - the H I and He II photoionization cross sections, which photo_xsec takes
+    from the exact hydrogenic expression where this check used the VFKY96 fit.
+    The fit is 0.775% high at the H I threshold, and a hot star's rate integral
+    carries most of its weight there.  He I is VFKY96 on both sides.
+
+tests/rates/check_python_rates.py holds the module to the Fortran.  The
+recombination *cooling* coefficients below stay Hui & Gnedin, as cooling_mod
+has them.
 """
+import os as _os
 import sys
 import numpy as np
 import h5py
+
+sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                 "..", "..", "tools", "python"))
+from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII, gbar_ff,
+                          sigma_HI, sigma_HeI, sigma_HeII)
 
 EV2ERG = 1.602176634e-12
 KB     = 1.380649e-16
@@ -32,39 +62,6 @@ TSTAR, LBAND    = 4.0e4, 3.177837e38
 NH, YHE         = 100.0, 0.1
 RSPH_PC         = 4.0
 TE_MIN, TE_MAX  = 3.0e3, 5.0e4
-
-
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, dtype=float)
-    x = E/E0 - y0
-    z = np.sqrt(x*x + y1*y1)
-    Q = 5.5 - 0.5*P
-    s = s0*((x-1.0)**2 + yw**2)*z**(-Q)*(1.0 + np.sqrt(z/ya))**(-P)*1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):   return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-def sig_HeI(E):  return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188, 2.039, 4.434e-1, 2.136)
-def sig_HeII(E): return sigma_vfky96(E, ETH_HeII, 1.720, 1.369e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def alphaA_HII(T):
-    lam = 2.0*157807.0/T
-    return 1.269e-13*lam**1.503/(1.0 + (lam/0.522)**0.470)**1.923
-
-
-def alphaB_HII(T):
-    lam = 2.0*157807.0/T
-    return 2.753e-14*lam**1.500/(1.0 + (lam/2.740)**0.407)**2.242
-
-
-def alphaA_HeII(T):  return 3.000e-14*(2.0*285335.0/T)**0.654
-def alphaB_HeII(T):  return 1.260e-14*(2.0*285335.0/T)**0.750
-
-
-def alphaB_HeIII(T):
-    lam = 2.0*631515.0/T
-    return 2.0*2.753e-14*lam**1.500/(1.0 + (lam/2.740)**0.407)**2.242
 
 
 def betaB_HII(T):
@@ -88,10 +85,6 @@ def voronov(T, dE, P, A, X, K):
 def ci_HI(T):   return voronov(T, 13.6, 0.0, 2.91e-8, 0.232, 0.39)
 def ci_HeI(T):  return voronov(T, 24.6, 0.0, 1.75e-8, 0.180, 0.35)
 def ci_HeII(T): return voronov(T, 54.4, 1.0, 2.05e-9, 0.265, 0.25)
-
-
-def gbar_ff(T):
-    return 1.1 + 0.34*np.exp(-(5.5 - np.log10(T))**2/3.0)
 
 
 def load_tier1(path):
@@ -156,8 +149,9 @@ def cooling_total(T, ne, xHI, xHeI, xHeII):
     nHeI, nHeII_n, nHeIII = NH*YHE*xHeI, NH*YHE*xHeII, NH*YHE*xHeIII
     cool = ne*(nHII*betaB_HII(T) + nHeII_n*beta_HeII_B(T)
                + nHeIII*beta_HeIII_B(T))
-    cool += 1.42554e-27*np.sqrt(T)*ne*((nHII + nHeII_n)*gbar_ff(T)
-                                       + 4.0*nHeIII*gbar_ff(T))
+    #--- free-free: Z = 1 for H II and He II, Z = 2 (so Z^2 = 4) for He III.
+    cool += 1.42554e-27*np.sqrt(T)*ne*((nHII + nHeII_n)*gbar_ff(T, 1)
+                                       + 4.0*nHeIII*gbar_ff(T, 2))
     cool += ne*(nHI*ci_HI(T)*ETH_HI + nHeI*ci_HeI(T)*ETH_HeI
                 + nHeII_n*ci_HeII(T)*ETH_HeII)*EV2ERG
     cool += ne*nHI*lam_HI(T)
@@ -172,7 +166,7 @@ def net_rate(gH, gHe1, gHe2, hH, hHe1, hHe2, T, xs):
 
 def reference_1d(nr=8000, nsweep=4):
     ec, lum = band_bins()
-    sH, sHe1, sHe2 = sig_HI(ec), sig_HeI(ec), sig_HeII(ec)
+    sH, sHe1, sHe2 = sigma_HI(ec), sigma_HeI(ec), sigma_HeII(ec)
     hnu = ec*EV2ERG
     dr_pc = RSPH_PC/nr
     dr_cm = dr_pc*PC2CM
@@ -225,7 +219,7 @@ def reference_1d(nr=8000, nsweep=4):
 
 
 # ------------------------------------------------------------------ main --
-print("=== 1D thermal reference (same rates; gbar approximation noted) ===")
+print("=== 1D thermal reference (rates from tools/python/mochii_rates.py) ===")
 r1d, xHI1d, xHeI1d, xHeII1d, Te1d = reference_1d()
 i_in = r1d < 2.5
 print(f"1D: Te at r=0.5 pc = {Te1d[np.argmin(abs(r1d-0.5))]:.1f} K, "

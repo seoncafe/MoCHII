@@ -71,9 +71,9 @@ ground-level split taken from the Milne relation on those same cross
 sections, Voronov collisional ionization,
 and charge exchange, so that adding a metal ion is a data operation
 rather than a code operation.  We validate the code against analytic
-attenuation (rate-integral bias $+0.004\%$), the Str\"omgren sphere
-(ionized volume $+0.60\%$ versus an exact 1D reference; AMR identical to
-a uniform grid), a thermal H/He nebula (median $0.97\%$ in $\Te$), and
+attenuation (rate-integral bias $+0.08\%$), the Str\"omgren sphere
+(ionized volume $+0.68\%$ versus an exact 1D reference; AMR identical to
+a uniform grid), a thermal H/He nebula (median $0.77\%$ in $\Te$), and
 the Lexington 2000 \HII{} region benchmarks.  Its line cooling is taken
 from the level populations at the local electron density, the same
 $n$-level solve that produces the emergent lines, so the thermal balance
@@ -1043,7 +1043,7 @@ AMR result is required to reproduce the equivalent uniform-grid run.
 The zero-variance edge walk (Eq.~\ref{eq:edgewalk}) is verified on a
 uniform sphere ($\nH = 1$, $R = 1$~pc, $\xHI = 0.1$) with a central
 $10^5$~K source.  Against the cell-volume-averaged analytic attenuation,
-$\Gamma_{\mathrm{HI}}$ has a mean bias of $+0.004\%$ and a median deviation
+$\Gamma_{\mathrm{HI}}$ has a mean bias of $+0.08\%$ and a median deviation
 of $0.38\%$ (pure Monte Carlo noise), and $\Gamma_{\mathrm{HeI}}$ a bias of
 $+0.011\%$ (Figure~\ref{fig:g0}).
 
@@ -1076,22 +1076,28 @@ $R_S = [3\QH/(4\pi \nH^2 \alpha_B)]^{1/3} = 3.153$~pc, from which the
 full solution differs physically (helium consumes photons; the front has
 a finite width).  The 1D reference
 gives an effective ionized radius $R_{\mathrm{eff}} = (3V_{\mathrm{ion}}/
-4\pi)^{1/3} = 3.0365$~pc; a uniform level-6 octree gives 3.0546~pc
-($+0.60\%$), and a front-refined octree with $3.5\times$ fewer cells
+4\pi)^{1/3} = 3.0243$~pc; a uniform level-7 octree gives 3.0448~pc
+($+0.68\%$) and a level-6 one 3.0546~pc ($+1.00\%$), the difference being the
+finite front width on a 0.147~pc cell against a front at 3.02~pc; a
+front-refined octree with $3.5\times$ fewer cells
 reproduces it to four decimals, while a center-refined control (coarsest
-cells at the front) deviates by $+2.34\%$ --- the ionization front is the
+cells at the front) deviates by $+2.75\%$ --- the ionization front is the
 one place needing resolution (Figure~\ref{fig:g1}).  With the thermal
-balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.97\%$
-and a mean bias $+1.02\%$ (Figure~\ref{fig:g2a}).  Both figures are set by the
-reference rather than by the transport.  The 1D reference carries the
-\citet{huignedin1997} case-B recombination coefficient while the run uses the
-Badnell total with the Milne ground-level rate, and the two differ by $1.2\%$ at
-the 19--24~kK of this test; running the same case with the reference's own
-coefficients gives a median $0.78\%$, so $0.19$ percentage points is that
-mismatch.  The remainder is the reference's own free-free Gaunt approximation,
-which it documents as $1$--$2\%$ of a cooling term worth $\sim$$10\%$ of the
-total.  The comparison is therefore a bound on the 1D reference, not a
-resolution of the Monte Carlo solution.  Without metals the
+balance on, $\Te(r)$ matches the 1D thermal reference to a median $0.77\%$
+and a mean bias $+0.79\%$ (Figure~\ref{fig:g2a}).  Those figures are what the
+comparison measures once the reference uses the run's own atomic data.  It
+formerly carried the \citet{huignedin1997} case-B recombination coefficients
+where the run uses the Badnell total with the Milne ground-level rate, a
+frequency-averaged free-free Gaunt factor with no charge dependence where the run
+separates $Z = 1$ from $Z = 2$, and \citet{verner1996} fits for H\,\textsc{i}
+and He\,\textsc{ii} where the run uses the exact hydrogenic expression.  All
+three are now taken from the code's own routines through a shared module that a
+gate checks against the Fortran to machine precision.  Aligning the
+recombination moved the median from $0.97\%$ to $0.77\%$; the Gaunt charge
+dependence moved it $0.003$ percentage points, because a 40~kK blackbody leaves
+almost no photons above 54.4~eV and the $Z = 2$ term is therefore negligible, and
+the cross sections moved it $0.011$.  What is left is a property of the solution
+rather than of the data.  Without metals the
 metal-free nebula runs at 19--24~kK, the known overshoot that motivates the
 trace-metal cooling.
 
@@ -1538,7 +1544,7 @@ On the Str\"omgren configuration, starting at level 5 and rebuilding to
 level 7 at iteration 15 (32\,768 $\to$ 464\,311 leaves), the re-refined
 grid gives $R_{\mathrm{eff}} = 3.0432$~pc against a native uniform level-7
 grid's 3.0430~pc (2\,097\,152 leaves) --- agreement to $+0.008\%$ with
-$4.5\times$ fewer cells, and both improve on level 6 ($+0.60\%$), as
+$4.5\times$ fewer cells, and both improve on level 6 ($+1.00\%$), as
 resolution convergence expects (Figure~\ref{fig:g4refine}).  The front
 profiles overlie exactly.
 
@@ -1590,8 +1596,8 @@ extinction table \citep{weingartner2001,draine2003} covering the EUV, where
 $C_{\mathrm{abs}}/\mathrm{H} = 1.75\times10^{-21}$ at 13.6~eV falls to
 $3.96\times10^{-22}\,\mathrm{cm^2}$ at 100~eV.  On the dusty Str\"omgren
 test, against a 1D reference carrying identical dust absorption, the full
-MW dust gives $R_{\mathrm{eff}} = 2.205$~pc versus the reference 2.198~pc
-($+0.31\%$), reproducing the classic dusty reduction $R/R_0 = 0.722$
+MW dust gives $R_{\mathrm{eff}} = 2.205$~pc versus the reference 2.191~pc
+($+0.66\%$), reproducing the classic dusty reduction $R/R_0 = 0.722$
 (Figure~\ref{fig:duststrom}); dust absorbs $\sim$60\% of the band luminosity
 there.
 
@@ -1772,8 +1778,8 @@ DDA backend, an explicit optional Monte Carlo diffuse field, a
 data-driven trace-metal registry with modern atomic data, first-class dust
 absorption/scattering and equilibrium/stochastic emission with PAH physics,
 and peel-off synthetic imaging --- distinguish it from the uniform-grid and
-1D codes.  It reproduces analytic attenuation to $+0.004\%$, the Str\"omgren
-sphere to $+0.60\%$, and a thermal H/He nebula to $0.97\%$.  On the
+1D codes.  It reproduces analytic attenuation to $+0.08\%$, the Str\"omgren
+sphere to $+0.68\%$, and a thermal H/He nebula to $0.77\%$.  On the
 Lexington 2000 \HII{} region benchmarks, with continuously sampled Planck
 photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron

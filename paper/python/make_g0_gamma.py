@@ -8,7 +8,14 @@ y_He = 0.1, no dust, no scattering.
 
 Analytic reference, evaluated with the SAME frequency bins and bin-center
 cross sections as the code (this isolates the transport + tally + rate
-bookkeeping; bin-count convergence is a separate check below):
+bookkeeping; bin-count convergence is a separate check below).  The cross
+sections come from tools/python/mochii_rates.py, which mirrors
+src/photo_xsec.f90: H I and He II from the exact hydrogenic expression, He I
+from VFKY96.  This generator used to evaluate H I and He II from the VFKY96 fit
+instead, which is 0.775% high at the H I threshold -- where a 1e5 K blackbody
+puts most of the weight of the rate integral -- so the "analytic" reference was
+not the integral the code computed.  tests/rates/check_python_rates.py holds the
+module to the Fortran.
 
     Gamma_i(r) = sum_b L_b sigma_i(E_b) exp(-kappa(E_b) r_cm)
                  / (4 pi r_cm^2 h nu_b)
@@ -19,13 +26,21 @@ center cell-size gradient and the voxelized sphere edge):
     median |Gamma_MC/Gamma_ana - 1| < 1%,  max < 3%.
 
 Also: (a) cross-section values vs the independent EXHALE implementations
-(hydrogenic H formula; VFKY96 He I), (b) the 16-bin rate integral vs a
-2048-bin quasi-continuous integral (PLAN: 10-20 bins -> percent level).
+(hydrogenic H formula; VFKY96 He I) -- now a check of one hydrogenic
+implementation against another, not of a fit against the exact form,
+(b) the 16-bin rate integral vs a 2048-bin quasi-continuous integral
+(PLAN: 10-20 bins -> percent level).
 """
+import sys as _sys
+
 import numpy as np
 import os as _os
 # Figures are written to paper/figures/ regardless of the working directory.
 FIGDIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "figures")
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                  "..", "..", "tools", "python"))
+from mochii_rates import sigma_vfky96, sigma_HI, sigma_HeI, sigma_HeII
 
 # Plot 1 in THIN Monte Carlo cells (random sample); all numbers use every cell.
 THIN = 2
@@ -45,28 +60,6 @@ NH, XHI, XHEI, YHE = 1.0, 0.1, 1.0, 0.1
 RSPH_CM = 1.0 * PC2CM
 
 
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, dtype=float)
-    x = E/E0 - y0
-    z = np.sqrt(x*x + y1*y1)
-    Q = 5.5 - 0.5*P
-    s = s0*((x-1.0)**2 + yw**2)*z**(-Q)*(1.0 + np.sqrt(z/ya))**(-P)*1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):
-    return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def sig_HeI(E):
-    return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188,
-                        2.039, 4.434e-1, 2.136)
-
-
-def sig_HeII(E):
-    return sigma_vfky96(E, ETH_HeII, 1.720, 1.369e4, 3.288e1, 2.963, 0, 0, 0)
-
-
 def band_bins(nnu, emin, emax, nsub=32):
     """Replicate ion_band_mod: log bins, geometric centers, Planck weights
     via nsub-point midpoint integration, normalized to LBAND."""
@@ -83,7 +76,7 @@ def band_bins(nnu, emin, emax, nsub=32):
 
 def gamma_ana(r_cm, ec, lum, sig):
     """Analytic bin-sum Gamma at radius r (uniform medium to RSPH_CM)."""
-    kap = NH*(XHI*sig_HI(ec) + YHE*XHEI*sig_HeI(ec))     # cm^-1 per bin
+    kap = NH*(XHI*sigma_HI(ec) + YHE*XHEI*sigma_HeI(ec))     # cm^-1 per bin
     path = np.minimum(r_cm, RSPH_CM)
     tau = np.outer(path, kap)
     hnu = ec*EV2ERG
@@ -121,7 +114,7 @@ print("=== G0 gate: Gamma(r) vs analytic attenuation (cell-averaged) ===")
 HALF_PC = 1.0/32.0            # level-5 half cell [pc]
 sel = (r_pc > 0.15) & (r_pc < 0.85)
 ok = True
-for name, sig in (("HI", sig_HI), ("HeI", sig_HeI)):
+for name, sig in (("HI", sigma_HI), ("HeI", sigma_HeI)):
     ana = gamma_ana_cellavg(xyz[:, sel], HALF_PC, ec, lum, sig)
     ratio = g_mc[name][sel]/ana
     med  = np.median(np.abs(ratio - 1.0))
@@ -148,16 +141,16 @@ def sig_H_hydrogenic(E, Z=1.0):
     return np.where(E >= 0.99999*E0, s, 0.0)
 
 
-dev_H = np.abs(sig_HI(E)/sig_H_hydrogenic(E) - 1.0).max()
+dev_H = np.abs(sigma_HI(E)/sig_H_hydrogenic(E) - 1.0).max()
 Ehe = E[E >= 24.6]
-dev_He = np.abs(sig_HeI(Ehe)/sigma_vfky96(Ehe, 24.59, 1.361e1, 9.492e2,
+dev_He = np.abs(sigma_HeI(Ehe)/sigma_vfky96(Ehe, 24.59, 1.361e1, 9.492e2,
                 1.469, 3.188, 2.039, 4.434e-1, 2.136) - 1.0).max()
-print(f"sigma_HI  vs hydrogenic (fit vs exact) : max dev = {dev_H*100:5.2f}% "
-      f"(VFKY96 fit accuracy; few % expected)")
+print(f"sigma_HI  vs EXHALE hydrogenic         : max dev = {dev_H*100:5.2f}% "
+      f"(same formula; E_th 13.598 vs EXHALE's 13.6 eV)")
 print(f"sigma_HeI vs EXHALE VFKY96 parameters  : max dev = {dev_He*100:.2e}%")
-print(f"threshold values: sigma_HI(13.6+) = {sig_HI(13.599)/1e-18:6.3f} Mb "
-      f"(6.30), sigma_HeI(24.6+) = {sig_HeI(24.6)/1e-18:6.3f} Mb (~7.4), "
-      f"sigma_HeII(54.4+) = {sig_HeII(54.42)/1e-18:6.3f} Mb (~1.58)")
+print(f"threshold values: sigma_HI(13.6+) = {sigma_HI(13.599)/1e-18:6.3f} Mb "
+      f"(6.30), sigma_HeI(24.6+) = {sigma_HeI(24.6)/1e-18:6.3f} Mb (~7.4), "
+      f"sigma_HeII(54.4+) = {sigma_HeII(54.42)/1e-18:6.3f} Mb (~1.58)")
 
 # --- bin-count convergence of the rate integral ---
 print("\n=== bin-count convergence (r = 0.5 pc) ===")
@@ -165,8 +158,8 @@ r0 = np.array([0.5*PC2CM])
 g_ref = None
 for nnu in (2048, 64, 32, 16, 8):
     ecb, lumb = band_bins(nnu, EMIN, EMAX)
-    kap = NH*(XHI*sig_HI(ecb) + YHE*XHEI*sig_HeI(ecb))
-    g = np.sum(lumb*sig_HI(ecb)/(ecb*EV2ERG)*np.exp(-kap*r0[0]))/(4*np.pi*r0[0]**2)
+    kap = NH*(XHI*sigma_HI(ecb) + YHE*XHEI*sigma_HeI(ecb))
+    g = np.sum(lumb*sigma_HI(ecb)/(ecb*EV2ERG)*np.exp(-kap*r0[0]))/(4*np.pi*r0[0]**2)
     if g_ref is None:
         g_ref = g
         print(f"  nnu = {nnu:5d}: Gamma_HI = {g:.6e} s^-1 (reference)")
@@ -196,7 +189,7 @@ _pick = rng.choice(r_pc.size, size=max(1, r_pc.size // THIN), replace=False)
 order = _pick[np.argsort(r_pc[_pick])]
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 8), sharex=True,
                                gridspec_kw=dict(height_ratios=[3, 1]))
-for name, sig, c in (("HI", sig_HI, "tab:blue"), ("HeI", sig_HeI, "tab:red")):
+for name, sig, c in (("HI", sigma_HI, "tab:blue"), ("HeI", sigma_HeI, "tab:red")):
     ana_c = gamma_ana_cellavg(xyz, HALF_PC, ec, lum, sig)
     ax1.plot(r_pc[order], g_mc[name][order], ".", ms=1.5, color=c, alpha=0.3,
              rasterized=True, label=r"%s (Monte Carlo)" % name)

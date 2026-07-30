@@ -15,13 +15,37 @@ Gate criteria:
   (3) refined-grid run (levels 4-6) matches the uniform level-6 run
       (AMR <-> uniform methodology, PLAN section 5).
 
+Rate coefficients and cross sections come from tools/python/mochii_rates.py, so
+that the reference absorbs and recombines as the run did; otherwise the
+deviation it reports is partly a difference between two atomic datasets rather
+than a property of the transport.  Two such differences were removed:
+
+  - recombination, which mirrors src/recomb_mod.f90 for the default
+    par%recomb_model = 'badnell_mao' (Badnell total minus the Milne
+    ground-level rate); the runs plotted are case B (par%case_ab = 'B').  This generator used
+    to carry its own Hui & Gnedin (1997) case-B coefficients, which differ by
+    0.86% in alpha_B(H I) at 10^4 K;
+  - the H I and He II photoionization cross sections, which photo_xsec takes
+    from the exact hydrogenic expression where this generator used the VFKY96 fit.
+    The fit is 0.775% high at the H I threshold, and a hot star's rate integral
+    carries most of its weight there.  He I is VFKY96 on both sides.
+
+tests/rates/check_python_rates.py holds the module to the Fortran.
+
 Run after:  mpirun -np 8 ../../MoCHII.x g1_stromgren.in
             mpirun -np 8 ../../MoCHII.x g1_stromgren_ref.in
 """
+import sys as _sys
+
 import numpy as np
 import os as _os
 # Figures are written to paper/figures/ regardless of the working directory.
 FIGDIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "figures")
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                  "..", "..", "tools", "python"))
+from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII,
+                          sigma_HI, sigma_HeI, sigma_HeII)
 
 # Plot 1 in THIN Monte Carlo cells (random sample); all numbers use every cell.
 THIN = 5
@@ -36,30 +60,6 @@ NNU, EMIN, EMAX = 32, 13.598, 100.0
 TSTAR, LBAND    = 4.0e4, 3.177837e38
 NH, YHE, TE     = 100.0, 0.1, 1.0e4
 RSPH_PC         = 4.0
-
-
-def sigma_vfky96(E, Eth, E0, s0, ya, P, yw, y0, y1):
-    E = np.asarray(E, dtype=float)
-    x = E/E0 - y0
-    z = np.sqrt(x*x + y1*y1)
-    Q = 5.5 - 0.5*P
-    s = s0*((x-1.0)**2 + yw**2)*z**(-Q)*(1.0 + np.sqrt(z/ya))**(-P)*1e-18
-    return np.where(E >= Eth, s, 0.0)
-
-
-def sig_HI(E):   return sigma_vfky96(E, ETH_HI, 4.298e-1, 5.475e4, 3.288e1, 2.963, 0, 0, 0)
-def sig_HeI(E):  return sigma_vfky96(E, ETH_HeI, 1.361e1, 9.492e2, 1.469, 3.188, 2.039, 4.434e-1, 2.136)
-def sig_HeII(E): return sigma_vfky96(E, ETH_HeII, 1.720, 1.369e4, 3.288e1, 2.963, 0, 0, 0)
-
-
-def hui_gnedin_B(T, TTR, pref, lam0, p1, p2):
-    lam = 2.0*TTR/T
-    return pref*lam**p1/(1.0 + (lam/lam0)**0.407)**p2
-
-
-def alphaB_HII(T):   return hui_gnedin_B(T, 157807.0, 2.753e-14, 2.740, 1.500, 2.242)
-def alphaB_HeII(T):  return 1.260e-14*(2.0*285335.0/T)**0.750
-def alphaB_HeIII(T): return 2.0*hui_gnedin_B(T, 631515.0, 2.753e-14, 2.740, 1.500, 2.242)
 
 
 def voronov(T, dE, P, A, X, K):
@@ -116,7 +116,7 @@ def reference_1d(nr=20000, nsweep=4):
     Returns r_pc, x profiles.
     """
     ec, lum = band_bins()
-    sH, sHe1, sHe2 = sig_HI(ec), sig_HeI(ec), sig_HeII(ec)
+    sH, sHe1, sHe2 = sigma_HI(ec), sigma_HeI(ec), sigma_HeII(ec)
     hnu = ec*EV2ERG
     dr_pc = RSPH_PC/nr
     dr_cm = dr_pc*PC2CM
