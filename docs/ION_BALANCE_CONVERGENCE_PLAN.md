@@ -91,6 +91,94 @@ first-order expansion `h0 = ch (1 + AHe - AHe he0)/b`, because the difference of
 two nearly equal numbers loses precision. That is the same disease as ours, met
 with the same medicine as option C.
 
+### 2.1 How charge exchange itself enters each iteration
+
+The table above is about the outer solve.  The question that matters for M1 is
+narrower: **with which iterate of the hydrogen state is the charge-exchange term
+evaluated, and does the pair participate in the convergence test?**  Every one of
+the five lags it -- none evaluates it implicitly -- but they lag it by very
+different amounts, and only one of them checks the result.
+
+**Wood `ionize` -- lagged by a whole Monte Carlo iteration.**  `h0find` solves
+H and He with no charge-exchange term at all, and the metal blocks in
+`ionize2.f` then run once, reading the converged `h0`, `he0` and `ne` of that
+call (`:136-138` for O, `:83-85` for N).  There is no iteration on the metal
+fractions and no feedback within the call, so the coupling closes only through
+the next radiation pass.
+
+**CMacIonize -- the same, and structurally so.**  Metals are computed after the
+H/He state is frozen (`IonizationStateCalculator.cpp:116-185`, and the same
+ordering in `TemperatureCalculator.cpp:270-345`), one pass, using that state.
+Since the H/He solve carries no charge-transfer term either (no hit above
+`:501`), the pair never appears on both sides in the same solve.
+
+**TORUS -- lagged by one pass of a per-octal alternation.**  The charge-exchange
+rates read the current `nHI`/`nHII` (`photoionAMR_mod.F90:6873`, `:6877`) inside
+the loop that alternates the ionization and thermal solves (`:3909-3915`), and
+the whole update is under-relaxed by 0.6 (`:6853`, `:6914`).  The under-relaxation
+is applied to the ion fractions, not to the charge-exchange term specifically.
+
+**MOCASSIN -- lagged by one pass of its own recursion, and switched off in cold
+gas.**  The metal denominator reads the stored H0 fraction
+`grid%ionDen(cellP, elementXref(1), 1)` (`update_mod.f90:1498-1499`), which the
+previous recursion pass wrote, so the lag is one pass of `ionBalance` -- the
+same structure as MoCHII's.  Two differences are worth carrying into any
+comparison.  The `chex` table is repopulated inside the recursive subroutine on
+every pass (`:1392-1451`), and, more consequentially, **the rate is hard-zeroed
+outside 6000-50000 K**: `if (TeUsed < 6000. .or. TeUsed > 5.e4) chex(elem,ion,1) = 0.`
+(`:1466`).  Below 6000 K MOCASSIN therefore has no charge exchange at all, where
+MoCHII clamps the Kingdon & Ferland forms to the edge of their fit range and
+keeps evaluating (`cx_rate`, forms 6 and 7).  A cold-gas or PDR comparison
+against MOCASSIN is comparing two different physics inputs, not two solvers.
+And no metal ion enters MOCASSIN's convergence test, which is on H0, He0 and
+He+ only (`:1598-1604`), so a badly converged charge-exchange partner cannot
+hold the cell open.
+
+**Cloudy -- lagged inside one matrix, closed by the outer loop, and checked.**
+Within a single LU the partner's density is a frozen coefficient, exactly as in
+a lagged substitution.  What differs is everything around it.
+`ChargTranEval()` is called once per pass of `ConvBase`
+(`conv_base.cpp:502`) with the comment stating the reason -- "charge transfer
+evaluation needs to be here so that same rate coefficient used for H ion and
+other recombination" -- so both sides of every reaction are guaranteed to read
+one number, which is the property MoCHII gets instead from the shared cache.
+`iso_charge_transfer_update()` then re-accumulates hydrogen's totals over every
+heavier element at the top of each ion solve (`ion_solver.cpp:68`).
+
+Then Cloudy does the thing none of the others do: it forms the **net** rate of
+each pair and refuses to call the zone converged if the two directions
+disagree, `conv_base.cpp:578-583` and `:605-620`.  Two details of that test are
+directly relevant to us.  The tolerance is adaptive and is written against the
+cancellation --
+
+```
+ion_cmp = MAX2( 0.01*MIN2(RateIonizTot(nlo)*dl1, RateIonizTot(nhi)*dl2),
+                1e-4*CharExcRecTo[nlo][nhi][0]*dl1*ul2 )
+```
+
+that is, the net must be small against the *smaller* of the two ionization
+rates, not against either term of the difference.  And the check is applied to
+**one pair only**: `lgCheckAll` is false, so the condition reduces to
+`nlo == ipHYDROGEN && nhi == ipOXYGEN`.  Cloudy hard-codes the
+hydrogen-oxygen pair as the one worth watching.
+
+That is an independent confirmation of the analysis in section 1.  MoCHII's own
+measurement found the same pair carrying over 99.99% of both sums at the
+ionization front (2.835e-11 and 2.838e-11 s^-1, agreeing to four digits), and
+identified that near-cancellation as the origin of the marginally stable mode.
+The reference code arrived at the same place from the other direction: it is the
+only pair whose bookkeeping it bothers to police.
+
+**What MoCHII should take from this.**  Not the lag -- MoCHII's is already the
+tightest of the five, since `R_in` and `R_out` are formed from the same cached
+coefficients and the same chain walk as the electron sum, inside the `n_e` fixed
+point rather than outside it.  What is missing is the second half: Cloudy pairs
+that lag with a **net-flux test that knows about the cancellation**.  MoCHII's
+`hydrogen_balance_residual` currently reports the residual of the whole balance;
+adding the O-H pair net flux, compared against the smaller of the two rates in
+Cloudy's manner, would make the diagnostic sensitive to precisely the failure
+mode section 1 predicts, and is worth doing whichever of A, B or C is chosen.
+
 ## 3. Options
 
 ### Option A -- Aitken/Steffensen acceleration on the existing sequence
