@@ -1176,7 +1176,7 @@ property of the distributed source, cited.
 - The legacy chain solver `solveions()` is dead code (`ion_solver.cpp:1317-1364`);
   reading it as Cloudy's method is an error.
 
-## 10b. Charge-exchange data audit, 2026-07-31: the oxygen pair fails detailed balance
+## 10b. Charge-exchange data audit, 2026-07-31: the oxygen pair was exchanged (RESOLVED)
 
 Found while answering how the reference codes keep the two directions
 consistent (Section 3.7 and `docs/ION_BALANCE_CONVERGENCE_PLAN.md` S4).  It is
@@ -1229,14 +1229,19 @@ correctly**; what it inherited is the source's own placement.
 
 ### 10b.3 Why oxygen is the one that breaks
 
-Oxygen is the only registry element with `IP(X) > IP(H)`: 13.6181 against
-13.5984 eV.  Every other metal has a lower first ionization potential, so for
-them `X^0 + H^+ -> X^+ + H^0` is exothermic and the **reverse** carries the
+Four registry elements have `IP(X) > IP(H)`: N, O, Ne and Ar (13.6181 against
+13.5984 eV for oxygen).  Ne and Ar carry no charge-exchange data (form 0) and
+nitrogen's pair is negligible (Section 10b.5), so oxygen is the only one whose
+Boltzmann-factor placement is dynamically live -- and it is live precisely
+because `O^0 + H^+` is *near-resonant*, with the two directions locked close to
+detailed balance across the front.  Every metal with a lower first ionization
+potential has `X^0 + H^+ -> X^+ + H^0` exothermic, so the **reverse** carries the
 Boltzmann factor -- which is what Huang's carbon row does, correctly, and what
 the derived Mg/Si/Fe/S entries do.  For oxygen the sign flips: `O^0 + H^+` is
-endothermic by 0.0197 eV, i.e. **229 K**, so the factor belongs on `O + H+`.
-Huang's table puts `exp(-227/T)` on `O+ + H` instead -- the right magnitude, to
-1%, on the wrong side of the reaction.
+endothermic by 0.0196 eV, i.e. **227.7 K**, so the factor belongs on `O + H+`.
+Huang's table puts `exp(-227/T)` on `O+ + H` instead -- the right magnitude (the
+printed 227 matches the 227.7 K defect to 0.3%), on the wrong side of the
+reaction.
 
 The most economical explanation is a product-versus-reactant labeling of that
 row, and **this tree has already been bitten by exactly that**: the `CX_HIGH`
@@ -1264,24 +1269,91 @@ Boltzmann factor sits, the two terms very nearly cancel in hydrogen's balance,
 and the Lexington diagnostics are weighted away from the gas where the residual
 lives.  **That is a prediction, recorded before the test.**
 
-### 10b.5 What to do
+**Measured, 2026-07-31, after the prediction above.**  Both benchmarks were
+rerun from the S3 state with only the oxygen exchange applied -- inputs
+identical to `results/continuous_energy/m1_s3/` except the output names;
+outputs in `results/continuous_energy/m1_oxfix/`:
 
-1. **Settle the direction against an independent source.**  Kingdon & Ferland
-   (1996) and Stancil et al. tabulate the O/H pair; the standard astrophysical
-   form puts `exp(-227/T)` on `O + H+`.  If that is confirmed, swap the
-   exponential in `make_element_data.py` for oxygen and regenerate.
-2. **Add a detailed-balance gate**, which is the durable fix: for every
-   transition-1 pair, check `k_i/k_r` against
-   `[g(X+)g(H0)]/[g(X0)g(H+)] * exp(-dE/kT)` over 3e3-3e4 K.  It needs ground-term
-   statistical weights and first ionization potentials, both small data
-   additions.  This audit was done by hand; it should not have to be.  Pair it
-   with S4, which checks the same physics at run time rather than in the data.
-3. Re-run G-M1c afterwards and compare against the prediction in 10b.4.
+| | `<T[NpNe]>` | L(Hbeta) | r(He0=0.5) | r(H0=0.1) |
+|---|---|---|---|---|
+| HII40 | 8167.54 -> 8169.75 K (**+2.2 K**, +0.027%) | +0.005% | +0.0001 pc | +0.0004 pc |
+| HII20 | 6924.39 -> 6926.44 K (**+2.1 K**, +0.030%) | +0.005% | +0.00001 pc | +0.0003 pc |
 
-**Do not "fix" this by deriving the oxygen reverse from the forward** the way
-Mg/Si/Fe/S are derived, until step 1 settles which of the two transcribed rows
-is the reliable one -- deriving from the wrong parent would make the pair
-self-consistent and both rates wrong.
+The prediction held.  A ~27% change in each direction of the pair that carries
+99.99% of both charge-exchange sums moves the benchmarks by 0.03%: the two
+terms nearly cancel in hydrogen's balance, and the diagnostics are weighted
+away from the partially neutral gas where the pair acts.  The +2 K is real --
+two hundred times the 0.008-0.010 K of the S3 root solve, so the corrected
+rates do act on the front region -- but far inside the code-to-code spread of
+the Lexington set.  The one diagnostic that moves appreciably is the one that
+lives where the pair acts: **[O I] 6300+6363 rises 39-40%** (HII40
+0.0173 -> 0.0241, HII20 0.0113 -> 0.0158 relative to Hbeta), because the
+corrected assignment raises the neutral-oxygen fraction at the partly neutral
+edge that emits it; it was already above the published 1995 spread and moves
+further above it, at 2.15x / 1.88x the Cloudy c25 values.  After the exchange
+the gate figures shift with the data,
+as they must: the G-M1f worst deviation reads 2.9e-11 (was 3.6e-11) and the
+dropped-`R_cx_in` residual floor 1.6e-3 (was 1.8e-3); the recorded values
+elsewhere in this document are the pre-exchange measurements.
+
+### 10b.5 Resolved: the source's own helium row settles it
+
+**Huang's Table 4 is headed "Reactants", and helium is the control.**  Three
+species in that table exchange with hydrogen and have a first ionization
+potential above hydrogen's -- He, O and N -- but only helium carries an explicit
+Boltzmann factor `exp(-dE_IP/T)` in its printed rate, so it is the one that fixes
+the convention: the table puts `exp(-12.75/T4)` on the `He + H+` row, and
+`[IP(He) - IP(H)]/k = 12.752` in units of 1e4 K.  Exact, on the endothermic
+reactant pair.  Carbon, the opposite case, likewise carries its exponential on
+`C+ + H`.  Nitrogen's two rows are the Lin et al. (2005) quantal fits -- numerical
+polynomials with no separated Boltzmann factor to place, and rates too small to
+matter (3.3e-19 and 1.1e-14 at 8000 K) -- so they neither confirm nor break the
+convention.  With helium and carbon fixing reactant labeling and applying it
+correctly, **oxygen is the single row inconsistent with the table's own
+convention.**
+
+Two independent codes agree with the corrected assignment.  Cloudy c25's
+TableCurve fits (`atmdat_char_tran.cpp:112-176`) put the Boltzmann factor on
+`O0 + H+`, make it the smaller of the two as an endothermic channel must be, and
+satisfy detailed balance to 7% over 4000-20000 K.  MOCASSIN's `chex(8,1)`
+(`update_mod.f90:1671`) has no Boltzmann factor and its comments label the
+product ion, i.e. it is the exothermic `O+ + H0 -> O0 + H+`.
+
+And the numbers close it: **Huang's two coefficients reproduce Cloudy's two to
+1-3% over 4000-20000 K when, and only when, the labels are exchanged.**  This is
+the same determination on both sides: Huang's Table 4 footnote g for oxygen is
+Stancil et al. (1999), which is exactly the data Cloudy's TableCurve fit is
+fitted to.  The values are right; the rows are swapped.
+
+**Done.**  `tools/fitting/make_element_data.py` now exchanges the two oxygen
+directions, with the evidence at the code site, and `data/atomic/element_o.txt`
+was regenerated -- the only file that changed.  The detailed-balance ratio at
+8000 K goes from **1.47 to 0.910**, into the same band as the derived
+Mg/Si/Fe/S entries.
+
+**And it is now a gate.**  `tests/charge_exchange/check_detailed_balance.f90`
+checks every transition-1 pair against
+`[g(X+)g(H0)]/[g(X0)g(H+)] * exp(-dE/kT)` at 5000, 8000, 10000 and 20000 K,
+taking `dE` from the registry's own `elem_eth` so it cannot drift from the data
+it checks.  Worst deviation 0.299 against a tolerance of 0.35; reinstating the
+printed placement makes it **fail at all four temperatures** (1.499, 1.472,
+1.461, 1.426) and exit nonzero, which was verified.
+
+Two design points worth keeping.  Pairs whose smaller coefficient falls below
+1e-15 cm^3 s^-1 at 1e4 K are reported but not failed -- C and N, whose rates
+cannot affect the balance at nebular densities and whose fits nothing here could
+constrain.  And the test starts at 5000 K because below that `cx_rate` clamps
+the Kingdon & Ferland forms into their validity range, which freezes one
+direction's Boltzmann factor while the other keeps running: testing lower would
+test the clamp, not the data.
+
+The erratum is written up for the exoplanet side as well, where the same table
+is used: `~/RT_Codes/ExoAtmosphere/EXHALE/docs/HUANG2023_TABLE4_OXYGEN_ERRATUM.md`.
+
+**Still open**: carbon's exponential is on the correct side but its argument is
+170000 K against an ionization-potential difference of 27132 K, possibly a
+genuine curve-crossing barrier.  Its rate is 2.3e-23 at 8000 K, so nothing turns
+on it, and the gate screens it out rather than pretending to test it.
 
 ## 11. Open questions and unverified points
 
@@ -1297,10 +1369,12 @@ measurement and which do not.
 2. **Helium–hydrogen charge exchange is entirely absent from MoCHII**, and no
    rate exists in the tree to evaluate it (Section 3.7).  Helium-specific,
    with no row in the residual exclusion table.  Magnitude unmeasured.
-3. **The oxygen charge-exchange pair fails detailed balance by 1.47x**, and the
-   transcription is faithful to its source (Section 10b).  Highest-value open
-   item in this document: oxygen carries over 99.99% of both sums where M1
-   matters.
+3. *(closed 2026-07-31)* The oxygen charge-exchange pair failed detailed
+   balance by 1.47x.  Resolved: Huang et al. (2023) Table 4 has that element's
+   two rows exchanged, shown by its own helium row and confirmed against Cloudy
+   and MOCASSIN; the directions are now swapped in the generator and the check
+   is a gate (Section 10b).  What remains open is carbon's Boltzmann argument,
+   on a rate too small to matter.
 4. **Charge-exchange heating and cooling**: still not read in any of the five
    codes; absent from MoCHII (Section 3.7).  This is now the largest remaining
    gap in the survey, and it is a real physics question rather than a

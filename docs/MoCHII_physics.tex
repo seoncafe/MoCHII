@@ -34,9 +34,9 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8169$~K at HII40 and 6925~K at
+the MOCASSIN Lexington benchmarks ($T_e = 8170$~K at HII40 and 6926~K at
 HII20 with the density-suppressed cooling default, matching a current
-\textsc{Cloudy} c25.00 run to $0.50\%$ and $0.22\%$; the zero-density limit
+\textsc{Cloudy} c25.00 run to $0.49\%$ and $0.24\%$; the zero-density limit
 gives 7894 and 6376~K, and both modern codes sit above the 2000-era
 published ranges); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
@@ -791,15 +791,28 @@ is the absence of a defect found, not accuracy established.
 
 \subsection{Charge exchange with hydrogen}
 \label{sec:cx}
-First-stage reactions use the verified transcription of Huang et al.\
+First-stage reactions use Huang et al.\
 (2023, ApJ 951, 123) Table~4 (sources Stancil et al.\ 1998/1999, Lin et
 al.\ 2005, Zhao et al.\ 2005, Kingdon \& Ferland 1996), e.g.\ for oxygen
 \begin{align}
-  k({\rm O} + {\rm H}^+) &= 2.08{\times}10^{-9}\,T_4^{0.405}
-   + 1.11{\times}10^{-11}\,T_4^{-0.458},\nonumber\\
-  k({\rm O}^+ + {\rm H}) &= \big(1.26{\times}10^{-9}\,T_4^{0.517}
-   + 4.25{\times}10^{-10}\,T_4^{0.00669}\big)\,e^{-227/T}.
+  k({\rm O} + {\rm H}^+) &= \big(1.26{\times}10^{-9}\,T_4^{0.517}
+   + 4.25{\times}10^{-10}\,T_4^{0.00669}\big)\,e^{-227/T},\nonumber\\
+  k({\rm O}^+ + {\rm H}) &= 2.08{\times}10^{-9}\,T_4^{0.405}
+   + 1.11{\times}10^{-11}\,T_4^{-0.458}.
 \end{align}
+The oxygen rows required a correction.  Huang's Table~4 prints the two
+oxygen reactions with their reactant labels interchanged, placing the
+barrier factor $e^{-227/T}$ on the exothermic recombination
+$\mathrm{O}^+ + \mathrm{H}^0$, where no barrier belongs, and leaving the
+endothermic ionization $\mathrm{O}^0 + \mathrm{H}^+$ --- endothermic by
+$0.0196$~eV ($\mathrm{IP(O)}-\mathrm{IP(H)}$), i.e.\ $227.7$~K --- without
+one.  Taken as printed the pair violates detailed balance by $1.47\times$
+at $8\,000$~K; with the labels restored to the assignment above it
+satisfies it to $0.910$, and the two directions then match the Stancil et
+al.\ (1999) fit that \textsc{Cloudy} c25.00 uses to $1$--$3\%$ over
+$4\,000$--$20\,000$~K --- the same determination, since Huang's Table~4
+footnote for oxygen is Stancil et al.\ (1999).  This check is now the gate
+\code{tests/charge\_exchange/check\_detailed\_balance.f90}.
 Higher stages ($\mathrm{X}^{i+} + \mathrm{H}^0 \to
 \mathrm{X}^{(i-1)+}$, recombination direction) use the Kingdon \&
 Ferland (1996) fits $k = a\,T_4^{b}\,(1 + c\,e^{d\,T_4})$, transcribed
@@ -1413,6 +1426,12 @@ $r({\rm He}^0\!=\!0.5)$ by $-0.0002$ and $-0.0000$~pc.  All of these are
 inside the tolerance the runs were converged to
 (\code{par\%gas\_tol\_te} $=10^{-2}$, i.e.\ 82~K at HII40) by factors of
 58 and 533, so the recorded benchmark tables are not re-baselined on them.
+Correcting the interchanged oxygen rows of \S\ref{sec:cx} is a separate
+change and moves the temperatures the \emph{other} way: measured from the
+same converged state, $\langle T[N_{\rm p}N_{\rm e}]\rangle$ rises by
+$+2.2$~K at HII40 and $+2.1$~K at HII20 (to the headline 8170 and 6926~K),
+$L({\rm H}\beta)$ by $+0.005\%$, and the ionization fronts by
+$\leq 4{\times}10^{-4}$~pc.
 
 The same cancellation has a numerical consequence, and it dictates how the
 balance is solved.  Substituting into Eq.~(\ref{eq:hbalance-cx}) with the
@@ -1907,7 +1926,10 @@ benchmark quantities move by less than the width of the published spread:
 $\langle T[N_pN_e]\rangle$ from 8162 to 8169~K at HII40 and 6917 to 6925~K
 at HII20, $T_{\rm inner}$ from 7535 to 7536 and 6936 to 6938~K, and $R_{\rm
 out}$ from $8.89$ to $8.88{\times}10^{18}$~cm at HII20 with
-$1.44{\times}10^{19}$~cm unchanged at HII40.
+$1.44{\times}10^{19}$~cm unchanged at HII40.  A later, independent
+correction --- exchanging the oxygen charge-exchange rows of
+\S\ref{sec:cx} --- then carries these a further $+2.2$~K at HII40 and
+$+2.1$~K at HII20, to the headline 8170 and 6926~K.
 
 $L({\rm H}\beta)$ moves the \emph{wrong} way.  It falls $0.37$--$0.42\%$
 ($1.94 \to 1.93{\times}10^{37}$ and $4.70 \to 4.68{\times}10^{36}\,{\rm
@@ -2991,15 +3013,15 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 6925 K & 6376 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8169 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 6926 K & 6376 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8170 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8169$~K (HII40) and 6925~K (HII20),
+local\_ne}) MoCHII gives $T_e = 8170$~K (HII40) and 6926~K (HII20),
 matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
-$0.50\%$ and $0.22\%$.  Both modern codes sit a few hundred K \emph{above} the
+$0.49\%$ and $0.24\%$.  Both modern codes sit a few hundred K \emph{above} the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
 $6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
@@ -3031,7 +3053,9 @@ restoring the density suppression at the local $n_e$ (the
 \code{local\_ne} default) raises them to 8211 and 7025~K, and the
 subsequent corrections to the diffuse field --- the Milne ground continua,
 the He\,\textsc{i} cascade and the $\alpha_1$ correction of
-\S\ref{sec:diffuse} --- settle them at 8169 and 6925~K.  The former
+\S\ref{sec:diffuse} --- settle them at 8169 and 6925~K; the corrected
+oxygen charge exchange of Section~\ref{sec:cx} then adds a final $+2$~K,
+giving the headline 8170 and 6926~K.  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -3443,8 +3467,8 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8169~K, HII20 6925~K) matches a current \textsc{Cloudy}
-  c25.00 run to $0.50\%$ and $0.22\%$, the earlier excess having been traced
+  MoCHII (HII40 8170~K, HII20 6926~K) matches a current \textsc{Cloudy}
+  c25.00 run to $0.49\%$ and $0.24\%$, the earlier excess having been traced
   to two Tier-1 cooling defects (D1/D2) and the missing density suppression,
   all fixed.  The one remaining note is that both modern codes sit a few
   hundred K above the 2000-era published Lexington temperatures --- a

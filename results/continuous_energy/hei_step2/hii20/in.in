@@ -1,0 +1,63 @@
+&parameters
+ ! Continuous-energy production validation: Lexington HII20.
+ ! Run from the repository root.  The Sobol packet count is a complete
+ ! 2^25 net; nnu_ion controls diagnostics only in continuous mode.
+
+ par%no_photons      = 33554432
+ par%no_print        = 33554432
+ par%iseed           = 1234
+ par%launch_sequence = 'sobol'
+ par%qmc_seed        = 20260728
+
+ par%grid_type       = 'amr'
+ par%amr_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g2_hii/hii20_L6.fits'
+ par%dust_model      = 'none'
+ par%distance_unit   = 'pc'
+
+ par%ion_energy_mode = 'continuous'
+ par%source_cdf_tol  = 1.0e-8
+ par%nnu_ion         = 32
+ par%eion_min        = 13.598
+ par%eion_max        = 100.0
+ par%tstar           = 2.0e4
+ par%luminosity      = 2.532600e38
+
+ par%xHI_init        = 1.0e-3
+ par%xHeI_init       = 0.5
+ par%xHeII_init      = 0.5
+ par%He_abund        = 0.1
+ par%ion_add_dust    = .false.
+
+ par%gas_niter       = 100
+ par%conv_crit       = 'vol'
+ par%gas_tol         = 5.0e-3
+ par%gas_tol_te      = 1.0e-2
+ par%ion_relax       = 1.0
+ par%case_ab         = 'A'
+ par%diffuse_field   = .true.
+!--- Pinned rather than left to the default: a frozen production input must
+!--- state the physics it was run with.  The residual experiments REPLACE
+!--- this line, so it must be present exactly once.
+ par%diffuse_energy_model = 'milne'
+ par%hei_diffuse     = .true.
+ par%solve_te        = .true.
+ par%te_min          = 3.0e3
+ par%te_max          = 3.0e4
+ par%require_convergence = .true.
+
+ par%atomic_dir      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%use_metals      = .true.
+ par%ion_metal_abs   = .true.
+ par%metal_ne        = .true.
+ par%metal_heat      = .true.
+ par%abund_C         = 2.2e-4
+ par%abund_N         = 4.0e-5
+ par%abund_O         = 3.3e-4
+ par%abund_Ne        = 5.0e-5
+ par%abund_S         = 9.0e-6
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%data_dir        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data'
+ par%out_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/results/continuous_energy/hei_step2/hii20_step2.h5'
+/

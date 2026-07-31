@@ -16,14 +16,18 @@ applied to the Cloudy zones.
 
 Data (do not change without re-running the benchmark):
 
-  ../../results/continuous_energy/production/hii40_continuous_rates.h5
-  ../../results/continuous_energy/production/hii20_continuous_rates.h5
+  ../../results/continuous_energy/m1_oxfix/hii40_oxfix_rates.h5
+  ../../results/continuous_energy/m1_oxfix/hii20_oxfix_rates.h5
 
 Both are 2^25-packet, level-6 octree (262144 leaves) runs with the thermal
 balance and the five metals, the explicit Monte Carlo diffuse field
 including the He I channels (case A), continuous Sobol-sampled stellar
 photon energies and cross sections evaluated at each sampled energy,
-converged on the volume-integrated criterion.  The 32-bin array is retained
+converged on the volume-integrated criterion.  They use two-way charge
+exchange as the default and the corrected oxygen charge-exchange data
+(the two Huang et al. 2023 Table 4 oxygen rows had their row labels swapped,
+found by a detailed-balance audit and reassigned to agree with the Stancil
+et al. 1999 fit that Cloudy c25.00 uses).  The 32-bin array is retained
 only as a diagnostic radiation-field tally.  These are the SAME two runs
 that tables/make_wood_tables.py reads for the MoCHII column of the two
 benchmark tables, so the tables and these figures describe one calculation.
@@ -101,8 +105,8 @@ CLOUDY_LABEL = r'\textsc{Cloudy}~c25.00'
 
 
 def read_run(tag):
-    path = os.path.join(REPO, "results", "continuous_energy", "production",
-                        tag + "_continuous_rates.h5")
+    path = os.path.join(REPO, "results", "continuous_energy", "m1_oxfix",
+                        tag + "_oxfix_rates.h5")
     with h5py.File(path, "r") as f:
         d = {k: f[k + "/data"][:] for k in
              ("LeafXYZ", "T_e", "n_e", "x_HI", "x_HeI", "x_HeII")}
@@ -257,14 +261,19 @@ def make_figure(tag, ylim_neutral, ylim_temp, loc_n, loc_i, loc_t):
 
 
 # The figure title lives in the paper caption, so none is drawn here.
-# The temperature limits bracket both plotted populations of each run, so
-# nothing that passes the x_HI < 0.95 cut is clipped out of the panel: neither
-# a MoCHII cell nor a Cloudy zone.  Both floors are set by the front.  At HII40
-# the Cloudy profile reaches 7331 K in the middle of the nebula, well below the
-# coolest MoCHII cell.  At HII20 the MoCHII cells just outside the front reach
-# the te_min floor of the run (3000 K, 0.6% of the cells that pass the cut) and
-# the Cloudy profile plunges to 2919 K over the last 4e-4 pc before its own
-# front, where its zoning is far finer than a MoCHII cell.
+# The temperature limits show the H II region plateau and its rise to the
+# front, with floors of 7200 K at HII40 and 2800 K at HII20.  At HII40 the
+# Cloudy profile runs 7331-10075 K over this volume and most MoCHII cells track
+# it; the coolest ~2% of the cells that pass the x_HI < 0.95 cut are the
+# partly-neutral cells at the very front, which cool through [O I] down to
+# 4467 K with the corrected oxygen charge-exchange data and fall below the
+# floor.  They are the same edge that makes [O I] 6300+6363 high, and by Wood's
+# convention their temperature is not that of the H II region, so the floor is
+# kept at the plateau rather than stretched to include them.  At HII20 the
+# MoCHII cells just outside the front reach the te_min floor of the run (3000 K,
+# 0.22% of the cells that pass the cut, above the 2800 K panel floor) and the
+# Cloudy profile plunges to 2919 K over the last 4e-4 pc before its own front,
+# where its zoning is far finer than a MoCHII cell.
 make_figure("hii40", (1e-5, 2.0), (7200, 10800), loc_n="lower right",
             loc_i="lower left", loc_t="upper left")
 make_figure("hii20", (1e-5, 2.0), (2800, 9200), loc_n="center left",

@@ -75,8 +75,25 @@ CX = {
                CXR=(1, [6.3e-17, 1.96, 17.0, 0, 0, 0])),
     "n":  dict(CXI=(4, [-35.4, 1.94, -0.154, -6.3e-3, -1.16e-3, 0]),
                CXR=(4, [-40.1, 6.4, -1.75, 0.18, -5.96e-3, 0])),
-    "o":  dict(CXI=(2, [2.08e-9, 0.405, 1.11e-11, -0.458, 0, 0]),
-               CXR=(3, [1.26e-9, 0.517, 4.25e-10, 6.69e-3, 227.0, 0])),
+    # O: the two directions are EXCHANGED relative to Huang et al. (2023)
+    # Table 4, whose rows read "O + H+" and "O+ + H".  Four registry elements
+    # have IP(X) > IP(H) -- N, O, Ne, Ar -- but Ne and Ar carry no CX data
+    # (form 0) and nitrogen's pair is negligible, so oxygen is the only one
+    # whose Boltzmann-factor placement is dynamically live, and it is live
+    # because O0 + H+ is near-resonant (13.6181 against 13.5984 eV).  That makes
+    # O0 + H+ -> O+ + H0 the ENDOTHERMIC direction, by 227.7 K, and the one
+    # that must carry the Boltzmann factor.  Huang's table puts exp(-227/T) on
+    # the "O+ + H" row instead: right magnitude, wrong side.  Read as written,
+    # the pair violates detailed balance by 1.47x at 8000 K; exchanged, it
+    # matches Cloudy c25's independent TableCurve fits
+    # (atmdat_char_tran.cpp:112-176, CharExcIonOf/CharExcRecTo[H][O]) to 1-3%
+    # over 4000-20000 K, and Cloudy's own pair satisfies detailed balance to 7%.
+    # MOCASSIN agrees on the direction too: its chex(8,1) has no Boltzmann
+    # factor and its comment labels the PRODUCT ion, i.e. O+ + H0 -> O0 + H+
+    # (update_mod.f90:1671).  Same product-versus-reactant labeling that the
+    # CX_HIGH note below records for the higher transitions.
+    "o":  dict(CXI=(3, [1.26e-9, 0.517, 4.25e-10, 6.69e-3, 227.0, 0]),
+               CXR=(2, [2.08e-9, 0.405, 1.11e-11, -0.458, 0, 0])),
     "ne": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
     "s":  dict(CXI=(4, [-50.0, 13.3, -2.77, 0.243, -7.24e-3, 0]),
                CXR=(5, [-50.14, 13.3, -2.77, 0.243, -7.24e-3, 3.76])),

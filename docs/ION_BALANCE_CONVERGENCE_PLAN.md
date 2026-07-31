@@ -517,9 +517,13 @@ revRate = chex(elem,ion,1) * (1.-ionDen(H0))*Hden * 2.*exp(-deltaE_k(elem,ion)/T
 
 a Boltzmann factor and a statistical-weight ratio applied to the same
 coefficient, then added straight onto the photoionization rate (`:3825`).
-Consistency then holds **by construction and needs no check**.  The catch is the
-data it demands: the reverse is computed only where `deltaE_k > 1`, and only two
-entries are ever set -- N I at 10863 K and O I at 2205 K (`:1706-1707`).  Every
+Consistency then holds **by construction and needs no check** -- which is the
+strategy's strength, and also means a bad input to it cannot be checked.  The reverse is computed
+only where `deltaE_k > 1`, and only two entries are ever set (`:1706-1707`):
+N I at 10863 K, against a true `[IP(N)-IP(H)]/k` of 10858.4 -- right -- and
+**O I at 2205 K against a true 227.7, wrong by 9.7x**, which makes MOCASSIN's
+derived oxygen reverse rate 22% low at 8000 K.  Because the pair is
+self-consistent by construction, no detailed-balance test can see it.  Every
 other element has no reverse rate at all.
 
 **2. Fit both directions independently and check at run time -- Cloudy c25
@@ -549,12 +553,64 @@ H0, He0 and He+ and no metal ion (`update_mod.f90:1965-1985`) -- and carries a
 convergence flag for each element in `ionBalance2` that is **dead code**, never
 called.
 
-**Consequence for S4.**  MoCHII's data situation is Cloudy's -- both directions
-independently fitted, from Huang (2023) and Kingdon & Ferland (1996) -- so
-strategy 1 is not open to us without ionization-energy differences and
-statistical weights for all 29 reactions, which even MOCASSIN only assembled for
-two.  Strategy 2 is therefore the target, and S4 as specified above is exactly
-it.  MoCHII already has the advantage that makes it cheap: both sides are formed
+**A note on the data this rests on.**  Independent fitting of the two directions
+is not free of hazard, and the hazard showed up here: auditing the pairs against
+detailed balance found Huang et al. (2023) Table 4 carrying oxygen's two rows
+**exchanged** -- `exp(-227/T)` printed on `O+ + H` where the 227.7 K endothermicity
+of `O0 + H+` puts it, shown by that table's own helium row and confirmed against
+Cloudy and MOCASSIN.  Read as printed the pair broke detailed balance by 1.47x.
+It is corrected, and the audit is now a gate
+(`tests/charge_exchange/check_detailed_balance.f90`,
+`docs/METAL_COUPLING_PLAN.md` Section 10b).  That gate checks the *data*; S4
+below checks the same physics on the *state*, at run time, and the two are
+complementary rather than alternatives.
+
+**Consequence for S4: strategy 2, and NOT strategy 1.**  An earlier draft here
+argued that deriving one direction from the other was closed to us because it
+would need ionization-energy differences and statistical weights for all 29
+reactions, "which even MOCASSIN only assembled for two".  **That argument was
+wrong and is withdrawn**: building the detailed-balance gate of
+`docs/METAL_COUPLING_PLAN.md` Section 10b cost an afternoon, the energy defects
+came free from the registry's own `elem_eth`, and the weights are 22 integers
+from NIST.  Data cost is not the reason.
+
+The reason is that the two strategies differ in **which errors are possible and
+which are findable** -- not in how error-prone they are.  Stated carefully,
+because the distinction is easy to overstate: derivation does not *cause* a bad
+input, it removes the test that would expose one.
+
+- Derivation needs an energy defect, so a wrong `deltaE_k` is possible; and
+  because the pair is then self-consistent by construction, a detailed-balance
+  test always passes and cannot reveal it.
+- Independent fitting uses no energy defect, so that error is impossible; what
+  is possible instead is a wrong pair of rates, and that is exactly what a
+  detailed-balance test finds.
+
+**Both arrangements failed on oxygen in practice, which is the honest
+comparison.**  MOCASSIN tabulates two energy defects: nitrogen is right, 10863 K
+against a true 10858.4 (0.04%, which incidentally confirms the units), while
+**oxygen is 2205 K against a true 227.7, wrong by 9.7x**, making its derived
+reverse rate 22% low at 8000 K -- undetectable by construction.  MoCHII carried
+the exchanged Huang rows, 1.47x -- and was caught this week by exactly the test
+derivation would have disabled.  Neither method prevented an error; one made it
+findable.
+
+(The 2205 has no innocent provenance we could identify.  The true 227.7 K
+happens to coincide with the O I 3P2-3P1 fine-structure interval at 227.4 K, but
+none of the obvious oxygen energies -- 1D-3P at 22826 K, O II 2D-4S at 38573 K,
+the O/He defect at 127294 K -- is 2205.)
+
+Two further limits on derivation, both with examples in this tree.  The
+Boltzmann factor carries only the asymptotic energy difference, while real
+charge transfer can have a curve-crossing barrier -- carbon's argument is
+170000 K against an ionization-potential difference of 27132 K, and deriving its
+reverse from the forward would have erased that.  And ground-term statistical
+weights are an approximation, since charge transfer often proceeds through
+particular fine-structure or excited channels: adequate for *checking* at a 35%
+tolerance, but imposing it on the data is a different matter from testing
+against it.
+
+So S4 as specified above is the target.  MoCHII already has the advantage that makes it cheap: both sides are formed
 in the same leaf solve from the same cached coefficients, so the check is a
 comparison of two numbers already in hand, not a re-derivation.
 

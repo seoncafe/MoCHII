@@ -33,3 +33,13 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
     -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
 ./tests/charge_exchange/check_cell_convergence.x
+
+#--- detailed balance: the two directions of each pair are not independent.
+$FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
+    -I"$HDF5_PREFIX/include" \
+    -o tests/charge_exchange/check_detailed_balance.x \
+    tests/charge_exchange/check_detailed_balance.f90 $OBJS \
+    -lcfitsio -L/usr/local/lib \
+    "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+./tests/charge_exchange/check_detailed_balance.x

@@ -18,20 +18,25 @@ Sources, and nothing else:
   values (2.01-2.10) are the 10^37 erg/s values of Ercolano et al. (2003).
 
 * The MoCHII line column is computed here from the converged line tables of
-  the continuous-energy production runs,
+  the continuous-energy benchmark runs,
 
-      ../../results/continuous_energy/production/hii40_continuous_lines.txt
-      ../../results/continuous_energy/production/hii20_continuous_lines.txt
+      ../../results/continuous_energy/m1_oxfix/hii40_oxfix_lines.txt
+      ../../results/continuous_energy/m1_oxfix/hii20_oxfix_lines.txt
 
   (2^25 packets, level-6 octree, conv_crit='vol'), by summing exactly the
   components that make up each published blend.  MoCHII lists vacuum
-  wavelengths.
+  wavelengths.  These are the current code with two-way charge exchange as
+  the default and the corrected oxygen charge-exchange data (element_o.txt;
+  the two Huang et al. 2023 Table 4 oxygen rows had their row labels
+  swapped, found by a detailed-balance audit and reassigned to agree with
+  the Stancil et al. 1999 fit that Huang's oxygen footnote itself cites),
+  run 2026-07-31.
 
 * The two MoCHII temperatures are computed here from the rates files of the
   same runs,
 
-      ../../results/continuous_energy/production/hii40_continuous_rates.h5
-      ../../results/continuous_energy/production/hii20_continuous_rates.h5
+      ../../results/continuous_energy/m1_oxfix/hii40_oxfix_rates.h5
+      ../../results/continuous_energy/m1_oxfix/hii20_oxfix_rates.h5
 
   as sum(T_e n_p n_e) / sum(n_p n_e) over the gas cells, which is the
   published <T[Np Ne]> definition.  The level-6 grid is uniform, so every
@@ -524,10 +529,10 @@ corrected accordingly here.""",
 
 
 def emit(tag, table):
-    production = os.path.join(REPO, "results", "continuous_energy", "production")
-    lhb, rows = read_lines(os.path.join(production, "%s_continuous_lines.txt" % tag))
+    runs = os.path.join(REPO, "results", "continuous_energy", "m1_oxfix")
+    lhb, rows = read_lines(os.path.join(runs, "%s_oxfix_lines.txt" % tag))
     cl = read_cloudy(tag)
-    rates = os.path.join(production, "%s_continuous_rates.h5" % tag)
+    rates = os.path.join(runs, "%s_oxfix_rates.h5" % tag)
     tnpne = mochii_tnpne(rates)
     tinner, rfront, he_ratio = mochii_structure(rates, tag)
     hb_unit = 1.0e37 if tag == "hii40" else 1.0e36

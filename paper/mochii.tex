@@ -915,7 +915,18 @@ $\mathrm{X}^{i+} + \mathrm{H}^{0} \to \mathrm{X}^{(i-1)+}$, a convention worth
 stating explicitly because it is easy to misread by one ionization stage and
 because the doubly and triply ionized metal fractions are sensitive to it;
 the indexing used here is checked against \textsc{Mocassin}'s ionization loop
-and \textsc{CMacIonize}.
+and \textsc{CMacIonize}.  The same product-versus-reactant hazard appears in
+the first-stage table itself.  The two oxygen rows of \citet{huang2023}
+Table~4 are printed with their row labels interchanged: measured against the
+detailed-balance value
+$[g(\mathrm{X}^{+})g(\mathrm{H}^{0})/g(\mathrm{X}^{0})g(\mathrm{H}^{+})]\,
+e^{-\Delta E/kT}$, the ratio of the two directions is $1.47$ at $8000$~K for
+the printed rows and $0.910$ once they are exchanged.  The corrected
+assignment agrees to $1$--$3\%$ with the \textsc{Cloudy} c25.00
+charge-transfer fit of \citet{stancil1999}, the determination that the oxygen
+footnote of \citet{huang2023} itself cites, so the data were right and only
+the labels were transposed.  A detailed-balance test of every transition-1
+pair over $5000$--$20000$~K is now a standing gate.
 
 \subsection{Cooling and $n$-level diagnostic data}
 \label{sec:cooldata}
@@ -1247,13 +1258,13 @@ HII40, below the published 0.715--0.829 (median 0.767) and C25's 0.741, and
 0.047 at HII20, near the published median of 0.048 inside a spread of
 0.034--0.077.
 
-\emph{Temperature.}  The weighted temperature is 8169~K at HII40 and
-6925~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
+\emph{Temperature.}  The weighted temperature is 8170~K at HII40 and
+6926~K at HII20.  Both match the \textsc{Cloudy} c25.00 solution of the
 same two models --- 8210~K and 6910~K --- to $0.5\%$ and $0.2\%$, and both
 lie above the 2000-era published ranges (7720--8199~K, median 8026, and
 6402--6749~K, median 6662).  The inner-edge temperature is inside the
 published spread at both, 7536~K at HII40 against a published 7370--8318~K
-and 6938~K at HII20 against a published 6562--7224~K.  The converged
+and 6936~K at HII20 against a published 6562--7224~K.  The converged
 MOCASSIN 2.02 run of the HII40 model gives 8176~K, also inside the published
 spread.  The two benchmark solutions therefore agree closely while remaining
 within the range set by the independent calculations.
@@ -1261,7 +1272,7 @@ within the range set by the independent calculations.
 The temperature is set by the cooling treatment, and the two limits of that
 treatment bracket the published set from opposite edges.  The
 density-suppressed cooling used above --- the level populations at the local
-$\nelec$, Section~\ref{sec:cooldata} --- gives the 8169 and 6925~K that
+$\nelec$, Section~\ref{sec:cooldata} --- gives the 8170 and 6926~K that
 track \textsc{Cloudy}; the zero-density limit of the same fits, retained as
 an option, overestimates the far-infrared line cooling at
 $\nelec \sim 10^{2}\,\mathrm{cm^{-3}}$ and so places \MoCHII{} instead at
@@ -1272,10 +1283,12 @@ measures directly.
 
 % Published columns: Tables 4 and 5 of Ercolano et al. (2003), transcribed
 % and checked value by value against the paper.
-% MoCHII column: continuous-energy production runs (Sobol seed 20260728,
+% MoCHII column: continuous-energy benchmark runs (Sobol seed 20260728,
 % explicit diffuse field with the Milne ground continua, Q(H) matched to the
-% specification, 2^25 packets, conv_crit='vol'); line entries are the L/L(Hbeta) column of
-% results/continuous_energy/production/hii{40,20}_continuous_lines.txt
+% specification, 2^25 packets, conv_crit='vol', two-way charge exchange as the
+% default and the corrected oxygen charge-exchange data); line entries are the
+% L/L(Hbeta) column of
+% results/continuous_energy/m1_oxfix/hii{40,20}_oxfix_lines.txt
 % (doublets summed), temperatures are from the matching rates files.
 % C25 column: tests/cloudy_c25/, Cloudy c25.00 on the distributed decks.
 
@@ -1339,7 +1352,7 @@ power --- \textsc{Cloudy} balances its own heating at the unscaled
 temperature, and the photoheating of the two codes agrees --- gives 7784~K
 against \textsc{Cloudy}'s 8210~K, close to the 7894~K the converged
 zero-density run reaches.  Removing the overestimate, the density-suppressed
-default reaches 8169~K, matching \textsc{Cloudy} to $0.5\%$
+default reaches 8170~K, matching \textsc{Cloudy} to $0.5\%$
 (Section~\ref{sec:hii}).  The far-infrared overestimate, not the atomic
 data, is thus what separates the two limits, and the $(\Te,\nelec)$ table of
 Section~\ref{sec:cooldata} removes it.
@@ -1374,11 +1387,11 @@ $n$-level solver reproduces an independent reference solver to four digits,
 and the fitted collision data reproduce direct CHIANTI evaluations to
 0.05--0.5\%).  At HII40 the infrared fine-structure lines, whose excitation
 energies are small enough that they are nearly temperature-independent, sit
-with the published set ([Ne\,\textsc{iii}] 15.5\,$\mu$m 0.283 in a
-published 0.263--0.429; [Ne\,\textsc{ii}] 12.8\,$\mu$m 0.206 in
-0.177--0.217; [O\,\textsc{iii}] 52+88\,$\mu$m 2.43 just above 2.10--2.42),
+with the published set ([Ne\,\textsc{iii}] 15.5\,$\mu$m 0.286 in a
+published 0.263--0.429; [Ne\,\textsc{ii}] 12.8\,$\mu$m 0.205 in
+0.177--0.217; [O\,\textsc{iii}] 52+88\,$\mu$m 2.45 just above 2.10--2.42),
 and so do the temperature-sensitive optical lines of the same ion:
-[O\,\textsc{iii}] 5007+4959 is 2.36 against a published 1.64--3.27, and the
+[O\,\textsc{iii}] 5007+4959 is 2.35 against a published 1.64--3.27, and the
 auroral [O\,\textsc{iii}] 4363, the most temperature-sensitive entry in the
 tables, is 0.0044 against a published 0.0022--0.0070.  The lines that fall
 outside the published ranges are examined below.
@@ -1413,8 +1426,11 @@ the form used by \citet{wood2004}, whose Tables 1 and 2 add their own Monte
 Carlo code (WME) to the eight other codes of the comparison; the
 \MoCHII{} and C25 columns provide two additional reference solutions.  The
 low-ionization edge line [O\,\textsc{i}]
-6300+6363 is 0.0169 at HII40, above the published 0.0059--0.012 range; it is
-particularly sensitive to the thin partly neutral edge.  The complete
+6300+6363 is 0.0241 at HII40, above the published 0.0059--0.012 range; it is
+particularly sensitive to the thin partly neutral edge, and it is the one
+entry the corrected oxygen charge exchange of Section~\ref{sec:ci} moves
+appreciably ($+39\%$, by raising the neutral-oxygen fraction at the edge,
+against $+0.03\%$ in the weighted temperature).  The complete
 comparison is given directly in the tables.
 
 The C25 column provides a uniform reference, and with the two temperatures
@@ -1423,7 +1439,7 @@ ratios track C25 across the board.  At HII40, where the weighted temperature
 equals C25's, both the temperature-insensitive far-infrared lines and the
 temperature-sensitive optical and auroral lines agree with C25 to a few
 percent: among the infrared lines [O\,\textsc{iii}] 52+88\,$\mu$m is
-$1.01\times$ C25, [N\,\textsc{iii}] 57.3\,$\mu$m $1.01\times$ and
+$1.02\times$ C25, [N\,\textsc{iii}] 57.3\,$\mu$m $1.01\times$ and
 [S\,\textsc{iii}] 18.7\,$\mu$m $1.01\times$; among the optical ones
 [O\,\textsc{iii}] 5007+4959 is $0.96\times$, its auroral 4363 $0.94\times$
 and [O\,\textsc{ii}] 3726+3729 $0.98\times$ --- the same optical and auroral
@@ -1434,7 +1450,7 @@ counterpart of the cooling match.  At HII20, where \MoCHII{} is $0.2\%$
 hotter than C25, [O\,\textsc{ii}] 3726+3729 is $1.01\times$ C25.  The
 residual outliers at HII40 are not temperature: [Ne\,\textsc{iii}]
 15.5\,$\mu$m ($1.32\times$) and 3869+3968 ($1.22\times$),
-[O\,\textsc{i}] 6300+6363 ($1.55\times$, on a line the thin neutral edge and
+[O\,\textsc{i}] 6300+6363 ($2.15\times$, on a line the thin neutral edge and
 the grid resolution govern), and C\,\textsc{iii}] 1907+1909 ($0.89\times$),
 each an ionization or collision-strength difference in a single ion.
 
@@ -1446,7 +1462,7 @@ the same story in the other direction: [S\,\textsc{iii}] 18.7\,$\mu$m
 (0.216 against a published 0.34--0.46) and [S\,\textsc{iii}] 9532+9069
 (0.304 against 0.465--0.604) fall \emph{below} every published code, and so
 does C25 (0.209 and 0.293), while [S\,\textsc{ii}] 6716+6731 sits inside the
-published range for both (0.780 and 0.744).  Both C25 and \MoCHII{} have the
+published range for both (0.781 and 0.744).  Both C25 and \MoCHII{} have the
 same S\,\textsc{ii}/S\,\textsc{iii} ordering, which points at the sulfur
 data rather than at either code.  A band experiment bounds one further
 difference: \textsc{Cloudy} carries the full stellar spectrum, so photons
@@ -1831,8 +1847,8 @@ Lexington 2000 \HII{} region benchmarks, with continuously sampled Planck
 photon energies and cross sections evaluated at each sampled energy, and
 with line cooling taken from the level populations at the local electron
 density, the
-$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8169~K at HII40 and
-6925~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
+$n_{\mathrm{p}}n_{\mathrm{e}}$-weighted temperature is 8170~K at HII40 and
+6926~K at HII20, matching the \textsc{Cloudy} c25.00 solution of the same
 two models (8210 and 6910~K) to $0.5\%$ and $0.2\%$; both models are
 radiation-bounded, so both outer radii are predicted, and
 $L(\mathrm{H}\beta)$ follows the recombination budget to within $8\%$.  The
