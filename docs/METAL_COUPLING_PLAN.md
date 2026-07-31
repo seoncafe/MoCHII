@@ -1176,6 +1176,113 @@ property of the distributed source, cited.
 - The legacy chain solver `solveions()` is dead code (`ion_solver.cpp:1317-1364`);
   reading it as Cloudy's method is an error.
 
+## 10b. Charge-exchange data audit, 2026-07-31: the oxygen pair fails detailed balance
+
+Found while answering how the reference codes keep the two directions
+consistent (Section 3.7 and `docs/ION_BALANCE_CONVERGENCE_PLAN.md` S4).  It is
+recorded here as an open defect, not a fixed one.
+
+### 10b.1 The test
+
+For `X^0 + H^+ <-> X^+ + H^0` detailed balance fixes the ratio of the two rate
+coefficients:
+
+```
+k_i / k_r = [g(X+) g(H0)] / [g(X0) g(H+)] * exp(-dE/kT) ,   dE = IP(X) - IP(H)
+```
+
+At 8000 K, with ground-term statistical weights and the shipped registry data:
+
+| element | `k_cxi` | `k_cxr` | measured `k_i/k_r` | detailed balance requires | ratio |
+|---|---|---|---|---|---|
+| Fe | 4.000e-09 | 3.791e-13 | 1.055e4 | 9.300e3 | 1.13 |
+| Mg | 1.147e-10 | 5.956e-15 | 1.925e4 | 2.248e4 | 0.86 |
+| Si | 1.208e-09 | 3.952e-13 | 3.056e3 | 3.599e3 | 0.85 |
+| S | 1.331e-11 | 1.053e-13 | 126.5 | 97.5 | 1.30 |
+| **O** | 1.913e-09 | 1.504e-09 | **1.272** | **0.864** | **1.47** |
+| **C** | 2.636e-15 | 2.320e-23 | 1.14e8 | 39.6 | **2.9e6** |
+| **N** | 3.337e-19 | 1.090e-14 | 3.1e-5 | 1.158 | **2.6e-5** |
+
+Mg, Si, Fe and S agree to 15% or better, which is the check working: their
+reverse rates are **derived** by the generator from the forward ones, and the
+Boltzmann arguments it wrote reproduce the ionization-potential differences to
+better than 1% (Mg 69000 against 69072 K, Si 63000 against 63206, Fe 66000
+against 66098, S 38000 against 37580).  O, C and N are the three where **both**
+directions were transcribed, and all three fail.
+
+### 10b.2 The transcription is faithful; the problem is upstream
+
+`Huang_2023_ApJ_951_123.pdf` (ApJ 951, 123 -- a WASP-121b atmospheric-escape
+paper, whose Table 4 lists 65 charge-exchange reactions) was read directly.  Its
+oxygen and carbon rows are
+
+```
+O  + H+ :  2.08e-9 T4^0.405 + 1.11e-11 T4^-0.458
+O+ + H  : (1.26e-9 T4^0.517 + 4.25e-10 T4^6.69e-3) exp(-227/T)
+C  + H+ :  1.31e-15 (T/300)^0.213
+C+ + H  :  6.3e-17 (T/300)^1.96 exp(-17/T4)
+```
+
+which is exactly what `tools/fitting/make_element_data.py` carries and exactly
+what `data/atomic/element_{o,c}.txt` contains.  **MoCHII transcribed the source
+correctly**; what it inherited is the source's own placement.
+
+### 10b.3 Why oxygen is the one that breaks
+
+Oxygen is the only registry element with `IP(X) > IP(H)`: 13.6181 against
+13.5984 eV.  Every other metal has a lower first ionization potential, so for
+them `X^0 + H^+ -> X^+ + H^0` is exothermic and the **reverse** carries the
+Boltzmann factor -- which is what Huang's carbon row does, correctly, and what
+the derived Mg/Si/Fe/S entries do.  For oxygen the sign flips: `O^0 + H^+` is
+endothermic by 0.0197 eV, i.e. **229 K**, so the factor belongs on `O + H+`.
+Huang's table puts `exp(-227/T)` on `O+ + H` instead -- the right magnitude, to
+1%, on the wrong side of the reaction.
+
+The most economical explanation is a product-versus-reactant labeling of that
+row, and **this tree has already been bitten by exactly that**: the `CX_HIGH`
+comment in `make_element_data.py:108-115` records that MOCASSIN's `chex(Z,ion)`
+comments label the product ion, that MoCHII first read them as reactants, and
+that this put every higher-transition rate one stage too low until it was
+corrected.  Same class, different table.
+
+Carbon is a separate question: its exponential is on the correct (endothermic)
+side, but the argument is 17 in `T4`, i.e. 170000 K, against an
+ionization-potential difference of 27132 K.  That may be a genuine
+curve-crossing barrier rather than the asymptotic defect.  Either way the rate
+is 2.3e-23 at 8000 K and cannot matter.  Nitrogen's pair is likewise negligible
+in absolute terms (3.3e-19 and 1.1e-14).
+
+### 10b.4 Why it matters, and what it does not change
+
+Oxygen is not negligible: it carries **over 99.99%** of both charge-exchange
+sums at the HII40 ionization front (Section 3.5).  So this entry is the one that
+sets M1's magnitude wherever M1 matters.
+
+What it will probably not change is the benchmark numbers, and the reason is
+the same near-cancellation that runs through this whole stage: whichever way the
+Boltzmann factor sits, the two terms very nearly cancel in hydrogen's balance,
+and the Lexington diagnostics are weighted away from the gas where the residual
+lives.  **That is a prediction, recorded before the test.**
+
+### 10b.5 What to do
+
+1. **Settle the direction against an independent source.**  Kingdon & Ferland
+   (1996) and Stancil et al. tabulate the O/H pair; the standard astrophysical
+   form puts `exp(-227/T)` on `O + H+`.  If that is confirmed, swap the
+   exponential in `make_element_data.py` for oxygen and regenerate.
+2. **Add a detailed-balance gate**, which is the durable fix: for every
+   transition-1 pair, check `k_i/k_r` against
+   `[g(X+)g(H0)]/[g(X0)g(H+)] * exp(-dE/kT)` over 3e3-3e4 K.  It needs ground-term
+   statistical weights and first ionization potentials, both small data
+   additions.  This audit was done by hand; it should not have to be.  Pair it
+   with S4, which checks the same physics at run time rather than in the data.
+3. Re-run G-M1c afterwards and compare against the prediction in 10b.4.
+
+**Do not "fix" this by deriving the oxygen reverse from the forward** the way
+Mg/Si/Fe/S are derived, until step 1 settles which of the two transcribed rows
+is the reliable one -- deriving from the wrong parent would make the pair
+self-consistent and both rates wrong.
+
 ## 11. Open questions and unverified points
 
 Collected so a later session does not have to re-derive which claims rest on
@@ -1190,7 +1297,11 @@ measurement and which do not.
 2. **Helium–hydrogen charge exchange is entirely absent from MoCHII**, and no
    rate exists in the tree to evaluate it (Section 3.7).  Helium-specific,
    with no row in the residual exclusion table.  Magnitude unmeasured.
-3. **Charge-exchange heating and cooling**: still not read in any of the five
+3. **The oxygen charge-exchange pair fails detailed balance by 1.47x**, and the
+   transcription is faithful to its source (Section 10b).  Highest-value open
+   item in this document: oxygen carries over 99.99% of both sums where M1
+   matters.
+4. **Charge-exchange heating and cooling**: still not read in any of the five
    codes; absent from MoCHII (Section 3.7).  This is now the largest remaining
    gap in the survey, and it is a real physics question rather than a
    bookkeeping one: the reactions are exothermic or endothermic and therefore
