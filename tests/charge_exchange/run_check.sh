@@ -22,3 +22,14 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
     -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
 ./tests/charge_exchange/check_charge_exchange.x
+
+#--- G-M1f: the cell solve must converge inside one call in partially neutral
+#--- gas, where the lagged substitution map is marginally stable.
+$FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
+    -I"$HDF5_PREFIX/include" \
+    -o tests/charge_exchange/check_cell_convergence.x \
+    tests/charge_exchange/check_cell_convergence.f90 $OBJS \
+    -lcfitsio -L/usr/local/lib \
+    "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+./tests/charge_exchange/check_cell_convergence.x

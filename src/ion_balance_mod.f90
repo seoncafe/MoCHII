@@ -96,16 +96,18 @@ contains
        !--- n_HI and n_HII through the charge-exchange terms of the cascade
        !--- itself, so they are taken from the previous iterate of this fixed
        !--- point — the same lag the electron sum carries.
-       !--- Domain of validity of that lag: where the charge-exchange terms
-       !--- dominate hydrogen's balance the iteration still converges, but
-       !--- slowly.  Measured at T = 1e4 K, n_H = 100 with the HII20
-       !--- abundances, the exit test below is met after 124 passes at
-       !--- x_HII = 0.18, 239 at 0.10 and 1285 at 0.021, against the 200-pass
-       !--- cap — so a partially neutral cell (x_HII below ~0.1) can leave
-       !--- this loop still moving, with x_HII high by ~8% and a few 1e-3
-       !--- residual in the balance.  Repeated whole-cell solves converge it
-       !--- (the outer gas iteration does exactly that), and
-       !--- hydrogen_balance_residual reports what is left.
+       !--- This lag is what nem carries.  It used to bind x_HI as well, and
+       !--- there it was the whole difficulty: substituting into hydrogen's
+       !--- balance with the charge-exchange terms lagged gives a map of slope
+       !--- R_in/(R_in + alpha_H n_e), which tends to 1 in partially neutral
+       !--- gas, so the exit test below was met only after 124 passes at
+       !--- x_HII = 0.18, 239 at 0.10 and 1285 at 0.021 against the 200-pass
+       !--- cap, and such a cell left this loop with x_HII high by ~8%.
+       !--- hydrogen_neutral_fraction removes that by solving the balance at
+       !--- this n_e rather than substituting into it: one call now reaches the
+       !--- converged state to 3.6e-11 at every x_HII down to 0.02.  What
+       !--- remains lagged is only nem, whose own map is a long way from
+       !--- marginal (docs/ION_BALANCE_CONVERGENCE_PLAN.md, S1 to S3).
        if (with_metal_ne .or. with_metal_cx) then
           call species_metal_sums(nH, ne_old, nH*xHI, nH*(1.0_wp - xHI), &
                                   nem, r_cx_in, r_cx_out)
@@ -114,11 +116,23 @@ contains
              r_cx_out = 0.0_wp
           end if
        end if
-       denH = gH + (cH + aH)*ne + r_cx_in + r_cx_out
-       if (denH > 0.0_wp) then
-          xHI = (aH*ne + r_cx_in) / denH
+       if (with_metal_cx) then
+          !--- solve the balance at this n_e instead of substituting into it:
+          !--- the charge-exchange terms make the substitution map marginally
+          !--- stable in partially neutral gas (see hydrogen_neutral_fraction).
+          xHI = hydrogen_neutral_fraction(nH, ne, aH*ne, gH + (cH + aH)*ne)
        else
-          xHI = 1.0_wp
+          !--- kept verbatim, including the two terms that are zero on this
+          !--- branch, so the generated arithmetic is unchanged and
+          !--- 'metal_only' stays bit-identical to the pre-M1 code: under
+          !--- -fp-model fast=2 even dropping an exact +0.0 lets the compiler
+          !--- reassociate and move x_HeII by one ulp.
+          denH = gH + (cH + aH)*ne + r_cx_in + r_cx_out
+          if (denH > 0.0_wp) then
+             xHI = (aH*ne + r_cx_in) / denH
+          else
+             xHI = 1.0_wp
+          end if
        end if
        !--- r1 = He+/He0, r2 = He++/He+.  Cap at 1e150 (physical values stay
        !--- below ~1e15 given the ne floor) so r1*r2 cannot overflow to Inf
@@ -134,6 +148,64 @@ contains
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
     end do
   end subroutine solve_ion_cell
+
+  !=========================================================================
+  ! Neutral hydrogen fraction that balances ionization against recombination
+  ! at fixed n_e, WITH the charge-exchange terms, whose rates depend on x_HI
+  ! themselves through the metal cascade.  Writing that balance as a residual,
+  !
+  !     R(x) = x [B + R_in(x) + R_out(x)] - [A + R_in(x)]
+  !     A = alpha_H n_e ,  B = Gamma_H + (C_H + alpha_H) n_e
+  !
+  ! the root is bracketed in [0,1] BY CONSTRUCTION, with no clamp needed:
+  ! R(0) = -(A + R_in(0)) < 0 because A > 0, and R(1) = B + R_out(1) > 0
+  ! because B > 0.  Illinois (modified false position) therefore keeps the
+  ! bracket at every step while converging superlinearly, so this cannot
+  ! return an unphysical fraction — the property plain substitution has and a
+  ! bare secant would forfeit.
+  !
+  ! Why a root find rather than substituting.  Where the near-resonant
+  ! O0 + H+ pair locks oxygen to hydrogen the two charge-exchange terms cancel
+  ! identically in this balance, so the substitution map has slope
+  ! R_in/(R_in + alpha_H n_e), which tends to 1 in partially neutral gas: it
+  ! converges, but takes 1285 passes at x_HII = 0.021 against a 200-pass cap.
+  ! Every trial x here re-evaluates the whole cascade at that x, so unlike an
+  ! extrapolator it never leaves the state off the slow manifold — which is why
+  ! Aitken on n_e made the pass count worse and this does not
+  ! (docs/ION_BALANCE_CONVERGENCE_PLAN.md, S1 to S3).
+  !=========================================================================
+  real(kind=wp) function hydrogen_neutral_fraction(nH, ne, A, B) result(x)
+    use species_mod, only : species_metal_sums
+    real(kind=wp), intent(in) :: nH, ne, A, B
+    real(kind=wp) :: xa, xb, Ra, Rb, Rx, nem, rin, rout, scale
+    integer :: k
+
+    xa = 0.0_wp
+    call species_metal_sums(nH, ne, 0.0_wp, nH, nem, rin, rout)
+    Ra = -(A + rin)
+    xb = 1.0_wp
+    call species_metal_sums(nH, ne, nH, 0.0_wp, nem, rin, rout)
+    Rb = B + rout
+    scale = A + B + abs(Ra) + abs(Rb)
+
+    x = xb
+    do k = 1, 80
+       if (Rb == Ra) exit
+       x = xb - Rb*(xb - xa)/(Rb - Ra)
+       !--- keep the trial strictly inside the bracket
+       x = min(max(x, min(xa, xb)), max(xa, xb))
+       call species_metal_sums(nH, ne, nH*x, nH*(1.0_wp - x), nem, rin, rout)
+       Rx = x*(B + rin + rout) - (A + rin)
+       if (abs(Rx) <= 1.0e-15_wp*scale) exit
+       if (abs(xb - xa) <= 1.0e-15_wp) exit
+       if (Rx*Rb < 0.0_wp) then
+          xa = xb;  Ra = Rb
+       else
+          Ra = 0.5_wp*Ra          ! Illinois: halve the stale endpoint
+       end if
+       xb = x;  Rb = Rx
+    end do
+  end function hydrogen_neutral_fraction
 
   !=========================================================================
   ! Electron density of a state whose H/He fractions are already fixed, from

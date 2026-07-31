@@ -168,7 +168,7 @@ it and its disabled 1D mode collapses exactly there).
 |---|---|---|
 | G0 (3–5 d) | ionizing bins + Verner cross sections + Gamma/H integrals from J (no feedback) | Gamma(r) vs analytic point-source attenuation; cross-section curves vs EXHALE's `compare_photoion_cross_sections.py` |
 | G1 (1–2 wk) | equilibrium solve + opacity feedback + iteration (case B, fixed Te) | **Stromgren sphere vs analytic R_S** (iteration- and resolution-convergent — the test MOCASSIN's 1D fails); AMR ↔ uniform-grid match (existing methodology) |
-| G2 (2–4 wk) | thermal balance + the generic trace-metal frame (registry, cascade, n-level solver — see section 8) with the first coolants O II/III, N II | Te profile vs MOCASSIN 3D HII20/HII40 (regression cases 01/02, freshly optimized reference — **requires O/N cooling to match**) and vs EXHALE 1D; per-ion emissivities vs PyNeb |
+| G2 (2–4 wk) | thermal balance + the generic trace-metal frame (registry, cascade, n-level solver — see section 8) with the first coolants O II/III, N II | Te profile vs MOCASSIN 3D HII20/HII40 (regression cases 01/02, freshly optimized reference — **requires O/N cooling to match**) and vs EXHALE 1D; emissivities of each ion vs PyNeb |
 | G3 (~1 wk) | explicit diffuse field (recombination continuum packets); case A | case A vs case B bracketing; energy conservation |
 | G4 (1–2 wk) | I-front refinement; TNG/RAMSES post-processing demo | refined vs uniform high-res run |
 | G5 (open-ended) | further ions one at a time (S, Ne, C, Ar, ...) — data operations per section 8 | each ion: emissivity ratios vs PyNeb; line fluxes vs MOCASSIN where applicable |
@@ -295,7 +295,7 @@ ratios like [S II] 6717/6731):
   (CHIANTI version, fit range, max fit error).
 - **Verification per ion:** fit vs direct CHIANTI evaluation (the existing
   `cno_cooling_comparison` notebook pattern) + PyNeb emissivity-ratio
-  cross-check; both become part of the G5 per-ion gate.
+  cross-check; both become part of the G5 gate on each ion.
 
 **Per-ion verification gate:** emissivity ratios vs (n_e, T_e) against PyNeb
 (and line fluxes vs MOCASSIN HII20/40 for ions in its abundance set).
@@ -314,6 +314,19 @@ gas+dust+PAH HII code with the first diagnostic ion set: **~9-12 weeks**.
 
 - Metals feeding back on n_e / opacity (trace approximation) — revisit only
   if super-solar or dust-free regimes demand it.
+  > **Retired by measurement, 2026-07-31; the text above is kept as the
+  > founding intent.** Metal opacity has been on by default for some time
+  > (removing it moves the HII40 He front 0.615 pc), and metal electrons and
+  > metal photoheating were made default-on once their cost was measured:
+  > −21.3 K (0.26%) at HII40, −5.8 K (0.084%) at HII20, almost all of it the
+  > photoheating (`docs/METAL_COUPLING_PLAN.md`, gate G-M2). Charge exchange
+  > is now two-way, so the charge a reaction moves is conserved in the
+  > hydrogen-plus-metal pair. What survives of the trace approximation is the
+  > *solver structure* of item 2 above — each element still an independent
+  > chain evaluated on the H/He and thermal state — and a source survey found
+  > that structure is what MOCASSIN, CMacIonize, TORUS and Wood all use, and
+  > that even Cloudy is one matrix per element. So the founding design was
+  > right about the method and wrong only about which feedbacks to leave out.
 - Completeness as a prerequisite: ions are added as science needs them, not
   Z <= 30 up front.
 - Dust-gas thermal coupling beyond photoheating (later, if needed).

@@ -40,6 +40,7 @@ switch already cover the He II 4686 diagnostic side.
 | Cloudy AGN SED | `~/CLOUDY/c23.01/source/parse_agn.cpp` | the standard AGN continuum parameterization (big-bump T, alpha_ox, alpha_uv, alpha_x; alpha_ox anchored at 2 keV/2500 A) for a MoCHII preset |
 | Kaastra & Mewe (1993) Auger yields | `~/CLOUDY/c23.01/data/mewe_nelectron.dat` (+ `mewe_fluor.dat`) | electrons ejected per inner-shell vacancy, shell-resolved — machine-readable provenance for the Auger stage |
 | Shell-resolved cross sections | Verner & Yakovlev (1995) — `sigma_vy95` already in `photo_xsec.f90` (Cl path); phfit2.f partials | inner-shell photoionization above K/L edges |
+| MOCASSIN 3.x | `~/RT_Codes/MOCASSIN/MOCASSIN-3.0/` | the only 3D MC code in reach that transports hard photons: Auger-aware ion balance, Compton, `nstages` to 31, and the Ercolano et al. (2007) X-ray slab benchmark inputs. **Read section 8b first — one defect blocks quantitative use above 100 eV** |
 | CHIANTI v11.0.2 | `~/RT_Codes/CHIANTI/dbase` | levels/collision strengths for the new ions (Ne V, O IV, N IV, Ar V ... all present) |
 | Badnell 2023 RR/DR | `data/atomic/badnell_{rr,dr}.dat` (already in-tree) | recombination for the new stages (isoelectronic coverage is complete there) |
 
@@ -174,6 +175,178 @@ The one genuine framework extension:
 ionization parameters): ion-fraction profiles of C/N/O/Ne through the
 partially ionized zone, Te profile, and the He II/H recombination lines.
 Acceptance = the Lexington-2000 published cross-code spread.
+
+## 8b. What MOCASSIN 3.x does about hard spectra, and what to take from it
+
+Read 2026-07-31 in `~/RT_Codes/MOCASSIN/MOCASSIN-3.0/`
+(`github.com/mocassin/MOCASSIN-3.0`).  It is the closest thing to a worked
+example of HS6 in a 3D Monte Carlo code, and worth reading before implementing.
+It is **not** usable as a quantitative reference without patching, for the
+reason in 8b.5.
+
+**On which repository to read.**  `github.com/rwesson/mocassin_xray` (one
+commit, 2017-09-18, tagged `mocassin.3.04.00`) was downloaded and compared file
+by file.  It is **the same code, not a fork**: of its 23 Fortran sources, 22 are
+byte-identical to MOCASSIN-3.0, and the two that differ, `photon_mod.f90` and
+`update_mod.f90`, differ by exactly one line each -- `use inf_nan_detection`.
+MOCASSIN-3.0 adds `infnan.f90` to supply portably the `isnan` that both trees
+already call (four cooling guards in `update_mod`, one `costheta` guard in
+`photon_mod`); a portability fix, not physics.  Its only later commits, in 2021,
+fold and then unfold the same two continuation lines in `iteration_mod.f90`, so
+there is **no physics change between 2017 and 2021**.  The older snapshot was
+deleted; read MOCASSIN-3.0.
+
+That matters for how the rest of this section reads: what follows describes
+**mainline MOCASSIN 3.x**, not one author's experimental branch.  The design
+choices and the defects below are what the reference code has shipped for eight
+years.  Line numbers are MOCASSIN-3.0's; they run one higher than the 2017
+snapshot's in `update_mod.f90` and `photon_mod.f90`, and are identical
+elsewhere.
+
+### 8b.1 What it implements that stock does not
+
+- **Inner-shell cross sections**, Verner & Yakovlev (1995) for every inner
+  shell and VFKY96 for the outer, up to 7 subshells per ion, each with its own
+  energy window carried to `kShellLimit = 7.35e4` Ryd
+  (`source/ph_mod.f90:586-664`, `source/hydro_mod.f90:238-309`,
+  `source/constants_mod.f90:42`).  Every subshell of every ion enters the cell
+  opacity (`source/ionization_mod.f90:429-437`), so packets are genuinely
+  attenuated by inner shells.  This is the same data path HS6 item 1 plans
+  (`sigma_vy95` is already in `photo_xsec.f90`), which is a useful confirmation
+  that the plan's choice of source is the one a working code made.
+- **Auger yields** from Kaastra & Mewe (1993), `data/auger.dat` (Z = 3-30, 1696
+  records, 351 with multiplicity >= 3, neutral Fe K peaking at 6-8 ejected
+  electrons), read by `makeAugerData` (`source/hydro_mod.f90:35-53`).  Note this
+  is the same determination HS6 item 2 already names from the Cloudy data file,
+  so the two references agree on provenance.
+- **Compton scattering wired into transport**: Klein-Nishina cross sections and
+  an angle CDF (`ph_mod.f90:1883-1922`), added to the cell opacity
+  (`ionization_mod.f90:405-410`), packets scattered and redshifted
+  (`photon_mod.f90:2509-2551`, `:6806-6845`), with Tarter exchange plus recoil in
+  the thermal balance (`update_mod.f90:3835-3898`).  On by default.
+- **`nstages` raised** from 7 to a default of 17 and a ceiling of 31
+  (`set_input_mod.f90:75`, `:165-174`), so fully stripped Fe is representable.
+- **Fluorescence as transported packets**, 14 lines including Fe K-alpha at
+  6.4 keV, split into 20 sub-packets at the absorption site and traced
+  (`photon_mod.f90:2652-2686`), with per-stage Fe yields from Krolik & Kallman
+  (1987) (`photon_mod.f90:4123-4138`).  A separate warm-start driver
+  `mocassinFluorescence` runs it.
+
+### 8b.2 The lesson for HS6 item 3: it did NOT solve the stage matrix
+
+This is the most useful thing in MOCASSIN 3.x, and it is a negative result.  Faced
+with exactly the problem HS6 item 3 identifies -- Auger moves a stage by more
+than one, which an adjacent-stage chain cannot represent -- MOCASSIN **kept the
+chain** and patched the flux.  The live routine is `ionBalance`
+(`source/update_mod.f90:1576`, called at `:318`); `ionBalance2` at `:1265` and
+`ionBalance3` at `:1995` are dead code, which is worth knowing before quoting
+line numbers out of this file.  The Auger block of the live routine is
+`:1840-1856`:
+
+```
+maxim = min( ion+nelec-1, min(nstages-1,elem))
+if (grid%ionDen(cellP,elementXref(elem),maxim) > 1e-30 ) then
+   ratio = ionDen(...,ion) / ionDen(...,maxim)
+else
+   ratio = 1.
+endif
+out(maxim) = out(maxim) + photoIon(1,nshell,elem,ion)*auger(elem,ion,nshell,nelec)*ratio
+```
+
+and the stage populations then come from an explicitly **bidiagonal** solve,
+`mat(ion) = mat(ion-1)*out(ion-1)/in(ion-1)`, under the comment "invert and
+solve bidiagonal matrix" (`:1869-1876`) -- adjacent stages only, by
+construction.
+
+The jump rate is charged to the *destination* stage, rescaled by the population
+ratio, so that the net flux across the last boundary crossed comes out right
+once `ratio` converges in the outer loop.  Two consequences follow directly, and
+both argue for doing HS6 item 3 properly rather than copying this:
+
+1. **Only the final boundary is fed.**  For `nelec >= 3` the intermediate
+   boundaries `ion+1 ... ion+nelec-2` never receive the flux, so triple-and-higher
+   Auger cascades underfill the high stages -- and those are exactly the Fe, Si
+   and S K-shell cascades MOCASSIN's own data file says dominate.
+2. **`ratio = 1.` when the destination is empty** (`update_mod.f90:1850`),
+   which is the regime on the first iterations.
+
+MoCHII's plan -- reuse the n-level partial-pivot solver on the stage populations
+-- is the right call, and Cloudy independently confirms it: its ionization block
+fills arbitrary super-diagonal entries precisely for Auger
+(`ion_solver.cpp:727-736`, `:661-668`), and its own legacy nearest-neighbor chain
+solver is dead code (`docs/METAL_COUPLING_PLAN.md` section 6).  **Two codes, one
+conclusion: the chain has to go when Auger arrives.**
+
+### 8b.3 Energy grid: a warning, not a model
+
+MOCASSIN 3.x adds a separate grid constructor above `nuMax > 25` Ryd
+(`source/grid_mod.f90:391-438`) reaching 7.3e6 Ryd, but it **abandons stock's
+threshold-insertion scheme in doing so**: stock inserts every ionization
+threshold as a triplet before log-filling (`grid_mod.f90:264-296`), and above
+25 Ryd 3.x inserts nothing, so a K edge lands wherever a 0.008-dex (~1.9%)
+mesh puts it.  Its own benchmarks compensate with `nbins 10000`
+(`benchmarks/gas/X1/input/input.in`).  For HS1, keep MoCHII's edge-resolved
+construction when the band is widened; brute-force bin counts are not the fix.
+
+### 8b.4 Secondary ionization: heating only
+
+MOCASSIN 3.x applies the Xu & McCray (1991) heating efficiency
+`heatef = 0.9971*(1-(1-x_e^0.2663)^1.3163)` above 100 eV
+(`update_mod.f90:3619-3627`, `:4023-4042`) but **never adds a secondary
+ionization rate to `gamma`**.  MoCHII already has the Shull & van Steenberg
+(1985) partition with both the heating fraction and the secondary ionizations
+(`par%use_sec_ion`), so on this axis MoCHII is ahead, and HS6 item 4's claim
+that Auger photoelectrons enter the existing partition automatically is sound.
+
+### 8b.5 Defects that block quantitative use
+
+Verified by reading, not inferred:
+
+- **`update_mod.f90:4031-4032` uses the threshold bin for the whole X-ray
+  band.**  In the secondary-ionization loop `do i = ilow, iup` the integrand
+  reads `radField(IPnuP)`, where the low-energy loop twenty lines above
+  correctly reads `radField(i)` (`:4006`).  Same structure, same names, one
+  index different.  Every heavy-ion photoionization rate and photoheating rate
+  above 100 eV is therefore computed from the threshold-bin mean intensity
+  replicated across the entire band.  For a hard-spectrum calculation this is
+  the dominant error path, and it means **MOCASSIN 3.x cannot be used as a
+  quantitative gate above 100 eV unless this is patched first**.  It stands
+  identically in the 2017 snapshot and the 2021 head, so it has been there at
+  least eight years and will not be fixed upstream on our schedule.
+- `ph_mod.f90:314` builds the Al K-alpha band from carbon's pointer
+  (`elementP(6,...)`), so that line is emitted over the wrong band.
+- The Compton scatter direction (`photon_mod.f90:6825-6832`) applies the
+  KN-sampled angle to two components only rather than rotating about the
+  incoming direction, which randomizes the phase function.
+- `augerE` is built from `auger(...,1)`, a *probability*, used as a multiplier
+  on the threshold energy to form a work function (`update_mod.f90:3990`).
+
+### 8b.6 Benchmarks: setups yes, reference values no
+
+`benchmarks/gas/` carries **X01, X1, X10** -- the Ercolano, Young, Drake &
+Raymond (2007, ApJS) X-ray-illuminated constant-density slabs at ionization
+parameter 0.1, 1 and 10, with a 5-point tabulated hard spectrum, 3 x 30 x 3
+slab, `nbins 10000`, `nuMax 1.e6`, `nstages 31` -- plus an AGN **NLR** slab
+(`contShape powerlaw 1.3`, `nstages 10`).  These are directly relevant to HS5
+and HS6 and are worth adding to the gate list.  **But the `output/` directories
+that `docs/README.3.00.tex:355-380` promises, holding the reference line fluxes,
+are absent from the repository**: you get the model setup, not the published
+numbers, so the comparison has to go through the ApJS tables.
+
+### 8b.7 It is not an upgrade to the local 2.02.73.2 tree outside X-rays
+
+Despite the higher version number, MOCASSIN 3.x is the narrower tree.  Comparing
+Fortran sources: **no `.f90` exists in 3.x that is absent from the local
+`mocassin-mocassin.2.02.73.2`**, while the local tree has fifteen that 3.x lacks
+(`dda_mod`, `scattering_mod`, `echo_mod`, `multigrid_mod`, `reflection_mod`,
+`shared_window_mod`, `grid_v2_mod`, `plane_ionization_mod`, `view_angles_mod`,
+`subgrid_mod`, `mpi_utils_mod`, `readdata_mod`, `data_path_mod`, `gaunt.f90`,
+`test_dda`).  Both already carry `fluorescence_mod` and an identical
+`data/auger.dat`; what 3.x adds on top is Compton **wired into transport**
+(the local tree has the Klein-Nishina routines in `ph_mod` but `lgCompton` is
+declared and read at one site only), the raised `nstages`, the >25 Ryd grid, and
+the Auger flux trick of 8b.2.  So: **mine it for the hard-spectrum pieces, and
+do not treat it as a newer MOCASSIN for anything else.**
 
 ## 9. Stage HS7 — density-dependent metal cooling in the thermal loop
 

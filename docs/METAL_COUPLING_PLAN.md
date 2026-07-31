@@ -604,7 +604,21 @@ Lexington diagnostics are weighted by `n_p n_e`, which is proportional to
 front and any PDR application**, which is precisely where M1 was expected to
 matter, so this must be fixed before an M1 result there is quoted.
 
-**The fix this analysis points at.**  Do not iterate on a quantity that mostly
+**RESOLVED 2026-07-31, and this subsection is kept as the diagnosis rather
+than as an open item.**  `hydrogen_neutral_fraction` (`ion_balance_mod`) now
+solves the balance at the current `n_e` for its root by Illinois iteration,
+with the cascade re-evaluated at each trial `x`; the root is bracketed in
+`[0,1]` by construction, so no clamp is needed and the fraction cannot become
+unphysical.  One cell solve reaches the converged state to 3.6e-11 where
+substitution left 1.8e-3, and on HII20 the printed residual falls from a
+maximum of 4.6e-3 to 1.3e-6 with the volume-weighted mean from 4.7e-4 to
+4.5e-9, while `<T[NpNe]>` moves 0.01 K.  Gate G-M1f is closed and lives in
+`tests/charge_exchange/check_cell_convergence.f90`.  Aitken extrapolation of
+the `n_e` sequence was tried first and made the pass count *worse*; the full
+record, including that negative result and what the five reference codes do,
+is `docs/ION_BALANCE_CONVERGENCE_PLAN.md`.
+
+**The fix this analysis pointed at.**  Do not iterate on a quantity that mostly
 cancels.  Replace the substitution step for `x_HI` with a Newton or secant step
 on the scalar residual
 
@@ -616,13 +630,12 @@ which converges in a few passes whatever the slope is, since the slow mode is a
 property of the substitution map and not of the root.  Raising the cap or adding
 `|delta x_HI|` to the exit test are the cheap alternatives, but they treat the
 symptom: the first costs 1285 passes for each of 23 temperature trials for each
-leaf, the second only detects the failure.  **Not implemented; the cap and the
-exit test were left as they are**, and the code site carries the measured
-numbers.
+leaf, the second only detects the failure.  Implemented as the root find above; the cap and the exit test were left as
+they are, since with the root find they are no longer reached.
 
-**Gate G-M1f (new).**  A cell at `x_HII` between 0.01 and 0.05 must converge to
-the same state as repeated whole-cell solves, to <= 1e-10 relative, inside the
-pass cap.  Add it to `tests/charge_exchange/` when the fix lands.  The options,
+**Gate G-M1f.**  **CLOSED, PASS 2026-07-31.**  A cell at `x_HII` between 0.01
+and 0.05 must converge to the same state as repeated whole-cell solves, to
+<= 1e-10 relative, inside the pass cap; measured worst deviation 3.6e-11.  Add it to `tests/charge_exchange/` when the fix lands.  The options,
 their trade-offs, the algorithms, and what the five reference codes actually do
 for this same fixed point are in `docs/ION_BALANCE_CONVERGENCE_PLAN.md`; the
 short version is that none of them uses Newton or secant on the ionization
@@ -635,7 +648,7 @@ of exactly this kind by reformulating rather than by iterating harder.
 ### 4.1 Correction to the premise
 
 `par%metal_ne` and `par%metal_heat` are both `.false.` by default
-(`src/define.f90:580-581`), declared as "PDR-zone physics (each defaults off
+(`src/define.f90:580-581` at the time), declared as "PDR-zone physics (each defaults off
 so the recorded gates reproduce)" (`:568-570`).  **The published benchmark
 runs do not use those defaults.**  `tests/continuous_energy/hii40_continuous.in`
 and `hii20_continuous.in` set, at lines 49-52,
@@ -748,12 +761,15 @@ physically real, so switching them off is an approximation, and the house
 rule is that a deliberate approximation is acceptable only when documented at
 the code site **with its domain of validity**.  "Defaults off so the recorded
 gates reproduce" is a reproducibility statement, not a domain of validity.
-After G-M2, either flip both defaults to `.true.` (making the shipped
-configuration the one the paper reports) or write the measured domain of
-validity at `src/define.f90:568-583`.  Backward compatibility alone does not
-settle it.  Note that flipping requires re-baselining the grouped-mode gate
-inputs `tests/g2_hii/hii{40,20}_bench.in`, which would then change behavior
-without changing their text.
+**DECIDED 2026-07-31: both defaults flipped to `.true.`**, so the shipped
+configuration is the one the paper reports, and the measured domain of validity
+is written at `src/define.f90` alongside.  The trap this section flagged was
+handled rather than accepted: the 42 inputs that enabled metals and left these
+two to the default now set them explicitly, so no file changes behavior without
+changing its text.  Tests are pinned `.false.`, which keeps every recorded gate
+number exactly as it was -- verified by running a pinned input against the
+pre-flip binary, 31/31 datasets bit-identical -- and the four examples are
+pinned `.true.`, stating the new default rather than inheriting it.
 
 ## 5. Stage M3 — metal recombination continua as a diffuse source
 
@@ -1010,9 +1026,9 @@ statement that the feature is absent.
 | stage populations | chain | chain | chain | chain, one pass, no iteration | N x N matrix + LU, one per element | chain | chain; matrix when an Auger channel is active (M4, in HS6) |
 | elements coupled to each other | no | no | no | no | no | no | no (Section 7) |
 | charge exchange two-way in the bookkeeping | no | no | no | no | **yes** | **no** | **yes (M1)** |
-| metal electrons in `n_e` | yes | no | yes | no | yes (summed, root find) | switch, default off, **on** in the published runs | measured, default decided (M2) |
+| metal electrons in `n_e` | yes | no | yes | no | yes (summed, root find) | **default on** since 2026-07-31; on in the published runs | measured, default decided (M2) |
 | metal opacity attenuates the ionizing field | yes | no | no | no | yes | yes, default on | unchanged |
-| metal photoheating | yes | no | not read | no | yes | switch, default off, **on** in the published runs | measured, default decided (M2) |
+| metal photoheating | yes | no | not read | no | yes | **default on** since 2026-07-31; on in the published runs | measured, default decided (M2) |
 | metal recombination continua transported | yes | no | not read | not read | yes | no (0.29% of channel 2) | implemented, or documented with its domain of validity (M3) |
 | metal line photons transported | no, discarded in production | no, energy sink only | not read | not read | yes, on the spot | no | measurement named, not planned (M3.5) |
 | `T_e` | outer root find | outer root find | outer root find | outer root find | outer Brent | outer bisection | unchanged |

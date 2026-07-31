@@ -1414,19 +1414,34 @@ inside the tolerance the runs were converged to
 (\code{par\%gas\_tol\_te} $=10^{-2}$, i.e.\ 82~K at HII40) by factors of
 58 and 533, so the recorded benchmark tables are not re-baselined on them.
 
-The same cancellation has a numerical consequence that is recorded here
-rather than hidden: the slope of the substitution map at its fixed point
-is $R_{\rm in}/(R_{\rm in} + \alpha_H n_e)$, which tends to unity wherever
-$R_{\rm in} \gg \alpha_H n_e$, so in partially neutral gas the cell
-iteration is marginally stable.  At $T=10^4$~K, $n_{\rm H}=100$ and the
-HII20 abundances it needs 124 passes at $x_{\rm HII}=0.18$, 239 at
-$0.10$ and 1285 at $0.021$, against the 200-pass cap; a capped cell leaves
-the loop with $x_{\rm HII}$ high by about $8\%$.  Cells with
-$x_{\rm HII}\gtrsim 0.1$ converge inside the cap, and the benchmark
-diagnostics are weighted by $n_{\rm p}n_{\rm e}\propto x_{\rm HII}^2$, so
-the numbers above are unaffected; what is affected is the shadow beyond
-the front, which must be resolved before a photodissociation-region result
-is quoted from this term.
+The same cancellation has a numerical consequence, and it dictates how the
+balance is solved.  Substituting into Eq.~(\ref{eq:hbalance-cx}) with the
+charge-exchange terms lagged gives a map whose slope at the fixed point is
+$R_{\rm in}/(R_{\rm in} + \alpha_H n_e)$, which tends to unity wherever
+$R_{\rm in} \gg \alpha_H n_e$ --- that is, throughout partially neutral
+gas, where the iteration becomes marginally stable.  At $T=10^4$~K,
+$n_{\rm H}=100$ and the HII20 abundances it then needs 124 passes at
+$x_{\rm HII}=0.18$, 239 at $0.10$ and 1285 at $0.021$, against a 200-pass
+cap, and a capped cell leaves with $x_{\rm HII}$ high by about $8\%$.
+
+MoCHII therefore does not substitute.  \code{hydrogen\_neutral\_fraction}
+solves the balance at the current $n_e$ for its root, with the whole metal
+cascade re-evaluated at each trial $x_{\rm HI}$.  The root is bracketed in
+$[0,1]$ \emph{by construction} --- $R(0) = -(\alpha_H n_e + R_{\rm in}) < 0$
+and $R(1) = \Gamma_H + (C_H+\alpha_H)n_e + R_{\rm out} > 0$ --- so Illinois
+iteration keeps the bracket at every step and the fraction cannot leave the
+physical range, which is the one property the plain substitution had and a
+bare secant would forfeit.  One call now reaches the converged state to
+$3.6\times10^{-11}$ at every $x_{\rm HII}$ down to $0.02$, against
+$1.8\times10^{-3}$ for substitution, and on HII20 the printed balance
+residual falls from a maximum of $4.6\times10^{-3}$ to $1.3\times10^{-6}$
+with the volume-weighted mean from $4.7\times10^{-4}$ to
+$4.5\times10^{-9}$.  The benchmark numbers above move by $0.01$~K, so the
+method changed the path to the root and not the root.  Extrapolating the
+$n_e$ sequence instead --- Aitken --- was tried and made the pass count
+worse, because a jump in one component leaves the rest of the coupled state
+off the slow manifold; that is recorded with its measurements in
+\code{docs/ION\_BALANCE\_CONVERGENCE\_PLAN.md}.
 
 Because the written state is under-relaxed (\code{par\%ion\_relax}) while
 the metal stage fractions written alongside are evaluated at the written

@@ -273,11 +273,11 @@ themselves and one evaluation at the H/He-only electron density is the
 $\nelec \to 0$ limit in which nothing recombines; \textsc{CMacIonize} and
 \citet{wood2004} count no metal electrons at all.  \code{metal\_heat} adds
 metal photoheating, which \textsc{Mocassin} includes and those two omit.
-These switches default off so the recorded gates reproduce, but the benchmark
-runs of Section~\ref{sec:hii} enable all of them, so every metal feedback
-\MoCHII{} implements is active in those numbers; the trace separation
-describes the default configuration and the solution method, not the physics
-of the benchmark.
+Both now default on, the measurement in
+Section~\ref{sec:cooldata} having settled what leaving them off costs; the
+benchmark runs of Section~\ref{sec:hii} enable them explicitly, so every metal
+feedback \MoCHII{} implements is active in those numbers.  The trace
+separation describes the solution method, not a switched-off feedback.
 
 One feedback the other four Monte Carlo codes also omit is charge exchange
 being two-way in the bookkeeping:
@@ -295,9 +295,14 @@ $\langle T[N_{\mathrm{p}}N_{\mathrm{e}}]\rangle$ moves $-1.4$~K at HII40 and
 $-0.1$~K at HII20, and every front by under $0.001$~pc --- 58 and 533 times
 inside the tolerance these runs were converged to, so
 Tables~\ref{tab:wood40} and~\ref{tab:wood20} are not re-baselined on them.
-The same near-cancellation makes the cell iteration marginally stable in
-partially neutral gas, which is recorded with its measured pass counts and
-must be resolved before a photodissociation-region result is quoted.  The one
+The same near-cancellation dictates how the balance is solved: it leaves the
+substitution map marginally stable in partially neutral gas, so \MoCHII{}
+solves hydrogen's balance for its root rather than substituting into it, with
+the cascade re-evaluated at each trial.  The root is bracketed in $[0,1]$ by
+construction, so the fraction cannot leave the physical range; one cell solve
+converges to $4\times10^{-11}$ where substitution left $2\times10^{-3}$, and
+the residual beyond the front falls three orders of magnitude while
+$\langle T[N_{\mathrm{p}}N_{\mathrm{e}}]\rangle$ moves 0.01~K.  The one
 remaining absence is metal recombination continua as a diffuse source, worth
 0.29\% of the explicit diffuse channel that dominates the helium budget; it
 and the measurements that size it are planned in

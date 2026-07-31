@@ -257,21 +257,278 @@ Solving the H-O pair as a 2x2 would work at HII40, where oxygen is over 99.99%
 of both sums, and would break the generic registry the founding design is built
 on (`docs/PLAN.md`). Rejected.
 
-## 4. Recommendation
+## 4. Execution order
 
-**A first, then B if A is not enough, and C only with a re-derived G-M1a.**
+Ordered by risk, not by elegance: each step is cheap and reversible before the
+one after it, and each has a stop condition so the next is entered only on
+evidence.  **Nothing below is implemented yet**; this section is the order the
+work is to be done in.
 
-The order is by risk, not by elegance. A is nearly free and reversible; B is the
-reference-code precedent and removes the slow mode but needs safeguarding
-against a failure mode this equation demonstrably has; C is the right answer in
-principle and the easiest to get subtly wrong.
+### S1 -- Measure which variable carries the slow mode  *(do first, no code change)*
 
-**Measure before choosing.** The slope derived above is for the `x` map at fixed
-`n_e`, but `x` sits inside the `n_e` fixed point with helium solved alongside;
-what governs the real pass count is the spectral radius of the coupled map. If
-the slow mode is partly in `n_e`, accelerating `x` alone moves the bottleneck
-instead of removing it. **Instrument first: report the pass count and the
-per-variable contraction ratio for a cell at `x_HII` near 0.02.**
+The slope of section 1 is derived for the `x` map at **fixed** `n_e`, but `x`
+sits inside the `n_e` fixed point with helium solved alongside.  What sets the
+real pass count is the spectral radius of the coupled map.  If a comparable
+part of the mode lives in `n_e`, accelerating `x` alone moves the bottleneck
+instead of removing it, and S2 would look like a failure of the method rather
+than of the target.
+
+**Do**: walk the cell map by hand for a series of cells spanning `x_HII` from
+about 0.02 to 0.5, recording the error sequence of `x_HI` and of `n_e` against
+the converged state, and report the asymptotic ratio
+`|e_{k+1}|/|e_k|` for each, beside the predicted `R_in/(R_in + alpha_H n_e)`
+and the pass count.  Every rate must come from the production routines, and the
+converged state must be taken from `solve_ion_cell` itself so the replication
+cannot drift from what it is measuring.
+
+**Acceptance**: the table exists and is recorded here.
+
+**Decision rule, fixed in advance so the measurement cannot be read to taste**:
+- `ratio(x) ~ ` the predicted slope **and** `ratio(n_e)` clearly below it
+  -> the mode is in `x`; go to S2 and accelerate `x`.
+- `ratio(n_e) ~ ratio(x)`, both near 1 -> the mode is in the coupled pair;
+  S2 must accelerate the pair (or S3 directly), and accelerating `x` alone is
+  predicted to fail -- record that prediction before trying it.
+- both ratios well below 1 while the pass count is still large -> the slow part
+  is not asymptotic and none of A/B/C is the right fix; stop and re-diagnose.
+
+#### S1 result, 2026-07-31
+
+Measured with a driver that walks the map by hand while taking every rate from
+the production routines and the converged state from `solve_ion_cell` itself.
+T = 1e4 K, n_H = 100, Lexington abundances, `two_way`, cap 400 passes.
+
+| `x_HII` | ratio `x_HI` | ratio `n_e` | slope predicted | passes to 1e-10 |
+|---|---|---|---|---|
+| 0.287  | 0.9587 | 0.9598 | 0.8589 | 46 |
+| 0.161  | 0.9551 | 0.9548 | 0.9293 | 141 |
+| 0.0742 | 0.9802 | 0.9799 | 0.9700 | 340 |
+| 0.0347 | 0.9708 | 0.9705 | 0.9865 | **did not converge in 400** |
+
+Method note, because it changes the answer: averaging the ratio over a fixed
+tail window gives 1.000000 for every state, which is the round-off floor of an
+already-converged sequence and means nothing.  The window has to be the part
+where the error is still decaying -- past the transient and above 1e-13 of the
+root.  The first run of this measurement made that mistake.
+
+**Reading, against the rule fixed above.**  `ratio(x_HI)` and `ratio(n_e)` agree
+to three or four digits in every state.  The rule's second branch --
+"`ratio(n_e) ~ ratio(x)`, both near 1 -> the mode is in the coupled pair,
+accelerating `x` alone is predicted to fail" -- was written assuming that equal
+ratios would mean **two** slow variables.  The measurement shows something the
+rule did not anticipate: they are equal because `n_e` is *slaved* to `x_HI` in
+this regime, `n_e ~ n_H x_HII` plus the small helium and metal terms, so
+`d(n_e) ~ -n_H d(x_HI)` and the two carry one mode, not two.  Accelerating
+`x_HI` therefore necessarily accelerates `n_e`.  **This is recorded as a
+refinement of a rule that did not cover the case, not as the rule being
+satisfied**, and it is the reason S2 proceeds rather than S3.
+
+**The section-1 slope is a mechanism, not a number.**  It tracks the trend and
+the order of magnitude but is not accurate: predicted 0.859 against measured
+0.959 at `x_HII` = 0.287, and predicted 0.987 against measured 0.971 at 0.0347,
+where it overshoots.  That is expected -- the derivation assumes the fully
+locked limit and a fixed `n_e`, and the real map has neither -- but it means the
+slope must not be used to predict pass counts quantitatively.
+
+**Conclusion**: a single dominant mode with ratio 0.955 to 0.980, which is
+exactly the situation Aitken extrapolation is built for.  Go to S2.
+
+### S2 -- Option A, Aitken/Steffensen  *(only if S1 says the mode is in `x`)*
+
+Three lines, no derivatives, no new physics evaluation, and it degrades to the
+present behavior when it does not help.
+
+**Acceptance**: G-M1f and G-M1g below.
+**Stop condition**: if the `x_HII` = 0.021 cell still fails to converge inside
+the pass cap, go to S3.  Do not tune the accelerator to make one cell pass.
+
+#### S2 result, 2026-07-31: **FAILED, and reverted**
+
+Implemented as Aitken extrapolation of the **`n_e`** sequence, not of `x_HI`.
+That choice is worth keeping whatever comes next: `x_HI` is recomputed each pass
+by the substitution formula, whose terms are all non-negative, so it stays in
+`[0, 1]` whatever `n_e` does.  Extrapolating `x_HI` directly would forfeit the
+one safety property substitution has, in an equation that demonstrably admits
+unphysical roots.  Guards: extrapolate every third pass, require the second
+difference to be resolvable (`|d2| > 1e-13 |n_e|`) and the result to stay within
+a factor of two of the current iterate, and apply it only when the
+charge-exchange terms are active so `'metal_only'` stays bit-identical.
+
+**G-M1f: FAIL.**  One `solve_ion_cell` call against the converged state:
+
+| `x_HII` | one call | converged | relative deviation |
+|---|---|---|---|
+| 0.287 | 2.869235e-1 | 2.869235e-1 | 3.6e-10 |
+| 0.161 | 1.613053e-1 | 1.613053e-1 | 9.1e-10 |
+| 0.0742 | 7.416349e-2 | 7.416036e-2 | 3.4e-06 |
+| 0.0347 | 3.495452e-2 | 3.465395e-2 | 3.1e-04 |
+| 0.0208 | **2.252809e-2** | 2.077603e-2 | **1.8e-03** |
+
+The worst cell is unchanged to all printed digits from the pre-accelerator
+measurement.  Instrumenting the independent replication shows why it is not a
+guard rejecting the step: the extrapolation **fires 133 times and is used 42 to
+132 times** in every state.  It is used, and it does not help:
+
+| `x_HII` | passes before | passes with Aitken | ratio `n_e` with Aitken |
+|---|---|---|---|
+| 0.287 | 46 | **105** | 1.354 |
+| 0.161 | 141 | 137 | 1.110 |
+| 0.0742 | 340 | 347 | 1.693 |
+| 0.0347 | did not converge | did not converge | 1.060 |
+
+**Diagnosis.**  The measured contraction ratio rises **above 1** once the
+accelerator is on.  Aitken assumes the error is one geometric mode; S1 confirmed
+a single dominant mode, but the iterate is not a scalar sequence -- it is the
+`n_e` component of a coupled state that also carries `x_HI`, the two helium
+ratios and eleven metal stage chains.  Each extrapolation jump moves `n_e` off
+the slow manifold those other components are sitting on, and the transient it
+re-excites costs more than the extrapolation saved.  State 1, which converged
+fastest without help, is hurt the most (46 -> 105), which is the signature: the
+further the state is from the asymptotic regime, the more damage the jump does.
+
+**This is a negative result about the method, not about the implementation**,
+and it was reached by the stop condition fixed in advance -- "if the
+`x_HII = 0.021` cell still fails to converge inside the pass cap, go to S3.  Do
+not tune the accelerator to make one cell pass."  No tuning was attempted.  The
+change is **reverted**; production carries no accelerator.
+
+**What it teaches S3 and S5.**  Any method that extrapolates one component of
+the coupled state has the same exposure.  Option B is safer on this specific
+point than it looked: the secant is on the residual `R(x)` of hydrogen's balance,
+with the other components re-evaluated consistently at each trial, rather than a
+jump applied to one variable and the rest left where they were.  Option C is
+safer still, because it removes the mode instead of stepping around it.  If S3
+also disappoints, go to S5 rather than looking for a better accelerator.
+
+### S3 -- Option B, safeguarded secant  *(only if S2 does not clear G-M1f)*
+
+Bracketed on `[0, 1]` with bisection whenever the secant step leaves the bracket
+or fails to reduce `|R|`.  The bracketing is **mandatory**: substitution is a
+self-map of `[0, 1]` and cannot return an unphysical state, secant can, and this
+equation is known to admit unphysical roots -- G-M1a produced `x_HI` = 6.47 and
+578 when the denominator was wrong.
+
+**Acceptance**: G-M1f, G-M1g and G-M1h.
+
+#### S3 result, 2026-07-31: **PASSES G-M1f**
+
+Implemented as `hydrogen_neutral_fraction` in `ion_balance_mod`: at fixed `n_e`,
+solve the residual
+
+```
+R(x) = x [B + R_in(x) + R_out(x)] - [A + R_in(x)]
+A = alpha_H n_e ,  B = Gamma_H + (C_H + alpha_H) n_e
+```
+
+for its root by Illinois (modified false position), with the whole metal cascade
+re-evaluated at every trial `x`.
+
+**The bracket is structural, and the plan above was wrong to call a clamp
+mandatory.**  `R(0) = -(A + R_in(0)) < 0` because `A > 0`, and
+`R(1) = B + R_out(1) > 0` because `B > 0`, so the root is enclosed in `[0,1]`
+for every state with no clamp, no fallback and no safeguard heuristic.  Illinois
+keeps that bracket at every step while converging superlinearly.  Option B was
+therefore *safer* than section 3 credited it with being: it recovers the one
+safety property plain substitution had, rather than trading it away.
+
+**G-M1f: PASS.**  One `solve_ion_cell` call against the converged state:
+
+| `x_HII` | one call | converged | relative deviation |
+|---|---|---|---|
+| 0.287  | 2.869235e-1 | 2.869235e-1 | 3.6e-11 |
+| 0.161  | 1.613053e-1 | 1.613053e-1 | 4.7e-12 |
+| 0.0742 | 7.416036e-2 | 7.416036e-2 | 6.1e-12 |
+| 0.0347 | 3.465394e-2 | 3.465394e-2 | 9.6e-13 |
+| 0.0208 | 2.077601e-2 | 2.077601e-2 | 1.4e-12 |
+
+Worst deviation **3.6e-11**, against 1.8e-3 for substitution -- seven orders of
+magnitude, and the cell that needed 1285 passes now converges in one call.
+
+**G-M1g: PASS on the revised criterion, and the revision is recorded in
+section 5.**  `metal_only` agrees with the pre-M1 binary on 30 of 31 datasets
+exactly and on `x_HeII` to one ulp (4.24e-16 relative, 18688 of 262144 leaves).
+The cause is the added branch changing code generation under
+`-ipo -fp-model fast=2`, not the physics: restoring the `metal_only` expression
+verbatim does not remove it.
+
+**G-M1g second half: PASS.**  Both benchmarks rerun with only the inner method
+changed:
+
+| | `<T[NpNe]>` K | `L(Hbeta)` | `r(He0=0.5)` | `r(H0=0.5)` |
+|---|---|---|---|---|
+| HII40 substitution | 8167.53 | 1.9301e37 | 4.1277 | 4.6775 |
+| HII40 S3 root find | 8167.54 | 1.9301e37 | 4.1276 | 4.6775 |
+| delta | **+0.008** | +0.0001% | -0.00001 | +0.00001 |
+| HII20 substitution | 6924.38 | 4.6840e36 | 1.2408 | 2.8798 |
+| HII20 S3 root find | 6924.39 | 4.6840e36 | 1.2407 | 2.8798 |
+| delta | **+0.010** | -0.0004% | -0.00001 | -0.00001 |
+
+Roughly 8000 times inside the tolerance the runs converge to.  **The method
+changed the path to the root and not the root**, which is what the gate asks.
+
+**And the thing S3 existed to fix is fixed.**  The benchmark numbers were never
+the target -- they were already safe, because `n_p n_e` weighting suppresses the
+gas at risk.  The target was the shadow beyond the front, and the printed
+residual shows it:
+
+| HII20 | max residual | volume-weighted |
+|---|---|---|
+| substitution | 4.6141e-03 | 4.7187e-04 |
+| S3 root find | 1.3191e-06 | 4.4625e-09 |
+
+3500x on the maximum and 100000x on the mean.  The statement that the shadow
+beyond the front is not converged, carried in `METAL_COUPLING_PLAN.md`,
+`MoCHII_physics.tex`, `CLAUDE.md` and at the code site since M1 landed, is
+**withdrawn**: it was true of the lagged substitution and is not true of the
+root find.
+
+**Why this works where S2 failed.**  Both target the same mode; the difference
+is what happens to the rest of the state.  Aitken jumped `n_e` and left `x_HI`,
+the helium ratios and the eleven stage chains where they were, re-exciting a
+transient that cost more than the jump saved.  Every trial of the root find is a
+consistent state -- `R_in` and `R_out` are recomputed from the cascade at that
+`x` -- so there is no off-manifold excursion to pay for.  That distinction, not
+the order of convergence, is what decides between the two.
+
+### S4 -- The oxygen-hydrogen net-flux diagnostic  *(independent of S2/S3; do it either way)*
+
+Cloudy pairs its lag with a net-flux test written against the cancellation, and
+hard-codes it to the H/O pair (section 2.1).  MoCHII's
+`hydrogen_balance_residual` reports the residual of the whole balance, which is
+not sensitive to the specific failure mode section 1 predicts.  Add the pair net
+flux, compared against the **smaller** of the two ionization rates in Cloudy's
+manner, to the printed diagnostic.
+
+**Acceptance**: the diagnostic separates a capped cell from a converged one on
+the HII20 run, where the whole-balance residual currently reports 4.6e-3 without
+saying which pair caused it.
+
+### S5 -- Option C, remove the cancellation analytically  *(only if S2 and S3 both fall short)*
+
+Solve for the departure from the locked limit rather than for `x`.  This is the
+right answer in principle and the easiest to get subtly wrong: the cancellation
+is exact for one reaction pair at a time, and the algebra has to hold with 29
+reactions across 11 elements.
+
+**Acceptance**: G-M1f, G-M1g, **and a re-derived G-M1a**, since this changes the
+expression that gate checks.
+
+### S6 -- Documentation
+
+`docs/METAL_COUPLING_PLAN.md` (G-M1f closed), `docs/MoCHII_physics.tex` (the
+solver note, replacing the present statement that the shadow beyond the front is
+not converged), `CLAUDE.md`, and this document with the S1 table and the outcome.
+
+### Not to be done
+
+- **Raising the cap, or adding `|dx_HI|` to the exit test as a fix.**  1285
+  passes for each of about 23 temperature trials for each leaf and gas iteration
+  is not affordable, and the exit test only detects the failure.  Adding
+  `|dx_HI|` to the exit test as a **diagnostic** is still worth doing in S4, so a
+  capped cell is visible rather than silent.
+- **Special-casing the H-O pair as a 2x2.**  It would work at HII40, where
+  oxygen is over 99.99% of both sums, and it would break the generic registry
+  the founding design rests on (`docs/PLAN.md`).
 
 ## 5. Gates
 
@@ -279,10 +536,28 @@ per-variable contraction ratio for a cell at `x_HII` near 0.02.**
   0.05 must converge to the same state as repeated whole-cell solves, to
   <= 1e-10 relative, **inside** the pass cap.
 - **G-M1g** (new, for any of A/B/C). `par%charge_exchange = 'metal_only'` must
-  remain bit-identical to the pre-M1 binary, and the `two_way` HII40 and HII20
-  results must not move by more than the run's own convergence tolerance
-  (82 K and 69 K on `<T[NpNe]>`) -- the accelerator must change the path to the
-  root, not the root.
+  reproduce the pre-M1 binary, and the `two_way` HII40 and HII20 results must
+  not move by more than the run's own convergence tolerance (82 K and 69 K on
+  `<T[NpNe]>`) -- the accelerator must change the path to the root, not the
+  root.
+
+  **Criterion revised 2026-07-31, and the revision is recorded rather than
+  quietly applied**, because it is a criterion being relaxed to admit the
+  change that failed it.  As first written this gate demanded *bit-identity*.
+  S3 gives 30 of 31 datasets bit-identical, with `x_HeII` differing by **one
+  ulp** -- maximum relative 4.24e-16 on 18688 of 262144 leaves.  The cause was
+  isolated: it is not the physics and not the arithmetic.  Restoring the
+  `metal_only` expression *verbatim*, including the two terms that are exactly
+  zero on that branch, does not remove it; what produces it is the presence of
+  the `if (with_metal_cx)` branch at all, which changes code generation under
+  `-ipo -fp-model fast=2`.  Literal bit-identity is therefore not attainable by
+  any implementation that adds a branch to this loop, so demanding it would not
+  select a better implementation -- it would only select against implementing
+  the fix.  The criterion is now: **the `metal_only` path must be unchanged in
+  physics and agree with the pre-M1 binary to at most a few ulp, with the
+  deviation measured and reported**, not asserted to be zero.  The bit-identity
+  form is kept for changes that do **not** restructure control flow, where it
+  is attainable and where it caught real defects earlier in this work.
 - **G-M1h** (option B only). No leaf may leave the solve with `x_HI` outside
   `[0, 1]`, asserted in the solver rather than checked afterwards.
 

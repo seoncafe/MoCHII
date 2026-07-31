@@ -1025,8 +1025,9 @@ into hydrogen's own rows & yes, summed then Brent root find & yes, all shells
 & continua and lines, both re-ionize & outer Brent inside the pressure
 loop \\
 
-\MoCHII{} & nearest-neighbor ratio chain & separate & no & optional, damped
-fixed point & yes, default on & H/He channels only & outer bisection in
+\MoCHII{} & chain, but solved for its root at each $\nelec$ rather than
+substituted into & separate & \textbf{yes} & yes, default on, damped fixed
+point & yes, default on & H/He channels only & outer bisection in
 $\log\Te$ \\
 \end{longtable}
 \endgroup
@@ -1122,21 +1123,29 @@ called in the metal denominators (O \code{ionize2.f}:136--138, N
 \code{:83--85}), but \code{h0find.f} has no charge transfer argument in its
 interface (\code{:1}), its stated equation set (\code{:6--13}) contains only
 hydrogen photoionization, recombination and the helium 2s--2p resonance term,
-and neither \code{HCTIon} nor \code{HCTRecom} appears in the file.  In
-\MoCHII{}, \code{species\_fractions} adds \code{nHII*cx\_rate(cxi)} and
-\code{nHI*cx\_rate(cxr)} to the metal rates
-(\code{src/species\_\allowbreak mod.f90}:823--827) while \code{solve\_ion\_cell}
-(\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:72--96) has no charge transfer term at all.
+and neither \code{HCTIon} nor \code{HCTRecom} appears in the file.  \MoCHII{} shared this
+until 2026-07-31: \code{species\_fractions} added the two terms to the metal
+rates while \code{solve\_ion\_cell} carried none.
 
-Physically this means the same thing in all five: charge is not conserved in
-the hydrogen-plus-metal pair.  Every charge transfer recombination of a metal
-ion that these codes count also ionizes a hydrogen atom, and that hydrogen
-ionization is never entered.  The magnitude in \MoCHII{} is
-\emph{unmeasured}, and should not be quoted as small until it is measured.
-It is expected to be negligible in the fully ionized core, where the hydrogen
-photoionization rate dominates the balance; it should be expected to matter at
-and beyond the ionization front, where $x({\rm H}^0)$ rises and the missing
-term is proportional to it.
+Physically the omission means the same thing in all four remaining codes:
+charge is not conserved in the hydrogen-plus-metal pair.  Every charge transfer
+recombination of a metal ion that these codes count also ionizes a hydrogen
+atom, and that hydrogen ionization is never entered.
+
+\MoCHII{} now enters it (\code{par\%charge\_exchange = 'two\_way'}, the
+default), so on this axis it sits with \textsc{Cloudy} rather than with the
+Monte Carlo codes; \code{'metal\_only'} reproduces the earlier bookkeeping bit
+for bit.  The correction turns out to be small on the Lexington benchmarks, and
+the reason is structural rather than one of abundance: where the near-resonant
+$\mathrm{O}^0+\mathrm{H}^+$ pair locks oxygen to hydrogen the two terms cancel
+identically in hydrogen's balance, so only the departure from that lock
+survives.  Measured with a single switch changed,
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ moves $-1.41$~K at HII40 and $-0.13$~K
+at HII20 and every front by under $0.001$~pc --- inside the tolerance those runs
+were converged to by factors of 58 and 533.  The same near-cancellation makes
+the substitution map marginally stable in partially neutral gas, which is why
+\MoCHII{} solves hydrogen's balance for its root there rather than substituting
+into it.
 
 On two axes \MoCHII{} is ahead of three of the four chain codes.  The first is
 opacity.  \MoCHII{} attenuates the ionizing field with the metal cross
@@ -1207,7 +1216,7 @@ residuals re-solves the ionization of every element through
 \code{ConvIoniz()} (\code{:283--288}).
 
 \MoCHII{}'s metal contribution to $\nelec$ is optional
-(\code{par\%metal\_ne}, default off), but when it is on it is solved as a
+(\code{par\%metal\_ne}, on by default since 2026-07-31), and it is solved as a
 scalar fixed point rather than evaluated once:
 \code{charge\_\allowbreak neutrality\_\allowbreak ne} (\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:98--123)
 solves
