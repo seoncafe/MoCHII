@@ -820,7 +820,33 @@ at the code site with its domain of validity.  This stage is that choice.
   `IonizationVariables.hpp:46-61` has the H probability and four He channels.
   Metal line emission is only an energy sink in the cooling function
   (`TemperatureCalculator.cpp:463`).
-- TORUS and Wood were **not read** on this axis.
+- **TORUS: no metal continua, but it does transport metal LINES.**  Its
+  Saha-Milne inversion is hard-wired to H I, He I and He II --
+  `addLymanContinua` at `photoionAMR_mod.F90:7883-7889`, `addHigherContinua` at
+  `:7938-7943`, and the `GAMMATABLE` argument is dimensioned `table(3)`; the
+  only Saha-Milne tables in the tree are `createSahaMilneTables(hTable, heTable)`
+  (`photoion_utils_mod.F90:675`), with no metal analogue.  But
+  `addForbiddenLines` loops `do iIon = 3, grid%nIon` and deposits every
+  collisionally excited metal line into the re-emission spectrum
+  (`photoionAMR_mod.F90:8093-8104`), so those photons are resampled and
+  transported.  Almost all of them sit below 13.6 eV, so their effect is on dust
+  heating and escape rather than on photoionization -- which is worth knowing for
+  5.5 below.
+- **Wood: neither.**  The diffuse field is a five-way H/He branching -- H Lyman
+  continuum, He Lyman continuum, 19.8 eV, the ionizing part of the He I
+  two-photon continuum, He I Lyman-alpha (`mcionize.f:264-336`) -- and everything
+  else terminates the packet as `ptype=4  ! photon energy < 13.6eV`.  The three
+  frequency samplers are built by Saha-Milne inversion of `phfit2` for H and He
+  only (`probinit.f:56-72`).  Metal recombination continua are neither emitted
+  nor tallied.
+- **MOCASSIN 3.x: the same `gammaHeavies` continuum as 2.02, and fluorescence is
+  *additional*, not a replacement.**  `fb_ff` is called unconditionally
+  (`emission_mod.f90:172`) and folds `gammaHeavies` into the transported
+  continuum at `:184`.  The K/L-shell fluorescence of the X-ray work is a
+  separate opt-in channel (`lgFluorescence`) that spawns 20 sub-packets at the
+  absorption site (`photon_mod.f90:2668-2681`) which deposit into the same
+  `Jste`/`Jdif` arrays, so they re-ionize too.  Metal line photons are still
+  discarded exactly as in 2.02 (`photon_mod.f90:1605-1626`).
 
 ### 5.3 Implementation shape, if implemented
 
@@ -866,7 +892,13 @@ higher metal stages with harder recombination continua, which is exactly what
 ### 5.5 Sub-item, scoped out with a measurement named
 
 Metal **line** photons: MoCHII creates none, treating metal line cooling as a
-pure energy sink.  Whether any of the registry's lines fall above the
+pure energy sink.  The reference codes do not agree here, which is itself
+informative: MOCASSIN discards them, Cloudy puts them on the spot, and TORUS
+resamples and transports them (`photoionAMR_mod.F90:8093-8104`) -- but TORUS's
+reason is that they matter for **dust heating and escape**, since almost all of
+them lie below 13.6 eV, not because they ionize.  That tells the measurement
+below what it is really asking: how much metal line energy sits above the band
+floor, and separately how much sits in the FUV where dust would absorb it.  Whether any of the registry's lines fall above the
 13.598 eV band floor is **UNMEASURED**; the measurement is a sum over the
 line list in `<base>_lines.txt` against `par%eion_min`, and it is cheap.  It
 becomes a real question in FUV runs, where `par%add_fuv` puts the band floor
@@ -1029,8 +1061,8 @@ statement that the feature is absent.
 | metal electrons in `n_e` | yes | no | yes | no | yes (summed, root find) | **default on** since 2026-07-31; on in the published runs | measured, default decided (M2) |
 | metal opacity attenuates the ionizing field | yes | no | no | no | yes | yes, default on | unchanged |
 | metal photoheating | yes | no | not read | no | yes | **default on** since 2026-07-31; on in the published runs | measured, default decided (M2) |
-| metal recombination continua transported | yes | no | not read | not read | yes | no (0.29% of channel 2) | implemented, or documented with its domain of validity (M3) |
-| metal line photons transported | no, discarded in production | no, energy sink only | not read | not read | yes, on the spot | no | measurement named, not planned (M3.5) |
+| metal recombination continua transported | yes | no | **no** | **no** | yes | no (0.29% of channel 2) | implemented, or documented with its domain of validity (M3) |
+| metal line photons transported | no, discarded in production | no, energy sink only | **yes** (below 13.6 eV, so dust heating not ionization) | **no** | yes, on the spot | no | measurement named, not planned (M3.5) |
 | `T_e` | outer root find | outer root find | outer root find | outer root find | outer Brent | outer bisection | unchanged |
 | charge-exchange heating/cooling | not read | not read | not read | not read | not read | no | flagged (M1.7) |
 
@@ -1158,11 +1190,21 @@ measurement and which do not.
 2. **Helium–hydrogen charge exchange is entirely absent from MoCHII**, and no
    rate exists in the tree to evaluate it (Section 3.7).  Helium-specific,
    with no row in the residual exclusion table.  Magnitude unmeasured.
-3. **Charge-exchange heating and cooling**: not read in any of the five
-   codes; absent from MoCHII (Section 3.7).
+3. **Charge-exchange heating and cooling**: still not read in any of the five
+   codes; absent from MoCHII (Section 3.7).  This is now the largest remaining
+   gap in the survey, and it is a real physics question rather than a
+   bookkeeping one: the reactions are exothermic or endothermic and therefore
+   exchange energy with the gas.  Note MOCASSIN's reverse rate carries the
+   `exp(-deltaE_k/Te)` factor explicitly (`update_mod.f90:1741-1744`), so the
+   energy difference is already tabulated there for N I and O I -- a starting
+   point if this is ever opened.
 4. **TORUS on metal photoheating, metal recombination continua and metal
-   line photons**: not read.  **Wood on metal recombination continua and
-   metal line photons**: not read (Section 9).
+   line photons**: **closed 2026-07-31** -- TORUS has no metal free-bound
+   continuum (Saha-Milne hard-wired to H I/He I/He II) but does transport metal
+   lines; Wood has neither (Section 5.2).  What remains open for TORUS is only
+   **metal photoheating**.  Also closed: whether MOCASSIN 3.x differs from 2.02
+   on the diffuse axis -- it does not, and its fluorescence channel is
+   additional rather than a replacement.
 5. **Whether any registry line lies above the 13.598 eV band floor**:
    unmeasured; the measurement is named in Section 5.5.
 6. **The switch-matrix numbers of G-M2 do not exist anywhere in the tree**

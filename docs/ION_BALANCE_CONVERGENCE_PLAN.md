@@ -499,9 +499,64 @@ not sensitive to the specific failure mode section 1 predicts.  Add the pair net
 flux, compared against the **smaller** of the two ionization rates in Cloudy's
 manner, to the printed diagnostic.
 
-**Acceptance**: the diagnostic separates a capped cell from a converged one on
-the HII20 run, where the whole-balance residual currently reports 4.6e-3 without
-saying which pair caused it.
+**Acceptance**: the diagnostic separates a badly converged cell from a converged
+one on the HII20 run, where the whole-balance residual reported 4.6e-3 before S3
+without saying which pair caused it.
+
+#### How the five codes keep the two directions consistent
+
+Read 2026-07-31.  There are three strategies, and MoCHII is in the weakest one.
+
+**1. Derive one direction from the other by detailed balance -- MOCASSIN 2.02
+and 3.x.**  The forward rate is a fitted `chex` coefficient and the reverse is
+computed from it (`update_mod.f90:1741-1744` in 3.x):
+
+```
+revRate = chex(elem,ion,1) * (1.-ionDen(H0))*Hden * 2.*exp(-deltaE_k(elem,ion)/TeUsed)/(g0/g1)
+```
+
+a Boltzmann factor and a statistical-weight ratio applied to the same
+coefficient, then added straight onto the photoionization rate (`:3825`).
+Consistency then holds **by construction and needs no check**.  The catch is the
+data it demands: the reverse is computed only where `deltaE_k > 1`, and only two
+entries are ever set -- N I at 10863 K and O I at 2205 K (`:1706-1707`).  Every
+other element has no reverse rate at all.
+
+**2. Fit both directions independently and check at run time -- Cloudy c25
+alone.**  Section 2.1 above.  The net pair rate is formed, the tolerance is
+written against the near-cancellation, and a mismatch declares the zone
+unconverged.
+
+**3. Fit both independently and never check -- MoCHII, CMacIonize, TORUS,
+Wood.**  In each case the two directions are separate table lookups with nothing
+comparing them: CMacIonize's `ChargeTransferRates` (ionization for N and O,
+recombination for the higher stages); TORUS's two disjoint `select case` blocks
+(`photoion_utils_mod.F90:831-871` and `:876-908`) evaluated through a form with
+no Boltzmann factor; Wood's two Kingdon & Ferland block-data tables
+(`ct1.f:3`, `:37`), which additionally fall back to
+`HCTRecom = 1.92e-9*ipIon` for any stage above 4 (`ct1.f:19-22`) -- a
+statistical guess with no reverse counterpart at all.
+
+**And most of them could not check even if they wanted to**, because their
+convergence criteria do not reach the species involved.  CMacIonize has **no
+global convergence test**: the loop is a fixed trip count
+(`IonizationSimulation.cpp:359`, `:646-648`), and nothing is compared between
+iterations.  Wood likewise runs `do iter=1,niter` with no test, and a comment
+records that two criteria were tried and neither implemented (`itbal.f:19-21`).
+TORUS tests H I only per cell and **temperature only** globally
+(`photoionAMR_mod.F90:3903-3933`, `:4324-4343`, `:5154-5159`).  MOCASSIN tests
+H0, He0 and He+ and no metal ion (`update_mod.f90:1965-1985`) -- and carries a
+convergence flag for each element in `ionBalance2` that is **dead code**, never
+called.
+
+**Consequence for S4.**  MoCHII's data situation is Cloudy's -- both directions
+independently fitted, from Huang (2023) and Kingdon & Ferland (1996) -- so
+strategy 1 is not open to us without ionization-energy differences and
+statistical weights for all 29 reactions, which even MOCASSIN only assembled for
+two.  Strategy 2 is therefore the target, and S4 as specified above is exactly
+it.  MoCHII already has the advantage that makes it cheap: both sides are formed
+in the same leaf solve from the same cached coefficients, so the check is a
+comparison of two numbers already in hand, not a re-derivation.
 
 ### S5 -- Option C, remove the cancellation analytically  *(only if S2 and S3 both fall short)*
 
