@@ -127,14 +127,14 @@ public
      real(kind=wp) :: lambda = 0.0_wp
      real(kind=wp) :: s_ext  = 1.0_wp
      !--- MoCHII: ionizing-band frequency bin index (0 = not an ionizing
-     !--- photon).  The ionizing band carries its own opacity array
-     !--- kap_ion(inu,leaf); the grey s_ext rescale does not apply there.
+     !--- photon).  Purely the diagnostic output-bin label of energy_eV: it
+     !--- addresses the jt_ion/J_nu tally and nothing else.  The grey s_ext
+     !--- rescale does not apply in the ionizing band.
      integer       :: inu    = 0
-     !--- Physical ionizing-packet energy [eV].  During the grouped-energy
-     !--- compatibility phase this is always initialized to ion_e(inu) and is
-     !--- carried through transport/copies without changing any solver
-     !--- physics.  Continuous mode will later sample this independently;
-     !--- inu then remains only the diagnostic output-bin label.
+     !--- Physical ionizing-packet energy [eV], sampled from the emitting
+     !--- component's own spectrum (source) or emission channel (diffuse).
+     !--- This is the transported quantity: every cross section, rate, and
+     !--- heating coefficient the packet scores is evaluated at it.
      real(kind=wp) :: energy_eV = 0.0_wp
      type(ion_packet_physics_type) :: ionphys
      !--- physical luminosity carried by the packet [erg/s], used by the
@@ -199,20 +199,9 @@ public
      !--- selects the scramble; a different seed is an independent replicate.
      character(len=16) :: launch_sequence = 'random'
      integer           :: qmc_seed        = 12345
-     !--- Ionizing packet-energy treatment.  Continuous sampling is the
-     !--- default: packet energies and cross sections are physical, while
-     !--- nnu_ion only controls diagnostic spectral tally resolution.
-     !--- 'grouped' retains representative-energy bin transport for explicit
-     !--- compatibility/reproduction inputs.
-     character(len=16) :: ion_energy_mode = 'continuous'
      !--- Relative integration tolerance for the continuous Planck source CDF
      !--- (tabulated linear spectra are integrated/inverted analytically).
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
-     !--- Development/regression gate: accumulate direct path-based H/He and
-     !--- metal rates beside the legacy jt_ion reconstruction and require
-     !--- agreement.  Off by default because the shadow arrays and per-segment
-     !--- metal scoring are intentionally temporary validation overhead.
-     logical           :: ion_shadow_rates = .false.
      !--- ionizing-band luminosity [erg/s] of the primary source (a point
      !--- source, or the informational total with several).  Sentinel -999 =
      !--- unset: setup maps it to 1.0 for a 'shape'/Planck source (exact legacy)
@@ -397,11 +386,16 @@ public
      !--- sed_workdir (defaults point at the copied SEDust/data/zubko).
      character(len=256) :: sed_zubko_config = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
      character(len=256) :: sed_zubko_dir    = '../data/zubko/'
-     !--- Lucy iteration for dust self-absorption.
-     !--- dust_niter = max iterations (1 = non-iterative); dust_nphotons =
-     !--- dust-emission photons per iteration; dust_tol = relative-change
-     !--- convergence on the total emitted (=absorbed) luminosity.
-     integer            :: dust_niter       = 1
+     !--- Lucy iteration for dust self-absorption (dust_emis_transport).
+     !--- dust_niter = max transport passes (1 = one pass, no self-consistency
+     !--- check); dust_no_photons = dust-emission packets per pass; dust_tol =
+     !--- relative-change convergence on the total emitted (= absorbed)
+     !--- luminosity.  An H II region is optically thin to its own infrared
+     !--- (tau_IR ~ 1e-3), so successive passes change the total by the
+     !--- reabsorbed fraction f, then f^2: two passes reach ~1e-6 there.
+     !--- Optically thick models need more, which the reported per-pass change
+     !--- measures.
+     integer            :: dust_niter       = 2
      real(kind=wp)      :: dust_no_photons  = 1.0e6_wp
      real(kind=wp)      :: dust_tol         = 1.0e-3_wp
      !--- fast emission-table path: interpolate the
@@ -523,7 +517,7 @@ public
      !--- carried a use_ion_band switch here because a dust continuum code can
      !--- run without any of this; in MoCHII there is no such mode, so the
      !--- switch is gone rather than accepting one legal value.
-     integer            :: nnu_ion      = 16          ! diagnostic ionizing-energy bins in continuous mode; solver bins in grouped mode
+     integer            :: nnu_ion      = 16          ! diagnostic ionizing-energy bins
      real(kind=wp)      :: eion_min     = 13.598_wp   ! band lower edge [eV]
      real(kind=wp)      :: eion_max     = 100.0_wp    ! band upper edge [eV]
      !--- source spectrum in the band: 2-column file (E[eV], L_E[arb]) or,
@@ -539,10 +533,9 @@ public
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
-     !--- Align diagnostic ionizing-energy bin edges to thresholds.  This
-     !--- affects only diagnostic tallies in continuous mode.  In grouped mode
-     !--- it also defines representative-energy transport bins and avoids the
-     !--- He/metal edge discretization error.  Default ON.
+     !--- Align diagnostic ionizing-energy bin edges to thresholds, so no bin
+     !--- straddles an ionization edge.  This affects the jt_ion/J_nu tally
+     !--- resolution only; the transported energies are continuous.  Default ON.
      logical            :: ion_align_edges = .true.
      !--- further registry elements (default 0 = off; pass GAS-PHASE
      !--- values — Si and especially Ca are strongly depleted onto
@@ -552,7 +545,7 @@ public
      real(kind=wp)      :: abund_Si     = 0.0_wp
      real(kind=wp)      :: abund_Cl     = 0.0_wp
      real(kind=wp)      :: abund_Ca     = 0.0_wp
-     !--- metal photoionization absorption in kap_ion (active with
+     !--- metal photoionization absorption in the packet opacity (active with
      !--- use_metals): sum over stages of n_el frac_i sigma_VFKY96,i(E).
      !--- Small next to H/He above 13.6 eV but NOT negligible for the He
      !--- front: switching it off moves r(He^0 = 0.5) inward by 0.615 pc at
@@ -698,6 +691,15 @@ public
      !--- SEDust stochastic dust emission at output time (needs
      !--- ion_add_dust + sed_workdir/sed_qtable/sed_sizedist paths).
      logical            :: dust_sed     = .false.
+     !--- transport the thermal infrared the grains reradiate: emit packets
+     !--- from every leaf in proportion to Heat_dust V, carry them through the
+     !--- same grain opacity the EUV/FUV band sees, and return what is
+     !--- reabsorbed to Heat_dust (dust self-heating).  The escaping packets
+     !--- are written as '<base>_dustesc.txt'.  Off leaves the historical
+     !--- post-processing behavior: the emission spectrum is built from
+     !--- Heat_dust and written, but its photons are never transported and
+     !--- the infrared they deposit back in the nebula is dropped.
+     logical            :: dust_emis_transport = .true.
      !--- dust-band leaf emissivities at these wavelengths [um] (finite
      !--- entries are active) -> '<base>_dustemis' with emis_dust /
      !--- wl_dust blocks [erg/s/cm^3/um]; the Python map maker projects

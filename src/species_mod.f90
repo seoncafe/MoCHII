@@ -41,14 +41,13 @@ module species_mod
 
   public :: species_setup, species_gamma_compute, species_fractions
   public :: metal_cooling, metal_freefree, species_write, species_resize
-  public :: species_opacity_add, species_ne, metal_heating
+  public :: species_ne, metal_heating
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached, species_metal_sums
   public :: species_cx_coefficients
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
-  public :: species_shadow_setup, species_shadow_reset, species_shadow_score
-  public :: species_shadow_score_exact
-  public :: species_shadow_reduce, species_shadow_compare
+  public :: species_rate_path_setup, species_rate_path_reset
+  public :: species_rate_path_score, species_rate_path_reduce
   public :: species_stage_cache_refresh
   public :: species_packet_cross_sections, species_cached_opacity
 
@@ -102,15 +101,14 @@ module species_mod
   !--- photoheating per particle [erg/s] (transition, leaf); filled with
   !--- the Gamma's, consumed by metal_heating (par%metal_heat).
   type(gamma_block) :: eheat(MAX_EL)
-  !--- Direct metal-rate estimator blocks.  coeff(1,:,:) is the grouped
-  !--- validation coefficient sigma/E and coeff(2,:,:) its heating
-  !--- coefficient. raw carries unnormalized path sums and is also the
-  !--- authoritative continuous-energy estimator.
-  type metal_shadow_block
-     real(kind=wp), allocatable :: coeff(:,:,:)  ! (2,ntransition,nnu)
+  !--- Metal photoionization/photoheating path estimators: unnormalized
+  !--- Sum(path_lum * coeff(E)) accumulated at each packet's exact energy,
+  !--- raw(1,:,:) for sigma/(h nu) and raw(2,:,:) for the heating coefficient
+  !--- sigma (1 - E_th/E).  species_gamma_compute turns them into egam/eheat.
+  type metal_rate_path_block
      real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf)
-  end type metal_shadow_block
-  type(metal_shadow_block) :: metal_shadow(MAX_EL)
+  end type metal_rate_path_block
+  type(metal_rate_path_block) :: metal_rate_path(MAX_EL)
   type(gamma_block) :: stage_frac(MAX_EL)  ! (stage,leaf), refreshed per gas state
   integer :: flat_ntransition = 0
   integer :: flat_ie(MAX_METAL_TRANSITIONS) = 0
@@ -276,6 +274,20 @@ contains
     end do
   end subroutine species_packet_cross_sections
 
+  !=========================================================================
+  ! Metal photoionization absorption of a packet (par%ion_metal_abs), per unit
+  ! n_H and per code length: Sum_i abund frac_i sigma_VFKY96,i(E), with the
+  ! cross sections already evaluated at the packet's exact energy by
+  ! species_packet_cross_sections.  Small next to H/He above 13.6 eV, but NOT
+  ! negligible for the He front: removing it moves r(He^0 = 0.5) inward by
+  ! 0.615 pc at HII40 by softening the He-ionizing field (see the
+  ! par%ion_metal_abs comment in define.f90 for the mechanism and the measured
+  ! derivatives).  With par%add_fuv it is also the only GAS opacity below the
+  ! Lyman limit (Mg I 7.65, C I 11.26, S I 10.36, Fe I 7.90 eV thresholds).
+  ! Stage fractions come from the current state (same product chain as the
+  ! cooling and the output), so the opacity feedback iterates them exactly like
+  ! x_HI.
+  !=========================================================================
   real(kind=wp) function species_cached_opacity(sigma, ntransition, il) result(opacity)
     real(kind=wp), intent(in) :: sigma(MAX_METAL_TRANSITIONS)
     integer,       intent(in) :: ntransition, il
@@ -289,58 +301,32 @@ contains
   end function species_cached_opacity
 
   !=========================================================================
-  ! Grouped metal-rate shadow estimator.  These routines intentionally live
-  ! in species_mod so they can use the private registry and compare directly
-  ! with egam/eheat without exposing implementation storage.
+  ! Metal photoionization/photoheating path estimators.  These routines
+  ! intentionally live in species_mod so they can use the private registry and
+  ! fill egam/eheat without exposing implementation storage.
   !=========================================================================
-  subroutine species_shadow_setup(nleaf)
-    use ion_band_mod, only : ion_e, nnu_band
+  subroutine species_rate_path_setup(nleaf)
     implicit none
     integer, intent(in) :: nleaf
-    real(kind=wp) :: energy, sig
-    integer :: ie, it, inu, nt
+    integer :: ie, nt
 
     do ie = 1, n_elements
-       if (allocated(metal_shadow(ie)%coeff)) deallocate(metal_shadow(ie)%coeff)
-       if (allocated(metal_shadow(ie)%raw)) deallocate(metal_shadow(ie)%raw)
+       if (allocated(metal_rate_path(ie)%raw)) deallocate(metal_rate_path(ie)%raw)
        nt = elems(ie)%nstage - 1
-       allocate(metal_shadow(ie)%raw(2,nt,nleaf))
-       metal_shadow(ie)%raw = 0.0_wp
-       if (par%ion_shadow_rates) then
-          allocate(metal_shadow(ie)%coeff(2,nt,nnu_band))
-          do it = 1, nt
-             do inu = 1, nnu_band
-                energy = ion_e(inu)
-                sig = species_sigma(ie, it, energy)
-                metal_shadow(ie)%coeff(1,it,inu) = sig/(energy*ev2erg)
-                metal_shadow(ie)%coeff(2,it,inu) = sig*max( &
-                   1.0_wp - elems(ie)%eth(it)/energy, 0.0_wp)
-             end do
-          end do
-       end if
+       allocate(metal_rate_path(ie)%raw(2,nt,nleaf))
+       metal_rate_path(ie)%raw = 0.0_wp
     end do
-  end subroutine species_shadow_setup
+  end subroutine species_rate_path_setup
 
-  subroutine species_shadow_reset()
+  subroutine species_rate_path_reset()
     integer :: ie
     do ie = 1, n_elements
-       if (allocated(metal_shadow(ie)%raw)) metal_shadow(ie)%raw = 0.0_wp
+       if (allocated(metal_rate_path(ie)%raw)) metal_rate_path(ie)%raw = 0.0_wp
     end do
-  end subroutine species_shadow_reset
+  end subroutine species_rate_path_reset
 
-  subroutine species_shadow_score(inu, il, path_lum)
-    integer,       intent(in) :: inu, il
-    real(kind=wp), intent(in) :: path_lum
-    integer :: ie, it
-    do ie = 1, n_elements
-       do it = 1, elems(ie)%nstage-1
-          metal_shadow(ie)%raw(:,it,il) = metal_shadow(ie)%raw(:,it,il) &
-             + path_lum*metal_shadow(ie)%coeff(:,it,inu)
-       end do
-    end do
-  end subroutine species_shadow_score
 
-  subroutine species_shadow_score_exact(energy, sigma, ntransition, il, path_lum)
+  subroutine species_rate_path_score(energy, sigma, ntransition, il, path_lum)
     real(kind=wp), intent(in) :: energy
     real(kind=wp), intent(in) :: sigma(MAX_METAL_TRANSITIONS)
     integer,       intent(in) :: ntransition, il
@@ -349,64 +335,24 @@ contains
     do k = 1, ntransition
        ie = flat_ie(k)
        it = flat_it(k)
-       metal_shadow(ie)%raw(1,it,il) = metal_shadow(ie)%raw(1,it,il) &
+       metal_rate_path(ie)%raw(1,it,il) = metal_rate_path(ie)%raw(1,it,il) &
           + path_lum*sigma(k)/(energy*ev2erg)
-       metal_shadow(ie)%raw(2,it,il) = metal_shadow(ie)%raw(2,it,il) &
+       metal_rate_path(ie)%raw(2,it,il) = metal_rate_path(ie)%raw(2,it,il) &
           + path_lum*sigma(k)*max(1.0_wp-elems(ie)%eth(it)/energy, 0.0_wp)
     end do
-  end subroutine species_shadow_score_exact
+  end subroutine species_rate_path_score
 
-  subroutine species_shadow_reduce()
+  subroutine species_rate_path_reduce()
     use mpi
     implicit none
     integer :: ie, ierr
     do ie = 1, n_elements
-       call MPI_ALLREDUCE(MPI_IN_PLACE, metal_shadow(ie)%raw, &
-                          size(metal_shadow(ie)%raw), MPI_DOUBLE_PRECISION, &
+       call MPI_ALLREDUCE(MPI_IN_PLACE, metal_rate_path(ie)%raw, &
+                          size(metal_rate_path(ie)%raw), MPI_DOUBLE_PRECISION, &
                           MPI_SUM, MPI_COMM_WORLD, ierr)
     end do
-  end subroutine species_shadow_reduce
+  end subroutine species_rate_path_reduce
 
-  subroutine species_shadow_compare(rtol)
-    use octree_mod, only : leaf_half
-    use mpi
-    implicit none
-    real(kind=wp), intent(in) :: rtol
-    real(kind=wp) :: max_abs(2), scale(2), rel(2), reference(2)
-    real(kind=wp) :: fac, shadow
-    integer :: ie, it, il, i, ierr
-    logical :: passed
-
-    max_abs = 0.0_wp
-    scale = 0.0_wp
-    do ie = 1, n_elements
-       do it = 1, elems(ie)%nstage-1
-          do il = 1, size(egam(ie)%g,2)
-             fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
-             reference = [egam(ie)%g(it,il), eheat(ie)%g(it,il)]
-             do i = 1, 2
-                shadow = metal_shadow(ie)%raw(i,it,il)*fac
-                max_abs(i) = max(max_abs(i), abs(shadow-reference(i)))
-                scale(i) = max(scale(i), abs(reference(i)))
-             end do
-          end do
-       end do
-    end do
-    do i = 1, 2
-       if (scale(i) > 0.0_wp) then
-          rel(i) = max_abs(i)/scale(i)
-       else
-          rel(i) = max_abs(i)
-       end if
-    end do
-    passed = maxval(rel) <= rtol
-    if (mpar%p_rank == 0) then
-       write(*,'(a,2es11.3)') ' ION: metal shadow relative errors: ', rel
-       write(*,'(a,a)') ' ION: grouped metal direct-rate shadow: ', &
-                        merge('PASS', 'FAIL', passed)
-    end if
-    if (.not. passed) call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  end subroutine species_shadow_compare
 
   !=========================================================================
   subroutine read_element(fname, el)
@@ -540,94 +486,26 @@ implicit none
   end function cx_rate
 
   !=========================================================================
-  ! Metal photoionization absorption added to kap_ion (par%ion_metal_abs):
-  ! kap(inu,il) += n_H abund Sum_i frac_i sigma_VFKY96,i(E_inu) per code
-  ! length.  Small next to H/He above 13.6 eV, but NOT negligible for the
-  ! He front: removing it moves r(He^0 = 0.5) inward by 0.615 pc at HII40 by
-  ! softening the He-ionizing field (see the par%ion_metal_abs comment in
-  ! define.f90 for the mechanism and the measured derivatives).  With
-  ! par%add_fuv it is also the only GAS opacity in the FUV bins (Mg I 7.65,
-  ! C I 11.26, S I 10.36, Fe I 7.90 eV thresholds).
-  ! Stage fractions come from the current state
-  ! (same product chain as the cooling and the output), so the opacity
-  ! feedback iterates them exactly like x_HI.  Caller: gas_opacity_fill on
-  ! h_rank 0 (kap lives in node-shared memory).
-  !=========================================================================
-  subroutine species_opacity_add(kap, nnu, nleaf)
-    use ion_band_mod,  only : ion_e
-    use gas_state_mod, only : gas_nH
-    implicit none
-    integer,       intent(in)    :: nnu, nleaf
-    real(kind=wp), intent(inout) :: kap(nnu, nleaf)
-    real(kind=wp) :: sig(nnu, MAX_ST), add
-    integer :: ie, it, il, inu
-
-    do ie = 1, n_elements
-       do it = 1, elems(ie)%nstage-1
-          do inu = 1, nnu
-             sig(inu,it) = species_sigma(ie, it, ion_e(inu))
-          end do
-       end do
-       do il = 1, nleaf
-          if (gas_nH(il) <= 0.0_wp) cycle
-          do inu = 1, nnu
-             add = 0.0_wp
-             do it = 1, elems(ie)%nstage-1
-                add = add + stage_frac(ie)%g(it,il)*sig(inu,it)
-             end do
-             kap(inu,il) = kap(inu,il) &
-                + gas_nH(il)*elems(ie)%abund*add*par%distance2cm
-          end do
-       end do
-    end do
-  end subroutine species_opacity_add
-
-  !=========================================================================
-  ! Metal photoionization rate integrals from the ionizing-band J tally
-  ! (all elements, all leaves); call after jtally_ion_reduce each iteration.
+  ! Metal photoionization rate and photoheating integrals per leaf, from the
+  ! reduced transport-path estimators (all elements, all stages); call after
+  ! ion_score_reduce each iteration.
   !=========================================================================
   subroutine species_gamma_compute()
     use octree_mod, only : amr_grid, leaf_half
-    use jtally_mod,   only : jt_ion
-    use ion_band_mod, only : ion_e, nnu_band
     implicit none
-    integer :: ie, it, il, inu, ic, nleaf
-    real(kind=wp) :: sig(nnu_band), vol, fac, fJ, fH
+    integer :: ie, it, il, nleaf
+    real(kind=wp) :: vol, fac
 
     nleaf = amr_grid%nleaf
-    if (trim(par%ion_energy_mode) == 'continuous') then
-       do ie = 1, n_elements
-          if (.not. allocated(metal_shadow(ie)%raw)) &
-             error stop 'continuous metal path estimators are not allocated'
-          do it = 1, elems(ie)%nstage-1
-             do il = 1, nleaf
-                vol = (2.0_wp*leaf_half(il))**3
-                fac = 1.0_wp/(vol*par%distance2cm**2)
-                egam(ie)%g(it,il) = metal_shadow(ie)%raw(1,it,il)*fac
-                eheat(ie)%g(it,il) = metal_shadow(ie)%raw(2,it,il)*fac
-             end do
-          end do
-       end do
-       return
-    end if
-
     do ie = 1, n_elements
+       if (.not. allocated(metal_rate_path(ie)%raw)) &
+          error stop 'metal path estimators are not allocated'
        do it = 1, elems(ie)%nstage-1
-          do inu = 1, nnu_band
-             sig(inu) = species_sigma(ie, it, ion_e(inu))
-          end do
           do il = 1, nleaf
              vol = (2.0_wp*leaf_half(il))**3
              fac = 1.0_wp/(vol*par%distance2cm**2)
-             fJ  = 0.0_wp
-             fH  = 0.0_wp
-             do inu = 1, nnu_band
-                fJ = fJ + jt_ion(inu,il)*sig(inu)/(ion_e(inu)*ev2erg)
-                fH = fH + jt_ion(inu,il)*sig(inu) &
-                     *max(1.0_wp - el8(ie,it,1)/ion_e(inu), 0.0_wp)
-             end do
-             egam(ie)%g(it,il)  = fJ*fac
-             eheat(ie)%g(it,il) = fH*fac
+             egam(ie)%g(it,il) = metal_rate_path(ie)%raw(1,it,il)*fac
+             eheat(ie)%g(it,il) = metal_rate_path(ie)%raw(2,it,il)*fac
           end do
        end do
     end do

@@ -6,11 +6,11 @@ module ion_peel_mod
 ! With par%ion_peel, every emitted packet (stellar AND diffuse) peels a
 ! direct contribution toward each observer, and — when dust scattering is
 ! sampled (par%ion_dust_scatter) — every interaction peels a scattered
-! contribution with the Henyey-Greenstein phase function of the packet's
-! bin.  The optical depth to the box edge along the observer direction is
-! integrated through kap_ion at the packet's bin (extinction: gas + dust
-! absorption + dust scattering), so the images carry the same physics as
-! the transport.
+! contribution with the Henyey-Greenstein phase function evaluated at the
+! packet's energy.  The optical depth to the box edge along the observer
+! direction is integrated through ion_packet_opacity at that same energy
+! (extinction: gas + dust absorption + dust scattering), so the images carry
+! the same physics as the transport.
 !
 ! Image planes (TAN projection, MoCafe convention): direct and scattered
 ! surface-brightness images [erg/s/cm^2/sr at the observer], split into

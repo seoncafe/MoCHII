@@ -1,7 +1,7 @@
 # HII40 C2+ / He I Front Residual Investigation
 
 **Status:** active investigation (2026-07-30)  
-**Reference:** Figure 14 in `paper/mochii.tex`; Cloudy c25 HII40 output in
+**Reference:** Figure 14 in `MoCHII_paper/mochii.tex`; Cloudy c25 HII40 output in
 `tests/cloudy_c25/hii40_c25.*`.
 
 ## Question

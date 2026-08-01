@@ -226,7 +226,8 @@ contains
   ! from its birth point to the domain edge, accumulating the exact
   ! expectation of the pathlength tally in each leaf,
   !     jt_ion(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
-  ! with kap = kap_ion(inu, il) (per code length; gas + optional dust).
+  ! with kap = ion_packet_opacity(photon, il), the packet's own extinction per
+  ! code length at its exact energy (gas + optional dust).
   ! With no ionizing-band scattering, this zero-variance direct
   ! component is the complete tally; the packet needs no interaction
   ! sampling.  For the plane-parallel slab boundary condition (PP1) the walk
@@ -322,7 +323,7 @@ contains
   end subroutine transport_ion_packet
 
   !=========================================================================
-  ! Ionizing-band walk to optical depth tau_in (extinction kap_ion);
+  ! Ionizing-band walk to optical depth tau_in (extinction ion_packet_opacity);
   ! scattered flights (nscatt > 0) tally jt_ion along their segments.
   !=========================================================================
   !=========================================================================

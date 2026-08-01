@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! A neutral cloud bathed in the standard interstellar radiation field, given
  ! by an ISRF PRESET.  par%ext_spectrum = 'draine' is the Draine (1978) FUV
  ! field (reserved names 'draine'/'habing'/'mathis'; FUV-only, 5-13.6 eV,
@@ -74,6 +73,7 @@
 
  !--- dust extinction stops the FUV inside the cloud
  par%ion_add_dust  = .true.
+ par%dust_emis_transport = .true.    ! transport the reradiated IR back onto the grains
  par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0

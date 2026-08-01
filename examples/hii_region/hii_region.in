@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! H II region: a photoionized gas shell around a hot star with metal
  ! cooling and a self-consistent electron temperature.  Heavy-element ions
  ! (C, N, O, Ne, S) are tracked one stage at a time; the thermal balance is

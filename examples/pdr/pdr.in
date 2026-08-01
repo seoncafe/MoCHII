@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Photodissociation region (PDR): the neutral gas just beyond the
  ! ionization front.  The FUV band (added under the ionizing band) drives
  ! grain photoelectric heating, while metal electrons and metal-line cooling
@@ -43,6 +42,7 @@
  par%ion_metal_abs = .true.         ! metal photoionization opacity in the band
 
  par%ion_add_dust    = .true.
+ par%dust_emis_transport = .true.    ! transport the reradiated IR back onto the grains
  par%ion_dust_scatter = .true.
  par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust       = 4.868e-22

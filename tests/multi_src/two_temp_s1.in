@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-spectra reference: single source #1 alone (tstar = 3e4 K at x = -0.5 pc,
  ! L = 1e37).  Its volume-summed J_nu(bin) is one half of the two_temp sum.
 

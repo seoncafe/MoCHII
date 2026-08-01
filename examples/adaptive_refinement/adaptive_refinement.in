@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Solution-driven octree re-refinement: a Stromgren sphere is started on a
  ! coarse octree and re-refined at the ionization front once the front has
  ! settled.  The re-refined run reproduces a uniformly fine grid to within a

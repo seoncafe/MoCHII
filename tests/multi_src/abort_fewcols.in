@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Negative check: nsource=3 but two_temp_spec.txt has only 2 data columns ->
  ! bin_lum_from_multicol must abort with a clear "needs 1 + nsource(=3) columns"
  ! message during ion_setup (before any transport / output).

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Stromgren sphere whose stellar spectrum is given in PHYSICAL units.  The
  ! source is a 4e4 K blackbody tabulated as L_lambda [erg/s/A] vs lambda [A]
  ! (make_physical_spectrum.py writes star_llam.txt), read with

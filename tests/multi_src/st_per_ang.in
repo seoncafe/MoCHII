@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-per_ang-conversion: same two spectra as st_per_ev.in, written as L_lambda
  ! vs lambda [Angstrom] (spectrum_type='per_ang').  Must match the 'per_ev' run
  ! to <0.5% per bin (only the interpolation grid differs).

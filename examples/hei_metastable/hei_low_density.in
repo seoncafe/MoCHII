@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! He I 2^3S metastable diagnostic, LOW-density (radiative) limit.
  !
  ! A Stromgren sphere (uniform nH=100, R=4 pc, hot star, case B, fixed

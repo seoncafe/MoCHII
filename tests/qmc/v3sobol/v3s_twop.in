@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-two-points: two internal point sources.  Optically thin box -> the
  ! band-integrated J(r) must equal the analytic superposition
  !   J(r) = sum_i L_i / (16 pi^2 |r - r_i|^2).

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-compat reference: identical to one_point.in but out_file='onep_pre.h5', run
  ! with the SAVED pre-refactor binary.  onep_rates.h5 (new binary, one_point.in)
  ! must match onep_pre_rates.h5 bit-for-bit (the single-source fast path falls

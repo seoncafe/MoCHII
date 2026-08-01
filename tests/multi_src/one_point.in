@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-compat: a single internal point source at the origin (nsource unset = 1).
  ! This must reproduce the pre-refactor binary bit-for-bit (the single-component
  ! fast path is the legacy code path).

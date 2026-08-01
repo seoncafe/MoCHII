@@ -16,8 +16,7 @@ infrared dust/PAH spectrum.
 - **Radiation field**: continuous stellar photon energies (13.6–100 eV) are
   sampled from a Planck or tabulated-spectrum CDF, with cross sections
   evaluated at each sampled energy.  Ionizing bins are diagnostic spectral
-  tallies in this default mode; threshold-aligned bin edges are relevant to
-  the explicit `ion_energy_mode='grouped'` compatibility mode.  The band is
+  tallies only; their count and edges do not enter the transport.  The band is
   extendable into the FUV down to ~6 eV as a separate segment, with an
   analytic zero-variance estimator
   for the direct field, explicit diffuse recombination packets (case A) or
@@ -69,7 +68,17 @@ infrared dust/PAH spectrum.
 - **Dust and PAHs**: grain absorption/scattering competing with the gas for
   ionizing photons, ionization-dependent dust survival with a PAH split,
   equilibrium dust temperatures, and stochastic dust/PAH emission spectra
-  via the SEDust library (astrodust, DL07, Zubko grain models).
+  via the SEDust library (astrodust, DL07, Zubko grain models).  One grain
+  model supplies both the transport cross sections and the emission, so the
+  energy a cell absorbs is set by the same grains that radiate it back out;
+  the astrodust and DL07 optics are extended into the EUV from their
+  dielectric functions.
+- **Dust emission transport**: the reradiated infrared is itself launched and
+  transported through the same grain opacity, and the reabsorbed part returns
+  to the grain heating until it converges (`dust_emis_transport`, on by
+  default).  The escaping infrared spectrum is written alongside the emitted
+  one.  H II regions reabsorb well under a percent of their own infrared, so
+  this converges in a couple of passes.
 - **Imaging**: peel-off images of the direct and dust-scattered EUV/FUV
   field toward arbitrary observers (optionally the unattenuated direct image
   too, so its ratio to the direct image is the line-of-sight optical depth),
@@ -143,4 +152,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-07-31 12:12 KST
+Last updated: 2026-08-01 20:07 KST

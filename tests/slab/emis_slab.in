@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Check: does the xy-periodic SLAB produce line/emissivity output?
  ! Full physics: thermal + metals + emis_output.  Beam from top, nH=100.
  par%no_photons=4.0e6

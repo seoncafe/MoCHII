@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Classic Stromgren sphere: H + He photoionization equilibrium around a
  ! central hot star.  Uniform-density sphere built directly from the namelist
  ! (no grid file): a 'car' Cartesian grid with nH set inside radius rmax.

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII external-field peel gate (optically thin analytic case).  An
  ! isotropic external field of mean intensity J = ext_intensity enters an
  ! optically thin uniform box (tau_ion ~ 7e-3, xHI = 1, He = 0, no dust).

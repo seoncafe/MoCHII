@@ -23,7 +23,6 @@ module diffuse_mod
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                             gas_Te, gas_nleaf
-  use ion_energy_policy_mod, only : assign_ion_packet_energy
   use recomb_mod
   use milne_recomb_spectrum_mod, only : milne_setup, milne_sample_energy, &
                                         milne_energy_per_recomb, milne_is_ready
@@ -124,7 +123,7 @@ contains
   !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
-    use ion_band_mod, only : ion_Ltot, ion_bin_of, ion_e
+    use ion_band_mod, only : ion_Ltot, ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
@@ -197,11 +196,9 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
-    !--- Grouped compatibility retains the historical bin-center physics.
-    !--- Once the guarded continuous vertical slice is enabled, preserve the
-    !--- already sampled diffuse energy instead; inu remains its output bin.
-    call assign_ion_packet_energy(photon%energy_eV, eph, &
-                                  ion_e(photon%inu), par%ion_energy_mode)
+    !--- the packet carries the energy the emission channel actually sampled;
+    !--- inu is only the diagnostic bin it lands in.
+    photon%energy_eV = eph
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically
@@ -222,7 +219,7 @@ contains
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
-    use ion_band_mod, only : ion_Ltot, ion_bin_of, ion_e
+    use ion_band_mod, only : ion_Ltot, ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
@@ -291,8 +288,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
-    call assign_ion_packet_energy(photon%energy_eV, eph, &
-                                  ion_e(photon%inu), par%ion_energy_mode)
+    photon%energy_eV = eph
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%from_external = .false.      ! diffuse packets peel isotropically

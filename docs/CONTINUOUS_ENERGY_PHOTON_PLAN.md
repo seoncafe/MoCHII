@@ -2,7 +2,7 @@
 
 - Date: 2026-07-28
 - Target: the ionizing-band source, transport, and rate-estimator path
-- Status: in progress
+- Status: continuous slice released; both-band continuous unification + grouped removal planned (Section 19, aligned to MoCafe v2.00 1473f44)
 - Primary modules: `src/ion_band_mod.f90`, `src/define.f90`,
   `src/gas_opacity_mod.f90`, `src/raytrace_amr.f90`,
   `src/gas_rates_mod.f90`, `src/species_mod.f90`, and
@@ -1126,7 +1126,7 @@ maximum resident sets 0.70 GiB and 0.69 GiB.  The small 100,000-packet smoke
 is launch/communication dominated, so these timings validate correctness and
 resource behavior rather than claiming strong scaling at production size.
 31. Make continuous mode the default.
-32. Update the paper manuscript itself (`paper/mochii.tex`) from the accepted
+32. Update the paper manuscript itself (`MoCHII_paper/mochii.tex`) from the accepted
     continuous HII20/HII40 production outputs, then update the user
     documentation.  Regenerate every HII20/HII40 numerical value in every
     Table included in the paper, and revise every affected sentence,
@@ -1202,7 +1202,473 @@ Atomic-data comparisons with Cloudy should follow the continuous-energy
 change. Before this correction, grouped-energy errors and atomic-data
 differences cannot be cleanly separated.
 
-## 19. Sampling references
+## 19. Finalized plan: unify both bands under continuous spectral sampling (2026-08-01)
+
+**Principle.** Monte Carlo RT -- dust and photoionization alike -- samples each
+packet's energy/wavelength continuously from the source spectrum and evaluates
+every cross section, opacity, albedo, phase function, and rate at that exact
+value. Spectral bins exist only to **accumulate** the radiation field and the
+absorbed-energy spectrum; the `J_nu`/`jt_ion` diagnostics and SEDust correctly
+consume that binned accumulation (it is not a defect -- `sedust_compute_write`
+operates on a binned absorbed-energy spectrum, not on photons). The defect is
+bin-center *transport*: quantizing the transported packet's energy to a bin
+center (`ion_e(inu)`, `kap_ion(inu)`) and reading cross sections by bin index
+(`ion_dust_*(inu)`, `sed_sext(il)`). "grouped" is that defect, not a mode to
+keep. The goal is one continuous sampler spanning both bands, bins left
+diagnostic-only.
+
+**Reference: MoCafe v2.00 `1473f44` "continuous photon wavelength draw"** did
+exactly this for the dust/wavelength side and is the pattern MoCHII mirrors
+(MoCHII already implements it for the ionizing/energy side via
+`energy_sampler_mod`). Its five contracts, verified against the MoCafe source:
+
+1. **Continuous sampler** (`src/spectrum_sampler_mod.f90`):
+   `spectrum_sampler_type{lam, dens, cdf, total}`, built by
+   `tabulated_spectrum_sampler`/`planck_spectrum_sampler` (both forced to carry
+   the transfer bin edges as CDF nodes), sampled by `sample_wavelength(sampler,
+   u)` -- the **exact analytic inverse** of the piecewise-linear-density CDF (a
+   stable quadratic root per interval, not a power-law approximation).
+   `band_luminosity_fraction` is exact when both ends are nodes. Source and
+   external field get separate sampler instances; multiple sources get
+   `src_spectrum(:)`.
+2. **Exact-value evaluators** (`*_at`): `sed_cext_at` (log-log),
+   `sed_sext_at = cext_at/cext_ref`, `sed_albedo_at`/`sed_hgg_at` (linear in
+   `ln lambda`), all interpolating the retained cross-section table at the
+   photon's own wavelength. The bin-center arrays survive only for output writers.
+3. **Diagnostic bin address**: `photon%lambda` is continuous; `photon%il =
+   sed_bin_of(lambda)` (closed-form on the log grid) addresses only the output
+   image planes and the `jt_sum` tally.
+4. **Continuous transport, discrete accumulation**: the packet transports at its
+   exact wavelength (`s_ext/albedo/hgg = *_at(lambda)`); `jt_sum(il,cell)` is the
+   binned radiation-field histogram, while a separate **`jt_abs(cell)`**
+   accumulates the wavelength-integrated absorbed power with each photon's own
+   `s_ext*(1-albedo)` -- never a bin-average cross section, which would bias the
+   dust luminosity and temperature. Dust emission then normalizes to
+   `rhokap*jt_abs` and takes its shape from `jt_sum`, drawing the re-emission
+   wavelength inside a bin with `sample_power_law_bin` (reusing the
+   bin-selecting uniform's remainder, no new QMC dimension).
+5. **Fixed-dimension QMC contract**: the wavelength keeps its uniform slot
+   (stellar `uq(3)`, dust-emission `ud(5)`); the `_u(uf)` sampler variants invert
+   the monotone CDF on that one slot, so Sobol stratification and rank-invariance
+   hold with no added dimension.
+
+MoCafe ships two self-checking gates (`tests/test_spectrum_sampler.f90`,
+`tests/test_power_law_bin.f90`) MoCHII will mirror at the foundation stage (S0
+in Section 19.2): stratified quantile count within one draw, `cdf(sample(u)) == u`,
+blackbody band fraction vs precise integration, bin-index bracketing, the size
+of the bin-center bias, and the power-law-bin integral against `logarithmic_mean`.
+
+This supersedes the earlier "parity then delete" framing: grouped is a defect to
+remove, not a mode to match. Section 16.12 items 33--34 are hereby closed as
+*remove*. The stages below give each feature its exact-energy path first only
+because removing grouped before that would drop working capability, not because
+grouped is a baseline worth preserving.
+
+**Execution progress (2026-08-01).** Done and verified (all changes additive /
+minimal, grouped physics bit-unchanged, uncommitted):
+- **S0** dust cross sections at exact energy + `dust_abs_shadow` accumulator +
+  continuous `heat_dust` wiring (`gas_opacity_mod`, `ion_score_mod`, `main`,
+  `ion_packet_mod`, `gas_rates_mod`). Gate: grouped dust-heat shadow matches the
+  binned form to 2--6e-16; a continuous dusty run closes energy to 0.
+- **P3 (dust absorption)** and **P4 (dust scattering)**: the `ion_add_dust`
+  guard is removed (`setup.f90`); continuous dust scattering reproduces grouped
+  (`d_dust_scat`: 6.23e6 vs 6.19e6 scattered segments, closure 0).
+- **P6 (He I metastable)**: guard removed; the 2^3S/10830 diagnostic runs in
+  continuous on the binned `jt_ion` spectrum (soft-UV band floor same as
+  grouped, i.e. needs P5's `add_fuv`).
+- **P7 (peel-off)**: guard removed; direct and dust-scattered peel both produce
+  images in continuous (`sum(scatt) > 0` with dust present).
+- **P2 (secondary ionization)**: exact-energy nine-term path estimator
+  (`sec_shadow` in `ion_score_mod`) + `ion_score_apply_sec`; `secion_apply`
+  reused unchanged; guard removed. Gate: the estimator reproduces the grouped
+  binned nine terms to 2--8e-16; continuous ON vs OFF shifts `<T[NpNe]>` by
+  -1.25 K (cooler with secondary ionization, the correct direction).
+- **P5 (FUV band + G0 + grain photoelectric heating)**: the continuous source
+  sampler now extends down to `par%efuv_min` when `add_fuv` (Planck knots gain
+  `eion_min`; tabulated lower bound lowered), and `ion_Ltot` is renormalized to
+  `par%luminosity / f_ion` with `f_ion = 1 - CDF(eion_min)` so the ionizing
+  segment carries `par%luminosity` and the FUV part rides on the spectrum shape,
+  exactly matching the grouped `sum(ion_lum)`. Source FUV photons take their true
+  FUV diagnostic bin (`ion_bin_of(.., include_fuv=.true.)`; the diffuse-recomb
+  clamp is preserved via the optional argument). G0 is a transport-path estimator
+  (`fuv_field_shadow = Sum(path_lum)` over segments with `energy_eV < eion_min`,
+  `ion_score_apply_g0` scaling it by `fac/1.6e-3`), and grain PE consumes the
+  resulting `g0_fuv`; `grain_pe` gains a physical-consistency guard (needs
+  `add_fuv` + `ion_add_dust`) and the `add_fuv` continuous guard is removed. A
+  stale pre-P5 override (`ion_Ltot = par%luminosity` inside the single-component
+  fast path) was found by the A/B and removed: `setup_continuous_source_sampler`
+  is now the single authority for the continuous `ion_Ltot`, so `log_fast_path`
+  no longer misreports the band total in continuous. Gates: grouped G0 path
+  shadow PASS at ~1e-15 (alongside dust/sec/H-He/metal, all ~1e-15); a continuous
+  `pdr_full` run launches the FUV band (`32 ionizing + 16 FUV bins`), closes
+  energy to 0/1e-16, reports `band total with FUV = 6.664e38, L_FUV/L_ion = 1.097`
+  identical to grouped, and tracks the grouped iteration-by-iteration convergence
+  (the ~7.6 cell-max `|dTe|/Te` at this low photon count is a property of the PDR
+  front shared by both modes, not a P5 regression; the `vol` criterion that
+  actually gates reads ~6-10%).
+
+- **P1 (external / multiple / slab source generality)**: the scalar
+  `source_energy_sampler` is promoted to a per-component array indexed exactly
+  like `comp_kind`/`src_cdf`/`ion_cdf_src` (internal points 1..nsource, then the
+  external field; a single-component run is `ncomp = 1`). Each component builds
+  its own sampler from its own spectrum: `build_point_source_sampler` follows the
+  `point_shape`/`comp_shape` chain (`src_spectrum_file` column `is` >
+  `src_tstar(is)` Planck, multi only > `ion_spectrum` > `par%tstar`) and
+  `build_external_field_sampler` follows the `build_ext_bins` chain (ISRF preset >
+  `ext_spectrum` file > `ext_tstar` Planck > `ion_spectrum` > `par%tstar`). ISRF
+  presets are made continuous by sampling the analytic `preset_je` onto a dense
+  4096-point grid and inverting it like any tabulated spectrum. The six launch
+  sites (`gen_ion_photon` single/multi, `gen_ion_photon_qmc` point/slab/external/
+  multi) draw the frequency from the component sampler on the **same QMC slot**
+  as grouped, so `ion_qmc_ndim` and rank are unchanged. The continuous `ion_Ltot`
+  override in `setup_continuous_source_sampler` is dropped so both modes use
+  `sum(ion_lum)` (the pre-P5 single-source override was already gone; the
+  external-only/slab/multi cases it mis-set are now correct), and a mode-agnostic
+  `if (par%luminosity <= 0) par%luminosity = ion_Ltot` fills the derived-
+  luminosity report. The `setup.f90` continuous guard is reduced to "no source
+  spectrum at all". Gates: the external decoy test closes the silent-wrong-
+  spectrum trap (`ext_tstar=4e4` and the `ext_spectrum` 4e4 file both give
+  absorbed 7.06e31, agreeing to 1.5e-5, while stripping `ext_tstar` to expose the
+  2e4 decoy gives 1.03e32 -- 46% off); component-spectrum separation holds (two
+  sources at 3e4/5e4 K sum to the mixed run to 0.03%); the grouped shadow gates
+  (dynamic-opacity, H/He, metal, dust-heat, G0) all still PASS at ~1e-15 after the
+  shared-code change; and the single-point continuous run is unchanged (band total
+  6.664e38, emitted moved +9e-7 from the override removal only).
+- **P1b (sampler-based `ion_Ltot`, the former open item §6a)**: the continuous
+  band total and the component-selection CDF no longer come from the binned
+  `sum(ion_lum)`/`comp_L` (NSUB=32 midpoint quadrature) but from the samplers
+  themselves, so the bin grid is finally diagnostic-only on the normalization too.
+  `setup_continuous_source_sampler` collects a `band_L` per component and sets
+  `ion_Ltot = sum(band_L)`, rebuilding `src_cdf` from the same numbers; the binned
+  `ion_lum`/`ion_cdf`/`ion_cdf_src` are untouched (grouped keeps them). Each
+  component's rule reproduces what grouped holds fixed, with the FUV/ionizing
+  split taken from `ionizing_fraction = 1 - CDF(eion_min)` instead of the
+  quadrature: a shape spectrum gives `scale/f_ion` (`par%luminosity`, or
+  `src_lum(is)` when multi), an absolute file with no rescale gives the sampler's
+  `total_integral`, an external absolute field gives `pi*A*ext_intensity` when
+  rescaled (analytically exact) or `pi*A*total_integral` otherwise, a legacy
+  external shape gives `pi*ext_intensity*A/f_ion`, and slab gives
+  `sum(slab_Fz)*A_zface/f_ion`; a FUV-only spectrum asked to carry an ionizing
+  luminosity aborts exactly as grouped's `finalize_source` does. Gates: the
+  continuous `pdr_full` emitted returns to **6.663991e38** (the sampler value; it
+  read the binned 6.663997e38 after P1) with closure 0, and the run now prints
+  both the binned diagnostic and the authoritative `continuous band total
+  (sampler)`; grouped is bit-unchanged (the five shadow gates report identical
+  values, band total 6.6640e38 / `L_FUV/L_ion` 1.097); and the external analytic
+  rule checks out -- `ext_intensity = 2.0e-5` gives band total 5.743177e34 against
+  2.871588e34 at 1.0e-5, a ratio of exactly 2.000000. Every component rule was
+  then exercised against the luminosities grouped prints for the same input, with
+  the continuous `emitted` equal to the sampler band total and the closure at
+  roundoff in all five: `two_point` 4.000000e37 against `L_ion` 3.0e37 + 1.0e37
+  (exact, `f_ion = 1` without `add_fuv`), `mixed` 1.002872e37 against 1.0e37 +
+  `L_enter` 2.8716e34, `st_draine` 6.124264e35 against the preset's `pi*A*J`
+  (the 4096-point sampler integral replacing the NSUB=32 binned one), `slab`
+  7.302827e28 against `L_slab` 7.3028e28, and `st_extje2` as above.
+
+Remaining: **D** (re-baseline + grouped removal + the `.md`/`.tex` sweep) --
+**not to be started yet** (user hold).
+
+### 19.1 Current MoCHII state
+
+The ionizing band already follows the reference pattern: `energy_sampler_mod`
+draws a continuous energy, `ion_bin_of` labels the diagnostic bin, and the H/He
+and metal rates come from exact-energy path estimators. What remains is (a) the
+dust/SED band, still on the old bin pattern MoCHII inherited from MoCafe
+(`sample_sed_lambda -> il`, `sed_sext(il)`, and the bin-indexed
+`ion_dust_*(inu)` used during ionization) with no `jt_abs`-style exact-wavelength
+absorbed accumulator; and (b) the grouped bin-center transport mode plus the
+`continuous_reason` guard that pins six feature families to it. `setup.f90`'s
+guard refuses continuous, with `error stop 1`, whenever the input uses any of
+
+| guarded feature (`par%`)            | grouped-pinned inputs that use it |
+|-------------------------------------|-----------------------------------|
+| external / `nsource>1` / `slab`     | 26 (external+slab), 14 (`nsource>1`) |
+| `ion_add_dust`                      | 23 |
+| `add_fuv`                           | 21 |
+| `ion_peel`                          | 11 |
+| `hei_metastable`                    | 6  |
+| `use_sec_ion`                       | 1  |
+
+Of the 176 inputs that pin `ion_energy_mode = 'grouped'` (159 under `tests/`,
+17 under `examples/`), 77 use at least one feature continuous refuses; the
+other 99 use none but carry grouped bin-center baselines that continuous would
+change. So deleting grouped today would delete the only working transport path
+for external/multiple sources, slab geometry, dust-coupled ionization, FUV/G0,
+grain photoelectric heating, secondary ionization, He I metastable, and
+peel-off imaging. Each of these must be given its exact-energy path before the
+grouped bin-center transport can be removed -- not to preserve grouped, but to
+keep the capability while the transport is corrected.
+
+### 19.2 Work stages (each gives one feature its exact-energy path, then drops its guard)
+
+A four-cluster read-only source audit (2026-08-01) established that **every
+guarded feature can be made continuous with no fundamental blocker.** Continuous
+sampling is not tied to the ionizing (LyC) band: `energy_sampler_mod` inverts a
+CDF over whatever energy range the sampler is built on, so an FUV-only source is
+sampled continuously exactly like an ionizing one -- its CDF simply lives in the
+FUV band. The ISRF presets (`draine`/`habing`/`mathis`, which
+`ion_band_mod.f90`'s `draine_je`/`mathis_jl_si` place below 0.0912 um and which
+force `add_fuv`) are therefore not a special case: they are FUV sources that
+fold into P5 (FUV-band sampling + transport), like any other `add_fuv` input.
+The only reason they cannot run continuously today is the same one that blocks
+every FUV source -- the sampler currently floors at `par%eion_min` -- which P5
+removes. The audit's structural finding is why the rest is tractable: continuous rate
+estimators read only `photon%ionphys%energy_eV` and the cached cross sections
+(`ion_score_mod.f90:131-157`, `species_mod.f90:343-357`) with no geometry or
+source dependence; all transport opacity routes through `ion_packet_opacity`,
+which returns the energy-based dynamic opacity in continuous (AMR and car/DDA
+alike); and the Tier-2 diagnostics (`nebcont_mod`, `lines_mod`, `sh95_mod`,
+`nlevel_mod`, `recomb_mod`) reference neither `jt_ion` nor `ion_e` -- they read
+the converged gas state only. So most stages are launch-side or one added path
+estimator, not transport surgery.
+
+Stages are grouped by the work each needs. Each stage's gate is the existing
+shadow harness (`par%ion_shadow_rates`, continuous vs grouped to rtol) plus
+energy closure and MPI/diagnostic-bin invariance; where continuous is genuinely
+more accurate the grouped number is retired rather than matched (below). No
+stage removes its guard until its analytic, energy, and MPI tests pass, and P2
+and P5 must land their estimator **before** the guard lifts (their `apply`
+routines are silent no-ops in continuous until then).
+
+**Foundation (S0) -- exact-energy dust cross sections and the split accumulator.**
+MoCHII does not need MoCafe's new sampler module: `energy_sampler_mod`'s
+`sample_energy_cdf` is already the same exact analytic inverse-CDF as MoCafe's
+`sample_wavelength` (binary search + the stable quadratic root
+`2*area/(y0+disc)` with a small-slope linear branch), and the continuous
+ionizing photon already carries `energy_eV`. What the dust band lacks is the
+`*_at`/`jt_abs` half of the MoCafe pattern, in energy space:
+(i) retain the dust `kext` table at module scope (`gas_opacity_mod` currently
+builds `ion_dust_*` into bins from a local table and discards it) and add
+energy-space evaluators `ion_dust_{sabs,ssca,g}_at(E)` (energy -> wavelength
+`1.23984/E` -> interpolate, exactly as the bin arrays are built) replacing the
+bin-center `ion_dust_*(inu)` lookups;
+(ii) add a `jt_abs`-style exact-energy absorbed-power accumulator so `heat_dust`
+and the dust temperature/IR come from each photon's own cross section, not a bin
+average;
+(iii) wire `ion_packet_opacity` and the dust-heating estimator to the
+`*_at(energy_eV)` values.
+MoCHII does **not** transport dust re-emission -- SEDust is an output-time SED
+built from `heat_dust` plus the binned `jt_ion` (`main.f90:334-337`) -- so
+MoCafe's `sample_power_law_bin` contract does not apply here, and there is no new
+dust-wavelength sampler or `sed_bin_of` to add (the ionizing `ion_bin_of`
+already labels the diagnostic bin). Gate S0: `ion_dust_*_at(ion_e(b))` reproduces
+the existing `ion_dust_*(b)` at every bin center to round-off (same table), and
+the `jt_abs` accumulator closes against the absorbed luminosity. Smaller than
+MoCafe's because MoCHII already has the sampler and does not re-emit dust
+photons; the MoCafe self-check gates (`test_spectrum_sampler`) still port over as
+a standing check on `energy_sampler_mod` itself.
+
+**Nearly free -- a guard flip plus verification (no new physics):**
+
+- **P6 -- He I metastable.** The guard is conservative, not a missing feature:
+  `jt_ion` is populated in continuous (`ion_score_mod.f90:123`, before the
+  continuous early-return), and `hei_metastable_run` is a feedback-free output
+  diagnostic that recomputes `Phi_3` from `jt_ion` and the converged gas state
+  (`hei_metastable_mod.f90:110-144`). Minimal path: remove the `hei_metastable`
+  guard and run on the diagnostic spectrum (bin-center `Phi_3`, acceptable for a
+  no-feedback diagnostic). Optional exact-energy parity: cache `sigma_3` and add
+  a path estimator like H/He. Soft dependency: the soft-UV part below the band
+  floor (`4.78 eV`) is only captured with `add_fuv` (P5) -- the same limitation
+  grouped already has, so not a blocker. Gate: `tests/hei_meta`,
+  `examples/hei_metastable`.
+- **P7 (direct) -- peel-off imaging.** Direct peel is physically ready:
+  brightness is `Lpacket*wgt*exp(-tau)` and the LOS `tau` uses the energy-based
+  `ion_packet_opacity` after `build_ion_packet_physics(pobs)`
+  (`ion_peel_mod.f90:261-271`, `raytrace_amr.f90:760`); `ion_e(inu)` enters only
+  the diagnostic channel/cube binning. Only the `setup.f90:504` guard blocks it;
+  no new routines. Dust-scattered peel is not part of P7 -- it rides on P4
+  (`main.f90:255-256` gates the scatter-peel hook on `ion_add_dust`). Gate:
+  `tests/peel`, `tests/peel_ext`.
+
+**Self-contained -- one added exact-energy path estimator each:**
+
+- **P2 -- Secondary ionization** (item 22). The `si_*`/`heat_hard_*` band
+  integrals live only in the grouped binned loop (`gas_rates_mod.f90:159-184`);
+  continuous returns early (`:117-128`) and `secion_apply` then reads zeros --
+  a silent no-op. Add an exact-energy estimator cloning the H/He skeleton
+  (`ion_score_mod.f90:131-142`): accumulate the `E0 = h nu - E_th > 40 eV`
+  hard-heating and secondary-ionization terms from `photon%ionphys%energy_eV`,
+  reduce, apply; reuse `secion_apply`'s x-dependent part unchanged
+  (`gas_rates_mod.f90:214-265`). Exact energy is more accurate (per-photon
+  threshold, not bin-center). No dependence on other P-stages. Remove the
+  `use_sec_ion` guard. Gate: `tests/g2_hii/sec_on`, plus a physical check where
+  the two legitimately differ near threshold.
+- **P3 -- Dust absorption heating** (items 24--25, absorption part). Extinction
+  is already correct (dust is in the transport opacity), but the absorbed energy
+  is scored nowhere in continuous: `heat_dust` has its only home in the binned
+  loop (`gas_rates_mod.f90:186-192`) and stays zero, so dust temperature, IR,
+  and SED are all zero in continuous. Add a leaf estimator
+  `dust_absorbed_path(il) += path_lum*photon%ionphys%dust_abs` in
+  `score_ion_path` + reduce + an apply that reproduces the grouped expression.
+  Also interpolate the dust cross sections at `energy_eV`: the `ionphys` dust
+  cache is still bin-indexed (`ion_packet_mod.f90:53-56`, `ion_dust_*(inu)`).
+  `dust_temp`/IR then work unchanged (they read only `heat_dust`). Remove the
+  `ion_add_dust` guard. Gate: `tests/d_dusty` absorption cases; dust heating
+  closes.
+
+**Rides on P3 -- opens with the same `ion_add_dust` guard:**
+
+- **P4 -- Elastic dust scattering** (item 26). Already implemented and
+  energy-mode-independent: the scattering loop (`raytrace_amr.f90:248-322`)
+  changes direction and weight only, and `photon%ionphys`/`energy_eV` are built
+  once before the loop (`:258`) and preserved (elastic). No recalculation
+  needed; it becomes reachable when P3 opens `ion_add_dust`. Scatter-peel
+  imaging then also becomes reachable (needs P7's `ion_peel` too). Gate:
+  `tests/d_dusty/d_dust_scat`, `tests/peel/peel_scat`.
+
+**Largest -- new launch-side infrastructure:**
+
+- **P1 -- Source generality.** Estimators and transport are already
+  geometry-independent, so this is purely launch-side. Promote the single scalar
+  `source_energy_sampler` (`ion_band_mod.f90:51`) to a per-component array and
+  build each from its own spectrum (external `ext_spectrum`/`ext_tstar`,
+  multiple-source columns via `read_*_table(..., is, nsource, ...)`, Planck with
+  the metal-threshold knots). Wire the continuous branches that are missing: the
+  non-QMC multiple-source path (`ion_band_mod.f90:1518-1544`, no continuous
+  branch today), the non-QMC external sampler selection (`:1490-1517` currently
+  feeds every geometry the point-only sampler -- a silent-wrong-spectrum trap),
+  and the three QMC branches (slab `:1603`, external `:1613`, multi `:1632`),
+  keeping the frequency uniform on the **same slot** (`ion_qmc_ndim` does not
+  depend on the energy mode, so rank stays invariant). **Fix the `ion_Ltot`
+  override** (`ion_band_mod.f90:206-208` and `:268`): it sets `ion_Ltot =
+  par%luminosity` inside the single-component path, which is correct for a point
+  source but overwrites the true `sum(ion_lum)` for slab and external-only.
+  Relax the guards (point-only, no-external, internal-spectrum-required) into a
+  general internal/external sampler build (FUV-only ISRF presets need no special
+  handling here -- they arrive with P5's FUV-band sampler). Gate:
+  `tests/ext_field`, `tests/multi_src`, `tests/slab`, `tests/peel_ext` in
+  continuous, matched to grouped to the shadow rtol as `nnu_ion` refines, with
+  rank-invariance at 1/2/3/5/8.
+- **P5 -- FUV band + G0 + grain photoelectric heating** (item 23). The real
+  prerequisite is coverage, not just an estimator: the continuous source sampler
+  floors at `par%eion_min` (`ion_band_mod.f90:264-273`), so no FUV photon is
+  ever launched. Extend the sampler down to `par%efuv_min` when `add_fuv`, and
+  add the FUV luminosity to `ion_Ltot` as the grouped path does. Then add a
+  `G0` path estimator (`fuv_field_path(il) += path_lum` for
+  `energy_eV < eion_min`) reproducing the grouped `g0_fuv`
+  (`gas_rates_mod.f90:193-195`). **Grain PE belongs here, not with P3**: it
+  consumes `g0_fuv`, not `heat_dust` (`thermal_mod.f90:93,102-104`), so it needs
+  the FUV field of P5 with dust present (P3's `ion_add_dust` open for `rhokap`).
+  `grain_pe` currently has no setup guard at all and is a silent no-op in
+  continuous -- add a guard consistent with P5. Remove the `add_fuv` guard.
+  Because the sampler now covers the FUV band, the FUV-only ISRF presets
+  (`draine`/`habing`/`mathis`) also become continuous here -- they are FUV
+  sources with an FUV-band CDF, no longer a special case. Gate:
+  `tests/d_dusty/*fuv*`, `tests/pdr`, `tests/g0_gamma`, and an ISRF-preset case
+  (`examples/isrf_cloud`).
+
+Dependency summary: P6 and P7-direct are guard flips; P1 and P2 are independent;
+P3 -> P4 (and P3 + P7 -> scatter-peel); P3 + P5 -> grain PE. Where a stage
+should converge to grouped (bin-center -> exact as `nnu_ion` grows), the gate is
+the shadow rtol; where continuous is genuinely more accurate (per-photon
+secondary-ionization threshold, the C III window, exact-energy dust/FUV), the
+grouped number is retired rather than matched.
+
+**Before D, add regression gates for three paths that are continuous-safe by
+inspection but never exercised in continuous:** solution-driven re-refinement
+(`refine_front`, off in every continuous input), the car/DDA backend (continuous
+tests use AMR only, but car raytrace routes through `ion_packet_opacity`), and
+`xy_periodic`/plane-parallel slab. No defect was found in any; they lack
+coverage, not correctness.
+
+### 19.3 Deletion stage D (only after S0 and P1--P7 all pass)
+
+**D1 -- re-baseline the 176 inputs.** Remove the `ion_energy_mode = 'grouped'`
+line from every pinned input (they then take the continuous default), rerun,
+and regenerate each recorded baseline (`.log`, and the JSON/`_new.log`
+snapshots). This is the largest surface and must come last, because until every
+guard is gone some of these inputs will not run in continuous. Numbers change
+from bin-center to exact energy; that is the intended physics, so each gate's
+anchor is re-recorded, not matched to the old grouped value.
+
+**D2 -- delete grouped-only code.** With grouped gone the packet energy is
+always the sampled energy, so:
+
+- `src/ion_energy_policy_mod.f90` -- whole module; its callers in
+  `ion_band_mod` and `diffuse_mod` set `photon%energy_eV = sampled_energy`
+  directly.
+- the shadow-comparison harness (its sole purpose was proving continuous ==
+  grouped): `par%ion_shadow_rates`; `hhe_shadow`/`hhe_coeff` and the
+  `species_shadow_*`/`metal_shadow%coeff` estimators; `packet_opacity_shadow_*`;
+  the `jt_ion` reconstruction path in `ion_score_mod`.
+- `ion_cdf`/`ion_cdf_src` (grouped source bin-CDF) once P1's per-component
+  samplers replace them; the grouped branches of `gen_ion_photon` and
+  `gen_ion_photon_qmc`; the `kap_ion(inu,leaf)` per-bin opacity table path in
+  `ion_packet_mod`.
+- the grouped branches in `gas_rates_mod` and `diffuse_mod`, and the
+  `if (continuous)` guards in `species_mod`/`ion_score_mod` become unconditional.
+- `src/setup.f90` mode-string validation + the `continuous_reason` guard block;
+  `par%ion_energy_mode` and `par%ion_shadow_rates` in `src/define.f90`.
+
+**D3 -- keep (now diagnostic-only, drop "grouped" from comments).**
+`ion_e`/`ion_nu`/`eedge`/`ion_bin_of` and `photon%inu` feed the `jt_ion`/`J_nu`
+diagnostic spectrum; `energy_sampler_mod` is the continuous core; `nnu_ion` and
+`ion_align_edges` keep only their diagnostic-resolution meaning (Section 16.12
+item 35).
+
+**D4 -- retire grouped-specific tests.**
+`tests/continuous_energy/{grouped_plumbing.in,check_grouped_plumbing.py,
+check_grouped_baseline.py,grouped_baseline.json}` and the
+`diffuse_energy_policy_test.f90` policy gate lose their subject.
+
+**D5 -- final step of the plan: update every `.md` and `.tex` file.** A
+repository-wide documentation sweep is the last stage. In *every* tracked
+`.md` and `.tex` -- `docs/*.md`, `docs/*.tex`, `MoCHII_paper/*.tex`, `CLAUDE.md`,
+`README.md`, and any other -- remove the "two modes"/`grouped`/bin-center/
+`ion_energy_mode`/`ion_shadow_rates` language and state the single continuous
+spectral model: both bands sampled continuously, all cross sections at the exact
+energy/wavelength, bins diagnostic-only, and the `jt_abs`-style exact-wavelength
+absorbed accumulator feeding dust/SEDust. Known specifics: drop the
+`ion_energy_mode`/`ion_shadow_rates` rows from the `par%` reference in
+`docs/MoCHII_UserGuide.tex`; revise `docs/MoCHII_physics.tex` (charge-exchange,
+transport, and cooling sections that describe bin-center energies),
+`docs/MoCHII_cooling_analysis.tex`,
+`docs/PHOTON_ENERGY_SAMPLING_CODE_COMPARISON.tex`, `MoCHII_paper/mochii.tex`
+(already continuous -- confirm no bin-center wording survives), `CLAUDE.md`,
+`docs/PLAN.md`, and the plan documents that reference the old two-mode design;
+mark this document complete. Preserve frozen grouped results only where they are
+explicitly labelled as historical baselines. Verify with a grep that no
+`.md`/`.tex` mentions `ion_energy_mode`/`grouped`/bin-center transport except as
+labelled history, then rebuild every `.tex` (`docs/make_pdf.sh` and the paper
+build) and inspect the layout. Refresh `README.md`'s `Last updated:` in the same
+push.
+
+### 19.4 Risks and latent traps
+
+- **Ordering is load-bearing:** D1 must follow every P-stage, or pinned inputs
+  hit a still-present guard. The parity stages are independent except
+  P4/scatter-peel and grain PE (need P3), and grain PE also needs P5.
+- **A guard must not be lifted before its estimator lands.** `secion_apply`
+  (P2) and the grain-PE/`g0_fuv` path (P5) are silent no-ops in continuous until
+  their exact-energy estimators exist; removing the guard first would produce
+  quietly wrong (not crashing) results.
+- **Latent luminosity bug in P1.** `ion_Ltot = par%luminosity`
+  (`ion_band_mod.f90:206-208`, `:268`) is inside the single-component path and
+  overwrites the true `sum(ion_lum)` for slab and external-only sources. It is
+  masked by the guard today; fix it as part of P1, not after.
+- **Silent-wrong-spectrum trap in P1.** The non-QMC single-component continuous
+  branch (`ion_band_mod.f90:1490-1517`) already calls `sample_energy_cdf` for
+  every geometry but the sampler only knows the internal point spectrum, so
+  lifting the guard without wiring per-component samplers samples the wrong
+  spectrum silently.
+- **`grain_pe` has no setup guard** (absent from the `continuous_reason` list);
+  it runs in continuous but is a no-op because `g0_fuv = 0`. Add a guard in P5.
+- **QMC determinism:** P1 changes the busiest launch path; keep the frequency
+  uniform on the same slot (`ion_qmc_ndim` is mode-independent) or every QMC
+  baseline shifts for the wrong reason. Verify rank- and scramble-invariance
+  before touching baselines.
+- **Baseline churn is physical, not a bug:** ~99 inputs that already run in
+  continuous will still change (bin-center -> exact). Re-anchor, do not chase
+  bit-identity with the retired grouped numbers.
+- **`sedust` SED shape draws from binned `jt_ion`** (`sedust_mod.f90:112-180`)
+  while its normalization is exact via `heat_dust`; in continuous the shape is
+  the diagnostic-bin spectrum, a minor inconsistency to document (or lift to a
+  `jt_ion`-refinement) when P3 opens dust.
+- **Reversibility:** grouped is deleted only at D2; keep P1--P7 as separate
+  reviewed commits so the removal can be staged and, if a parity gap surfaces
+  late, deferred without unwinding the parity work.
+
+## 20. Sampling references
 
 - C. Barnett and E. Canfield, *Sampling a Random Variable Distributed
   According to Planck's Law*, Lawrence Radiation Laboratory report (1970),

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Cosmological density cutout: an Illustris-TNG gas density field ionized
  ! by a single source placed at the density peak.  Dense clumps cast sharp
  ! neutral shadows while the diffuse circumgalactic medium is highly ionized.

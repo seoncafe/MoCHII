@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-spectra: two internal point sources of EQUAL ionizing luminosity but
  ! different spectra (Planck tstar = 3e4 and 5e4 K).  The volume-summed
  ! band spectrum J_nu(bin) must equal the sum of the two single-source runs

@@ -236,7 +236,7 @@ outside 3e3-2e4 K rather than extrapolated.
 - Updated `HII40_CLOUDY_RESIDUAL_INVESTIGATION.md` with both rows.
 - If the production configuration changes, regenerate
   `results/continuous_energy/production/`, Tables 4/5 and Figures 14/15, and
-  update `paper/mochii.tex`, `docs/MoCHII_physics.tex`,
+  update `MoCHII_paper/mochii.tex`, `docs/MoCHII_physics.tex`,
   `docs/MoCHII_UserGuide.tex` and
   `docs/PHOTON_ENERGY_SAMPLING_CODE_COMPARISON.tex` --- the same sweep the
   Milne change required.

@@ -9,7 +9,8 @@ module dust_temp_mod
 !     Heat_dust = (rhokap/d_cm) * femit(T_d),
 !     femit(T) = 4 pi Int s_abs(nu) B_nu(T) dnu   [erg s^-1 cm^-2]
 ! with s_abs(nu) = (1-albedo) C_ext(nu)/C_ext(lambda_ref) from the SAME
-! kext table (par%ion_dust_kext), integrated over the full tabulated
+! optics gas_opacity_mod transports with -- the par%ion_dust_kext file when
+! set, otherwise the SEDust grain model -- integrated over the full tabulated
 ! range and precomputed on a log-T grid at setup; T_d by interpolation.
 ! This is the single equilibrium mixture temperature — the SEDust
 ! stochastic/PAH treatment (size- and material-resolved) is the next
@@ -37,39 +38,52 @@ contains
   !=========================================================================
   subroutine dust_temp_setup()
     use mpi
-        use utility, only : fatal_error
-implicit none
-    real(kind=wp), allocatable :: lam(:), alb(:), cext(:)
+    use utility,         only : fatal_error
+    use grain_model_mod, only : grain_extinction_table
+    implicit none
+    real(kind=wp), allocatable :: lam(:), alb(:), cext(:), cosg(:)
     character(len=512) :: line
     real(kind=wp) :: v(4), cref, T, nu1, nu2, bnu, snu, w
     integer :: unit, ios, n, i, k, ierr
+    logical :: from_model
 
-    !--- read the kext table (lambda, albedo, -, C_ext); sort ascending.
-    open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
-    if (ios /= 0) then
-       call fatal_error('dust_temp cannot open par%ion_dust_kext = '// &
-          trim(par%ion_dust_kext))
-    end if
-    n = 0
-    do
-       read(unit,'(a)',iostat=ios) line
-       if (ios /= 0) exit
-       read(line,*,iostat=ios) v
-       if (ios == 0 .and. v(1) > 0.0_wp) n = n + 1
-    end do
-    allocate(lam(n), alb(n), cext(n))
-    rewind(unit)
-    i = 0
-    do
-       read(unit,'(a)',iostat=ios) line
-       if (ios /= 0) exit
-       read(line,*,iostat=ios) v
-       if (ios == 0 .and. v(1) > 0.0_wp) then
-          i = i + 1
-          lam(i) = v(1);  alb(i) = v(2);  cext(i) = v(4)
+    !--- dust optics (lambda, albedo, C_ext): a kext file OVERRIDES the model
+    !--- (backward compatible); an empty par%ion_dust_kext takes them from the
+    !--- SEDust grain model, the SAME source gas_opacity_mod uses, so the
+    !--- absorbed power and the equilibrium T_dust refer to the same grains.
+    !--- The grain model's coverage of the transported band is checked in
+    !--- gas_opacity_mod (called first at setup).  Sort ascending in lambda.
+    from_model = (len_trim(par%ion_dust_kext) == 0)
+    if (.not. from_model) then
+       open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
+       if (ios /= 0) then
+          call fatal_error('dust_temp cannot open par%ion_dust_kext = '// &
+             trim(par%ion_dust_kext))
        end if
-    end do
-    close(unit)
+       n = 0
+       do
+          read(unit,'(a)',iostat=ios) line
+          if (ios /= 0) exit
+          read(line,*,iostat=ios) v
+          if (ios == 0 .and. v(1) > 0.0_wp) n = n + 1
+       end do
+       allocate(lam(n), alb(n), cext(n))
+       rewind(unit)
+       i = 0
+       do
+          read(unit,'(a)',iostat=ios) line
+          if (ios /= 0) exit
+          read(line,*,iostat=ios) v
+          if (ios == 0 .and. v(1) > 0.0_wp) then
+             i = i + 1
+             lam(i) = v(1);  alb(i) = v(2);  cext(i) = v(4)
+          end if
+       end do
+       close(unit)
+    else
+       call grain_extinction_table(lam, alb, cosg, cext, n)
+       deallocate(cosg)
+    end if
     call sort3l(lam, alb, cext, n)
     cref = loginterp(lam, cext, n, par%lambda_ref)
 

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII external-field validation: isotropic ionizing field entering a
  ! bounding sphere of radius par%rmax (source_geometry='external_sph').  An
  ! optically thin uniform sphere illuminated by an isotropic field of mean

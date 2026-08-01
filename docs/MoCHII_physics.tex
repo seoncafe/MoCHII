@@ -115,17 +115,12 @@ the spectral resolution of saved tallies and rate diagnostics.  This is
 important at thresholds: a photon exactly on a stored edge is assigned to
 the bin above it, but its interaction physics still uses its own energy.
 
-The validated continuous-energy path currently accepts one internal point
-source with a Planck or tabulated spectrum.  It rejects unsupported
-combinations (external sources, FUV extension, ionizing dust, secondary
-ionization, metastable-He, and peel-off options) rather than falling back
-silently to grouped energy physics.
+Every source configuration is sampled this way: one or several internal
+point sources, an external isotropic field, plane-parallel slab
+illumination, and the analytic ISRF presets, each drawing from its own
+spectrum through its own inverted CDF.
 
-\paragraph{Grouped mode.}  With \code{par\%ion\_energy\_mode = 'grouped'},
-packets instead sample a luminosity bin and use its representative energy;
-this is an explicit compatibility/reproduction mode, not the default
-physical-energy treatment.
-In this explicit compatibility mode, \code{par\%ion\_align\_edges} (default
+\paragraph{Diagnostic bin edges.}  \code{par\%ion\_align\_edges} (default
 on) pins the ionizing-band bin edges onto the ionization thresholds --- H\,\textsc{i}
 (13.6~eV), He\,\textsc{i} (24.6~eV), He\,\textsc{ii} (54.4~eV), plus the
 active metal photoionization thresholds gathered from the registry ---
@@ -135,13 +130,9 @@ the segments by log width (largest-remainder, floor 1).  When the
 thresholds outnumber the bins the lowest-priority (metal) edges are
 dropped gracefully --- the H/He edges are always kept --- so the option
 is safe at any \code{nnu\_ion}.  Setting it \code{.false.} uses a
-single log grid.  The
-alignment removes a real discretization error: a coarse 32-bin log grid
-straddles the 24.6~eV He\,\textsc{i} edge and delivers $\sim$18\% too
-many He-ionizing photons against a true 40~kK blackbody
-($Q_{\rm HeI}/Q_{\rm HI} = 0.127$ versus the exact 0.108), over-ionizing
-He (and, downstream, the metals); aligning the edges restores the exact
-ratio at fixed bin count (Section~\ref{sec:hii}).
+single log grid.  Because the transported energies are continuous, this
+choice changes the resolution of the saved $J_E$ tally and of the rate
+diagnostics only; it cannot move the physical solution.
 
 \paragraph{FUV extension.}  With \code{par\%add\_fuv} the band grows a
 second, lower segment: \code{par\%nnu\_fuv} log bins on
@@ -2171,9 +2162,8 @@ converges to $6.8{\times}10^{38}$~erg/s $=0.50\,L_\star$.
 For output bookkeeping, the energy from Eq.~(\ref{eq:diffuse-energy}) is
 mapped by binary search of \code{ion\_eedge} (\code{ion\_bin\_of}).  This
 works for both threshold-aligned and logarithmic diagnostic grids; an energy
-on an edge falls in the bin above it.  In continuous mode this assignment
-does not modify $E_{\rm pkt}$ or its cross sections.  In grouped mode only,
-the representative energy of that selected bin is used for transport.  The
+on an edge falls in the bin above it.  The assignment is a tally address
+only: it does not modify $E_{\rm pkt}$ or its cross sections.  The
 binary search also corrects the former closed-form log-grid mapping, which
 could place a 24.6-eV He\,\textsc{i} recombination photon below the
 He\,\textsc{i} threshold on an aligned grid.
@@ -2454,7 +2444,16 @@ The three parts of the dust coupling, now complete:
   each band bin adds
   $\kappa_{\rm d}(b,{\rm leaf}) = \rho\kappa_{\rm leaf}\,s_{\rm abs}(b)$
   where $s_{\rm abs}(b) = (1{-}a(E_b))\,C_{\rm ext}(E_b)/C_{\rm ext}
-  (\lambda_{\rm ref})$ comes from a kext table covering the EUV (the
+  (\lambda_{\rm ref})$.  By default these come from the grain model named
+  by \code{par\%dust\_model\_sed}, integrated over its size distribution,
+  so that the power a cell absorbs is set by the same grains that
+  reradiate it in Section~\ref{sec:sedust}; the astrodust and DL07 models
+  are extended below the T-matrix table's $0.0912\,\mu$m end down to
+  $1.24/E_{\max}$ using their own dielectric functions (DH21 astrodust,
+  D03 silicate and graphite), and each optics module refuses a wavelength
+  its dielectric table does not cover rather than let a clamped refractive
+  index pass as physics.  Setting \code{par\%ion\_dust\_kext} overrides
+  the model with an explicit table covering the EUV (the
   WD01/D03 $R_V{=}3.1$ table, 1\,\AA--$10^4\,\mu$m:
   $C_{\rm abs}/{\rm H} = 1.83{\times}10^{-21}$ at 13.6~eV falling to
   $3.96{\times}10^{-22}\,{\rm cm^2}$ at 100~eV).  A trap worth
@@ -2526,9 +2525,11 @@ exact by construction:
   is used only as a shape: each leaf's emission is normalized to its
   absorbed power ${\rm Heat\_dust}\cdot V$ from the Monte Carlo tally
   (radiative equilibrium).  H\,\textsc{ii} regions are optically thin
-  to the re-emitted IR, so no Lucy re-iteration is needed and the
-  grid-integrated $L_\lambda$ is accumulated directly (an
-  \code{MPI\_ALLREDUCE} over leaves distributed round-robin).
+  to the re-emitted IR --- but that is a result, not an assumption:
+  the emitted infrared is transported (Section~\ref{sec:dustrt}) and
+  what it deposits is returned to ${\rm Heat\_dust}$ before this
+  spectrum is written.  The grid-integrated $L_\lambda$ is accumulated
+  over leaves distributed round-robin (an \code{MPI\_ALLREDUCE}), and
   $\int L_\lambda\,d\lambda = \sum {\rm Heat\_dust}\,V$ holds by
   construction and is written into the \code{\_dustsed.txt} header.
 \item \textbf{Cost.}  The exact stochastic solve costs
@@ -2554,6 +2555,57 @@ exact by construction:
   PAH-everywhere reference, the FIR rises by 1.06--1.36$\times$, and
   the 8-$\mu$m map turns from centrally peaked into a \emph{ring} at
   the ionization front --- the classic Spitzer/JWST bubble morphology.
+\end{itemize}
+
+\subsection{Transport of the reradiated infrared}
+\label{sec:dustrt}
+With \code{par\%dust\_emis\_transport} (on by default) the infrared the
+grains reradiate is not merely tallied: it is launched as packets and
+carried through the grid, and whatever the grains reabsorb is returned
+to ${\rm Heat\_dust}$, so a grain is heated by the nebula's own infrared
+as well as by the star.  Because the optics come from the same grain
+model that produced the emission (Section~\ref{sec:dust}), absorption
+and reemission refer to one population.
+\begin{itemize}
+\item \textbf{Launch.}  A leaf is chosen in proportion to its emitted
+  power ${\rm Heat\_dust}\,V$, the position uniformly inside it, the
+  direction isotropically, and the wavelength from that leaf's own
+  emission spectrum: the bin from the trapezoid cumulative and the
+  wavelength \emph{inside} the bin in closed form from the same
+  piecewise-linear density, so the sampled wavelength is continuous and
+  no bin centre enters.  Packets are allocated by stratified sampling of
+  the cumulative leaf luminosity with one shared offset, so the counts
+  telescope to exactly $N$ and the launched luminosity equals
+  $\sum {\rm Heat\_dust}\,V$ identically.  Each rank walks only its own
+  leaves and reuses one spectrum buffer, so nothing of size
+  leaf${\times}$wavelength is ever stored.
+\item \textbf{Transport.}  The packets ride the same routine as the
+  ionizing ones.  No separate infrared opacity is needed: the
+  photoionization cross sections vanish below their thresholds, so an
+  infrared packet automatically sees grain absorption and scattering
+  alone, evaluated at its exact wavelength.  The emission is cut at the
+  first wavelength that clears every gas threshold in the registry, and
+  the estimators are switched by band, so no infrared segment can enter
+  the ionizing-band tallies --- without that switch the infrared would
+  have been counted a second time into ${\rm Heat\_dust}$ and the whole
+  infrared field would have entered the Habing $G_0$ integral.
+\item \textbf{Self-consistency.}  Passes repeat until the total emitted
+  luminosity changes by less than \code{par\%dust\_tol}, at most
+  \code{par\%dust\_niter} times.  The reabsorbed power enters the next
+  pass exactly, through ${\rm Heat\_dust}$; it does not enter the local
+  mean intensity that sets the SEDust spectral \emph{shape}, which
+  remains the stellar one --- an approximation valid while
+  $\tau_{\rm IR}\ll1$, whereas the emitted \emph{power} carries no such
+  error at any optical depth.
+\item \textbf{What it measures.}  In an H\,\textsc{ii} region the answer
+  is that the nebula is indeed thin to its own infrared: a dusty
+  Str\"omgren model at ${\rm DGR}=1$ reabsorbs $0.62$--$0.85\%$ of the
+  emitted infrared and converges in two passes, the second pass changing
+  the emitted luminosity by $3$--$6{\times}10^{-5}$.  The infrared
+  energy budget closes to $\sim$$10^{-16}$, and the extra luminosity of
+  the second pass equals the power extinguished in the first.  The
+  escaping spectrum is written to \code{\_dustesc.txt}; its ratio to the
+  emitted spectrum is the infrared escape fraction.
 \end{itemize}
 
 \subsection{Peel-off imaging}

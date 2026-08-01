@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! FUV-option smoke: dusty Stromgren with par%add_fuv (two-segment band:
  ! 16 FUV bins on 6-13.598 eV under 32 ionizing bins) + metals with
  ! par%ion_metal_abs.  par%luminosity is the IONIZING luminosity
@@ -52,6 +51,7 @@
 
  !--- dust in the band (MW D03 EUV extinction + scattering)
  par%ion_add_dust  = .true.
+ par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
  par%ion_dust_scatter = .true.
  par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22

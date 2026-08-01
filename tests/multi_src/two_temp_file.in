@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-file-equivalence: same two sources as two_temp.in (equal L, 3e4/5e4 K
  ! spectra) but their spectra come from ONE multi-column file
  ! (par%src_spectrum_file = two_temp_spec.txt, col2 = 3e4 K, col3 = 5e4 K),

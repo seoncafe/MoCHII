@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII G2 gate: MOCASSIN/Lexington HII20 benchmark.
  ! Blackbody 20 kK, Q_H = 1.006e49 s^-1, nH = 100 cm^-3, hollow shell
  ! Rin = 3e18 cm, Rout = 9.5e18 cm; abundances He 0.1, C 2.2e-4, N 4e-5,

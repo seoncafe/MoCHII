@@ -21,8 +21,8 @@ program main
                               slab_tally_setup, slab_tally_reduce, &
                               slab_write_Imu, slab_tally_on, slab_Iesc
   use ion_score_mod,   only : ion_score_setup, ion_score_reset, &
-                              ion_score_reduce, ion_score_compare_hhe, &
-                              ion_score_compare_metals
+                              ion_score_reduce, ion_score_report_energy_closure, &
+                              ion_score_report_metal_rates
   use raytrace_amr_mod,only : transport_ion_packet, slab_walk_report
   use gas_rates_mod,   only : gas_rates_compute, gas_rates_write, &
                               gamma_HI, gamma_HeI, gamma_HeII, &
@@ -290,10 +290,9 @@ program main
        call jtally_ion_reduce()
        call ion_score_reduce()
        call gas_rates_compute()
-       call ion_score_compare_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
-                                  heat_HI, heat_HeI, heat_HeII)
+       call ion_score_report_energy_closure()
        if (par%use_metals) call species_gamma_compute()
-       call ion_score_compare_metals()
+       call ion_score_report_metal_rates()
        if (par%use_sec_ion) call secion_apply()
      end block
      !--- this pass transported the written state, so it doubles as the
@@ -308,6 +307,28 @@ program main
        use gas_rates_mod, only : heat_dust
        call dust_temp_setup()
        call dust_temp_compute(heat_dust)
+     end block
+     !--- transport the reradiated thermal infrared and close the dust
+     !--- self-heating loop, so Heat_dust and T_dust carry the infrared the
+     !--- grains reabsorb from each other before anything is written.
+     if (par%dust_emis_transport) then
+        block
+          use dust_emis_transport_mod, only : dust_emis_transport_setup, &
+                                              transport_dust_emission
+          use gas_rates_mod, only : heat_dust
+          call dust_emis_transport_setup()
+          call transport_dust_emission(heat_dust)
+        end block
+     end if
+  end if
+  if (par%use_sec_ion) then
+     block
+       use gas_rates_mod, only : sec_dgamma_HI, sec_dgamma_HeI, &
+            sec_heat_HI, heat_HI, heat_hard_HI
+       if (mpar%p_rank == 0) write(*,'(a,5es16.8)') &
+          ' SECION_TMP sum(dgHI,dgHeI,secHtHI,HtHI,hardHI)=', &
+          sum(sec_dgamma_HI), sum(sec_dgamma_HeI), sum(sec_heat_HI), &
+          sum(heat_HI), sum(heat_hard_HI)
      end block
   end if
   call gas_rates_write()
@@ -441,10 +462,9 @@ contains
     call jtally_ion_reduce()
     call ion_score_reduce()
     call gas_rates_compute()
-    call ion_score_compare_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
-                               heat_HI, heat_HeI, heat_HeII)
+    call ion_score_report_energy_closure()
     if (par%use_metals) call species_gamma_compute()
-    call ion_score_compare_metals()
+    call ion_score_report_metal_rates()
     if (par%use_sec_ion) call secion_apply()
   end subroutine ionizing_field_and_rates
 

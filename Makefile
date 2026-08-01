@@ -70,7 +70,7 @@ $(SRCDIR)/%.o: $(SRCDIR)/%.f90
 
 OBJS	= \
 	define.o \
-	ion_energy_policy_mod.o \
+	grain_model_mod.o \
 	random_mt.o \
 	qmc_mod.o \
 	energy_sampler_mod.o \
@@ -88,6 +88,7 @@ OBJS	= \
 	cellinfo_mod.o \
 	ion_band_mod.o \
 	jtally_mod.o \
+	dust_ir_band_mod.o \
 	photo_xsec.o \
 	recomb_mod.o \
 	milne_recomb_spectrum_mod.o \
@@ -109,6 +110,7 @@ OBJS	= \
 	amr_refine_mod.o \
 	dust_temp_mod.o \
 	sedust_mod.o \
+	dust_emis_transport_mod.o \
 	hei_cascade_mod.o \
 	diffuse_mod.o \
 	nebcont_mod.o \

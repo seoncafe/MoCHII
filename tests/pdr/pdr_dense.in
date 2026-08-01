@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Dense PDR thermal balance: the isrf_cloud geometry (nH = 5e3 clump in the
  ! Draine ISRF preset) with the thermal solve ON, so the metal line cooling
  ! actually enters.  This is the case where the [C I] 609.1/370.4um and
@@ -47,6 +46,7 @@
  par%grain_pe      = .true.
 
  par%ion_add_dust  = .true.
+ par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
  par%ion_dust_kext = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0

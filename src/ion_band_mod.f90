@@ -29,11 +29,19 @@ module ion_band_mod
 ! spectra are normalized so the ionizing segment carries the scale
 ! (par%luminosity / src_lum(i); external pi*J*A).  Packets sample bins from the
 ! luminosity CDF and carry Lpacket = ion_Ltot / nphotons.
+!
+! The bins are DIAGNOSTIC only: the band total ion_Ltot and the
+! component-selection CDF src_cdf come from the continuous samplers' own
+! integrals (setup_continuous_source_sampler), so the energy a packet carries is
+! the energy its spectrum actually holds, not the 32-point midpoint quadrature
+! of it.  Each component carries a FIXED physical quantity (ionizing luminosity,
+! absolute file integral, entering flux pi*J*A), and the FUV/ionizing split
+! comes from the sampler's ionizing fraction 1 - CDF(par%eion_min).
 !---------------------------------------------------------------------------
   use define
   use energy_sampler_mod, only : energy_sampler_type, build_planck_sampler, &
-       build_tabulated_band_sampler, sample_energy_cdf
-  use ion_energy_policy_mod, only : assign_ion_packet_energy
+       build_tabulated_sampler, build_tabulated_band_sampler, sample_energy_cdf, &
+       energy_cdf_value
   implicit none
   private
 
@@ -47,8 +55,13 @@ module ion_band_mod
   real(kind=wp), allocatable :: ion_nu(:)    ! bin center [Hz]
   real(kind=wp), allocatable :: ion_dnu(:)   ! bin width  [Hz]
   real(kind=wp), allocatable :: ion_lum(:)   ! total bin luminosity (sum over components) [erg/s]
-  real(kind=wp), allocatable :: ion_cdf(:)   ! sampling CDF over bins (single-component fast path)
-  type(energy_sampler_type) :: source_energy_sampler
+  !--- Continuous-energy sampler for each source component, indexed exactly
+  !--- like comp_kind / src_cdf (internal point sources
+  !--- 1..nsource first, then the external field).  A single-component
+  !--- configuration is simply ncomp = 1.  Each component samples its OWN
+  !--- spectrum, so a mixed run never draws a photon energy from another
+  !--- component's spectral shape.
+  type(energy_sampler_type), allocatable :: source_energy_sampler(:)
   logical :: source_energy_sampler_ready = .false.
   !--- band bin EDGES [eV], size nnu_band+1, ascending.  The single source of
   !--- truth for mapping a photon energy to a bin: filled at ion_setup for BOTH
@@ -60,14 +73,13 @@ module ion_band_mod
   !--- sources plus, independently, one external field (ON when
   !--- par%ext_intensity>0).  With more than one component the packets are split
   !--- among the components in proportion to their band luminosity (src_cdf),
-  !--- and the frequency bin is drawn from that component's own spectrum
-  !--- (ion_cdf_src).  With exactly one component the single fast path is taken
-  !--- (ion_cdf over the global spectrum), preserving the legacy RNG stream.
+  !--- and the photon energy is drawn from that component's own spectrum
+  !--- (source_energy_sampler).  With exactly one component the single fast path
+  !--- is taken, preserving the legacy RNG stream.
   integer :: ncomp = 1                          ! number of source components
   logical :: multi_src = .false.                ! .true. when ncomp >= 2
   integer,       allocatable :: comp_kind(:)    ! 0 = external, i>=1 = point source i
   real(kind=wp), allocatable :: src_cdf(:)      ! component-selection CDF (band totals)
-  real(kind=wp), allocatable :: ion_cdf_src(:,:)! (nnu_band, ncomp) each component's bin CDF
   !--- total band luminosity carried by the packets: par%luminosity
   !--- ([eion_min, eion_max]) plus, with par%add_fuv, the FUV part of the
   !--- same source spectrum.
@@ -82,6 +94,16 @@ module ion_band_mod
 
   !--- Habing (1968) FUV energy density in 6-13.6 eV [erg/cm^3]; G0 = 1 unit.
   real(kind=wp), parameter :: HABING_U_FUV = 5.29e-14_wp
+
+  !--- Energy grid on which an analytic ISRF preset is tabulated for continuous
+  !--- sampling.  preset_je is a low-order polynomial in E (Draine) or a smooth
+  !--- piecewise power law plus diluted blackbodies (Mathis), so 4096 uniform
+  !--- points across the FUV band put the piecewise-linear CDF far below the
+  !--- packet sampling noise.  The presets carry no flux above the Lyman limit
+  !--- (Draine is defined on 5-13.6 eV; Mathis vanishes below 0.0912 um), so
+  !--- PRESET_EMAX bounds the sampler support.
+  integer,       parameter :: NPRESET     = 4096
+  real(kind=wp), parameter :: PRESET_EMAX = 13.6_wp
 
   !--- Plane-parallel slab illumination (source_geometry = 'slab').  Per face
   !--- 1 = top (+z), 2 = bottom (-z): lit flag, mode (0 = beam, 1 = isotropic),
@@ -130,7 +152,7 @@ contains
     nnu_band  = nnu
     nfuv_band = nfuv
     allocate(eedge(nnu+1), ion_e(nnu), ion_de(nnu), ion_nu(nnu), &
-             ion_dnu(nnu), ion_lum(nnu), ion_cdf(nnu))
+             ion_dnu(nnu), ion_lum(nnu))
 
     lo = log(par%eion_min);  hi = log(par%eion_max)
     if (nfuv > 0) then
@@ -202,15 +224,11 @@ contains
           call finalize_source(ion_lum, nnu, nfuv, is_abs, par%luminosity, Lnorm)
           derived = is_abs .and. (par%luminosity <= 0.0_wp)
        end if
+       !--- the binned band total, which is what log_fast_path reports;
+       !--- setup_continuous_source_sampler below overwrites it with the sampler
+       !--- integral, the same physics evaluated exactly instead of on the
+       !--- 32-point midpoint sub-grid.
        ion_Ltot = sum(ion_lum)
-       if (trim(par%ion_energy_mode) == 'continuous' .and. &
-           par%luminosity > 0.0_wp) &
-          ion_Ltot = par%luminosity
-       ion_cdf(1) = ion_lum(1)
-       do i = 2, nnu
-          ion_cdf(i) = ion_cdf(i-1) + ion_lum(i)
-       end do
-       ion_cdf = ion_cdf / ion_cdf(nnu)
 
        if (mpar%p_rank == 0) call log_fast_path(nnu, nfuv, Lnorm, Jband, uFUV, presid, derived)
     else
@@ -224,61 +242,377 @@ contains
     ion_eedge = eedge
     deallocate(eedge)
 
-    !--- Initial continuous-energy vertical slice: setup has restricted this
-    !--- mode to one internal point source with a Planck or tabulated spectrum.
-    !--- The sampler is independent of ion_eedge/nnu_band; H/He thresholds are
-    !--- retained as mandatory adaptive-CDF knots for the Planck case.
+    !--- Continuous-energy source sampling: one sampler per source component
+    !--- (point sources, external field, slab), each from its own spectrum.
+    !--- The samplers are independent of ion_eedge/nnu_band; H/He/metal
+    !--- thresholds are mandatory adaptive-CDF knots for the Planck cases.
     source_energy_sampler_ready = .false.
-    if (trim(par%ion_energy_mode) == 'continuous') then
-       call setup_continuous_source_sampler(metal_eth, nmetal)
-       source_energy_sampler_ready = .true.
-    end if
+    call setup_continuous_source_sampler(metal_eth, nmetal)
+    source_energy_sampler_ready = .true.
+
+    !--- par%luminosity is left at its unset sentinel when a physical-type
+    !--- (absolute) spectrum DERIVES the luminosity from the file integral.
+    !--- Fill it with the band total so the TOT_LUM output keyword records a
+    !--- real luminosity.
+    if (par%luminosity <= 0.0_wp) par%luminosity = ion_Ltot
   end subroutine ion_setup
 
+  !=========================================================================
+  ! Build one continuous-energy sampler per source component, indexed exactly
+  ! like comp_kind / src_cdf, so each component draws photon
+  ! energies from its own spectrum.  Single-component configurations leave
+  ! comp_kind unallocated (ion_setup's fast paths), and their one component is
+  ! the lone point source, the external field, or the slab illumination.
+  !
+  ! This routine is the single authority for the continuous band total: it
+  ! collects each component's band luminosity band_L from the SAMPLER integrals
+  ! (the same fixed physical quantity the binned path normalizes to, divided by
+  ! the sampler's ionizing fraction wherever the FUV part rides on the spectrum
+  ! shape), then sets ion_Ltot = sum(band_L) and rebuilds the component-selection
+  ! CDF src_cdf from the same numbers.  The binned ion_lum is left untouched: it
+  ! is the diagnostic spectrum of the same band.
+  !=========================================================================
   subroutine setup_continuous_source_sampler(metal_eth, nmetal)
+    use mpi
+    use octree_mod, only : amr_grid
     implicit none
     real(kind=wp), intent(in), optional :: metal_eth(:)
     integer,       intent(in), optional :: nmetal
+    real(kind=wp), allocatable :: band_L(:)
+    integer :: ic, ik, nmet, ierr
+    real(kind=wp) :: elo, azface, f_ion
+
+    nmet = 0
+    if (present(nmetal) .and. present(metal_eth)) nmet = nmetal
+    elo = par%eion_min
+    if (par%add_fuv) elo = par%efuv_min
+
+    if (allocated(source_energy_sampler)) deallocate(source_energy_sampler)
+    allocate(source_energy_sampler(ncomp), band_L(ncomp))
+
+    do ic = 1, ncomp
+       if (allocated(comp_kind)) then
+          ik = comp_kind(ic)             ! multi-component: 0 = external, i>=1 = point i
+       else if (trim(par%source_geometry) == 'slab') then
+          ik = 1                         ! slab: spectrum resolved like point source 1
+       else if (par%nsource == 0) then
+          ik = 0                         ! external-only field
+       else
+          ik = 1                         ! single internal point source
+       end if
+       if (ik >= 1) then
+          call build_point_source_sampler(source_energy_sampler(ic), ik, elo, &
+                                          nmet, metal_eth, band_L(ic))
+       else
+          call build_external_field_sampler(source_energy_sampler(ic), elo, &
+                                            nmet, metal_eth, band_L(ic))
+       end if
+    end do
+
+    if (trim(par%source_geometry) == 'slab') then
+       !--- plane-parallel illumination: the fixed physical quantity is the
+       !--- IONIZING power entering one tile, L_slab = sum_face F_z * A_zface
+       !--- (slab_setup filled slab_Fz before this call), not par%luminosity.
+       !--- The spectrum shape is the point-source chain, so only this
+       !--- normalization differs from what build_point_source_sampler set.
+       azface = (amr_grid%xrange * par%distance2cm) &
+              * (amr_grid%yrange * par%distance2cm)
+       f_ion = ionizing_fraction(source_energy_sampler(1))
+       if (f_ion <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
+             'to an ionizing luminosity (the spectrum is FUV-only).'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       band_L(1) = sum(slab_Fz) * azface / f_ion
+    end if
+
+    ion_Ltot = sum(band_L(1:ncomp))
+    if (multi_src) then
+       !--- component-selection CDF over the SAMPLER band totals, so a packet's
+       !--- component share matches the luminosity that component carries.
+       src_cdf(1) = band_L(1)
+       do ic = 2, ncomp
+          src_cdf(ic) = src_cdf(ic-1) + band_L(ic)
+       end do
+       src_cdf = src_cdf / src_cdf(ncomp)
+    end if
+
+    if (mpar%p_rank == 0) then
+       f_ion = ionizing_fraction(source_energy_sampler(1))
+       if (ncomp == 1 .and. nfuv_band > 0 .and. f_ion > 0.0_wp) then
+          write(*,'(a,es14.6,a,es10.3)') &
+             ' ION: continuous band total (sampler) = ', ion_Ltot, &
+             ',  L_FUV/L_ion = ', 1.0_wp/f_ion - 1.0_wp
+       else
+          write(*,'(a,es14.6)') &
+             ' ION: continuous band total (sampler) = ', ion_Ltot
+       end if
+    end if
+    deallocate(band_L)
+  end subroutine setup_continuous_source_sampler
+
+  !=========================================================================
+  ! Fraction of a sampled spectrum's band luminosity that lies above
+  ! par%eion_min, i.e. the ionizing segment's share: f_ion = 1 - CDF(eion_min).
+  ! Without par%add_fuv the sampler support starts at par%eion_min, so f_ion = 1
+  ! exactly and every band luminosity below reduces to its ionizing value.
+  !=========================================================================
+  real(kind=wp) function ionizing_fraction(sampler) result(f_ion)
+    implicit none
+    type(energy_sampler_type), intent(in) :: sampler
+    f_ion = 1.0_wp - energy_cdf_value(sampler, par%eion_min)
+  end function ionizing_fraction
+
+  !=========================================================================
+  ! Band luminosity [erg/s] of one source component from its continuous
+  ! sampler.  Two normalizations, exactly the two finalize_source implements:
+  !
+  !  * scale > 0, or a 'shape'/Planck spectrum (which always carries a scale):
+  !    the fixed quantity is the IONIZING luminosity, so the band luminosity is
+  !    L_ion / f_ion and the FUV part rides on the spectrum shape.
+  !  * an absolute (physical-type) spectrum with no scale set: the band
+  !    luminosity is DERIVED from the file itself, i.e. the sampler integral.
+  !
+  ! is_abs marks a physical-type file, as in finalize_source / comp_shape.
+  !=========================================================================
+  real(kind=wp) function source_band_luminosity(sampler, is_abs, scale) result(band_L)
+    use mpi
+    implicit none
+    type(energy_sampler_type), intent(in) :: sampler
+    logical,                   intent(in) :: is_abs
+    real(kind=wp),             intent(in) :: scale
+    real(kind=wp) :: f_ion
+    integer :: ierr
+    if (is_abs .and. scale <= 0.0_wp) then
+       band_L = sampler%total_integral
+       return
+    end if
+    f_ion = ionizing_fraction(sampler)
+    if (f_ion <= 0.0_wp) then
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
+          'to an ionizing luminosity (the spectrum is FUV-only).'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+    band_L = scale / f_ion
+  end function source_band_luminosity
+
+  !=========================================================================
+  ! Mandatory CDF knots for a Planck component sampler: the H I / He I / He II
+  ! photoionization thresholds, the active metal thresholds, and (with
+  ! par%add_fuv) the FUV/ionizing boundary par%eion_min.  Pinning the adaptive
+  ! refinement to these energies keeps every photoionization edge resolved in
+  ! the inverted CDF, independently of the diagnostic bin grid.
+  !=========================================================================
+  subroutine photoionization_threshold_knots(knots, nmet, metal_eth)
+    implicit none
+    real(kind=wp), allocatable, intent(out) :: knots(:)
+    integer,                    intent(in)  :: nmet
+    real(kind=wp), optional,    intent(in)  :: metal_eth(:)
+    integer :: nk
+    nk = 3 + nmet
+    if (par%add_fuv) nk = nk + 1
+    allocate(knots(nk))
+    knots(1:3) = [eth_HI, eth_HeI, eth_HeII]
+    if (nmet > 0 .and. present(metal_eth)) knots(4:3+nmet) = metal_eth(1:nmet)
+    if (par%add_fuv) knots(nk) = par%eion_min
+  end subroutine photoionization_threshold_knots
+
+  !=========================================================================
+  ! Continuous-energy sampler for internal point source is (and for the slab,
+  ! which resolves its spectrum the same way).  The spectrum chain mirrors
+  ! point_shape / comp_shape exactly: par%src_spectrum_file column is >
+  ! par%src_tstar(is) Planck (multi-component path only; a lone source keeps
+  ! the legacy scalars) > par%ion_spectrum file > par%tstar Planck.  The band
+  ! runs from elo (par%efuv_min with add_fuv, else par%eion_min) to
+  ! par%eion_max.
+  !
+  ! band_L is this source's band luminosity [erg/s], set inside the SAME branch
+  ! that resolved the spectrum so the normalization can never be attributed to
+  ! a spectrum the sampler did not use.  The scale it is normalized to is the
+  ! one finalize_source receives on the binned side: par%luminosity for the lone
+  ! source (legacy scalars rule), par%src_lum(is) with several components.
+  !=========================================================================
+  subroutine build_point_source_sampler(sampler, is, elo, nmet, metal_eth, band_L)
+    implicit none
+    type(energy_sampler_type), intent(out) :: sampler
+    integer,                   intent(in)  :: is
+    real(kind=wp),             intent(in)  :: elo
+    integer,                   intent(in)  :: nmet
+    real(kind=wp), optional,   intent(in)  :: metal_eth(:)
+    real(kind=wp),             intent(out) :: band_L
     real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
-    integer :: ntab, nmet
+    real(kind=wp) :: tst, scale
+    integer :: ntab
+
+    if (multi_src) then
+       scale = par%src_lum(is)
+    else
+       scale = par%luminosity
+    end if
 
     if (len_trim(par%src_spectrum_file) > 0) then
        if (spec_is_physical()) then
-          call read_phys_table(par%src_spectrum_file, 1, 1, etab, ftab, ntab)
+          call read_phys_table(par%src_spectrum_file, is, par%nsource, etab, ftab, ntab)
        else
-          call read_shape_table(par%src_spectrum_file, 1, 1, etab, ftab, ntab)
+          call read_shape_table(par%src_spectrum_file, is, par%nsource, etab, ftab, ntab)
        end if
+       call build_tabulated_band_sampler(sampler, etab, ftab, elo, par%eion_max)
+       deallocate(etab, ftab)
+       band_L = source_band_luminosity(sampler, spec_is_physical(), scale)
+       return
+    end if
+
+    tst = -1.0_wp
+    if (multi_src) tst = par%src_tstar(is)
+    if (tst > 0.0_wp) then
+       call photoionization_threshold_knots(knots, nmet, metal_eth)
+       call build_planck_sampler(sampler, tst, elo, par%eion_max, &
+                                 par%source_cdf_tol, knots)
+       deallocate(knots)
+       band_L = source_band_luminosity(sampler, .false., scale)
+       return
+    end if
+
+    if (len_trim(par%ion_spectrum) > 0) then
+       if (spec_is_physical()) then
+          call read_phys_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
+       else
+          call read_shape_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
+       end if
+       call build_tabulated_band_sampler(sampler, etab, ftab, elo, par%eion_max)
+       deallocate(etab, ftab)
+       band_L = source_band_luminosity(sampler, spec_is_physical(), scale)
+       return
+    end if
+
+    call photoionization_threshold_knots(knots, nmet, metal_eth)
+    call build_planck_sampler(sampler, par%tstar, elo, par%eion_max, &
+                              par%source_cdf_tol, knots)
+    deallocate(knots)
+    band_L = source_band_luminosity(sampler, .false., scale)
+  end subroutine build_point_source_sampler
+
+  !=========================================================================
+  ! Continuous-energy sampler for the external isotropic field.  The spectrum
+  ! chain mirrors build_ext_bins / comp_shape exactly: an analytic ISRF preset
+  ! > an absolute or shape par%ext_spectrum file > par%ext_tstar Planck >
+  ! par%ion_spectrum file > par%tstar Planck.
+  !
+  ! A preset is tabulated on a dense uniform grid and inverted like any other
+  ! tabulated spectrum.  The grid spans the band from elo up to PRESET_EMAX
+  ! (the presets carry no flux above the Lyman limit), so the sampler support
+  ! is the same energy range the binned preset luminosities cover; where the
+  ! preset itself vanishes the density is zero and the CDF is flat, which
+  ! leaves those energies unsampled.
+  !
+  ! band_L is the power the field carries into the illuminated surface
+  ! A_surface [erg/s].  The field is ABSOLUTE (its J_E is physical) for a preset
+  ! or a physical-type ext_spectrum file, exactly the two kinds build_ext_bins
+  ! treats as absolute; anything else is a legacy shape carrying
+  ! par%ext_intensity on its ionizing segment.
+  !=========================================================================
+  subroutine build_external_field_sampler(sampler, elo, nmet, metal_eth, band_L)
+    use mpi
+    use octree_mod, only : amr_grid
+    implicit none
+    type(energy_sampler_type), intent(out) :: sampler
+    real(kind=wp),             intent(in)  :: elo
+    integer,                   intent(in)  :: nmet
+    real(kind=wp), optional,   intent(in)  :: metal_eth(:)
+    real(kind=wp),             intent(out) :: band_L
+    real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
+    real(kind=wp) :: ehi_p, asurf, xr, yr, zr, f_ion
+    logical :: is_abs
+    integer :: ntab, presid, k, ierr
+
+    presid = ion_ext_preset_id(par%ext_spectrum)
+    is_abs = (presid > 0) .or. &
+             (spec_is_physical() .and. len_trim(par%ext_spectrum) > 0)
+
+    if (presid > 0) then
+       ehi_p = min(par%eion_max, PRESET_EMAX)
+       if (ehi_p <= elo) then
+          if (mpar%p_rank == 0) write(*,'(3a,f8.3,a)') &
+             'ERROR: the ISRF preset ', trim(par%ext_spectrum), &
+             ' carries no flux above', PRESET_EMAX, &
+             ' eV, so it does not overlap the band; lower par%efuv_min '// &
+             '(with par%add_fuv) or drop the preset.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       allocate(etab(NPRESET), ftab(NPRESET))
+       do k = 1, NPRESET
+          etab(k) = elo + (ehi_p - elo)*real(k-1,wp)/real(NPRESET-1,wp)
+          ftab(k) = preset_je(etab(k), presid) * par%ext_scale
+       end do
+       call build_tabulated_sampler(sampler, etab, ftab)
+       deallocate(etab, ftab)
+
+    else if (len_trim(par%ext_spectrum) > 0) then
+       if (spec_is_physical()) then
+          call read_phys_table(par%ext_spectrum, 1, 1, etab, ftab, ntab)
+       else
+          call read_shape_table(par%ext_spectrum, 1, 1, etab, ftab, ntab)
+       end if
+       call build_tabulated_band_sampler(sampler, etab, ftab, elo, par%eion_max)
+       deallocate(etab, ftab)
+
+    else if (par%ext_tstar > 0.0_wp) then
+       call photoionization_threshold_knots(knots, nmet, metal_eth)
+       call build_planck_sampler(sampler, par%ext_tstar, elo, par%eion_max, &
+                                 par%source_cdf_tol, knots)
+       deallocate(knots)
+
     else if (len_trim(par%ion_spectrum) > 0) then
        if (spec_is_physical()) then
           call read_phys_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
        else
           call read_shape_table(par%ion_spectrum, 1, 1, etab, ftab, ntab)
        end if
+       call build_tabulated_band_sampler(sampler, etab, ftab, elo, par%eion_max)
+       deallocate(etab, ftab)
+
     else
-       nmet = 0
-       if (present(nmetal)) nmet = nmetal
-       allocate(knots(3+nmet))
-       knots(1:3) = [eth_HI, eth_HeI, eth_HeII]
-       if (nmet > 0 .and. present(metal_eth)) &
-          knots(4:3+nmet) = metal_eth(1:nmet)
-       call build_planck_sampler(source_energy_sampler, par%tstar, &
-            par%eion_min, par%eion_max, par%source_cdf_tol, &
-            knots)
+       call photoionization_threshold_knots(knots, nmet, metal_eth)
+       call build_planck_sampler(sampler, par%tstar, elo, par%eion_max, &
+                                 par%source_cdf_tol, knots)
        deallocate(knots)
-       ion_Ltot = par%luminosity
-       return
     end if
 
-    call build_tabulated_band_sampler(source_energy_sampler, etab, ftab, &
-                                       par%eion_min, par%eion_max)
-    if (par%luminosity > 0.0_wp) then
-       ion_Ltot = par%luminosity
+    !--- illuminated surface area [cm^2] (same geometry as build_ext_bins).
+    if (trim(par%ext_geometry) == 'sph') then
+       asurf = fourpi * (par%rmax * par%distance2cm)**2
     else
-       ion_Ltot = source_energy_sampler%total_integral
-       par%luminosity = ion_Ltot
+       xr = amr_grid%xrange * par%distance2cm
+       yr = amr_grid%yrange * par%distance2cm
+       zr = amr_grid%zrange * par%distance2cm
+       asurf = 2.0_wp*(xr*yr + yr*zr + zr*xr)
     end if
-    deallocate(etab, ftab)
-  end subroutine setup_continuous_source_sampler
+
+    if (is_abs) then
+       !--- absolute J_E: the interior mean intensity of an isotropic field
+       !--- entering A is J itself, so L_band = pi A int J_E dE.  With
+       !--- par%ext_intensity set the field is rescaled to that band-integrated
+       !--- J, which makes L_band = pi A J exactly - no quadrature enters.
+       if (par%ext_intensity > 0.0_wp) then
+          band_L = pi * asurf * par%ext_intensity
+       else
+          band_L = pi * asurf * sampler%total_integral
+       end if
+    else
+       !--- legacy shape: par%ext_intensity is the IONIZING-segment J, so the
+       !--- entering ionizing power is pi J A and the FUV part rides on the
+       !--- spectrum shape through f_ion.
+       f_ion = ionizing_fraction(sampler)
+       if (f_ion <= 0.0_wp) then
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             'ERROR: the external spectrum has no luminosity inside the ionizing band.'
+          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       end if
+       band_L = pi * par%ext_intensity * asurf / f_ion
+    end if
+  end subroutine build_external_field_sampler
 
   !=========================================================================
   ! Bin index for a photon energy eph [eV]: the bin whose edges bracket eph
@@ -287,10 +621,14 @@ contains
   ! clamped to the ionizing bins [nfuv_band+1, nnu_band].  Used for the diffuse
   ! recombination photons (all ionizing) on BOTH the aligned and the log grid.
   !=========================================================================
-  integer function ion_bin_of(eph)
+  integer function ion_bin_of(eph, include_fuv)
     implicit none
     real(kind=wp), intent(in) :: eph
+    logical, intent(in), optional :: include_fuv
     integer :: lo, hi, mid
+    logical :: fuv
+    fuv = .false.
+    if (present(include_fuv)) fuv = include_fuv
     lo = 1;  hi = nnu_band
     do while (lo < hi)
        mid = (lo + hi + 1)/2
@@ -300,7 +638,11 @@ contains
           hi = mid - 1
        end if
     end do
-    ion_bin_of = min(max(lo, nfuv_band+1), nnu_band)
+    if (fuv) then
+       ion_bin_of = min(max(lo, 1), nnu_band)
+    else
+       ion_bin_of = min(max(lo, nfuv_band+1), nnu_band)
+    end if
   end function ion_bin_of
 
   !=========================================================================
@@ -323,11 +665,10 @@ contains
   !=========================================================================
   ! Multi-component band setup.  Builds one bin-luminosity array lum_c per
   ! component (each from its own spectrum), accumulates ion_lum = sum_c lum_c,
-  ! and forms the component-selection CDF (src_cdf, over band totals) plus each
-  ! component's bin CDF (ion_cdf_src).  Internal point sources are normalized to
-  ! src_lum(i) (physical file with src_lum unset = derived from the file); the
-  ! external field is built by build_ext_bins (absolute preset/physical file or
-  ! legacy shape).  The single global ion_cdf is kept meaningful too.
+  ! and forms the component-selection CDF (src_cdf, over band totals).  Internal
+  ! point sources are normalized to src_lum(i) (physical file with src_lum unset
+  ! = derived from the file); the external field is built by build_ext_bins
+  ! (absolute preset/physical file or legacy shape).
   !=========================================================================
   subroutine setup_multi_components(eedge, nnu, nfuv, nsub)
     implicit none
@@ -342,9 +683,7 @@ contains
     ext_on = external_on()
     if (allocated(comp_kind))   deallocate(comp_kind)
     if (allocated(src_cdf))     deallocate(src_cdf)
-    if (allocated(ion_cdf_src)) deallocate(ion_cdf_src)
-    allocate(comp_kind(ncomp), comp_L(ncomp), src_cdf(ncomp), &
-             ion_cdf_src(nnu, ncomp), lum_c(nnu))
+    allocate(comp_kind(ncomp), comp_L(ncomp), src_cdf(ncomp), lum_c(nnu))
     allocate(src_used(max(par%nsource,1)), src_derived(max(par%nsource,1)))
     src_used = 0.0_wp;  src_derived = .false.
     ion_lum(:) = 0.0_wp
@@ -360,7 +699,6 @@ contains
        src_derived(is) = is_abs .and. (par%src_lum(is) <= 0.0_wp)
        comp_L(ic) = sum(lum_c)                     ! band total (incl. FUV)
        ion_lum = ion_lum + lum_c
-       call fill_cdf(ion_cdf_src(:,ic), lum_c, nnu)
     end do
 
     !--- external isotropic field (absolute preset/physical file or legacy).
@@ -370,12 +708,9 @@ contains
        call build_ext_bins(lum_c, eedge, nnu, nfuv, nsub, Lenter, Jband, uFUV, presid)
        comp_L(ic) = sum(lum_c)
        ion_lum = ion_lum + lum_c
-       call fill_cdf(ion_cdf_src(:,ic), lum_c, nnu)
     end if
 
     ion_Ltot = sum(ion_lum)
-    !--- global bin CDF (kept meaningful for anything reading ion_lum).
-    call fill_cdf(ion_cdf, ion_lum, nnu)
     !--- component-selection CDF over the band totals.
     src_cdf(1) = comp_L(1)
     do ic = 2, ncomp
@@ -412,23 +747,6 @@ contains
     end if
     deallocate(lum_c, comp_L, src_used, src_derived)
   end subroutine setup_multi_components
-
-  !=========================================================================
-  ! Cumulative sampling CDF over bins from a bin-luminosity array (normalized
-  ! to end at 1).  Shared by the fast path and the multi-component path.
-  !=========================================================================
-  subroutine fill_cdf(cdf, lum, nnu)
-    implicit none
-    real(kind=wp), intent(out) :: cdf(:)
-    real(kind=wp), intent(in)  :: lum(:)
-    integer,       intent(in)  :: nnu
-    integer :: i
-    cdf(1) = lum(1)
-    do i = 2, nnu
-       cdf(i) = cdf(i-1) + lum(i)
-    end do
-    cdf(1:nnu) = cdf(1:nnu) / cdf(nnu)
-  end subroutine fill_cdf
 
   !=========================================================================
   ! rank-0 band-grid log line (shared by both setup paths).
@@ -1470,14 +1788,16 @@ contains
 
   !=========================================================================
   ! Ionizing source packet.  With a single source component the legacy fast
-  ! path is taken (position/direction from par%source_geometry, bin from
-  ! ion_cdf).  With several components a component is drawn in proportion to
-  ! its band luminosity (src_cdf), the packet is emitted from it, and its
-  ! frequency bin is drawn from that component's spectrum (ion_cdf_src):
+  ! path is taken (position/direction from par%source_geometry, energy from that
+  ! component's spectrum).  With several components a component is drawn in
+  ! proportion to its band luminosity (src_cdf), the packet is emitted from it,
+  ! and its energy is drawn from that component's own spectrum:
   !   comp_kind = i>=1 - internal point source i (par%src_x/y/z(i)), isotropic;
   !   comp_kind = 0    - external field (par%ext_geometry 'rec'/'sph').
   ! Every packet carries the same Lpacket = ion_Ltot / nphotons, so component c
-  ! collects a band luminosity equal to its share of ion_Ltot.
+  ! collects a band luminosity equal to its share of ion_Ltot.  photon%inu is
+  ! the diagnostic bin the sampled energy falls in; the transported quantity is
+  ! the energy itself.
   !=========================================================================
   subroutine gen_ion_photon(photon)
     use random,     only : rand_number
@@ -1487,6 +1807,8 @@ contains
     real(kind=wp) :: u, sampled_energy
     integer :: i, ic, ik
 
+    if (.not. source_energy_sampler_ready) &
+       error stop 'source energy sampler is not initialized'
     if (.not. multi_src) then
        !--- single-component fast path (legacy RNG stream): emit by geometry.
        select case (trim(par%source_geometry))
@@ -1500,23 +1822,9 @@ contains
           call emit_slab(photon)
        end select
        u = rand_number()
-       if (trim(par%ion_energy_mode) == 'continuous') then
-          if (.not. source_energy_sampler_ready) &
-             error stop 'continuous source energy sampler is not initialized'
-          sampled_energy = sample_energy_cdf(source_energy_sampler, u)
-          photon%inu = ion_bin_of(sampled_energy)
-       else
-          photon%inu = nnu_band
-          do i = 1, nnu_band
-             if (u <= ion_cdf(i)) then
-                photon%inu = i
-                exit
-             end if
-          end do
-          sampled_energy = ion_e(photon%inu)
-       end if
+       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u)
     else
-       !--- multi-component: pick a component, emit from it, draw its bin.
+       !--- multi-component: pick a component, emit from it, draw its energy.
        u = rand_number()
        ic = ncomp
        do i = 1, ncomp
@@ -1534,20 +1842,13 @@ contains
           call emit_external_rec(photon)
        end if
        u = rand_number()
-       photon%inu = nnu_band
-       do i = 1, nnu_band
-          if (u <= ion_cdf_src(i, ic)) then
-             photon%inu = i
-             exit
-          end if
-       end do
-       sampled_energy = ion_e(photon%inu)
+       sampled_energy = sample_energy_cdf(source_energy_sampler(ic), u)
     end if
+    photon%inu = ion_bin_of(sampled_energy, include_fuv=.true.)
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
-    call assign_ion_packet_energy(photon%energy_eV, sampled_energy, &
-                                  ion_e(photon%inu), par%ion_energy_mode)
+    photon%energy_eV = sampled_energy
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)
@@ -1559,12 +1860,12 @@ contains
   ! (docs/QUASI_RANDOM_LAUNCH.md).  Two layouts:
   !
   !  * SINGLE internal point source (stage-1, 3 dims) - preserved bit-for-bit:
-  !      u(1) -> frequency bin (ion_cdf inverse);  u(2) -> mu = 2u-1;
-  !      u(3) -> phi = 2 pi u.
+  !      u(1) -> photon energy (the component's spectral CDF inverse);
+  !      u(2) -> mu = 2u-1;  u(3) -> phi = 2 pi u.
   !  * SUPERSET (7 dims) - every other configuration (single external,
   !      multiple points, mixed):
   !      u(1) source component (src_cdf; unused with one component);
-  !      u(2) frequency bin (the component's CDF);
+  !      u(2) photon energy (the component's spectral CDF);
   !      u(3) polar / incidence angle;   u(4) azimuth;
   !      u(5) rectangular entry face / sphere entry-point cos;
   !      u(6) first surface coordinate / sphere entry-point azimuth;
@@ -1584,36 +1885,28 @@ contains
     integer :: i, ic, ik
     real(kind=wp) :: sampled_energy
 
+    if (.not. source_energy_sampler_ready) &
+       error stop 'source energy sampler is not initialized'
     if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
-       !--- single point source: stage-1 layout (u1 = frequency).
+       !--- single point source: stage-1 layout (u1 = photon energy).
        call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
                            u(2), u(3))
-       if (trim(par%ion_energy_mode) == 'continuous') then
-          if (.not. source_energy_sampler_ready) &
-             error stop 'continuous source energy sampler is not initialized'
-          sampled_energy = sample_energy_cdf(source_energy_sampler, u(1))
-          photon%inu = ion_bin_of(sampled_energy)
-       else
-          photon%inu = bin_from_cdf(ion_cdf, u(1))
-          sampled_energy = ion_e(photon%inu)
-       end if
+       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(1))
     else if ((.not. multi_src) .and. trim(par%source_geometry) == 'slab') then
-       !--- slab layout: u1 frequency, u2 face, u3/u4 xy, u5 mu, u6 phi.
+       !--- slab layout: u1 energy, u2 face, u3/u4 xy, u5 mu, u6 phi.
        call emit_slab_qmc(photon, u(2), u(3), u(4), u(5), u(6))
-       photon%inu = bin_from_cdf(ion_cdf, u(1))
-       sampled_energy = ion_e(photon%inu)
+       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(1))
     else if (.not. multi_src) then
        !--- single external component (nsource=0): superset angle/surface dims,
-       !--- frequency from the global CDF (u2).  d1 (component) is unused.
+       !--- energy from the component's spectrum (u2).  d1 (component) is unused.
        if (trim(par%source_geometry) == 'external_sph') then
           call emit_external_sph_qmc(photon, u(3), u(4), u(5), u(6))
        else
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
-       photon%inu = bin_from_cdf(ion_cdf, u(2))
-       sampled_energy = ion_e(photon%inu)
+       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(2))
     else
-       !--- multi-component: pick a component (u1), emit from it, draw its bin.
+       !--- multi-component: pick a component (u1), emit from it, draw its energy.
        ic = ncomp
        do i = 1, ncomp
           if (u(1) <= src_cdf(i)) then
@@ -1629,35 +1922,17 @@ contains
        else
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
-       photon%inu = bin_from_cdf(ion_cdf_src(:,ic), u(2))
-       sampled_energy = ion_e(photon%inu)
+       sampled_energy = sample_energy_cdf(source_energy_sampler(ic), u(2))
     end if
+    photon%inu = ion_bin_of(sampled_energy, include_fuv=.true.)
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
-    call assign_ion_packet_energy(photon%energy_eV, sampled_energy, &
-                                  ion_e(photon%inu), par%ion_energy_mode)
+    photon%energy_eV = sampled_energy
     photon%nscatt  = 0
     photon%inside  = .true.
     photon%icell_amr = amr_find_leaf(photon%x, photon%y, photon%z)
   end subroutine gen_ion_photon_qmc
-
-  !=========================================================================
-  ! Frequency bin from a monotone CDF and a launch uniform uf: the smallest bin
-  ! i with uf <= cdf(i).  Same linear inverse as gen_ion_photon.
-  !=========================================================================
-  integer function bin_from_cdf(cdf, uf) result(inu)
-    implicit none
-    real(kind=wp), intent(in) :: cdf(:)
-    real(kind=wp), intent(in) :: uf
-    integer :: i
-    inu = nnu_band
-    do i = 1, nnu_band
-       if (uf <= cdf(i)) then
-          inu = i;  exit
-       end if
-    end do
-  end function bin_from_cdf
 
   !=========================================================================
   ! Emit an internal point source at (xs,ys,zs) with an isotropic 4pi

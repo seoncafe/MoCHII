@@ -323,7 +323,7 @@ the resolution, with the G-f numbers, and the five-code comparison loses its
 one MoCHII deficiency), `data/atomic/README.md` (the density caveat paragraph
 is replaced by the runtime treatment), `docs/MoCHII_UserGuide.tex`
 (`cooling_model` row), `README.md` features bullet, `CLAUDE.md`, and
-`paper/mochii.tex` (the limitation paragraph, the benchmark numbers, the
+`MoCHII_paper/mochii.tex` (the limitation paragraph, the benchmark numbers, the
 cooling-verification section).
 
 ## 5. Predictions (so the gates can falsify them)

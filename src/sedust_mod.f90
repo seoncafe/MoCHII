@@ -13,70 +13,68 @@ module sedust_mod
 ! are optically thin to the re-emitted IR, no Lucy re-iteration is
 ! needed and the grid-integrated SED is accumulated directly.
 !
-! Field mapping: the band covers lambda = 1.24/E_max ... 1.24/E_min um;
-! SEDust's optics grid starts at ~0.0912 um, so the EUV part of J below
-! its grid minimum is deposited energy-conservingly into the shortest
-! SEDust bin (the stochastic spike hardness is slightly underestimated
-! there — documented approximation).
+! Field mapping: the band covers lambda = 1.24/E_max ... 1.24/E_min um.
+! With par%ion_add_dust the shared grain model (grain_model_mod) is built
+! down to 1.24/eion_max, so the whole EUV band falls on the model grid and
+! the grains absorb it with their own cross sections.  In an emission-only
+! run (ion_add_dust off) the model keeps its native grid, which starts at
+! ~0.0912 um, and the EUV part of J below that minimum is deposited
+! energy-conservingly into the shortest SEDust bin (the stochastic spike
+! hardness is slightly underestimated there — documented approximation).
 !
 ! SEDust reads its dielectric tables relative to its sed/ directory:
 ! par%sed_workdir must point at a SEDust sed/ tree (e.g. the MoCafe copy,
 ! read-only) and par%sed_qtable / par%sed_sizedist at the optics tables.
 !---------------------------------------------------------------------------
   use define
-  use dust_lib, only : dust_model_t, build_astrodust, build_dl07, &
-                       build_zubko, dust_emission, dust_nlam, dust_lambda
+  use dust_lib,        only : dust_model_t, dust_emission, dust_nlam, dust_lambda
+  !--- the grain population model is shared with gas_opacity_mod / dust_temp_mod
+  !--- (grain_model_mod): the absorbed power and the reemitted spectrum then
+  !--- refer to the SAME grains.  gas_opacity_setup builds it first when the
+  !--- ionizing band carries dust, so build_grain_model here is a no-op reuse.
+  use grain_model_mod, only : dmodel, build_grain_model
   implicit none
   private
 
   public :: sedust_setup, sedust_compute_write
+  public :: sedust_leaf_spectrum, sedust_lambda_grid
 
-  type(dust_model_t)         :: dmodel
   integer                    :: nl_sed = 0
   real(kind=wp), allocatable :: lam_sed(:)
   !--- index of the model's 'PAH' output channel (0 = none; the
   !--- par%sed_pah_live weighting needs it).
   integer                    :: ipah_chan = 0
+  !--- scratch of one leaf's solve, allocated once: the band-bin wavelengths
+  !--- and J_lambda, the same field mapped onto the SEDust grid, the emitted
+  !--- lambda I_lambda and its per-channel split.
+  real(kind=wp), allocatable :: lam_b(:), Jlam_b(:), Jsed(:), lamI(:)
+  real(kind=wp), allocatable :: lamI_ch(:,:)
+  real(kind=wp)              :: dlam1 = 0.0_wp
 
 contains
 
   !=========================================================================
   subroutine sedust_setup()
-    use mpi
-    use ifport, only : chdir, getcwd
+    use ion_band_mod, only : ion_e, nnu_band
     implicit none
-    integer :: ierr, cstat
-    character(len=512) :: cwd_save
+    integer :: b
 
-    cstat = getcwd(cwd_save)
-    if (len_trim(par%sed_workdir) > 0) then
-       cstat = chdir(trim(par%sed_workdir))
-       if (cstat /= 0 .and. mpar%p_rank == 0) write(*,'(3a)') &
-          'WARNING: could not chdir to par%sed_workdir = ''', &
-          trim(par%sed_workdir), ''''
-    end if
+    !--- idempotent: the emission transport builds the model before the
+    !--- output pass asks for it again.
+    if (nl_sed > 0) return
 
-    select case (trim(par%dust_model_sed))
-    case ('astrodust')
-       call build_astrodust(dmodel, trim(par%sed_qtable), &
-            trim(par%sed_sizedist), par%sed_NT, par%sed_Tlo, par%sed_Thi)
-    case ('dl07')
-       call build_dl07(dmodel, trim(par%sed_qtable), trim(par%sed_sizedist), &
-            par%sed_dl07_sdindex, par%sed_dl07_uisrf, &
-            par%sed_NT, par%sed_Tlo, par%sed_Thi)
-    case ('zubko')
-       call build_zubko(dmodel, trim(par%sed_zubko_config), &
-            trim(par%sed_zubko_dir), par%sed_NT, par%sed_Tlo, par%sed_Thi)
-    case default
-       cstat = chdir(trim(cwd_save))
-       if (mpar%p_rank == 0) write(*,'(3a)') 'ERROR: dust_model_sed = ''', &
-          trim(par%dust_model_sed), ''' (astrodust/dl07/zubko).'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-    end select
-    cstat = chdir(trim(cwd_save))
+    !--- build (or reuse) the shared SEDust grain model.
+    call build_grain_model()
 
     nl_sed  = dust_nlam(dmodel)
     lam_sed = dust_lambda(dmodel)
+
+    allocate(lam_b(nnu_band), Jlam_b(nnu_band))
+    allocate(Jsed(nl_sed), lamI(nl_sed))
+    do b = 1, nnu_band
+       lam_b(b) = 1.23984_wp/ion_e(b)          ! um (descending in b)
+    end do
+    dlam1 = lam_sed(2) - lam_sed(1)
 
     !--- locate the 'PAH' output channel for par%sed_pah_live.
     ipah_chan = 0
@@ -103,28 +101,108 @@ contains
   end subroutine sedust_setup
 
   !=========================================================================
+  ! The SEDust model's wavelength grid [um].
+  !=========================================================================
+  function sedust_lambda_grid() result(lam)
+    implicit none
+    real(kind=wp), allocatable :: lam(:)
+    lam = lam_sed
+  end function sedust_lambda_grid
+
+  !=========================================================================
+  ! Emission spectrum of ONE leaf: the local mean intensity built from the
+  ! transported band tally is handed to SEDust, which returns lambda
+  ! I_lambda; pdf(k) = lamI(k)/lam_sed(k) is then proportional to L_lambda
+  ! and esum = Int pdf dlambda is its trapezoid integral, so the leaf's
+  ! absolutely normalized emission is L_lambda(k) = Labs*pdf(k)/esum with
+  ! Labs = Heat_dust*V.  esum <= 0 means this leaf emits nothing.
+  !
+  ! Single source of the SEDust leaf spectrum: the grid-integrated SED output
+  ! and the emitted-photon launch both come through here.
+  !=========================================================================
+  subroutine sedust_leaf_spectrum(il, pdf, esum)
+    use octree_mod,    only : leaf_half
+    use jtally_mod,    only : jt_ion
+    use ion_band_mod,  only : ion_dnu, nnu_band
+    use gas_state_mod, only : gas_xHI
+    implicit none
+    integer,       intent(in)  :: il
+    real(kind=wp), intent(out) :: pdf(:), esum
+    real(kind=wp) :: vol, extra, xh, wd, wpah
+    integer :: b, k
+
+    pdf  = 0.0_wp
+    esum = 0.0_wp
+    vol  = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+    !--- J_lambda [SI, W/m^2/sr/m] of this leaf on the band bins.
+    do b = 1, nnu_band
+       !--- J_nu = jt/(4 pi V_code d_cm^2 dnu); J_lambda = J_nu c/lambda^2
+       Jlam_b(b) = jt_ion(b,il)/(fourpi*(vol/par%distance2cm**3) &
+                   *par%distance2cm**2*ion_dnu(b)) &
+                   * (2.99792458e14_wp/lam_b(b)**2)      ! cgs per um
+       Jlam_b(b) = Jlam_b(b)*1.0e3_wp                     ! -> SI per m
+    end do
+    !--- map onto the SEDust grid: interpolate inside the overlap,
+    !--- deposit the below-grid EUV energy into the first bin.
+    Jsed = 0.0_wp
+    extra = 0.0_wp
+    do b = 1, nnu_band
+       if (lam_b(b) < lam_sed(1)) then
+          !--- energy flux of this bin [SI]: J_lambda dlambda with
+          !--- dlambda = lambda^2 dnu / c
+          extra = extra + Jlam_b(b)*(lam_b(b)**2*ion_dnu(b) &
+                  /2.99792458e14_wp)*1.0e-6_wp            ! m
+       end if
+    end do
+    do k = 1, nl_sed
+       if (lam_sed(k) > lam_b(1)) exit                    ! beyond band max
+       if (lam_sed(k) < lam_b(nnu_band)) cycle         ! below band min handled above
+       Jsed(k) = interp_band(lam_b, Jlam_b, lam_sed(k))
+    end do
+    Jsed(1) = Jsed(1) + extra/(dlam1*1.0e-6_wp)
+    !--- SEDust emission shape, normalized to the absorbed power.
+    !--- With sed_pah_live the PAH channel is weighted by the leaf's
+    !--- PAH survival (xHI + f_ion_pah xHII), divided under
+    !--- laursen09_live by the dust survival already in rhokap.
+    if (ipah_chan > 0) then
+       if (.not. allocated(lamI_ch)) &
+          allocate(lamI_ch(nl_sed, dmodel%n_channel))
+       call dust_emission(dmodel, Jsed, lamI, lamI_ch)
+       xh   = gas_xHI(il)
+       wpah = xh + par%f_ion_pah*(1.0_wp - xh)
+       wd   = 1.0_wp
+       if (trim(par%dust_model) == 'laursen09_live') &
+          wd = max(xh + par%f_ion_dust*(1.0_wp - xh), tinest)
+       lamI = lamI + (wpah/wd - 1.0_wp)*lamI_ch(:, ipah_chan)
+    else
+       call dust_emission(dmodel, Jsed, lamI)
+    end if
+    do k = 1, nl_sed
+       pdf(k) = max(lamI(k), 0.0_wp)/lam_sed(k)
+    end do
+    esum = 0.0_wp
+    do k = 1, nl_sed-1
+       esum = esum + 0.5_wp*(pdf(k) + pdf(k+1))*(lam_sed(k+1) - lam_sed(k))
+    end do
+  end subroutine sedust_leaf_spectrum
+
+  !=========================================================================
   ! Grid-integrated stochastic dust SED.  heat_dust [erg/s/cm^3] sets each
   ! leaf's absolute emission; SEDust sets the shape from the local field.
   !=========================================================================
   subroutine sedust_compute_write(heat_dust)
     use mpi
     use octree_mod, only : amr_grid, leaf_half
-    use jtally_mod,      only : jt_ion
-    use ion_band_mod,    only : ion_e, ion_dnu, nnu_band
     use utility,         only : get_base_name, is_finite
-    use gas_state_mod,   only : gas_xHI
     implicit none
     real(kind=wp), intent(in) :: heat_dust(:)
-    real(kind=wp), allocatable :: Ltot(:), Jsed(:), lamI(:), pdf(:)
-    real(kind=wp), allocatable :: lam_b(:), Jlam_b(:), lamI_ch(:,:)
-    real(kind=wp) :: band_wl(8), vol, Labs, esum, dlam1, extra
-    real(kind=wp) :: xh, wd, wpah
+    real(kind=wp), allocatable :: Ltot(:), pdf(:)
+    real(kind=wp) :: band_wl(8), vol, Labs, esum
     real(kind=wp), allocatable :: em_band(:,:)
     character(len=192) :: outname
-    integer :: il, ic, k, b, unit, ierr, ndone, nmine, nband, ib
+    integer :: il, ic, k, unit, ierr, ndone, nmine, nband, ib
 
-    allocate(Ltot(nl_sed), Jsed(nl_sed), lamI(nl_sed), pdf(nl_sed))
-    allocate(lam_b(nnu_band), Jlam_b(nnu_band))
+    allocate(Ltot(nl_sed), pdf(nl_sed))
     Ltot = 0.0_wp
     !--- dust-band leaf emissivities (par%dust_emis_bands, um).
     nband = count(is_finite(par%dust_emis_bands))
@@ -134,10 +212,6 @@ contains
        allocate(em_band(nband, amr_grid%nleaf))
        em_band = 0.0_wp
     end if
-    do b = 1, nnu_band
-       lam_b(b) = 1.23984_wp/ion_e(b)          ! um (descending in b)
-    end do
-    dlam1 = lam_sed(2) - lam_sed(1)
 
     nmine = (amr_grid%nleaf - mpar%p_rank + mpar%nproc - 1)/mpar%nproc
     ndone = 0
@@ -152,56 +226,7 @@ contains
        if (heat_dust(il) <= 0.0_wp) cycle
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        Labs = heat_dust(il)*vol
-       !--- J_lambda [SI, W/m^2/sr/m] of this leaf on the band bins.
-       do b = 1, nnu_band
-          !--- J_nu = jt/(4 pi V_code d_cm^2 dnu); J_lambda = J_nu c/lambda^2
-          Jlam_b(b) = jt_ion(b,il)/(fourpi*(vol/par%distance2cm**3) &
-                      *par%distance2cm**2*ion_dnu(b)) &
-                      * (2.99792458e14_wp/lam_b(b)**2)      ! cgs per um
-          Jlam_b(b) = Jlam_b(b)*1.0e3_wp                     ! -> SI per m
-       end do
-       !--- map onto the SEDust grid: interpolate inside the overlap,
-       !--- deposit the below-grid EUV energy into the first bin.
-       Jsed = 0.0_wp
-       extra = 0.0_wp
-       do b = 1, nnu_band
-          if (lam_b(b) < lam_sed(1)) then
-             !--- energy flux of this bin [SI]: J_lambda dlambda with
-             !--- dlambda = lambda^2 dnu / c
-             extra = extra + Jlam_b(b)*(lam_b(b)**2*ion_dnu(b) &
-                     /2.99792458e14_wp)*1.0e-6_wp            ! m
-          end if
-       end do
-       do k = 1, nl_sed
-          if (lam_sed(k) > lam_b(1)) exit                    ! beyond band max
-          if (lam_sed(k) < lam_b(nnu_band)) cycle         ! below band min handled above
-          Jsed(k) = interp_band(lam_b, Jlam_b, lam_sed(k))
-       end do
-       Jsed(1) = Jsed(1) + extra/(dlam1*1.0e-6_wp)
-       !--- SEDust emission shape, normalized to the absorbed power.
-       !--- With sed_pah_live the PAH channel is weighted by the leaf's
-       !--- PAH survival (xHI + f_ion_pah xHII), divided under
-       !--- laursen09_live by the dust survival already in rhokap.
-       if (ipah_chan > 0) then
-          if (.not. allocated(lamI_ch)) &
-             allocate(lamI_ch(nl_sed, dmodel%n_channel))
-          call dust_emission(dmodel, Jsed, lamI, lamI_ch)
-          xh   = gas_xHI(il)
-          wpah = xh + par%f_ion_pah*(1.0_wp - xh)
-          wd   = 1.0_wp
-          if (trim(par%dust_model) == 'laursen09_live') &
-             wd = max(xh + par%f_ion_dust*(1.0_wp - xh), tinest)
-          lamI = lamI + (wpah/wd - 1.0_wp)*lamI_ch(:, ipah_chan)
-       else
-          call dust_emission(dmodel, Jsed, lamI)
-       end if
-       do k = 1, nl_sed
-          pdf(k) = max(lamI(k), 0.0_wp)/lam_sed(k)
-       end do
-       esum = 0.0_wp
-       do k = 1, nl_sed-1
-          esum = esum + 0.5_wp*(pdf(k) + pdf(k+1))*(lam_sed(k+1) - lam_sed(k))
-       end do
+       call sedust_leaf_spectrum(il, pdf, esum)
        if (esum <= 0.0_wp) cycle
        do k = 1, nl_sed
           Ltot(k) = Ltot(k) + Labs*pdf(k)/esum               ! L_lambda [erg/s/um]
@@ -242,7 +267,7 @@ contains
        write(*,'(2a)') ' SEDU: dust SED written to: ', trim(outname)
        write(*,'(a,es12.4,a)') ' SEDU: total dust luminosity = ', esum, ' erg/s'
     end if
-    deallocate(Ltot, Jsed, lamI, pdf, lam_b, Jlam_b)
+    deallocate(Ltot, pdf)
 
   contains
 

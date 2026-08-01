@@ -3,7 +3,7 @@
 Kwang-il Seon — drafted 2026-07-30 (Claude session; reviewed plan, not yet
 started).  Companion to `docs/PLAN.md`; same staged-gate discipline.
 
-Owner document for the two metal feedbacks that `paper/mochii.tex` records as
+Owner document for the two metal feedbacks that `MoCHII_paper/mochii.tex` records as
 genuinely absent from MoCHII and present in Cloudy — two-way charge exchange
 and metal recombination continua as a diffuse source — and for the
 measurements that size them.  The manuscript already points here by name.
@@ -1423,7 +1423,7 @@ Not a physics stage; listed so the ripple is done once.
 - `data/atomic/README.md`: the placeholder charge-exchange entries.
 - `docs/MoCHII_physics.tex`: the M1 formula, the G-M1a gate, the G-M2 switch
   matrix, and the `eps` diagnostic of 3.4.  `docs/MoCHII_UserGuide.tex`: the
-  `par%charge_exchange` row.  `paper/mochii.tex`: the paragraph that already
+  `par%charge_exchange` row.  `MoCHII_paper/mochii.tex`: the paragraph that already
   points here (Section 1) gains the M1 result and the M2 numbers.
 - `CLAUDE.md`: status and next steps.
 

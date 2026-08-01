@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII car-grid namelist test: the SAME Stromgren sphere as uni_dda.in
  ! (uniform nH=100, R=4 pc sphere, Q_H=1e49, case B, Te=1e4 K) but built
  ! entirely from the namelist -- no amr_file.  par%nH_const sets the uniform

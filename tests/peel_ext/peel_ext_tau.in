@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII external-field peel gate (attenuation morphology).  Same isotropic
  ! external field as peel_ext_thin, but nH_const = 0.03 so the central chord
  ! (full box, L = 2*zmax = 4 pc) has tau ~ 2 in the lowest ionizing bin.

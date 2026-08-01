@@ -17,7 +17,6 @@ contains
   implicit none
 
   character(len=128) :: model_infile, arg
-  character(len=256) :: continuous_reason
   character(len=256) :: exepath
   integer :: unit, ierr, islash
 
@@ -473,41 +472,22 @@ contains
         'ERROR: par%no_photons must be >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (trim(par%ion_energy_mode) /= 'grouped' .and. &
-      trim(par%ion_energy_mode) /= 'continuous') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%ion_energy_mode must be ''continuous'' (default) or ''grouped''.'
-     call MPI_FINALIZE(ierr);  stop
-  endif
   if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%source_cdf_tol must be in (0, 1).'
      call MPI_FINALIZE(ierr);  stop
   endif
-  !--- First complete continuous-energy vertical slice.  Source sampling,
-  !--- packet opacity, and H/He ionization/heating are activated atomically,
-  !--- but unsupported coupled features remain fail-fast rather than falling
-  !--- back to grouped physics.
-  if (trim(par%ion_energy_mode) == 'continuous') then
-     continuous_reason = ''
-     if (trim(par%source_geometry) /= 'point' .or. par%nsource /= 1) &
-        continuous_reason = 'one internal point source'
-     if (par%ext_intensity > 0.0_wp .or. len_trim(par%ext_spectrum) > 0) &
-        continuous_reason = 'no external source'
-     if (len_trim(par%ion_spectrum) == 0 .and. &
-         len_trim(par%src_spectrum_file) == 0 .and. par%tstar <= 0.0_wp) &
-        continuous_reason = 'a Planck or tabulated internal-source spectrum'
-     if (par%add_fuv) continuous_reason = 'add_fuv=.false.'
-     if (par%ion_add_dust) continuous_reason = 'ion_add_dust=.false.'
-     if (par%use_sec_ion) continuous_reason = 'use_sec_ion=.false.'
-     if (par%hei_metastable) continuous_reason = 'hei_metastable=.false.'
-     if (par%ion_peel) continuous_reason = 'ion_peel=.false.'
-     if (len_trim(continuous_reason) > 0) then
-        if (mpar%p_rank == 0) write(*,'(3a)') &
-           'ERROR: continuous H/He vertical slice requires ', &
-           trim(continuous_reason), '; unsupported features never use grouped fallback.'
-        call MPI_FINALIZE(ierr);  stop 1
-     end if
+  !--- Energy sampling covers every source configuration (point sources,
+  !--- external field, slab), so the one requirement is that SOME spectrum is
+  !--- defined for the components to sample.
+  if (len_trim(par%ion_spectrum) == 0 .and. &
+      len_trim(par%src_spectrum_file) == 0 .and. &
+      len_trim(par%ext_spectrum) == 0 .and. &
+      par%tstar <= 0.0_wp .and. par%ext_tstar <= 0.0_wp .and. &
+      all(par%src_tstar <= 0.0_wp)) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: the ionizing band needs a Planck or tabulated source spectrum.'
+     call MPI_FINALIZE(ierr);  stop 1
   endif
   if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
@@ -574,10 +554,23 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
-  !--- dust in the ionizing band needs the EUV extinction table.
-  if (par%ion_add_dust .and. len_trim(par%ion_dust_kext) == 0) then
+  !--- dust in the ionizing band needs extinction optics: either the EUV kext
+  !--- table (par%ion_dust_kext, which OVERRIDES the model) or the SEDust grain
+  !--- model (par%dust_model_sed), extended into the EUV.  gas_opacity_mod
+  !--- checks the grain model actually covers the band (Zubko cannot).
+  if (par%ion_add_dust .and. len_trim(par%ion_dust_kext) == 0 .and. &
+      mpar%p_rank == 0) write(*,'(3a)') &
+     ' NOTE: par%ion_add_dust with no par%ion_dust_kext -> ionizing-band dust '// &
+     'optics from the ''', trim(par%dust_model_sed), ''' SEDust grain model.'
+
+  if (par%grain_pe .and. .not. par%add_fuv) then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ion_add_dust requires par%ion_dust_kext (EUV kext table).'
+        'ERROR: par%grain_pe needs par%add_fuv (the FUV field is its heating source).'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%grain_pe .and. .not. par%ion_add_dust) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%grain_pe needs par%ion_add_dust (grain opacity carries the field).'
      call MPI_FINALIZE(ierr);  stop
   endif
 
@@ -618,11 +611,11 @@ contains
      write(*,'(2a)')    ' >>> START @ ', get_date_time()
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
+     if (par%ion_add_dust) &
+        write(*,'(a,l14)') 'Dust emission transported : ', par%dust_emis_transport
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
      write(*,'(2a)')    'Photon launch sequence    : ', trim(par%launch_sequence)
-     write(*,'(2a)')    'Ionizing energy mode      : ', trim(par%ion_energy_mode)
      write(*,'(a,es14.6)') 'Source CDF tolerance      : ', par%source_cdf_tol
-     write(*,'(a,l14)') 'Direct-rate shadow gate   : ', par%ion_shadow_rates
      if (trim(par%launch_sequence) == 'sobol') &
         write(*,'(a,i14)') 'QMC scramble seed         : ', par%qmc_seed
   endif

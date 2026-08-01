@@ -2,13 +2,15 @@ module gas_rates_mod
 !---------------------------------------------------------------------------
 ! MoCHII: photoionization and photoheating rate integrals.
 !
-! From the reduced ionizing-band tally jt_ion(inu, il) = Sum(Lpacket*wgt*dl)
-! [erg/s * code length], the mean intensity per leaf is
-!     J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2)  [erg/s/cm^2/Hz/sr]
-! and the rate integrals follow as bin sums:
-!     Gamma_i = Sum_nu 4 pi J_nu sigma_i(E) dnu / (h nu)          [s^-1]
-!     H_i     = Sum_nu 4 pi J_nu sigma_i(E) dnu (1 - E_th,i/E)    [erg/s]
-! both per particle of species i (i = HI, HeI, HeII).
+! Each transported packet scores its path against the cross sections at its own
+! photon energy (ion_score_mod), so the rate integrals
+!     Gamma_i = Int 4 pi J_nu sigma_i(E) dnu / (h nu)          [s^-1]
+!     H_i     = Int 4 pi J_nu sigma_i(E) dnu (1 - E_th,i/E)    [erg/s]
+! per particle of species i (i = HI, HeI, HeII) are accumulated continuously
+! rather than reconstructed from a binned tally.  This module normalizes those
+! reduced path sums by the leaf volume and hands them to the solver.  The
+! ionizing-band tally jt_ion(inu, il) remains a diagnostic spectrum, written out
+! as J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2) [erg/s/cm^2/Hz/sr].
 !
 ! gas_rates_write writes '<base>_rates.<ext>': Gamma / heating arrays,
 ! J_ion(nnu, nleaf), the energy grid, and leaf centers.
@@ -16,8 +18,7 @@ module gas_rates_mod
   use define
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use jtally_mod,   only : jt_ion
-  use ion_band_mod, only : ion_e, ion_de, ion_nu, ion_dnu, nnu_band
-  use photo_xsec,   only : sigma_HI, sigma_HeI, sigma_HeII
+  use ion_band_mod, only : ion_e, ion_de, ion_dnu, nnu_band
   implicit none
   private
 
@@ -29,6 +30,8 @@ module gas_rates_mod
   public :: secion_apply
   public :: sec_dgamma_HI, sec_dgamma_HeI
   public :: sec_heat_HI, sec_heat_HeI, sec_heat_HeII
+  !--- hard-part (E0 > E_SEC_ION) H I photoheating, exposed for the run log.
+  public :: heat_hard_HI
 
   real(kind=wp), allocatable :: gamma_HI(:), gamma_HeI(:), gamma_HeII(:)
   real(kind=wp), allocatable :: heat_HI(:),  heat_HeI(:),  heat_HeII(:)
@@ -78,10 +81,7 @@ contains
   !=========================================================================
   subroutine gas_rates_compute()
     implicit none
-    integer  :: il, inu, nleaf
-    real(kind=wp) :: vol, fac, hnu, sHI, sHeI, sHeII, fJ
-    real(kind=wp) :: sig_HI(nnu_band), sig_HeI(nnu_band), &
-                     sig_HeII(nnu_band)
+    integer  :: nleaf
 
     nleaf = amr_grid%nleaf
     if (allocated(gamma_HI)) then
@@ -111,97 +111,45 @@ contains
     si_HI_HI  = 0.0_wp;  si_HI_HeI  = 0.0_wp;  si_HI_HeII  = 0.0_wp
     si_HeI_HI = 0.0_wp;  si_HeI_HeI = 0.0_wp;  si_HeI_HeII = 0.0_wp
 
-    !--- Continuous H/He mode consumes the already reduced packet-energy
-    !--- estimators directly.  jt_ion remains populated only as a diagnostic
-    !--- spectrum and must not feed solver rates in this mode.
-    if (trim(par%ion_energy_mode) == 'continuous') then
-       block
-         use ion_score_mod, only : ion_score_apply_hhe
-         call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
-                                  heat_HI, heat_HeI, heat_HeII)
-       end block
-       sec_dgamma_HI = 0.0_wp;  sec_dgamma_HeI = 0.0_wp
-       sec_heat_HI = heat_HI
-       sec_heat_HeI = heat_HeI
-       sec_heat_HeII = heat_HeII
-       return
-    end if
-
-    !--- cross sections depend only on the (fixed) band, not on the leaf:
-    !--- evaluate once per bin instead of nleaf times (identical values).
-    do inu = 1, nnu_band
-       sig_HI(inu)   = sigma_HI(ion_e(inu))
-       sig_HeI(inu)  = sigma_HeI(ion_e(inu))
-       sig_HeII(inu) = sigma_HeII(ion_e(inu))
-    end do
-
-    do il = 1, nleaf
-       vol = (2.0_wp * leaf_half(il))**3
-       fac = 1.0_wp / (vol * par%distance2cm**2)     ! -> 4 pi J_nu dnu per bin
-       do inu = 1, nnu_band
-          fJ  = jt_ion(inu, il) * fac                ! 4 pi J dnu [erg/s/cm^2]
-          if (fJ <= 0.0_wp) cycle
-          hnu = ion_e(inu) * ev2erg                  ! photon energy [erg]
-          sHI   = sig_HI(inu)
-          sHeI  = sig_HeI(inu)
-          sHeII = sig_HeII(inu)
-          gamma_HI(il)   = gamma_HI(il)   + fJ*sHI  /hnu
-          gamma_HeI(il)  = gamma_HeI(il)  + fJ*sHeI /hnu
-          gamma_HeII(il) = gamma_HeII(il) + fJ*sHeII/hnu
-          heat_HI(il)   = heat_HI(il)   + fJ*sHI  *(1.0_wp - eth_HI  /ion_e(inu))
-          heat_HeI(il)  = heat_HeI(il)  + fJ*sHeI *(1.0_wp - eth_HeI /ion_e(inu))
-          heat_HeII(il) = heat_HeII(il) + fJ*sHeII*(1.0_wp - eth_HeII/ion_e(inu))
-          !--- secondary-ionization band integrals (par%use_sec_ion): the
-          !--- hard part (photoelectron energy E0 = h nu - E_th > 40 eV) of
-          !--- the excess-energy heating, and the secondary H I / He I
-          !--- ionization potentials from each absorber (h nu / E_th,sec
-          !--- ionizations of the secondary species).  x-independent.
-          if (par%use_sec_ion) then
-             if (ion_e(inu) > eth_HI + E_SEC_ION) then
-                heat_hard_HI(il) = heat_hard_HI(il) &
-                   + fJ*sHI*(1.0_wp - eth_HI/ion_e(inu))
-                si_HI_HI(il)  = si_HI_HI(il)  &
-                   + (fJ*sHI/hnu)*(ion_e(inu) - eth_HI)/eth_HI
-                si_HeI_HI(il) = si_HeI_HI(il) &
-                   + (fJ*sHI/hnu)*(ion_e(inu) - eth_HI)/eth_HeI
-             end if
-             if (ion_e(inu) > eth_HeI + E_SEC_ION) then
-                heat_hard_HeI(il) = heat_hard_HeI(il) &
-                   + fJ*sHeI*(1.0_wp - eth_HeI/ion_e(inu))
-                si_HI_HeI(il)  = si_HI_HeI(il)  &
-                   + (fJ*sHeI/hnu)*(ion_e(inu) - eth_HeI)/eth_HI
-                si_HeI_HeI(il) = si_HeI_HeI(il) &
-                   + (fJ*sHeI/hnu)*(ion_e(inu) - eth_HeI)/eth_HeI
-             end if
-             if (ion_e(inu) > eth_HeII + E_SEC_ION) then
-                heat_hard_HeII(il) = heat_hard_HeII(il) &
-                   + fJ*sHeII*(1.0_wp - eth_HeII/ion_e(inu))
-                si_HI_HeII(il)  = si_HI_HeII(il)  &
-                   + (fJ*sHeII/hnu)*(ion_e(inu) - eth_HeII)/eth_HI
-                si_HeI_HeII(il) = si_HeI_HeII(il) &
-                   + (fJ*sHeII/hnu)*(ion_e(inu) - eth_HeII)/eth_HeI
-             end if
-          end if
-          !--- EUV grain heating: 4 pi J dnu x kappa_abs,dust [per cm].
-          if (par%ion_add_dust) then
-             block
-               use gas_opacity_mod, only : ion_dust_sabs
-               heat_dust(il) = heat_dust(il) + fJ &
-                  * amr_grid%rhokap(il)*ion_dust_sabs(inu)/par%distance2cm
-             end block
-          end if
-          !--- Habing-unit FUV field (bins below the H threshold).
-          if (par%add_fuv .and. ion_e(inu) < par%eion_min) &
-             g0_fuv(il) = g0_fuv(il) + fJ/1.6e-3_wp
-       end do
-    end do
-
-    !--- trivial (switch-off) values so the ion/thermal call sites can use
-    !--- these unconditionally; secion_apply overwrites them when the
-    !--- switch is on.  With use_sec_ion off, sec_dgamma_* = 0 and
-    !--- sec_heat_* = heat_* exactly, so the balance is unchanged.
+    !--- The already reduced packet-energy path estimators are the rates.
+    !--- jt_ion stays populated only as a diagnostic spectrum and must not feed
+    !--- solver rates.
+    block
+      use ion_score_mod, only : ion_score_apply_hhe
+      call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
+                               heat_HI, heat_HeI, heat_HeII)
+    end block
+    !--- trivial (switch-off) values so the ion/thermal call sites can use these
+    !--- unconditionally; secion_apply overwrites them when the switch is on.
+    !--- With use_sec_ion off, sec_dgamma_* = 0 and sec_heat_* = heat_* exactly,
+    !--- so the balance is unchanged.
     sec_dgamma_HI = 0.0_wp;  sec_dgamma_HeI = 0.0_wp
-    sec_heat_HI = heat_HI;  sec_heat_HeI = heat_HeI;  sec_heat_HeII = heat_HeII
+    sec_heat_HI = heat_HI
+    sec_heat_HeI = heat_HeI
+    sec_heat_HeII = heat_HeII
+    if (par%ion_add_dust) then
+       block
+         use ion_score_mod, only : ion_score_apply_dust_heat
+         call ion_score_apply_dust_heat(heat_dust)
+       end block
+    end if
+    !--- fill the nine x-independent secondary-ionization band integrals from
+    !--- the exact-energy path estimators; secion_apply (main.f90) then folds
+    !--- the current gas state into sec_dgamma_* / sec_heat_*, overwriting the
+    !--- trivial values set just above.
+    if (par%use_sec_ion) then
+       block
+         use ion_score_mod, only : ion_score_apply_sec
+         call ion_score_apply_sec(heat_hard_HI, heat_hard_HeI, heat_hard_HeII, &
+              si_HI_HI, si_HI_HeI, si_HI_HeII, si_HeI_HI, si_HeI_HeI, si_HeI_HeII)
+       end block
+    end if
+    if (par%add_fuv) then
+       block
+         use ion_score_mod, only : ion_score_apply_g0
+         call ion_score_apply_g0(g0_fuv)
+       end block
+    end if
   end subroutine gas_rates_compute
 
   !=========================================================================
@@ -298,33 +246,27 @@ contains
     call io_put_keyword(file,'FINALDTE',run_final_dte,'final max|delta Te|/Te',  status)
     call io_put_keyword(file,'FLDCONS', run_field_consistent, &
        'rates rebuilt by transporting the written state', status)
-    call io_put_keyword(file,'IONEMODE',trim(par%ion_energy_mode), &
-       'ionizing packet energy mode', status)
+    !--- provenance of the spectral model behind these rates: packet energies
+    !--- were sampled continuously from each source's spectrum, so the spectral
+    !--- bins below carry the diagnostic spectrum only.
+    call io_put_keyword(file,'IONEMODE','continuous', &
+       'ionizing packet energy sampling', status)
     call io_put_keyword(file,'CDFRTOL', par%source_cdf_tol, &
        'source sampler relative tolerance', status)
-    if (trim(par%ion_energy_mode) == 'continuous') then
-       call io_put_keyword(file,'NUBINUSE','diagnostic_only', &
-          'role of ionizing spectral bins', status)
-    else
-       call io_put_keyword(file,'NUBINUSE','solver_and_diagnostic', &
-          'role of ionizing spectral bins', status)
-    end if
+    call io_put_keyword(file,'NUBINUSE','diagnostic_only', &
+       'role of ionizing spectral bins', status)
     call io_put_keyword(file,'ENRGSAMP',trim(par%launch_sequence), &
        'energy/source sampling sequence', status)
-    call io_put_keyword(file,'SHDWRATE',par%ion_shadow_rates, &
-       'direct-rate shadow validation enabled', status)
-    if (trim(par%ion_energy_mode) == 'continuous') then
-       block
-         use ion_score_mod, only : ion_score_energy_totals
-         call ion_score_energy_totals(energy_emitted, energy_absorbed, energy_escaped)
-       end block
-       call io_put_keyword(file,'L_EMIT',energy_emitted, &
-          'transported ionizing packet luminosity',status)
-       call io_put_keyword(file,'L_ABS',energy_absorbed, &
-          'absorbed ionizing packet luminosity',status)
-       call io_put_keyword(file,'L_ESC',energy_escaped, &
-          'escaped ionizing packet luminosity',status)
-    end if
+    block
+      use ion_score_mod, only : ion_score_energy_totals
+      call ion_score_energy_totals(energy_emitted, energy_absorbed, energy_escaped)
+    end block
+    call io_put_keyword(file,'L_EMIT',energy_emitted, &
+       'transported ionizing packet luminosity',status)
+    call io_put_keyword(file,'L_ABS',energy_absorbed, &
+       'absorbed ionizing packet luminosity',status)
+    call io_put_keyword(file,'L_ESC',energy_escaped, &
+       'escaped ionizing packet luminosity',status)
     if (trim(par%launch_sequence) == 'sobol') &
        call io_put_keyword(file,'QMCSEED',par%qmc_seed,'Sobol scramble seed',status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)
@@ -339,7 +281,9 @@ contains
     call io_put_keyword(file,'EXTNAME','Heat_HeII','He II photoheating [erg/s per HeII]',status)
     if (par%ion_add_dust) then
        call io_append_image(file, heat_dust, status, bitpix=-64)
-       call io_put_keyword(file,'EXTNAME','Heat_dust','EUV grain heating [erg/s/cm^3]',status)
+       !--- with par%dust_emis_transport this carries the reabsorbed thermal
+       !--- infrared as well as the transported EUV/FUV band.
+       call io_put_keyword(file,'EXTNAME','Heat_dust','grain heating [erg/s/cm^3]',status)
        block
          use dust_temp_mod, only : t_dust
          if (allocated(t_dust)) then

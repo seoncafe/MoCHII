@@ -13,7 +13,7 @@ cd "$(dirname "$0")"                 # sed/
 FC=${FC:-ifort}
 FLAGS="-O3 -xHost -qopenmp -w -module lib"
 SRCS="constants sed_mathlib enthalpy_v2 size_dist q_table enthalpy_astrodust mie \
-      q_graphite q_graphite_d16 q_graphite_d16_sphere qpah radfield p_sub \
+      q_astrodust q_graphite q_graphite_d16 q_graphite_d16_sphere qpah radfield p_sub \
       stoch_qm pah_ioniz grain_dist q_silicate pah_ld01 dust_model_mod \
       zubko_io sed_astrodust dust_lib"
 mkdir -p lib

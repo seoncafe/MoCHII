@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Dusty photoionized sphere: dust competes with the gas for ionizing
  ! photons.  In the ionizing band the grains both absorb and forward-scatter
  ! (WD01/D03 Milky Way mixture); the absorbed energy heats the grains to an
@@ -35,6 +34,7 @@
 
  par%dust_model      = 'global_dgr'
  par%ion_add_dust    = .true.       ! EUV dust absorption + grain heating
+ par%dust_emis_transport = .true.    ! transport the reradiated IR back onto the grains
  par%ion_dust_scatter = .true.      ! forward scattering in the ionizing band
  par%ion_dust_kext   = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust       = 4.868e-22    ! Milky Way C_ext(V) per H [cm^2]

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! MoCHII He I 2^3S metastable gate -- LOW density + FUV (Phi_3 gate).
  ! Uniform nH=100 sphere, R=4 pc, Q_H=1e49 (tstar 4e4 K), case B, Te=1e4 K
  ! fixed.  hei_metastable writes hei_lowd_heimeta.h5 (n_2s3, Phi_3, n_e, T_e);

@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! Photoionization by a realistic young stellar population instead of a
  ! blackbody.  par%ion_spectrum reads a 2-column (E[eV], L_E) SED file; here
  ! the FSPS 10 Myr population (make_spectrum.py converts the MoCafe SED

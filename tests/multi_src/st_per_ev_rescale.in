@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! G-rescale: the 'per_ev' file WITH explicit src_lum = 3e37/1e37 -> each
  ! column's ionizing segment is RESCALED to that value (rank-0 NOTE with both
  ! numbers).  Must match the 'shape' twin (st_shape_rescale.in) with the same

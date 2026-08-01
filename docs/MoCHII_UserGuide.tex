@@ -157,10 +157,9 @@ parameter & default & meaning \\
 \bottomrule
 \endlastfoot
 \code{use\_ion\_band} & F & must be T (the MoCHII transport) \\
-\code{ion\_energy\_mode} & 'continuous' & packet-energy transport mode.  The default samples the source energy CDF continuously and evaluates cross sections at the sampled energy.  Set \code{'grouped'} explicitly only for compatibility/reproduction calculations that use one representative energy per bin \\
-\code{nnu\_ion} & 16 & diagnostic ionizing-energy bins in \code{'continuous'} mode (gates use 32); changing it does not change the physical solution.  In \code{'grouped'} mode it is the transport/solver bin count \\
+\code{nnu\_ion} & 16 & diagnostic ionizing-energy bins (gates use 32).  Packet energies are sampled from the source CDF and every cross section is evaluated at the sampled energy, so changing this count changes only the resolution of the saved tallies, never the physical solution \\
 \code{eion\_min}, \code{eion\_max} & 13.598, 100 & ionizing band edges [eV] \\
-\code{ion\_align\_edges} & T & align diagnostic bin edges to the ionization thresholds.  It does not affect continuous-energy transport.  In \code{'grouped'} mode it also prevents a transport bin from straddling a threshold; segments are log-uniform and low-priority metal edges are dropped safely when necessary.  Set F for a single log grid \\
+\code{ion\_align\_edges} & T & align diagnostic bin edges to the ionization thresholds, so no bin straddles an edge; segments are log-uniform and low-priority metal edges are dropped safely when necessary.  Affects the tally resolution only, not the transport.  Set F for a single log grid \\
 \code{add\_fuv} & F & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and FUV photoionization of low-threshold metals (Mg\,\textsc{i}, C\,\textsc{i}, S\,\textsc{i}, Fe\,\textsc{i}); \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top) \\
 \code{efuv\_min} & 6.0 & FUV lower edge [eV] \\
 \code{nnu\_fuv} & 8 & FUV bins (16 recommended with metals) \\
@@ -514,7 +513,7 @@ parameter & default & meaning \\
 parameter & default & meaning \\
 \midrule
 \code{ion\_add\_dust} & F & dust absorption in the band (dusty Str\"omgren) \\
-\code{ion\_dust\_kext} & '' & kext table with EUV coverage (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2003}); required \\
+\code{ion\_dust\_kext} & '' & optional kext table (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2003}).  Blank (the default) takes $C_{\rm ext}$, albedo and $\langle\cos\rangle$ from the grain model named by \code{dust\_model\_sed}, so the transport and the emission refer to the same grains; a file OVERRIDES the model and is then consistent with the emission only if it came from the same grains.  The model must cover the band --- astrodust and DL07 are extended into the EUV from their dielectric functions, Zubko is not \\
 \code{ion\_dust\_scatter} & F & sample dust scattering (HG, albedo weights) \\
 \code{dust\_sed} & F & SEDust stochastic dust SED at output time \\
 \code{dust\_model\_sed} & 'astrodust' & 'astrodust'/'dl07'/'zubko' \\
@@ -523,6 +522,9 @@ parameter & default & meaning \\
 \code{sed\_NT}, \code{sed\_Tlo}, \code{sed\_Thi} & 200, 2.7, 5e3 & SEDust temperature grid \\
 \code{dust\_emis\_bands} & unset & up to 8 wavelengths [$\mu$m] (e.g.\ 8, 24, 70, 160): SEDust band emissivities of each leaf $\rightarrow$ \code{\_dustemis} (blocks \code{emis\_dust}/\code{wl\_dust} [erg\,s$^{-1}$\,cm$^{-3}$\,$\mu$m$^{-1}$]); the Python map maker projects them into dust-band images (the IR is optically thin) \\
 \code{sed\_pah\_live} & F & $x_{\rm HII}$-dependent PAH survival in the emission: the leaf spectrum is assembled from the model channels with the PAH channel weighted by $(x_{\rm HI} + f_{\rm ion,pah}\,x_{\rm HII})$ (needs a model with a 'PAH' channel, i.e.\ astrodust); turns the 8-$\mu$m map into the classic PAH ring at the ionization front \\
+\code{dust\_emis\_transport} & T & transport the reradiated infrared through the same grain opacity, launching from each leaf in proportion to its emitted power with the wavelength drawn continuously from that leaf's spectrum; what the packets deposit returns to \code{Heat\_dust}.  Set F to post-process the emission only \\
+\code{dust\_niter}, \code{dust\_tol} & 2, 1e-3 & maximum transport passes and the relative change in emitted luminosity that ends them; $=1$ transports once with no self-consistency check \\
+\code{dust\_no\_photons} & 1e6 & infrared packets per pass \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -710,6 +712,7 @@ file & content \\
 \code{\_nebcont.txt} & nebular continuum $L_\nu$ (fb+ff tables, Milne, two-photon) \\
 \code{\_dustir.txt} & equilibrium-mixture dust IR spectrum (1--1000 $\mu$m) with the energy-closure header \\
 \code{\_dustsed.txt} & SEDust stochastic dust SED with PAH bands (when \code{dust\_sed}) \\
+\code{\_dustesc.txt} & (with \code{dust\_emis\_transport}) the infrared spectrum that actually escapes the grid, from the transported packets.  Its ratio to the emitted spectrum in \code{\_dustir.txt}/\code{\_dustsed.txt} is the infrared escape fraction \\
 \code{\_dustemis.h5} & (with \code{dust\_emis\_bands}) SEDust band emissivities of each leaf, same block layout as \code{\_emis} --- readable by \code{EmisData} for dust-band maps \\
 \code{\_heimeta.h5} & (with \code{hei\_metastable}) the He\,\textsc{i} 2$^3$S diagnostic: \code{n\_2s3} [cm$^{-3}$] (with the \code{DIST\_CM} and \code{A31} keywords), \code{Phi\_3} [s$^{-1}$], \code{n\_H}, \code{n\_e}, \code{T\_e}, \code{LeafXYZ}, \code{LeafSize} --- read by the Python \code{HeiMetaData} class for column and 10833~\AA\ optical-depth maps, and convertible to a LaRT scattering-medium input by \code{heimeta\_to\_lart.py} \\
 \code{\_image.h5} & (with \code{ion\_peel}) peel-off images for each observer: \code{direct\_ion}/\code{scatt\_ion} (+\code{\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$], suffix \code{\_obs<k>} when several observers; with \code{peel\_bins}, \code{direct\_cube}/\code{scatt\_cube} $(n_x,n_y,n_\nu)$ and the \code{E\_bin}/\code{dE\_bin}/\code{wl\_bin} bin-grid arrays; with \code{save\_direc0}, the unattenuated \code{direc0\_ion}/\code{\_fuv} (or \code{direc0\_cube}) \\
@@ -880,7 +883,6 @@ A minimal thermal + metals + dust input (from \code{d\_dusty}):
  par%grid_type = 'amr'           par%amr_file = 'amr_L6.fits'
  par%distance_unit = 'pc'        par%dust_model = 'global_dgr'
  par%nnu_ion = 32
- par%ion_energy_mode = 'grouped'  ! dust example; continuous mode currently requires ion_add_dust = .false.
  par%eion_min = 13.598           par%eion_max = 100.0
  par%tstar = 4.0e4               par%luminosity = 3.178e38
  par%xHI_init = 1.0e-3           par%He_abund = 0.1

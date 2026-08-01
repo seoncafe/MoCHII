@@ -1,5 +1,4 @@
 &parameters
- par%ion_energy_mode = 'grouped'
  ! PP6 gate G-e: plane-parallel photoionization slab.  Beam from top, full
  ! ionization solve (case B, OTS).  Front at d = Phi/(nH^2 alpha_B), the
  ! plane-parallel Stromgren depth.  nx=ny=1 column; cubic dcx=2*0.0625=0.125

@@ -45,7 +45,7 @@ contains
   !=========================================================================
   subroutine amr_refine_front()
     use mpi
-    use gas_opacity_mod, only : gas_opacity_setup, kap_ion
+    use gas_opacity_mod, only : gas_opacity_setup
     use jtally_mod,      only : jtally_ion_resize
     use ion_score_mod,   only : ion_score_resize
     use species_mod,     only : species_resize
@@ -153,7 +153,6 @@ contains
     call destroy_shared_mem(gas_xHeII_p)
     call destroy_shared_mem(gas_ne_p)
     call destroy_shared_mem(gas_Te_p)
-    call destroy_shared_mem(kap_ion)
     if (mpar%p_rank == 0) write(*,'(a)') &
        ' AMR: recycled the shared-memory windows of the old grid'
 
@@ -168,8 +167,8 @@ contains
 
     !--- 6. recreate the gas state and dependent arrays
     call gas_state_recreate(nnew, s_nH, s_x1, s_x2, s_x3, s_ne, s_te)
-    !--- species BEFORE opacity: with par%ion_metal_abs the opacity fill
-    !--- reads the Gamma blocks at the NEW leaf count.
+    !--- species BEFORE opacity: the stage-fraction refresh inside
+    !--- gas_opacity_fill reads the Gamma blocks at the NEW leaf count.
     if (par%use_metals) call species_resize(nnew)
     call gas_opacity_setup()
     call jtally_ion_resize(nnew)
