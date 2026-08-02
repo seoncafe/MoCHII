@@ -12,7 +12,7 @@ eV->Hz factor.  Gates:
   G-lambda-conv      the SAME spectra as L_lambda vs Angstrom / micron match
                      the 'per_ev' run to <0.5% per bin (grid difference only).
   G-rescale          'per_ev' file WITH explicit src_lum = 3e37/1e37 reproduces the
-                     'shape' twin with the same values; the rescale NOTE is
+                     'shape_ev' twin with the same values; the rescale NOTE is
                      logged.
   G-ext-je           external absolute J_E file (band int 1e-5): interior <J> ~
                      0.998e-5; adding ext_intensity=2e-5 doubles the interior J.
@@ -187,7 +187,7 @@ def g_lambda_conv(tag, testfile):
 
 
 def g_rescale():
-    print("\n=== G-rescale ('per_ev'+explicit src_lum vs 'shape'+same) ===")
+    print("\n=== G-rescale ('per_ev'+explicit src_lum vs 'shape_ev'+same) ===")
     fl = os.path.join(HERE, "st_per_ev_resc_rates.h5")
     fs = os.path.join(HERE, "st_sresc_rates.h5")
     if not (os.path.exists(fl) and os.path.exists(fs)):

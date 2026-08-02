@@ -204,9 +204,9 @@ public
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
      !--- ionizing-band luminosity [erg/s] of the primary source (a point
      !--- source, or the informational total with several).  Sentinel -999 =
-     !--- unset: setup maps it to 1.0 for a 'shape'/Planck source (exact legacy)
+     !--- unset: setup maps it to 1.0 for a 'shape_ev'/Planck source (exact legacy)
      !--- but leaves it unset to DERIVE the luminosity from the integral of a
-     !--- physical-type (par%spectrum_type /= 'shape') source spectrum.
+     !--- physical-type (par%spectrum_type /= 'shape_ev') source spectrum.
      real(kind=wp) :: luminosity   = -999.0_wp
      real(kind=wp) :: tauhomo      = -999.0
      real(kind=wp) :: taumax       = -999.0
@@ -278,21 +278,24 @@ public
      character(len=128) :: ext_spectrum  = ''
      !--- par%spectrum_type sets the COLUMN UNITS of every spectrum file slot
      !--- (par%ion_spectrum, par%src_spectrum_file, par%ext_spectrum):
-     !---   'shape'   col1 E [eV] ascending, col2.. arbitrary (renormalized);
-     !---   'per_ev'  col1 E [eV],      col2.. L_E or J_E     [.../eV];
-     !---   'per_hz'  col1 nu [Hz],     col2.. L_nu or J_nu   [.../Hz];
-     !---   'per_ang' col1 lambda [A],  col2.. L_lam or J_lam [.../A];
-     !---   'per_um'  col1 lambda [um], col2.. L_lam or J_lam [.../um].
+     !---   'shape_ev' col1 E [eV] ascending, col2.. arbitrary (renormalized);
+     !---   'per_ev'   col1 E [eV],      col2.. L_E or J_E     [.../eV];
+     !---   'per_hz'   col1 nu [Hz],     col2.. L_nu or J_nu   [.../Hz];
+     !---   'per_ang'  col1 lambda [A],  col2.. L_lam or J_lam [.../A];
+     !---   'per_um'   col1 lambda [um], col2.. L_lam or J_lam [.../um].
      !--- Internal file slots carry luminosity densities L, par%ext_spectrum
      !--- carries intensity densities J.  A physical type is ABSOLUTE: bin
      !--- luminosities come from the file integral directly (rescaled only when
      !--- the scale par%luminosity / src_lum(i) / ext_intensity is set), while
-     !--- 'shape' keeps the legacy renormalize-to-scale behavior.
-     !--- 'shape' = an arbitrary-scaled per-eV density on an E [eV] grid; for a
+     !--- 'shape_ev' keeps the legacy renormalize-to-scale behavior.
+     !--- 'shape_ev' = an arbitrary-scaled per-eV density on an E [eV] grid; for a
      !--- shape tabulated in wavelength or frequency, use the matching per_* type
      !--- and set the scale parameter (the file is then rescaled to it), so the
-     !--- E^2 Jacobian is applied by the type conversion.
-     character(len=16)  :: spectrum_type = 'shape'
+     !--- E^2 Jacobian is applied by the type conversion.  The eV in the name
+     !--- is what distinguishes it from MoCafe's 'shape', which reads col1 as
+     !--- lambda [um]: a MoCafe input carried over here is rejected by name
+     !--- instead of being read as a different spectrum.
+     character(len=16)  :: spectrum_type = 'shape_ev'
      !--- par%ext_spectrum may instead name a built-in analytic ISRF preset
      !--- (FUV-only, needs par%add_fuv; par%spectrum_type does not apply):
      !--- 'draine' (Draine 1978), 'habing' (Draine shape / 1.71), 'mathis'
@@ -361,7 +364,7 @@ public
      !--- stochastic + PAH; iterable); 'bw01' = Bjorkman & Wood 2001 immediate
      !--- reemission (approximate, equilibrium mixture-mean opacity, no PAH).
      character(len=8)   :: dust_emission_method = 'lucy'
-     character(len=16)  :: dust_model_sed   = 'astrodust'
+     character(len=16)  :: dust_model   = 'astrodust'
      !--- SEDust optics/size-distribution paths, resolved relative to
      !--- par%sed_workdir (build_astrodust is called from there so that
      !--- SEDust's own '../data/dielectric/...' relative reads resolve too).
@@ -375,17 +378,30 @@ public
      integer            :: sed_NT           = 200
      real(kind=wp)      :: sed_Tlo          = 2.7_wp
      real(kind=wp)      :: sed_Thi          = 5.0e3_wp
-     !--- DL07 (Draine & Li 2007; dust_model_sed='dl07') reuses sed_qtable and
+     !--- DL07 (Draine & Li 2007; dust_model='dl07') reuses sed_qtable and
      !--- sed_sizedist (same files as astrodust).  sed_dl07_sdindex = WD01
      !--- size-distribution index (7 = MW R_V=3.1, b_C=6e-5); sed_dl07_uisrf =
      !--- reference radiation-field scaling U (1 = MMP83 diffuse ISM).
      integer            :: sed_dl07_sdindex = 7
      real(kind=wp)      :: sed_dl07_uisrf   = 1.0_wp
-     !--- Zubko (ZDA 2004 BARE-GR-S; dust_model_sed='zubko'): the ZDA config
+     !--- Zubko (ZDA 2004 BARE-GR-S; dust_model='zubko'): the ZDA config
      !--- file and the DustEM optics/calorimetry directory, resolved from
      !--- sed_workdir (defaults point at the copied SEDust/data/zubko).
      character(len=256) :: sed_zubko_config = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
      character(len=256) :: sed_zubko_dir    = '../data/zubko/'
+     !--- Precomputed size-integrated extinction curve (lambda, albedo, <cos>,
+     !--- C_ext/H, C_abs/H, C_sca/H) that SEDust interpolates onto the model
+     !--- wavelength grid to give the transport its cross sections.  Blank
+     !--- (default) = the standard table of the named dust_model, which is the
+     !--- EUV-extended product covering the plain grid as well
+     !--- (SEDust/data/kext_astrodust_MW_euv.dat, kext_dl07_MW_euv.dat,
+     !--- kext_zubko_BARE_GR_S.dat).  Naming a file here makes it mandatory --
+     !--- the run stops if it cannot be read -- and it must have been computed
+     !--- from the same model and size distribution the emission uses, which is
+     !--- what SEDust's calc_kext.x writes.  Resolved from sed_workdir.
+     !--- Not to be confused with ion_dust_kext, which REPLACES the served curve
+     !--- with a file of its own and so leaves the emission on other grains.
+     character(len=256) :: sed_kext         = ''
      !--- Lucy iteration for dust self-absorption (dust_emis_transport).
      !--- dust_niter = max transport passes (1 = one pass, no self-consistency
      !--- check); dust_no_photons = dust-emission packets per pass; dust_tol =
@@ -470,12 +486,12 @@ public
      !--- AMR octree grid.  Leaf data are read from a generic AMR
      !--- file (FITS/HDF5/text) produced by the Python builders/converters;
      !--- amr_type='ramses' is rejected (convert to 'generic' first).  The
-     !--- dust opacity of each leaf follows dust_model: 'global_dgr'
+     !--- dust opacity of each leaf follows dust_density_law: 'global_dgr'
      !--- (nH*cext_dust*DGR), 'from_file' (ndust column), or 'laursen09'
      !--- ((Z/Z_ref)*(nHI+f_ion*nHII), requires an xHI column).
      character(len=32)  :: amr_type   = 'generic'
      character(len=128) :: amr_file   = ''
-     character(len=32)  :: dust_model = 'global_dgr'
+     character(len=32)  :: dust_density_law = 'global_dgr'
      real(kind=wp)      :: DGR        = 1.0e-2_wp
      real(kind=wp)      :: Z_global   = 0.0134_wp
      real(kind=wp)      :: Z_ref      = 0.0134_wp

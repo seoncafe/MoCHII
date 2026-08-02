@@ -2,7 +2,7 @@
 
 Written 2026-07-11; package name **MoCHII** (MOnte Carlo for H II regions)
 confirmed the same day, developed as a separate package at
-`~/RT_Codes/MoCHII/` (this tree). Direction agreed with K. Seon: instead of
+`~/MoCHII/MoCHII_v1.00/` (this tree). Direction agreed with K. Seon: instead of
 retrofitting an octree into MOCASSIN (see
 `RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/OCTREE_PLAN.md` and the
 `P1.11-feasibility` analysis of why its traversal resists structural

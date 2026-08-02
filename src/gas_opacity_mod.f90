@@ -68,7 +68,7 @@ contains
   !=========================================================================
   subroutine ion_dust_read()
     use mpi
-    use grain_model_mod, only : grain_extinction_table
+    use grain_model_mod, only : grain_extinction_table, dmodel
     implicit none
     real(kind=wp), allocatable :: lam(:), alb(:), cext(:), gcos(:)
     character(len=512) :: line
@@ -122,8 +122,10 @@ contains
     call sort4(lam, alb, gcos, cext, n)
 
     !--- the model grid must span lambda_ref AND the whole transported band,
-    !--- because the interpolators clamp at the grid edges: a grid that stops
-    !--- at 0.0912 um (e.g. Zubko) would silently freeze the EUV optics.
+    !--- because the interpolators clamp at the grid edges: an unextended
+    !--- astrodust or DL07 grid stops at the T-matrix Q table's 0.0912 um end
+    !--- and would silently freeze the EUV optics at that value.  (Zubko never
+    !--- does: its own DustEM optics already reach 0.001 um.)
     if (from_model) then
        lam_short = 1.23984_wp/par%eion_max
        if (par%add_fuv) then
@@ -134,8 +136,8 @@ contains
        if (lam(1) > lam_short*1.0001_wp .or. lam(n) < lam_long*0.9999_wp .or. &
            par%lambda_ref < lam(1) .or. par%lambda_ref > lam(n)) then
           if (mpar%p_rank == 0) then
-             write(*,'(3a)') 'ERROR: par%dust_model_sed = ''', &
-                trim(par%dust_model_sed), ''' does not cover the ionizing band;'
+             write(*,'(3a)') 'ERROR: par%dust_model = ''', &
+                trim(par%dust_model), ''' does not cover the ionizing band;'
              write(*,'(a,es10.3,a,es10.3,a)') '       model grid [um] = [', &
                 lam(1), ', ', lam(n), ']'
              write(*,'(a,es10.3,a,es10.3,a,es10.3)') &
@@ -178,11 +180,16 @@ contains
     end do
     if (mpar%p_rank == 0) then
        if (from_model) then
-          write(*,'(3a,i0,a)') ' ION: dust optics = ', trim(par%dust_model_sed), &
+          write(*,'(3a,i0,a)') ' ION: dust optics = ', trim(par%dust_model), &
              ' (SEDust grain model, ', n, ' wavelengths)'
           write(*,'(a,es10.3,a,es10.3,a,f7.1,a)') &
              ' ION: model grid [um]           = [', lam(1), ', ', lam(n), &
              '] (to ', 1.23984_wp/lam(1), ' eV)'
+          !--- the model name does not identify the optics: the curve above is
+          !--- the size-integrated table the builder loaded, and which table it
+          !--- was decides the extinction this run transports.
+          write(*,'(2a)') ' ION: extinction table          = ', &
+             trim(dmodel%kext_path)
        else
           write(*,'(2a)')       ' ION: dust kext table = ', trim(par%ion_dust_kext)
        end if
@@ -307,7 +314,7 @@ contains
        !--- target the optical depth of the INITIAL state rather than a
        !--- value discarded at the first refill.  It is never re-solved, so
        !--- the realized tau then follows the grain survival factor freely.
-       if (trim(par%dust_model) == 'laursen09_live') then
+       if (trim(par%dust_density_law) == 'laursen09_live') then
           block
             real(kind=wp) :: xh, fac
             do il = 1, gas_nleaf

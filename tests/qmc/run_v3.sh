@@ -18,7 +18,7 @@ gen_input () {   # $1=tag $2=nphot $3=mode(random|sobol) $4=seedval
  par%iseed         = $( [ "$3" = random ] && echo "$4" || echo 1234 )
  par%grid_type     = 'amr'
  par%amr_file      = '$FITS'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
  par%nnu_ion       = 16
  par%ion_align_edges = .false.

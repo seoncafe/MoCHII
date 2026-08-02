@@ -108,7 +108,7 @@ Each row is a measurement or a construction, with the bound it places on
 | **Metal opacity** | paired runs at x0.70 and x1.30, plus off and metals-off bounds | **0.103 pc per unit upward** (0.615 pc downward); **~180%** increase needed, and saturating |
 | Metal recombination continua as a diffuse source | summed ground-continuum emission above 24.587 eV from the nine metal stages that produce it | **0.29%** of the He I ground-continuum channel, ~0.001 pc |
 | He I **excited-level** photoionization | 2^3S population and `Q(>4.767 eV)` for the benchmark spectrum, with Cloudy's own 2^3S threshold cross section | **0.2-0.6%** extra ionization; structurally absent from MoCHII (band floor 13.598 eV) |
-| Dust | off by construction in the benchmark (`par%dust_model='none'`, `par%ion_add_dust=.false.`) | identically zero |
+| Dust | off by construction in the benchmark (`par%dust_density_law='none'`, `par%ion_add_dust=.false.`) | identically zero |
 | Source photon budget | `Q(>13.598 eV)` and `Q(>24.587 eV)` against Cloudy c25 | agree to **1.00005** and **1.00003** |
 | H ionization structure | `x(H0)` profile ratio to Cloudy across the ionized zone | **1-2%** at every radius |
 | Cloudy's own resolution at the front | 40 zones between 4.0 and 4.6 pc, median width 0.0106 pc, maximum 0.039 pc | reference front resolved **17x** finer than the residual |
@@ -1112,7 +1112,7 @@ few-percent difference can compound into 0.18 pc, while a few-percent change in
 the He^0 rates themselves cannot.
 
 Dust is excluded by construction rather than by measurement: the Lexington
-benchmarks run with `par%dust_model='none'` and `par%ion_add_dust=.false.`, so
+benchmarks run with `par%dust_density_law='none'` and `par%ion_add_dust=.false.`, so
 there is no grain opacity competing for ionizing photons in either calculation
 being compared.
 

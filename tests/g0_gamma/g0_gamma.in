@@ -9,7 +9,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L5.fits'
- par%dust_model    = 'none'          ! gas-only gate
+ par%dust_density_law = 'none'          ! gas-only gate
  par%distance_unit = 'pc'            ! boxlen 2.0 -> 2 pc
 
  !--- ionizing band

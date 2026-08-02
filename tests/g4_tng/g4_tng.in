@@ -12,7 +12,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'tng_uniform.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'kpc'
 
  !--- ionizing band: Q_H = 1e53 (mean E = 19.834 eV at 40 kK)

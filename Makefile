@@ -70,11 +70,11 @@ $(SRCDIR)/%.o: $(SRCDIR)/%.f90
 
 OBJS	= \
 	define.o \
-	grain_model_mod.o \
 	random_mt.o \
 	qmc_mod.o \
 	energy_sampler_mod.o \
 	utility.o \
+	grain_model_mod.o \
 	memory_mod_mpi.o \
 	mathlib.o \
 	fitsio_mod.o \

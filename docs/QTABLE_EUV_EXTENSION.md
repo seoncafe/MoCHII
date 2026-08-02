@@ -1,6 +1,26 @@
 # Extending the SEDust Q table into the EUV — feasibility review
 
-Date: 2026-07-21.  Status: review only, no implementation.
+Date: 2026-07-21.  Status when written: review only, no implementation.
+**Status now (2026-08-02): implemented and in production.**  Both the
+extension and the host adoption of section 7 happened, and one thing this
+memo assumes has since changed: `dust_extinction` no longer performs the
+size integral at call time.  It serves the model's *precomputed*
+size-integrated curve — `SEDust/data/kext_astrodust_MW_euv.dat`,
+`kext_dl07_MW_euv.dat`, `kext_zubko_BARE_GR_S.dat` — interpolated onto the
+model's own wavelength grid `m%lam`; the size integral is now the separate
+`size_integrated_extinction`, which is what wrote those tables.  Which table a
+run serves is `par%sed_kext` (MoCafe's convention: blank takes SEDust's own
+standard table for the named `par%dust_model`, a named file is mandatory).  The
+gate `tests/grain_kext` holds the served curve against the size integral over
+the model as built, so a table that does not belong to that model is caught.
+The section 7 "decide the default" step (S6) resolved to the grain model: with
+`par%ion_dust_kext` blank the transport optics come from `par%dust_model`, and
+the dusty smoke tests (`sedust_smoke`, `dustemis_smoke`, `pahlive_smoke`) now
+run that way — astrodust, so extinction and emission are one set of grains —
+rather than through the D03 `ion_dust_kext` file they carried while this was
+under review.  Everything below is the record of the 2026-07-21 review and is
+left as written.
+
 Context: the SEDust_v1.00 `dust_extinction` API (commit `765eff2`) lets an
 RT host take its dust opacity from the same model object, on the same
 wavelength grid `m%lam`, as its emission.  MoCHII cannot use it for the

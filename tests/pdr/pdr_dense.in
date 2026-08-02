@@ -23,7 +23,7 @@
  par%nH_const      = 5.0e3
  par%rmax          = 0.45
  par%distance_unit = 'pc'
- par%dust_model    = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
 
  par%nnu_ion       = 16
  par%add_fuv       = .true.
@@ -37,7 +37,7 @@
  par%ext_scale     = 1.0
 
  par%use_metals    = .true.
- par%atomic_dir    = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%atomic_dir    = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
  par%abund_Mg      = 3.0e-6
  par%abund_Fe      = 3.0e-7
  par%ion_metal_abs = .true.
@@ -47,7 +47,7 @@
 
  par%ion_add_dust  = .true.
  par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
- par%ion_dust_kext = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
+ par%ion_dust_kext = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0
 

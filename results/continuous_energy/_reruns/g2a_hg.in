@@ -12,7 +12,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1e49 s^-1 (mean E = 19.834 eV)

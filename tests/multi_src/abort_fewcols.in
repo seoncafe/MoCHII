@@ -16,7 +16,7 @@
  par%ymax          = 2.0
  par%zmax          = 2.0
  par%nH_const      = 1.0e-4
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  par%nnu_ion       = 16

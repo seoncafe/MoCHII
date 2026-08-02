@@ -70,9 +70,14 @@ infrared dust/PAH spectrum.
   equilibrium dust temperatures, and stochastic dust/PAH emission spectra
   via the SEDust library (astrodust, DL07, Zubko grain models).  One grain
   model supplies both the transport cross sections and the emission, so the
-  energy a cell absorbs is set by the same grains that radiate it back out;
-  the astrodust and DL07 optics are extended into the EUV from their
-  dielectric functions.
+  energy a cell absorbs is set by the same grains that radiate it back out:
+  the transport reads the model's precomputed size-integrated extinction curve
+  (`SEDust/data/kext_*.dat`) on the model's own wavelength grid, and a gate
+  (`tests/grain_kext`) checks that curve against the size integral over the
+  model as built, so a table belonging to other grains cannot pass unnoticed.
+  The astrodust and DL07 optics are extended into the EUV from their dielectric
+  functions; Zubko needs no extension, its own DustEM optics already spanning
+  0.001-10000 um.
 - **Dust emission transport**: the reradiated infrared is itself launched and
   transported through the same grain opacity, and the reabsorbed part returns
   to the grain heating until it converges (`dust_emis_transport`, on by
@@ -152,4 +157,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-01 20:07 KST
+Last updated: 2026-08-02 18:45 KST

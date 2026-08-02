@@ -14,7 +14,7 @@
 # >>> EDIT the path below to your own SEDust location, or run with
 # >>>   SEDUST_SRC=/your/path/to/SEDust ./populate_data.sh
 set -e
-SED=${SEDUST_SRC:-/home/kiseon/MoCafe/Grain/SEDust}
+SED=${SEDUST_SRC:-/home/kiseon/MoCafe/Grain/SEDust_v1.00}
 if [ ! -d "$SED" ]; then
   echo "ERROR: SEDust source tree not found at: $SED" >&2
   echo "       Set it to your own location, e.g.:" >&2
@@ -25,8 +25,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HERE/data/dielectric" "$HERE/data/release" "$HERE/data/zubko" "$HERE/tmatrix/output"
 cp "$SED"/data/dielectric/{DH21_aeff,index_CpaD03,index_CpeD03,index_silD03,PAHion.31,PAHneu.31,q_D16graphite.dat,qlib_gra_D16MGemt_1.400} "$HERE/data/dielectric/"
 cp "$SED"/data/kext_astrodust_MW.dat "$HERE/data/"
+# Size-integrated extinction curves dust_extinction serves to the transport,
+# one per par%dust_model (calc_kext.x writes them in the SEDust tree).
+cp "$SED"/data/{kext_astrodust_MW_euv.dat,kext_dl07_MW_euv.dat,kext_zubko_BARE_GR_S.dat} "$HERE/data/"
 cp "$SED"/data/release/{extinction.dat,kext_albedo_WD_MW_3.1_60_D03.all_2003,scattering.dat,size_distribution.dat} "$HERE/data/release/"
 cp "$SED"/tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400.dat "$HERE/tmatrix/output/"
-# Zubko (ZDA 2004 BARE-GR-S) optics/calorimetry/config for dust_model_sed='zubko'
+# Zubko (ZDA 2004 BARE-GR-S) optics/calorimetry/config for par%dust_model='zubko'
 cp "$SED"/data/zubko/* "$HERE/data/zubko/"
 echo "Populated SEDust data under $HERE (from $SED)"

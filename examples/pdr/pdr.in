@@ -11,7 +11,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L5_nH100.fits.gz'
- par%dust_model    = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
 
  par%nnu_ion       = 32
  par%add_fuv       = .true.         ! FUV band under the ionizing band

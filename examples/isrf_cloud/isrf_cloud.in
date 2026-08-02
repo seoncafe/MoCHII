@@ -46,7 +46,7 @@
  par%nH_const      = 5.0e3          ! cm^-3 inside the cloud (dense clump; see tuning)
  par%rmax          = 0.45           ! cloud radius (pc); nH = 0 outside
  par%distance_unit = 'pc'
- par%dust_model    = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
 
  par%nnu_ion       = 16             ! ionizing bins; they stay empty (FUV-only field)
  par%add_fuv       = .true.         ! required by an ISRF preset

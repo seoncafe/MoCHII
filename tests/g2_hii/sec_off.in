@@ -7,7 +7,7 @@
  par%iseed         = 1234
  par%grid_type     = 'amr'
  par%amr_file      = 'hii20_L6.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
  par%nnu_ion       = 64
  par%eion_min      = 13.598

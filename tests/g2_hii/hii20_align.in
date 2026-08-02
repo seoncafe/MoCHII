@@ -12,7 +12,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'hii20_L6.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1.006e49 (mean E = 16.053 eV)

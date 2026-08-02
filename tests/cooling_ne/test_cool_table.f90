@@ -30,7 +30,7 @@ program test_cool_table
   real(kind=wp) :: fitA(16), fitT(16)
   integer :: nfit
 
-  par%atomic_dir     = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+  par%atomic_dir     = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
   par%fe_levels_full = .false.
   mpar%p_rank        = 0
 

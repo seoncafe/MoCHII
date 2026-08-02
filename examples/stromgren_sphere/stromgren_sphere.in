@@ -15,7 +15,7 @@
  par%nH_const      = 100.0          ! cm^-3 inside the sphere
  par%rmax          = 3.8            ! sphere radius (pc); nH = 0 outside
  par%distance_unit = 'pc'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]

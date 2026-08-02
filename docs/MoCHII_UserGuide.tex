@@ -135,7 +135,7 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{dust\_model} & 'global\_dgr' & leaf grey opacity: \code{'none'}, \code{'global\_dgr'} ($n_{\rm H}c_{\rm ext}{\cdot}$DGR), \code{'from\_file'} (ndust column), \code{'laursen09'} (static xHI column), \code{'laursen09\_live'} (computed $x_{\rm HI}$, refreshed each iteration) \\
+\code{dust\_density\_law} & 'global\_dgr' & leaf grey opacity: \code{'none'}, \code{'global\_dgr'} ($n_{\rm H}c_{\rm ext}{\cdot}$DGR), \code{'from\_file'} (ndust column), \code{'laursen09'} (static xHI column), \code{'laursen09\_live'} (computed $x_{\rm HI}$, refreshed each iteration) \\
 \code{cext\_dust} & 1.6059e-21 & reference extinction per H [cm$^2$] at \code{lambda\_ref} \\
 \code{DGR}, \code{Z\_global}, \code{Z\_ref} & 1e-2, 0.0134, 0.0134 & dust-model scalings \\
 \code{f\_ion\_dust} & 0.01 & laursen09 survival of dust in ionized gas \\
@@ -165,8 +165,8 @@ parameter & default & meaning \\
 \code{nnu\_fuv} & 8 & FUV bins (16 recommended with metals) \\
 \code{tstar} & $-999$ & Planck source temperature [K] \\
 \code{ion\_spectrum} & '' & global spectrum file (column 1 plus one value column); its column units are set by \code{spectrum\_type} (\S\ref{sec:specfmt}) \\
-\code{spectrum\_type} & 'shape' & column units of every spectrum-file slot (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}): \code{'shape'} (arbitrary, normalized to the scale --- legacy) or a physical type \code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'} (absolute); see \S\ref{sec:specfmt} \\
-\code{luminosity} & unset & ionizing BAND luminosity [erg/s] of the (single) source; for a \code{'shape'}/Planck source unset maps to 1.0 (legacy), for a physical-type file unset means DERIVE it from the file integral; with \code{nsource}$\ge 2$ it becomes the sum of \code{src\_lum} (or the equal-split total when those are unset) \\
+\code{spectrum\_type} & 'shape\_ev' & column units of every spectrum-file slot (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}): \code{'shape\_ev'} (arbitrary, normalized to the scale --- legacy) or a physical type \code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'} (absolute); see \S\ref{sec:specfmt} \\
+\code{luminosity} & unset & ionizing BAND luminosity [erg/s] of the (single) source; for a \code{'shape\_ev'}/Planck source unset maps to 1.0 (legacy), for a physical-type file unset means DERIVE it from the file integral; with \code{nsource}$\ge 2$ it becomes the sum of \code{src\_lum} (or the equal-split total when those are unset) \\
 \code{xs\_point}, \code{ys\_point}, \code{zs\_point} & 0 & single-source position (code units, recentered box; \code{nsource}=1) \\
 \end{longtable}
 }
@@ -260,7 +260,7 @@ scattered/reflected component is included in the boundary $I(\mu)$.
 
 \subsection{Spectrum-file formats}
 \label{sec:specfmt}
-A single parameter, \code{spectrum\_type} (default \code{'shape'}), fixes
+A single parameter, \code{spectrum\_type} (default \code{'shape\_ev'}), fixes
 the column units of \emph{every} spectrum-file slot
 (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}).
 The type sets the units; the slot sets the meaning: an internal-source
@@ -271,7 +271,7 @@ intensity density $J_X$.  Column~1 and the value columns are:
 \toprule
 \code{spectrum\_type} & column 1 & internal (cols 2$+$) & external (col 2) \\
 \midrule
-\code{'shape'}   & $E$ [eV] $\uparrow$ & arbitrary per eV (shape of $L_E$) & arbitrary per eV \\
+\code{'shape\_ev'}   & $E$ [eV] $\uparrow$ & arbitrary per eV (shape of $L_E$) & arbitrary per eV \\
 \code{'per\_ev'} & $E$ [eV]            & $L_E$ [erg\,s$^{-1}$\,eV$^{-1}$]      & $J_E$ \\
 \code{'per\_hz'} & $\nu$ [Hz]          & $L_\nu$ [erg\,s$^{-1}$\,Hz$^{-1}$]    & $J_\nu$ \\
 \code{'per\_ang'}& $\lambda$ [\AA]     & $L_\lambda$ [erg\,s$^{-1}$\,\AA$^{-1}$] & $J_\lambda$ \\
@@ -297,7 +297,7 @@ range), so the file grid and the band grid are independent.  The spacing
 is arbitrary --- nonuniform grids are fine; place points densely where the
 spectrum varies rapidly, since only linear variation is captured between
 adjacent points.  Abscissa values must be distinct (no duplicates); a
-\code{'shape'} file must be ascending in $E$, while the physical types
+\code{'shape\_ev'} file must be ascending in $E$, while the physical types
 accept any row order (the table is sorted internally after the unit
 conversion, so a wavelength table may be given wavelength-ascending).
 
@@ -311,14 +311,14 @@ from its band-integrated $J$ --- and reported in the log.  If a scale is
 set, the spectrum is RESCALED to it (a note is printed) and the file then
 acts only as a shape.  With \code{add\_fuv} an absolute spectrum fills the
 FUV bins from the same table, with no separate normalization.
-\code{'shape'} keeps the legacy behavior: the shape is normalized to the
+\code{'shape\_ev'} keeps the legacy behavior: the shape is normalized to the
 scale in every case.  A spectrum with no luminosity inside the band
 aborts, as does rescaling a file whose ionizing-segment integral is zero.
 
-\medskip\noindent\textbf{\code{'shape'} is per eV, not variable-agnostic.}
-\code{'shape'} reads its value columns as the shape of the per-eV density
+\medskip\noindent\textbf{\code{'shape\_ev'} is per eV, not variable-agnostic.}
+\code{'shape\_ev'} reads its value columns as the shape of the per-eV density
 $L_E$ on the $E$~[eV] grid of column~1.  A table of $F_\lambda$ (or
-$F_\nu$) values re-gridded onto $E$ under \code{'shape'} therefore omits the
+$F_\nu$) values re-gridded onto $E$ under \code{'shape\_ev'} therefore omits the
 Jacobian and is wrong by a factor $E^{-2}$ (the $\mathrm{d}\lambda/\mathrm{d}E$
 conversion).  To use a wavelength- or frequency-tabulated shape, give it
 with its matching physical type and set the scale explicitly --- the type
@@ -507,27 +507,36 @@ parameter & default & meaning \\
 
 \subsection{Dust in the band and dust emission}
 \label{sec:sedust}
-\begin{center}\small
-\begin{tabular}{llp{6.8cm}}
+{\small
+\begin{longtable}{llp{6.8cm}}
 \toprule
 parameter & default & meaning \\
 \midrule
+\endfirsthead
+\toprule
+parameter & default & meaning \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
 \code{ion\_add\_dust} & F & dust absorption in the band (dusty Str\"omgren) \\
-\code{ion\_dust\_kext} & '' & optional kext table (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2003}).  Blank (the default) takes $C_{\rm ext}$, albedo and $\langle\cos\rangle$ from the grain model named by \code{dust\_model\_sed}, so the transport and the emission refer to the same grains; a file OVERRIDES the model and is then consistent with the emission only if it came from the same grains.  The model must cover the band --- astrodust and DL07 are extended into the EUV from their dielectric functions, Zubko is not \\
+\code{ion\_dust\_kext} & '' & optional kext table (e.g.\ \code{data/kext\_albedo\_WD\_MW\_3.1\_60\_D03.all\_2003}).  Blank (the default) takes $C_{\rm ext}$, albedo and $\langle\cos\rangle$ from the grain model named by \code{dust\_model}, so the transport and the emission refer to the same grains; a file OVERRIDES the model and is then consistent with the emission only if it came from the same grains.  Taken from the model, the curve is that model's precomputed size-integrated extinction table in \code{SEDust/data/} (\code{kext\_astrodust\_MW\_euv.dat}, \code{kext\_dl07\_MW\_euv.dat}, \code{kext\_zubko\_BARE\_GR\_S.dat}), interpolated onto the model's own wavelength grid (\code{sed\_kext} selects it).  The model must cover the band: astrodust and DL07 are extended into the EUV from their dielectric functions, and Zubko needs no extension because its own DustEM optics already span 0.001--$10^4\,\mu$m \\
 \code{ion\_dust\_scatter} & F & sample dust scattering (HG, albedo weights) \\
 \code{dust\_sed} & F & SEDust stochastic dust SED at output time \\
-\code{dust\_model\_sed} & 'astrodust' & 'astrodust'/'dl07'/'zubko' \\
+\code{dust\_model} & 'astrodust' & 'astrodust'/'dl07'/'zubko' \\
 \code{sed\_workdir} & '' (auto) & SEDust \code{sed/} tree whose dielectric tables are read relative to it; blank auto-resolves to \code{<executable dir>/SEDust/sed} (the in-tree copy), so it normally needs no setting \\
-\code{sed\_qtable}, \code{sed\_sizedist} & in-tree defaults & optics/size-distribution tables (relative to \code{sed\_workdir}) \\
+\code{sed\_qtable}, \code{sed\_sizedist} & in-tree defaults & optics/size-distribution tables (relative to \code{sed\_workdir}).  Leave them at the defaults unless you also supply your own \code{ion\_dust\_kext}: the extinction the transport reads is the model's precomputed size-integrated table, which was computed from these defaults, so changing them moves the grains that emit without moving the curve that extinguishes.  The gate \code{tests/grain\_kext} checks that pairing \\
+\code{sed\_dl07\_sdindex}, \code{sed\_dl07\_uisrf} & 7, 1.0 & DL07 only: WD01 size-distribution index (7 = MW $R_V = 3.1$, $b_C = 6{\times}10^{-5}$) and the ISRF intensity setting the PAH ionization fraction; same caution as above \\
+\code{sed\_zubko\_config}, \code{sed\_zubko\_dir} & in-tree defaults & Zubko only: ZDA configuration file and the directory of its DustEM optics tables (relative to \code{sed\_workdir}); same caution as above \\
+\code{sed\_kext} & '' & the precomputed size-integrated extinction curve SEDust serves to the transport ($\lambda$, albedo, $\langle\cos\rangle$, $C_{\rm ext}/$H, $C_{\rm abs}/$H, $C_{\rm sca}/$H), relative to \code{sed\_workdir}.  Blank (the default) takes SEDust's own standard table for the named \code{dust\_model} --- the EUV-extended product, which covers the plain grid as well --- so those file names are written down in one place.  Naming a file makes it MANDATORY (the build stops if it cannot be read) and it must have been computed from the same model and size distribution the emission uses, which is what SEDust's \code{calc\_kext.x} writes.  Distinct from \code{ion\_dust\_kext}, which does not change what SEDust serves but REPLACES the served curve downstream, leaving the emission on other grains \\
 \code{sed\_NT}, \code{sed\_Tlo}, \code{sed\_Thi} & 200, 2.7, 5e3 & SEDust temperature grid \\
 \code{dust\_emis\_bands} & unset & up to 8 wavelengths [$\mu$m] (e.g.\ 8, 24, 70, 160): SEDust band emissivities of each leaf $\rightarrow$ \code{\_dustemis} (blocks \code{emis\_dust}/\code{wl\_dust} [erg\,s$^{-1}$\,cm$^{-3}$\,$\mu$m$^{-1}$]); the Python map maker projects them into dust-band images (the IR is optically thin) \\
 \code{sed\_pah\_live} & F & $x_{\rm HII}$-dependent PAH survival in the emission: the leaf spectrum is assembled from the model channels with the PAH channel weighted by $(x_{\rm HI} + f_{\rm ion,pah}\,x_{\rm HII})$ (needs a model with a 'PAH' channel, i.e.\ astrodust); turns the 8-$\mu$m map into the classic PAH ring at the ionization front \\
 \code{dust\_emis\_transport} & T & transport the reradiated infrared through the same grain opacity, launching from each leaf in proportion to its emitted power with the wavelength drawn continuously from that leaf's spectrum; what the packets deposit returns to \code{Heat\_dust}.  Set F to post-process the emission only \\
 \code{dust\_niter}, \code{dust\_tol} & 2, 1e-3 & maximum transport passes and the relative change in emitted luminosity that ends them; $=1$ transports once with no self-consistency check \\
 \code{dust\_no\_photons} & 1e6 & infrared packets per pass \\
-\bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}
+}
 
 \subsection{Peel-off imaging}
 {\small
@@ -881,7 +890,7 @@ A minimal thermal + metals + dust input (from \code{d\_dusty}):
 &parameters
  par%no_photons = 4.0e7          par%iseed = 1234
  par%grid_type = 'amr'           par%amr_file = 'amr_L6.fits'
- par%distance_unit = 'pc'        par%dust_model = 'global_dgr'
+ par%distance_unit = 'pc'        par%dust_density_law = 'global_dgr'
  par%nnu_ion = 32
  par%eion_min = 13.598           par%eion_max = 100.0
  par%tstar = 4.0e4               par%luminosity = 3.178e38

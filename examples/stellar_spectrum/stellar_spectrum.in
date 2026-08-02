@@ -18,7 +18,7 @@
  par%nH_const      = 100.0
  par%rmax          = 3.8
  par%distance_unit = 'pc'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
 
  par%nnu_ion       = 32
  par%ion_spectrum  = 'fsps_young_eV.dat'   ! stellar SED (E[eV], L_E), not a blackbody

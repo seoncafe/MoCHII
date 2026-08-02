@@ -11,7 +11,7 @@
  par%grid_type     = 'uniform'
  par%car_walk      = 'amr'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
- par%dust_model    = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
  par%distance_unit = 'pc'
 
  !--- ionizing band + FUV extension

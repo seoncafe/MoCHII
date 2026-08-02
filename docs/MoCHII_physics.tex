@@ -197,19 +197,19 @@ Section~\ref{sec:extval}).  Its spectrum resolves as
 the global spectrum.
 
 \paragraph{Physical-unit spectra.}  Every file slot is read in the
-column units set by \code{par\%spectrum\_type} (default \code{'shape'},
+column units set by \code{par\%spectrum\_type} (default \code{'shape\_ev'},
 arbitrary units renormalized to the scale --- the legacy behavior).  The
 physical types \code{'per\_ev'}, \code{'per\_hz'}, \code{'per\_ang'},
 \code{'per\_um'} give the first column as $E$ [eV], $\nu$ [Hz], or
 $\lambda$ [\AA{} or $\mu$m] and the value columns as a luminosity
 density $L_X$ (internal sources) or an intensity density $J_X$ (external
 field) in the matching spectral unit; wavelength tables are converted to
-energy and sorted.  The \code{'shape'} value columns are read as the
+energy and sorted.  The \code{'shape\_ev'} value columns are read as the
 per-eV density $L_E$ on the $E$~[eV] grid; a shape tabulated in
 wavelength or frequency must use the matching \code{per\_*} type, whose
 conversion applies the $\mathrm{d}\lambda/\mathrm{d}E$ (or
 $\mathrm{d}\nu/\mathrm{d}E$) Jacobian, so a raw re-grid onto $E$ under
-\code{'shape'} would be wrong by $E^{-2}$.  A physical spectrum is
+\code{'shape\_ev'} would be wrong by $E^{-2}$.  A physical spectrum is
 \emph{absolute}: its bin
 luminosities follow the tabulated integral directly.  If the scale
 (\code{luminosity} / \code{src\_lum}$(i)$ / \code{ext\_intensity}) is
@@ -2031,7 +2031,7 @@ metal opacity & $0.103$~pc/unit upward, $0.615$ downward
 metal recombination continua & $0.29\%$ of channel 2 & ${\sim}0.001$~pc \\
 He\,\textsc{i} excited-level ionization & $0.2$--$0.6\%$ extra, and below the
   band floor & structurally absent \\
-dust & \code{dust\_model='none'} in the benchmark & excluded by construction \\
+dust & \code{dust\_density\_law='none'} in the benchmark & excluded by construction \\
 source photon budget & $Q$ ratios $1.00005$ and $1.00003$ & $14\%$ in
   $Q({\rm He^0})$ \\
 Cloudy-side resolution & median zone width $0.0106$~pc at the front
@@ -2445,14 +2445,25 @@ The three parts of the dust coupling, now complete:
   $\kappa_{\rm d}(b,{\rm leaf}) = \rho\kappa_{\rm leaf}\,s_{\rm abs}(b)$
   where $s_{\rm abs}(b) = (1{-}a(E_b))\,C_{\rm ext}(E_b)/C_{\rm ext}
   (\lambda_{\rm ref})$.  By default these come from the grain model named
-  by \code{par\%dust\_model\_sed}, integrated over its size distribution,
+  by \code{par\%dust\_model},
   so that the power a cell absorbs is set by the same grains that
   reradiate it in Section~\ref{sec:sedust}; the astrodust and DL07 models
   are extended below the T-matrix table's $0.0912\,\mu$m end down to
   $1.24/E_{\max}$ using their own dielectric functions (DH21 astrodust,
   D03 silicate and graphite), and each optics module refuses a wavelength
   its dielectric table does not cover rather than let a clamped refractive
-  index pass as physics.  Setting \code{par\%ion\_dust\_kext} overrides
+  index pass as physics.  The Zubko model is not extended and needs no
+  extension: its own DustEM optics tables span
+  0.001--$10^4\,\mu$m (1.24~keV down to $1.24{\times}10^{-4}$~eV), so the
+  whole ionizing band is already tabulated, which is why
+  \code{build\_zubko} takes no \code{lam\_min}.  Whichever model is named,
+  \code{gas\_opacity\_mod} verifies at setup that its grid spans the whole
+  transported band --- $1.24/E_{\max}$ to $1.24/E_{\min}$, the latter taken
+  from \code{efuv\_min} when \code{par\%add\_fuv} --- together with
+  $\lambda_{\rm ref}$, and stops the run if it does not (the interpolators
+  clamp at the grid edges, so an unchecked short grid would silently freeze
+  the EUV optics).
+  Setting \code{par\%ion\_dust\_kext} overrides
   the model with an explicit table covering the EUV (the
   WD01/D03 $R_V{=}3.1$ table, 1\,\AA--$10^4\,\mu$m:
   $C_{\rm abs}/{\rm H} = 1.83{\times}10^{-21}$ at 13.6~eV falling to
@@ -2476,7 +2487,7 @@ The three parts of the dust coupling, now complete:
   the walk; gas ionization, gas heating, and grain heating all derive
   from the same tally, so the energy split is bookkept by construction.
 \item \textbf{Live ionization-dependent dust with a PAH split.}
-  \code{dust\_model='laursen09\_live'} recomputes the dust density from
+  \code{dust\_density\_law='laursen09\_live'} recomputes the dust density from
   the \emph{computed} $\xHI$ every iteration,
   $n_{\rm d} \propto (Z/Z_{\rm ref})\,n_{\rm H}\big[(1{-}f_{\rm PAH})
   (\xHI + f_{\rm ion}x_{\rm HII}) + f_{\rm PAH}(\xHI +
@@ -2501,6 +2512,88 @@ The three parts of the dust coupling, now complete:
   material-resolved treatment is the SEDust coupling below.
 \end{itemize}
 
+\medskip\noindent
+\textbf{Where the size-integrated extinction curve comes from.}
+The curve above is not integrated over grain size when the transport asks
+for it.  SEDust's \code{dust\_extinction} returns the \emph{precomputed}
+size-integrated curve of a \code{SEDust/data/kext\_*.dat} table, which the
+builder loaded, interpolated onto the model's own wavelength grid
+(log~$\lambda$--log~$C$ for the cross sections, linear in log~$\lambda$ for
+$\langle\cos\rangle$, and the table value itself wherever a model wavelength
+coincides with a table wavelength).  The size integral
+\begin{equation}
+  C_{\rm ext}(\lambda) = \sum_{\rm pop}\sum_a {\rm d}n(a)
+     \big[C_{\rm abs}(\lambda,a) + C_{\rm sca}(\lambda,a)\big],
+  \qquad
+  a_\lambda = \frac{C_{\rm sca}}{C_{\rm ext}},
+  \qquad
+  \langle\cos\rangle = \frac{\sum {\rm d}n\,C_{\rm sca}\,g}
+                            {\sum {\rm d}n\,C_{\rm sca}}
+\end{equation}
+is the calculation that \emph{wrote} those tables; it remains reachable as
+SEDust's \code{size\_integrated\_extinction}.  Which table a run serves is
+\code{par\%sed\_kext}: blank (the default) takes SEDust's own standard table
+for the named \code{par\%dust\_model}, so those file names are written down in
+one place; naming a file instead makes it mandatory, and the build stops with
+that file named if it cannot be read.  The standard tables are
+\code{kext\_astrodust\_MW\_euv.dat} (1719 wavelengths,
+$1.0{\times}10^{-4}$--$3.98{\times}10^{4}\,\mu$m),
+\code{kext\_dl07\_MW\_euv.dat} (1761,
+$6.2{\times}10^{-5}$--$3.98{\times}10^{4}\,\mu$m), and
+\code{kext\_zubko\_BARE\_GR\_S.dat} (1201, $10^{-3}$--$10^{4}\,\mu$m).
+
+Serving a table instead of redoing the integral is exact where the model
+grid and the table grid coincide and interpolated where they do not, and
+the gate \code{tests/grain\_kext} measures both against
+\code{size\_integrated\_extinction} over the model as MoCHII builds it.
+Cross sections are compared relative to themselves (they set rates); the
+albedo $a$ and the product $a\langle\cos\rangle$ absolutely, because the
+transport uses them as the probability that an interaction scatters and the
+forward displacement it carries.  The worst departure on each side of the
+T-matrix short end $0.0912\,\mu$m:
+\begin{center}\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+ & \multicolumn{2}{c}{$\lambda \ge 0.0912\,\mu$m}
+ & \multicolumn{2}{c}{$\lambda < 0.0912\,\mu$m} & band & \\
+model as built & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
+ & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
+ & $s_{\rm abs}$ & $C_{\rm ext}(\lambda_{\rm ref})$ \\
+\midrule
+astrodust, $E_{\max} = 100$~eV & 4.9e--13 & 4.2e--13 & 1.2e--2 & 3.3e--3
+   & 4.1e--6 & 2.8e--14 \\
+astrodust, $E_{\max} = 150$~eV & 4.9e--13 & 4.2e--13 & 8.2e--3 & 9.7e--3
+   & 2.0e--5 & 2.8e--14 \\
+astrodust, no extension        & 4.9e--13 & 4.2e--13 & ---     & ---
+   & ---     & 2.8e--14 \\
+dl07, $E_{\max} = 100$~eV      & 4.7e--13 & 3.3e--13 & 1.1e--3 & 2.2e--4
+   & 3.9e--6 & 7.0e--15 \\
+zubko                          & 4.9e--13 & 2.7e--13 & 4.8e--13 & 2.8e--13
+   & 2.9e--14 & 1.4e--14 \\
+\bottomrule
+\end{tabular}
+\end{center}
+At $\lambda \ge 0.0912\,\mu$m the model grid \emph{is} the table grid
+(Zubko's grid is its own DustEM table), so the served value is the table
+value and the only difference is the 13 significant digits the tables are
+written with.  Below it, on the EUV extension, the extended nodes are not
+the table's nodes and the interpolation enters at the percent level at a
+single wavelength --- but those departures alternate in sign and cancel in
+the two integrals the transport is actually built on: the band-averaged
+$s_{\rm abs}$ over 13.598--100~eV agrees to $4{\times}10^{-6}$ and the
+normalization $C_{\rm ext}(\lambda_{\rm ref} = 0.55\,\mu$m) to
+$3{\times}10^{-14}$, two to five orders below the single wavelengths they
+are made of.
+
+What the table presumes is that it was computed from that model's
+\emph{default} inputs.  Changing \code{par\%sed\_sizedist},
+\code{par\%sed\_qtable}, \code{par\%sed\_dl07\_sdindex} or
+\code{par\%sed\_zubko\_config} moves the grains that emit without moving the
+curve that extinguishes, and the two then no longer describe the same dust.
+That is exactly what the gate catches: a table belonging to other grains
+departs by $O(1)$ at $\lambda \ge 0.0912\,\mu$m, where the two are otherwise
+equal to 13 digits.
+
 \subsection{Stochastic dust emission (SEDust coupling)}
 \label{sec:sedust}
 With \code{par\%dust\_sed}, \code{sedust\_mod} (adapted from the MoCafe
@@ -2513,14 +2606,45 @@ exact by construction:
 \begin{itemize}
 \item \textbf{Shape from the local field.}  For each leaf, the band
   tally $J_b$ is converted to $J_\lambda$ on the SEDust wavelength grid
-  (1129 points, 0.0912--$4{\times}10^4\,\mu$m for astrodust).  The band
-  reaches into the EUV, below the SEDust optics grid; that energy is
-  deposited into the shortest SEDust bin, conserving the absorbed power
-  (the hardness of the stochastic temperature spikes is slightly
-  underestimated there --- a documented approximation).  SEDust then
+  --- for astrodust the native 1129-point Q-table grid,
+  0.0912--$4{\times}10^4\,\mu$m, or, when \code{par\%ion\_add\_dust}
+  extends it to $1.24/E_{\max}$, 1302 points from
+  $0.0124\,\mu$m at $E_{\max} = 100$~eV.  With the extension the whole
+  transported band falls on the grid and the grains absorb it with their own
+  cross sections at their own wavelengths; only in an emission-only run
+  (\code{ion\_add\_dust} off, native grid) is the part of $J$ below
+  $0.0912\,\mu$m deposited into the shortest SEDust bin, which conserves the
+  absorbed power but slightly underestimates the hardness of the stochastic
+  temperature spikes.  SEDust then
   returns the emission spectrum of the grain population in this field:
   equilibrium large grains plus the full temperature-distribution solve
   for small grains and PAHs.
+\item \textbf{The single-photon bound is a property of the field.}  The
+  enthalpy window of the stochastic solve is capped by the hardest photon
+  the \emph{radiation field} carries, \code{hardest\_photon\_energy}$(\lambda,
+  J_\lambda) = hc/\lambda_{\rm short}$ with $\lambda_{\rm short}$ the
+  shortest wavelength at which $J_\lambda$ exceeds $10^{-12}$ of its peak,
+  not by the short end $hc/\lambda(1)$ of the model's own grid.  The two are
+  not the same thing: a model grid is the grid of its optics tables and can
+  reach far past the illuminated band --- the Zubko/ZDA tables start at
+  $10^{-3}\,\mu$m (1.24~keV), 91 times harder than a field cut off at the
+  Lyman limit --- and measuring the grid there would raise the bound by that
+  factor with no photon to justify it, coarsening the enthalpy bins (a fixed
+  bin count spread over a 91-fold wider window).  The threshold is
+  deliberately one-sided: both refinement loops expand a window whose top bin
+  is still populated, so an underestimate costs iterations and is recovered,
+  while their contraction is guarded and capped.
+\item \textbf{One CMB temperature.}  The net cooling of a grain is
+  $\kappa B(T_{\rm d}) - \kappa_{\rm CMB}$, the second term being $C_{\rm
+  abs}$ integrated against a CMB blackbody, and it is what keeps a grain from
+  cooling below its surroundings.  That temperature is now taken from
+  \code{radfield::cmb\_temperature()} --- 2.725~K, the same value
+  \code{J\_Mathis} puts into the field the grains absorb --- instead of a
+  hard-coded 2.9~K in the cooling term alone.  While the two differed, the
+  solver held grains up against photons the field never supplied.  Setting
+  \code{use\_mathis\_corrected = .false.} recovers the literal Mathis (1983)
+  2.9~K together with that paper's 4000~K dilution factor, so the pair moves
+  together.
 \item \textbf{Normalization from the transport.}  The SEDust spectrum
   is used only as a shape: each leaf's emission is normalized to its
   absorbed power ${\rm Heat\_dust}\cdot V$ from the Monte Carlo tally
@@ -3317,7 +3441,7 @@ under \code{tests/}:
   $E^{-3}$ power law by up to $\sim$10\%, as $\sigma_{\rm exact}$
   does).
 \item \textbf{Physical-unit spectra.}  A \code{'per\_ev'} source against its
-  \code{'shape'} twin agrees to 0.004\% in the worst bin (the derived
+  \code{'shape\_ev'} twin agrees to 0.004\% in the worst bin (the derived
   \code{src\_lum} is exact); the \code{'per\_ang'} and \code{'per\_um'}
   wavelength conversions reproduce it to 0.013\%; rescaling a physical
   file to a set scale matches its shape twin to 0.0000\%.  A physical

@@ -4,7 +4,7 @@ module grid_mod_amr
 ! AMR grid setup (dust-only, par%grid_type = 'amr').
 !
 ! Reads a generic AMR file (FITS/HDF5/text) of leaf cells, builds the octree
-! (octree_mod), computes the grey dust opacity of each leaf according to par%dust_model,
+! (octree_mod), computes the grey dust opacity of each leaf according to par%dust_density_law,
 ! and normalizes it to the system target par%taumax (radial pole) or
 ! par%tauhomo (volume average).  A small vestigial Cartesian box grid is then
 ! built (grid_create) only so the observer/output code runs unchanged --
@@ -151,7 +151,7 @@ contains
      write(*,'(a,a)')     ' GRID: type       = ', trim(par%grid_type)
      write(*,'(a,i12)')   ' GRID: nleaf      = ', nleaf
      write(*,'(a,f12.5)') ' GRID: boxlen     = ', boxlen
-     write(*,'(a,a)')     ' GRID: dust_model = ', trim(par%dust_model)
+     write(*,'(a,a)')     ' GRID: dust_density_law = ', trim(par%dust_density_law)
      if (par%nH_const >= 0.0_wp) write(*,'(a,es12.4)') ' GRID: nH_const   = ', par%nH_const
      if (par%rmax > 0.0_wp)      write(*,'(a,f12.5)')  ' GRID: rmax       = ', par%rmax
      if (par%rmin > 0.0_wp)      write(*,'(a,f12.5)')  ' GRID: rmin       = ', par%rmin
@@ -232,7 +232,7 @@ contains
   !--- grey dust opacity of each leaf (h_rank=0 fills the shared array).
   if (mpar%h_rank == 0) then
      do il = 1, nleaf
-        select case (trim(par%dust_model))
+        select case (trim(par%dust_density_law))
         case ('none')   ! MoCHII: gas-only run; no dust opacity
            rho = 0.0_wp
         case ('laursen09_live')
@@ -253,14 +253,14 @@ contains
         case ('from_file')
            if (.not. have_ndust) then
               if (mpar%p_rank == 0) write(*,'(a)') &
-                 'ERROR: dust_model=''from_file'' requires an ndust column.'
+                 'ERROR: dust_density_law=''from_file'' requires an ndust column.'
               call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
            end if
            rho = ndustarr(il) * par%cext_dust * par%distance2cm
         case ('laursen09')
            if (.not. have_xHI) then
               if (mpar%p_rank == 0) write(*,'(a)') &
-                 'ERROR: dust_model=''laursen09'' requires an xHI column '// &
+                 'ERROR: dust_density_law=''laursen09'' requires an xHI column '// &
                  '(T->xHI CIE is deferred with temperature).'
               call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
            end if

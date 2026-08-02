@@ -11,7 +11,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L5_nH100.fits'
- par%dust_model    = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1e49 s^-1 (mean E = 19.834 eV)
@@ -39,17 +39,24 @@
  par%file_format     = 'hdf5'
  par%out_file        = 'pahlive_smoke.h5'
 
- !--- dust in the ionizing band (MW D03 EUV extinction)
+ !--- Dust in the ionizing band, from the SAME grains that emit below:
+ !--- no par%ion_dust_kext, so the extinction is the astrodust model's own
+ !--- size-integrated curve (gate tests/grain_kext), not the WD01/D03 table.
+ !--- cext_dust must move with it -- it is the model's C_ext/H at
+ !--- par%lambda_ref = 0.55 um, which the run prints as
+ !--- 'ION: C_ext/H at lambda_ref'.  For astrodust that is 2.9744e-22, 0.4%
+ !--- from the HD23 author release (SEDust/data/release/extinction.dat
+ !--- interpolated to 0.55 um: 2.9867e-22), and 0.61x the WD01/D03 value this
+ !--- test used to carry -- a model difference, not an error.
  par%ion_add_dust  = .true.
  par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
  par%ion_dust_scatter = .true.
- par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
- par%cext_dust     = 4.868e-22
+ par%cext_dust     = 2.9744e-22
  par%DGR           = 1.0
 
  !--- SEDust stochastic dust SED (output time)
  par%dust_sed       = .true.
- par%dust_model_sed = 'astrodust'
+ par%dust_model     = 'astrodust'
  !--- dust band emissivities for IR maps
  par%dust_emis_bands(1) = 8.0
  par%dust_emis_bands(2) = 24.0

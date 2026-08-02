@@ -11,7 +11,7 @@
 
  par%grid_type       = 'amr'
  par%amr_file        = 'tests/g2_hii/hii20_L6.fits'
- par%dust_model      = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit   = 'pc'
 
  par%source_cdf_tol  = 1.0e-8
@@ -57,5 +57,5 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
- par%out_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/results/continuous_energy/metal_switches/hii20_heat_off.h5'
+ par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/continuous_energy/metal_switches/hii20_heat_off.h5'
 /

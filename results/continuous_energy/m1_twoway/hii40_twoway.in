@@ -12,7 +12,7 @@
 
  par%grid_type       = 'amr'
  par%amr_file        = 'tests/g2_hii/hii40_L6.fits'
- par%dust_model      = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit   = 'pc'
 
  par%source_cdf_tol  = 1.0e-8

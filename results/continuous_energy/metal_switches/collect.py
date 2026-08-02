@@ -8,7 +8,7 @@ a second implementation of the same diagnostic.
 """
 import os, sys, re
 import numpy as np, h5py
-ROOT = '/nfs/mocafe/kiseon/RT_Codes/MoCHII'
+ROOT = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00'
 sys.path.insert(0, os.path.join(ROOT, 'tests/continuous_energy'))
 import analyze_hii40_residuals as ana
 

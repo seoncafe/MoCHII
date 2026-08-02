@@ -17,7 +17,7 @@ module ion_band_mod
 ! its own spectrum; the external field uses par%ext_spectrum / par%ext_tstar
 ! (see comp_shape / point_shape).
 !
-! par%spectrum_type fixes the column units of every file slot: 'shape'
+! par%spectrum_type fixes the column units of every file slot: 'shape_ev'
 ! (arbitrary, renormalized to the scale = legacy) or a PHYSICAL type ('per_ev',
 ! 'per_hz', 'per_ang', 'per_um').  A physical file is ABSOLUTE: bin luminosities
 ! come from the file integral directly (rescaled only when the scale is set);
@@ -25,7 +25,7 @@ module ion_band_mod
 ! also name an analytic ISRF preset ('draine'/'habing'/'mathis', FUV-only,
 ! absolute, needs add_fuv; see preset_je).
 !
-! Bin luminosities are integrated on a 32-point sub-grid per bin.  'shape'
+! Bin luminosities are integrated on a 32-point sub-grid per bin.  'shape_ev'
 ! spectra are normalized so the ionizing segment carries the scale
 ! (par%luminosity / src_lum(i); external pi*J*A).  Packets sample bins from the
 ! luminosity CDF and carry Lpacket = ion_Ltot / nphotons.
@@ -368,7 +368,7 @@ contains
   ! Band luminosity [erg/s] of one source component from its continuous
   ! sampler.  Two normalizations, exactly the two finalize_source implements:
   !
-  !  * scale > 0, or a 'shape'/Planck spectrum (which always carries a scale):
+  !  * scale > 0, or a 'shape_ev'/Planck spectrum (which always carries a scale):
   !    the fixed quantity is the IONIZING luminosity, so the band luminosity is
   !    L_ion / f_ion and the FUV part rides on the spectrum shape.
   !  * an absolute (physical-type) spectrum with no scale set: the band
@@ -768,7 +768,7 @@ contains
   ! Resolve a component spectrum (file > component tstar > global file >
   ! global tstar) and fill its band bin array on the NSUB sub-grid.  is_abs
   ! is .true. when the source is a PHYSICAL-type file (arr then holds absolute
-  ! bin integrals in the file's density units); .false. for a 'shape' file or
+  ! bin integrals in the file's density units); .false. for a 'shape_ev' file or
   ! a Planck function (arr is an arbitrary-unit shape, renormalized later).
   !=========================================================================
   subroutine comp_shape(arr, eedge, nnu, nsub, specfile, tstar, is_abs)
@@ -911,7 +911,7 @@ contains
   end function ion_ext_preset_id
 
   !=========================================================================
-  ! Normalize a source bin array to its scale.  For a 'shape'/Planck source
+  ! Normalize a source bin array to its scale.  For a 'shape_ev'/Planck source
   ! (is_abs=.false.) the ionizing segment is rescaled to the scale (legacy).
   ! For a physical-type source (is_abs=.true.) the bins are absolute: an unset
   ! scale (<=0) is DERIVED (bins kept, Lused = ionizing-segment integral), a
@@ -969,7 +969,7 @@ contains
   !=========================================================================
   ! Build the external field's bin LUMINOSITIES [erg/s] into arr.  Three
   ! spectrum kinds: an ISRF preset (analytic J_E), a physical-type file
-  ! (absolute J_E), or a legacy 'shape'/Planck spectrum.  For the absolute
+  ! (absolute J_E), or a legacy 'shape_ev'/Planck spectrum.  For the absolute
   ! kinds each bin gets L_b = pi*A_surface*J_b (the interior mean intensity of
   ! an isotropic field entering an area A is J_b); if par%ext_intensity is also
   ! set the field is rescaled so the band-integrated interior J equals it.  For
@@ -1552,7 +1552,7 @@ contains
        if (ios2 /= 0) then
           if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
              'ERROR: ', trim(fname), ' needs 1 + ', ncol, &
-             ' columns for spectrum_type /= shape; it has too few.'
+             ' columns for spectrum_type /= shape_ev; it has too few.'
           call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
        end if
        if (i == 1) then

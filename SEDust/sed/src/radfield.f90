@@ -10,6 +10,8 @@ module radfield
    implicit none
    private
    public :: J_Mathis, J_diluted_bbody, calc_bbody, bbody
+   public :: hardest_photon_energy
+   public :: cmb_temperature
    ! Toggle for Draine's 2008.02.02 correction of the Mathis 4000K
    ! dilution factor (1e-13 -> 1.65e-13) and the modern CMB temperature
    ! (2.9 -> 2.725 K). Default .true. follows Draine
@@ -25,10 +27,47 @@ module radfield
    real(wp), parameter :: kB    = 1.3806488d-23    ! J/K
    real(wp), parameter :: hc2   = 2.0d0*h*c**2
    real(wp), parameter :: hc_kB = h*c/kB
+   ! h*c in [erg um], written with the same literals and the same order of
+   ! operations as HC_ERG_UM in sed_astrodust_mod so that the two agree to the
+   ! last bit; the single-photon bound below is compared against a 13.6 eV
+   ! constant, and a last-place disagreement there would show up as a spurious
+   ! difference in the grains that sit exactly at the switch-over.
+   real(wp), parameter :: hc_erg_um = 6.62606957e-27_wp * 2.99792458e10_wp * 1.0e4_wp
+
+   ! Fraction of peak J_lambda below which a spectral component is treated as
+   ! carrying no photons at all; see hardest_photon_energy.
+   real(wp), parameter :: J_REL_FLOOR = 1.0e-12_wp
 
    logical, save :: use_mathis_corrected = .true.
 
 contains
+
+   pure function cmb_temperature() result(T_cmb)
+      ! The CMB temperature this module puts into the radiation field, and the
+      ! ONLY place that value is written down.
+      !
+      ! It has to be a single source of truth because two very different pieces
+      ! of the calculation must agree on it. J_Mathis adds a CMB blackbody to
+      ! the field the grains absorb, and build_kappCMB integrates C_abs against
+      ! a CMB blackbody past 1 mm to form the term calc_P subtracts from the
+      ! grain's own emission (kappB - kappCMB is the NET cooling rate, which is
+      ! what stops a grain cooling below its surroundings). If the two used
+      ! different temperatures the solver would hold grains up against photons
+      ! the field never supplied. They did differ -- 2.725 K in the field
+      ! against a hard-coded 2.9 K in the cooling term -- once
+      ! use_mathis_corrected became the default.
+      !
+      ! use_mathis_corrected = .true. is the modern value (Mather et al.);
+      ! .false. recovers the literal Mathis (1983) 2.9 K together with that
+      ! paper's 4000 K dilution factor, so the two move as a pair.
+      real(wp) :: T_cmb
+      if (use_mathis_corrected) then
+         T_cmb = 2.725_wp
+      else
+         T_cmb = 2.9_wp
+      end if
+   end function cmb_temperature
+
 
    subroutine J_Mathis(U, lambda, J)
       ! Mathis 1983 ISRF, scaled by intensity factor U, plus a CMB
@@ -45,11 +84,10 @@ contains
       real(wp) :: w_4000, T_cmb
       if (use_mathis_corrected) then
          w_4000 = 1.65d-13
-         T_cmb  = 2.725_wp
       else
          w_4000 = 1.0d-13
-         T_cmb  = 2.9_wp
       end if
+      T_cmb = cmb_temperature()
       nlambda = size(lambda)
       do i = 1, nlambda
          if (lambda(i) < 0.0912d0) then
@@ -124,5 +162,72 @@ contains
          B = hc2 / lambda_m**5 / (exp(x) - 1.0_wp)
       end if
    end function bbody
+
+
+   pure function hardest_photon_energy(lam_um, J_lam) result(u_photon)
+      ! Energy of the hardest photon the radiation field actually carries:
+      !   hc / (shortest wavelength at which J_lambda is significantly nonzero).
+      !
+      ! This is a property of the FIELD, not of the wavelength grid it is
+      ! sampled on. The distinction is the whole point of this routine. A dust
+      ! model's grid is the grid of its optics tables and can reach far past the
+      ! band the transported field occupies: the astrodust and DL07 Q tables
+      ! stop at the Lyman limit (0.0912 um = 13.595 eV) and so happen to agree
+      ! with a field that is illuminated to the Lyman limit, but the Zubko/ZDA
+      ! DustEM tables start at 1.0e-3 um (1.24 keV), 91 times harder, while the
+      ! field being transported still ends at the Lyman limit. Measuring the
+      ! grid instead of the field there raises the single-photon bound by a
+      ! factor of 91 with no photon to justify it, which coarsens the
+      ! grain-enthalpy bins (umax sets the top of a fixed bin count) and shifts
+      ! the emergent SED by 1-2% -- see docs/EUV_EXTENSION_HOST_REGRESSION.md.
+      !
+      ! J_lam may be in any units: only ratios within the array are used, so the
+      ! caller need not convert. lam_um must be in um. The array order is
+      ! irrelevant; every point is examined.
+      !
+      ! Significance threshold. Exact zeros must be excluded (J_Mathis returns
+      ! exactly 0 below 0.0912 um), but an exact `> 0` test is too fragile: a
+      ! host that hands over a field carrying denormal or roundoff-level
+      ! residue in its unilluminated bins would push the bound back up by
+      ! orders of magnitude. A component a fraction J_REL_FLOOR = 1e-12 below
+      ! the peak of J_lambda contributes at most that fraction of the photon
+      ! absorption rate; allowing two decades for the wavelength dependence of
+      ! C_abs over the illuminated band, the enthalpy states it could populate
+      ! carry probability <~ 1e-10 of the peak, at or below the 1e-13 tail
+      ! level (PMIN_UP, PMIN_UP_QM) at which both stochastic solvers already
+      ! truncate the enthalpy window. Such a component therefore cannot change
+      ! a resolved excursion, and 1e-12 sits 18 decades above the residue it is
+      ! meant to reject.
+      ! The error is deliberately one-sided. Both refinement loops EXPAND the
+      ! window when the top bin is still populated, so an underestimate of the
+      ! bound costs iterations and is recovered; their contraction is guarded
+      ! (umax > 1.02*umaxlo, umax > 1.01*ub(jcut)) and capped at MAX_ITER, so an
+      ! overestimate is not. The threshold is set high enough to reject junk for
+      ! that reason.
+      !
+      ! Returns 0 when the field is zero (or non-positive) everywhere. Callers
+      ! wrap the result in max() against their own floor, so 0 selects that
+      ! floor and no special case is needed at the call site.
+      real(wp), intent(in) :: lam_um(:)   ! [um]
+      real(wp), intent(in) :: J_lam(:)    ! J_lambda, arbitrary units
+      real(wp) :: u_photon                ! [erg]
+
+      real(wp) :: j_floor, lam_short
+      integer  :: i, n
+
+      u_photon = 0.0_wp
+      n = min(size(lam_um), size(J_lam))
+      if (n < 1) return
+
+      j_floor = J_REL_FLOOR * maxval(J_lam(1:n))
+      if (j_floor <= 0.0_wp) return       ! field everywhere zero or non-positive
+
+      lam_short = huge(1.0_wp)
+      do i = 1, n
+         if (J_lam(i) > j_floor .and. lam_um(i) > 0.0_wp) &
+            lam_short = min(lam_short, lam_um(i))
+      end do
+      if (lam_short < huge(1.0_wp)) u_photon = hc_erg_um / lam_short
+   end function hardest_photon_energy
 
 end module radfield

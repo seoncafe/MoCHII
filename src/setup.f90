@@ -212,11 +212,11 @@ contains
 
     !--- par%spectrum_type sets the column units of every spectrum file slot.
     select case (trim(par%spectrum_type))
-    case ('shape', 'per_ev', 'per_hz', 'per_ang', 'per_um')
-       is_phys = trim(par%spectrum_type) /= 'shape'
+    case ('shape_ev', 'per_ev', 'per_hz', 'per_ang', 'per_um')
+       is_phys = trim(par%spectrum_type) /= 'shape_ev'
     case default
        if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%spectrum_type must be ''shape'' (default), ''per_ev'', ''per_hz'', '// &
+          'ERROR: par%spectrum_type must be ''shape_ev'' (default), ''per_ev'', ''per_hz'', '// &
           '''per_ang'', or ''per_um''.'
        call MPI_FINALIZE(ierr);  stop
     end select
@@ -370,7 +370,7 @@ contains
        endif
     endif
 
-    !--- luminosity sentinel (default -999 = unset).  A 'shape'/Planck primary
+    !--- luminosity sentinel (default -999 = unset).  A 'shape_ev'/Planck primary
     !--- source maps it to 1.0 (exact legacy); a physical-type (absolute) source
     !--- leaves it unset so its luminosity is DERIVED from the file integral.
     if (par%luminosity < -900.0_wp) then
@@ -412,7 +412,7 @@ contains
        endif
     else
        !--- multiple point sources.  src_lum: all set (keep) or all unset.  For
-       !--- a 'shape' spectrum an unset set is the equal split of par%luminosity
+       !--- a 'shape_ev' spectrum an unset set is the equal split of par%luminosity
        !--- (MoCafe convention); for a physical-type (absolute) source file an
        !--- unset set is DERIVED per column (src_lum left as the -999 sentinel).
        !--- A partial set is an error.
@@ -556,12 +556,13 @@ contains
 
   !--- dust in the ionizing band needs extinction optics: either the EUV kext
   !--- table (par%ion_dust_kext, which OVERRIDES the model) or the SEDust grain
-  !--- model (par%dust_model_sed), extended into the EUV.  gas_opacity_mod
-  !--- checks the grain model actually covers the band (Zubko cannot).
+  !--- model (par%dust_model), extended into the EUV.  gas_opacity_mod
+  !--- checks that the grain model's grid really covers the band, for every
+  !--- model alike (Zubko needs no extension -- its own optics reach 0.001 um).
   if (par%ion_add_dust .and. len_trim(par%ion_dust_kext) == 0 .and. &
       mpar%p_rank == 0) write(*,'(3a)') &
      ' NOTE: par%ion_add_dust with no par%ion_dust_kext -> ionizing-band dust '// &
-     'optics from the ''', trim(par%dust_model_sed), ''' SEDust grain model.'
+     'optics from the ''', trim(par%dust_model), ''' SEDust grain model.'
 
   if (par%grain_pe .and. .not. par%add_fuv) then
      if (mpar%p_rank == 0) write(*,'(a)') &

@@ -1,6 +1,6 @@
 &parameters
  par%line_id         = 'HeI_10833'
- par%cart_file       = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/examples/hei_metastable/hei_high_density_lart_car.h5'
+ par%cart_file       = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/examples/hei_metastable/hei_high_density_lart_car.h5'
  par%distance2cm     = 1.0
  par%no_photons      = 1.00000e+05
  par%temperature     = 1.00000e+04

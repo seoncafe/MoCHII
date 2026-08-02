@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /nfs/mocafe/kiseon/RT_Codes/MoCHII
+cd /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00
 R=results/continuous_energy/m1_twoway
 while ! grep -q "HII20 ALL DONE" results/continuous_energy/metal_switches/driver20.log 2>/dev/null; do sleep 60; done
 for b in hii40 hii20; do

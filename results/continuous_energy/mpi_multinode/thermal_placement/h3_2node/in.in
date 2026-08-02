@@ -12,7 +12,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'hii20_L6.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L set so that Q_H = 1.006e49 (mean E = 16.053 eV)
@@ -49,12 +49,12 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'h3_2node.h5'
- par%amr_file       = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g2_hii/hii20_L6.fits'
+ par%amr_file       = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g2_hii/hii20_L6.fits'
  par%launch_sequence = 'sobol'
  par%qmc_seed       = 20260728
  par%no_photons     = 1.0e5
  par%no_print       = 1.0e5
  par%gas_niter      = 3
- par%data_dir       = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data'
- par%atomic_dir     = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%data_dir       = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
+ par%atomic_dir     = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
 /

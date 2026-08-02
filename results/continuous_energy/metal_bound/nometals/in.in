@@ -10,8 +10,8 @@
  par%qmc_seed        = 20260728
 
  par%grid_type       = 'amr'
- par%amr_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g2_hii/hii40_L6.fits'
- par%dust_model      = 'none'
+ par%amr_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g2_hii/hii40_L6.fits'
+ par%dust_density_law = 'none'
  par%distance_unit   = 'pc'
 
  par%source_cdf_tol  = 1.0e-8
@@ -44,7 +44,7 @@
  par%te_max          = 3.0e4
  par%require_convergence = .true.
 
- par%atomic_dir      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data/atomic'
+ par%atomic_dir      = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
  par%use_metals     = .false.
  par%ion_metal_abs   = .true.
  par%metal_ne        = .true.
@@ -57,6 +57,6 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
- par%data_dir        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/data'
- par%out_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/results/continuous_energy/metal_bound/hii40_nometals.h5'
+ par%data_dir        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
+ par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/continuous_energy/metal_bound/hii40_nometals.h5'
 /

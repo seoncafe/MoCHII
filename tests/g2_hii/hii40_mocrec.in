@@ -11,8 +11,8 @@
  par%iseed         = 1234
 
  par%grid_type     = 'amr'
- par%amr_file      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g2_hii/hii40_L6.fits'
- par%dust_model    = 'none'
+ par%amr_file      = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g2_hii/hii40_L6.fits'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=3.082e39 erg/s

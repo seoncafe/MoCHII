@@ -32,7 +32,7 @@
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
 
- par%dust_model      = 'global_dgr'
+ par%dust_density_law = 'global_dgr'
  par%ion_add_dust    = .true.       ! EUV dust absorption + grain heating
  par%dust_emis_transport = .true.    ! transport the reradiated IR back onto the grains
  par%ion_dust_scatter = .true.      ! forward scattering in the ionizing band

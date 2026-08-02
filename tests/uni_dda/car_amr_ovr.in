@@ -11,7 +11,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%nH_const      = 100.0
  par%rmax          = 4.0
  par%distance_unit = 'pc'

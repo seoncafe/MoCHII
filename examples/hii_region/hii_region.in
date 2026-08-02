@@ -21,7 +21,7 @@
  par%rmin          = 0.97           ! inner cavity radius (pc); nH = 0 inside
  par%rmax          = 3.08           ! outer shell radius (pc); nH = 0 outside
  par%distance_unit = 'pc'
- par%dust_model    = 'none'         ! gas-only
+ par%dust_density_law = 'none'         ! gas-only
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]

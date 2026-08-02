@@ -26,7 +26,7 @@
  par%zmax = 3.0
  par%nH_const      = 30.0           ! cm^-3, uniform box (no rmax cut)
  par%distance_unit = 'pc'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! global fallback shape; unused since src_tstar is set

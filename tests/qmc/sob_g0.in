@@ -4,8 +4,8 @@
  par%iseed         = 1234
 
  par%grid_type     = 'amr'
- par%amr_file      = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/g0_gamma/amr_sphere_L5.fits'
- par%dust_model    = 'none'
+ par%amr_file      = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g0_gamma/amr_sphere_L5.fits'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  par%nnu_ion       = 16
@@ -22,7 +22,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
- par%out_file        = '/nfs/mocafe/kiseon/RT_Codes/MoCHII/tests/qmc/v1_new.h5'
+ par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/v1_new.h5'
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 12345
 /

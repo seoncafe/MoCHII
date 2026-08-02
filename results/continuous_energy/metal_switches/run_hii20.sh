@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /nfs/mocafe/kiseon/RT_Codes/MoCHII
+cd /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00
 R=results/continuous_energy/metal_switches
 # wait for the HII40 queue; the frozen binary makes this immune to an M1 rebuild
 while ! grep -q "ALL DONE" $R/driver.log 2>/dev/null; do sleep 60; done

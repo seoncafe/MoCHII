@@ -171,7 +171,7 @@ contains
        xh   = gas_xHI(il)
        wpah = xh + par%f_ion_pah*(1.0_wp - xh)
        wd   = 1.0_wp
-       if (trim(par%dust_model) == 'laursen09_live') &
+       if (trim(par%dust_density_law) == 'laursen09_live') &
           wd = max(xh + par%f_ion_dust*(1.0_wp - xh), tinest)
        lamI = lamI + (wpah/wd - 1.0_wp)*lamI_ch(:, ipah_chan)
     else

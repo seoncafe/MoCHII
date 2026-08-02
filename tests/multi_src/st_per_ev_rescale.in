@@ -1,7 +1,7 @@
 &parameters
  ! G-rescale: the 'per_ev' file WITH explicit src_lum = 3e37/1e37 -> each
  ! column's ionizing segment is RESCALED to that value (rank-0 NOTE with both
- ! numbers).  Must match the 'shape' twin (st_shape_rescale.in) with the same
+ ! numbers).  Must match the 'shape_ev' twin (st_shape_rescale.in) with the same
  ! values.
 
  par%no_photons    = 2.0e7
@@ -17,7 +17,7 @@
  par%ymax          = 2.0
  par%zmax          = 2.0
  par%nH_const      = 1.0e-4
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  par%nnu_ion       = 32

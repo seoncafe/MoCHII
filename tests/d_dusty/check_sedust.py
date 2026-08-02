@@ -17,11 +17,19 @@ lam, Llam = np.loadtxt(f"{BASE}_dustsed.txt", unpack=True)
 Ltot = np.trapz(Llam, lam)
 
 # --- absorbed power from the rates file ----------------------------------
+# Every block of the rates file is an HDF5 GROUP holding one 'data' dataset,
+# so a leaf array is f[name]["data"], not f[name].
+# The leaf volume IS recoverable: LeafSize is the leaf edge in code length
+# units, which this test runs with par%distance_unit = 'pc'.  Summing
+# Heat_dust [erg/s/cm^3] over it re-derives the absorbed power from the grid
+# itself, which is what makes the comparison below a check rather than the
+# dustsed header quoted back at itself.
+PC_CM = 3.0856775814913673e18
 with h5py.File(f"{BASE}_rates.h5", "r") as f:
-    hd = f["Heat_dust"][:]
-    xyz = f["LeafXYZ"][:]
-    # leaf volume from the level structure is not stored; recover from
-    # the dustsed header instead (written as sum Heat_dust V).
+    heat_dust = f["Heat_dust"]["data"][:]      # [erg/s/cm^3] per leaf
+    leaf_edge = f["LeafSize"]["data"][:]       # [pc] leaf edge
+Labs_grid = float(np.sum(heat_dust * (leaf_edge * PC_CM) ** 3))
+
 Labs = None
 with open(f"{BASE}_dustsed.txt") as fh:
     for ln in fh:
@@ -31,7 +39,9 @@ with open(f"{BASE}_dustsed.txt") as fh:
 
 print(f"total dust luminosity  int L_lambda dlambda = {Ltot:.4e} erg/s")
 print(f"header value (= sum Heat_dust V)            = {Labs:.4e} erg/s")
+print(f"grid sum  Heat_dust * (LeafSize pc)^3       = {Labs_grid:.4e} erg/s")
 print(f"trapezoid/header ratio = {Ltot/Labs:.4f}")
+print(f"grid/header ratio      = {Labs_grid/Labs:.4f}")
 
 # PAH features: local maxima near 6.2, 7.7, 11.3, 17 um
 nuLnu = Llam * lam

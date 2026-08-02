@@ -36,7 +36,7 @@
  par%nH_const      = 1.7            ! cm^-3 inside the cloud (see the tuning note)
  par%rmax          = 1.8            ! cloud radius (pc); nH = 0 outside
  par%distance_unit = 'pc'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! spectral shape of the external field [K]

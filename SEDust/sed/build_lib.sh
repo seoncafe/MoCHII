@@ -15,7 +15,7 @@ FLAGS="-O3 -xHost -qopenmp -w -module lib"
 SRCS="constants sed_mathlib enthalpy_v2 size_dist q_table enthalpy_astrodust mie \
       q_astrodust q_graphite q_graphite_d16 q_graphite_d16_sphere qpah radfield p_sub \
       stoch_qm pah_ioniz grain_dist q_silicate pah_ld01 dust_model_mod \
-      zubko_io sed_astrodust dust_lib"
+      kext_table zubko_io sed_astrodust dust_lib"
 mkdir -p lib
 rm -f lib/*.o lib/*.mod lib/libsedust.a
 for f in $SRCS; do

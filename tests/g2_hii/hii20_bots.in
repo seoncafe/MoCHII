@@ -12,7 +12,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'hii20_L6.fits'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 
  !--- ionizing band: L(13.598-100 eV) from the benchmark L(BB)=6.005e39 erg/s

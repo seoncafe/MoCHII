@@ -10,7 +10,7 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_L5.fits.gz'
- par%dust_model    = 'none'
+ par%dust_density_law = 'none'
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]

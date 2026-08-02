@@ -3,7 +3,7 @@ module physics_amr_mod
 !---------------------------------------------------------------------------
 ! Dust physics for the AMR grid (dust-only port of LaRT physics_amr_mod.f90).
 !
-! Only the metallicity->dust relation (Laursen+09) is kept.  For dust_model =
+! Only the metallicity->dust relation (Laursen+09) is kept.  For dust_density_law =
 ! 'laursen09' an explicit xHI column in the file is required.
 !---------------------------------------------------------------------------
   use define, only: wp
@@ -14,7 +14,7 @@ module physics_amr_mod
 
   !--- Scale factor that put the INITIAL dust opacity on the requested
   !--- par%taumax (radial pole) or par%tauhomo (volume average).  It is
-  !--- solved once, at grid setup, and then held fixed: for dust_model =
+  !--- solved once, at grid setup, and then held fixed: for dust_density_law =
   !--- 'laursen09_live' every later opacity refill multiplies by it, so the
   !--- target sets the optical depth of the initial configuration and the
   !--- subsequent evolution comes from the ionization-dependent grain

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /nfs/mocafe/kiseon/RT_Codes/MoCHII
+cd /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00
 R=results/continuous_energy/m1_s3
 for b in hii40 hii20; do
   echo "=== ${b}_s3 start $(date +%H:%M:%S) ==="
