@@ -74,6 +74,7 @@ OBJS	= \
 	qmc_mod.o \
 	energy_sampler_mod.o \
 	utility.o \
+	photon_schedule_mod.o \
 	grain_model_mod.o \
 	memory_mod_mpi.o \
 	mathlib.o \
@@ -120,6 +121,7 @@ OBJS	= \
 	gas_rates_mod.o \
 	ion_balance_mod.o \
 	thermal_mod.o \
+	ionizing_field_mod.o \
 	setup.o \
 	main.o
 

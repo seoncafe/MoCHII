@@ -27,7 +27,8 @@ Take and extend:
 | `grid_mod_amr.f90` | persist `nH`/`xHI` (today deallocated after the dust-density step); allocate gas state |
 | `jtally_mod.f90` | ionizing-band J tally (nbin_ion x nleaf) alongside the SED tally |
 | `raytrace_amr.f90` | band-dependent gas+dust opacity in the ionizing bins (no grey `s_ext` rescale there) |
-| `lucy_mod.f90` | (not copied — the gas iteration lives directly in `main.f90`: the tally is rebuilt from zero each iteration since the opacity changes) |
+| `lucy_mod.f90` | (not copied — the gas iteration is `main.f90`'s loop over `ionizing_field_and_rates` (`ionizing_field_mod`): the tally is rebuilt from zero each iteration since the opacity changes) |
+| `run_simulation_mod.f90` | (not copied — ADAPTED into `photon_schedule_mod`, see below) |
 | `sed_mod.f90` | copied (band/SED grids) |
 | `dustemis_mod.f90` (+ SEDust) | ADAPTED into `sedust_mod` (SEDust `dust_lib` built from source under `SEDust/sed`): leaf spectra shaped by the local J, normalized to Heat_dust V; live PAH channel weighting; dust-band emissivities |
 | `observer_mod.f90` + `peelingoff_mod.f90` | ADAPTED into `ion_peel_mod`: MoCafe observer geometry + direct/scattered peel for the ionizing/FUV band, tau by a tally-free walk, hook into the transport |
@@ -56,7 +57,7 @@ Take and extend:
 |---|---|
 | `gas_state_mod` | leaf gas state + species registry |
 | `gas_rates_mod` | Gamma / heating integrals from the ionizing-band J tally |
-| `ion_balance_mod` | H/He (+ per-element cascade) equilibrium solve |
+| `ion_balance_mod` | H/He (+ element cascade) equilibrium solve |
 | `thermal_mod` | heating - cooling balance for T_e (Tier-1 fitted Lambda) |
 | `nlevel_mod` | generic n-level atom solve (Tier-2, output-time diagnostics) |
 | `gas_opacity_mod` | ionizing-band absorption coefficients from the state |
@@ -74,3 +75,5 @@ Take and extend:
 | `gaunt_vh14_mod` | van Hoof et al. (2014) free-free Gaunt table |
 | `ion_peel_mod` | peel-off imaging (adapted from MoCafe, see above) |
 | `sedust_mod` | SEDust coupling (adapted from MoCafe, see above) |
+| `ionizing_field_mod` | one ionizing-band transport pass + the rate integrals it feeds: stellar and diffuse launch, transport, reduction, `gas_rates_compute`. `ionizing_field_and_rates(label, with_peel)` serves the iterating passes, the final consistency pass and the peel-off imaging pass, so the field the written rates carry is built exactly like the field that drove the iteration. Lifted out of `main.f90`, where it existed twice (once for the iteration, once copied for imaging) |
+| `photon_schedule_mod` | how one pass's global photon indices are split over the ranks, behind `photon_schedule_begin`/`_next`/`_end` so the loop body is written once. ADAPTED from MoCafe's `run_simulation_mod.f90`, which keeps the two schedules as two whole routines with the transport loop inlined in each (`run_master_slave`, `run_equal_number`); separating the schedule from the loop body is what lets the stellar loop, the diffuse LyC loop and the peel-off pass share one implementation. `par%use_master_slave = .false.` (MoCHII default; MoCafe defaults `.true.`) reproduces the previous static cyclic sequence index for index; `.true.` makes rank 0 serve batches of `par%num_send_at_once` on demand and transport nothing |

@@ -222,12 +222,13 @@ its coordinates are \code{gen\_ion\_photon\_qmc} in \code{src/ion\_band\_mod.f90
 \item \code{par\%qmc\_seed} (default \code{12345}) --- the scramble/replicate
   key, fixed across the gas iterations.
 \end{itemize}
-The stellar loop in \code{src/main.f90} addresses the Sobol point by the global
-photon number $i-1$ (0-based), and the diffuse loop does the same on its own
-stream indexed by the global diffuse photon number.  Because the coordinates
-depend only on the global index and not on which rank handles a packet, the
-launch \emph{set} is identical for any MPI task count; static or strided work
-assignment does not change the sample.
+The stellar loop in \code{src/ionizing\_field\_mod.f90} addresses the Sobol point
+by the global photon number $i-1$ (0-based), and the diffuse loop does the same
+on its own stream indexed by the global diffuse photon number.  Because the
+coordinates depend only on the global index and not on which rank handles a
+packet, the launch \emph{set} is identical for any MPI task count, and neither
+schedule offered by \code{par\%use\_master\_slave} --- the static cyclic split or
+the batches rank 0 serves on demand --- changes the sample.
 
 Everything after launch stays pseudo-random: forced first interaction,
 Henyey--Greenstein direction sampling, subsequent optical depths, and Russian

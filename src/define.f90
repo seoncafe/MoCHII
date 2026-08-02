@@ -325,8 +325,19 @@ public
      !--- arrays are shared is therefore fixed at the allocation site, where the
      !--- read-only structure (octree connectivity, Cartesian face and opacity
      !--- arrays) calls create_shared_mem directly for one copy per node.
+     !--- use_master_slave selects how the ionizing-band photon indices are
+     !--- split over the ranks (photon_schedule_mod): .false. = static cyclic,
+     !--- .true. = rank 0 serves batches of num_send_at_once on demand.  On
+     !--- hii40_bench at 70 ranks that takes the transport pass from a median
+     !--- 52.1 s to 43.4 s (+20%), against the +29% upper bound the harmonic
+     !--- mean predicts in docs/MPI_LOAD_BALANCE_2026-08-02.md.
+     !--- MoCafe defaults it .true.; MoCHII keeps .false. because with the
+     !--- default launch_sequence = 'random' the schedule also selects which
+     !--- rank draws which packet, i.e. the realization, so every recorded
+     !--- gate would move.  With launch_sequence = 'sobol' the two schedules
+     !--- transport the same packet set and differ only by summation order.
      integer       :: num_send_at_once   = 10000
-     logical       :: use_master_slave   = .true.
+     logical       :: use_master_slave   = .false.
      logical       :: use_reduced_wgt    = .true.
      !--- Dust-related parameters
      real(kind=wp) :: hgg           = 0.6761

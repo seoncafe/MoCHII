@@ -5,6 +5,17 @@ self-contained: grid (or its builder), input file(s), and a `check_*.py`
 gate script.  Gates per stage are defined in docs/PLAN.md section 5;
 results are recorded in CLAUDE.md and docs/MoCHII_physics.pdf.
 
+**Before comparing two runs bit for bit**, note that bit identity needs the MPI
+collective algorithm selection held fixed.  Confirmed here: with no code change
+at all, two runs of the same binary on the same input at the same rank count
+already differ — at 16 ranks on `cooling_ne/id_new.in` only 5 of the 31
+`rates.h5` datasets matched bit for bit, with `J_nu` differing by 5.7e-14
+(`_lines.txt` was identical).  Intel MPI choosing its collectives adaptively is
+the diagnosis; pinning them with `I_MPI_ADJUST_ALLREDUCE=1` (plus `REDUCE`,
+`BCAST`, `GATHER`) is *reported* to restore bit identity, but that has not been
+re-confirmed.  A mismatch at the 1e-14 level is therefore not by itself a
+regression.
+
 | directory | gate |
 |---|---|
 | `g0_gamma` | rate integrals vs analytic attenuation |

@@ -28,8 +28,9 @@ ideal smooth-integrand QMC convergence rate should not be assumed.
 
 ## Current sampling path
 
-The stellar ionizing loop is in `src/main.f90`. Each MPI rank handles a
-strided subset of the global photon indices:
+The stellar ionizing loop is in `src/ionizing_field_mod.f90` (it was in
+`src/main.f90` when this was written). Each MPI rank handles a strided subset
+of the global photon indices:
 
 ```fortran
 do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
@@ -37,6 +38,11 @@ do ip = mpar%p_rank+1, par%nphotons, mpar%nproc
    call transport_ion_packet(photon)
 end do
 ```
+
+That stride is now one of the two schedules behind `photon_schedule_mod`
+(`par%use_master_slave`); it is still the default and still the same index
+sequence. Neither schedule changes the Sobol launch set, since a packet's
+coordinates depend only on its global index.
 
 `gen_ion_photon` in `src/ion_band_mod.f90` currently uses independent
 Mersenne Twister draws (MT19937-64, `src/random_mt.f90`, one stream per MPI

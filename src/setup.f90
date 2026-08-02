@@ -610,6 +610,9 @@ contains
      write(*,'(a)')     ''
      write(*,'(3a)')    '+++++ MoCHII: ',trim(model_infile),' +++++'
      write(*,'(2a)')    ' >>> START @ ', get_date_time()
+     !--- how the photon indices are split over the ranks: .false. = static
+     !--- cyclic, .true. = rank 0 serves batches on demand.
+     write(*,'(a,l14)') 'Master-slave scheduling   : ', par%use_master_slave
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
      if (par%ion_add_dust) &

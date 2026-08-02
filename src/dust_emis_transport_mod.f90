@@ -291,7 +291,7 @@ contains
        closure = abs(extinct + escaped - emitted)/max(emitted, tiny(1.0_wp))
        !--- L_abs_path is the SAME absorbed power seen by the path estimator
        !--- that feeds heat_ir, so it is the physical one; without dust
-       !--- scattering it equals the per-packet extinction ledger exactly
+       !--- scattering it equals the extinction ledger of the packets exactly
        !--- (Int kappa_abs exp(-tau) dl = 1 - exp(-tau_edge) cell by cell),
        !--- with scattering it is smaller by the scattered-out energy.
        L_abs_path = 0.0_wp

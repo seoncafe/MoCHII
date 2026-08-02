@@ -110,10 +110,13 @@ infrared dust/PAH spectrum.
   reflected/transmitted/absorbed energy budget.  Internal point sources
   also work under the same periodic boundary.
 - **Parallelism and I/O**: MPI with MPI-3 shared memory (one grid copy per
-  node); HDF5 or FITS output through a format-agnostic interface; Python
-  readers, a 2D map maker, and slice/cutout viewers for the grid and the
-  outputs under `tools/python/`, plus an AMR octree grid builder
-  (`tools/python/AMR_grid/`).
+  node); the photons of a transport pass are split statically over the
+  ranks, or served in batches on demand by rank 0 with `use_master_slave`
+  (worth ~20% of the ionizing-band pass at 70 ranks, and it cuts the
+  run-to-run spread of that pass from 28% to 1.5%); HDF5 or FITS output
+  through a format-agnostic interface; Python readers, a 2D map maker, and
+  slice/cutout viewers for the grid and the outputs under `tools/python/`,
+  plus an AMR octree grid builder (`tools/python/AMR_grid/`).
 
 MoCHII shares its transport engine with the author's dust radiative-transfer
 code [MoCafe](https://github.com/seoncafe/MoCafe) and is validated against
@@ -157,4 +160,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-02 18:45 KST
+Last updated: 2026-08-03 00:13 KST
