@@ -1,11 +1,88 @@
 # Extending the SEDust Q table into the EUV — feasibility review
 
 Date: 2026-07-21.  Status when written: review only, no implementation.
-**Status now (2026-08-02): implemented and in production.**  Both the
-extension and the host adoption of section 7 happened, and one thing this
-memo assumes has since changed: `dust_extinction` no longer performs the
-size integral at call time.  It serves the model's *precomputed*
-size-integrated curve — `SEDust/data/kext_astrodust_MW_euv.dat`,
+**The extension was built upstream and MoCHII now runs on it** — with one of the
+review's recommendations left out, recorded below.  Sections 1–8 are the
+2026-07-21 review, left as written; this preamble records what was actually
+built and what it did to MoCHII.
+
+## What was executed (upstream SEDust, adopted 2026-08-04)
+
+The Q table was regenerated on a wavelength grid extended past the review's
+recommended 10 A floor, all the way to the DH21 dielectric function's own end:
+
+| | before | after |
+|---|---|---|
+| `q_astrodust_P0.20_Fe0.00_1.400.dat` | 169 x 1129, 0.0912–3.981e4 um | base SEDust table |
+| `q_astrodust_P0.20_Fe0.00_1.400_euv.dat` | — | 169 x 1762, **1.0e-4**–3.981e4 um |
+| file size | 21 MB | 33 MB (EUV companion) |
+
+MoCHII's default `par%sed_qtable` points to the `_euv.dat` companion because
+MoCHII is a photoionization code; the unsuffixed 1129-point file is retained
+for ordinary SEDust use and is not an adequate MoCHII default.
+
+The short end is therefore 12.4 keV, not the 1.24 keV of section 4's
+recommended floor.  The wavelength axis is a separate grid file
+(`DH21_wave_to_12keV`) and the existing columns were appended to, not
+recomputed: the flag census of section 2 for lambda >= 0.0912 um is reproduced
+row for row by the new table (47,574 T-matrix / 140,320 Rayleigh / 2,907
+geometric-optics), and the kext table those columns feed is unchanged to
+rounding there (worst 1.4e-10 on C_ext).
+
+**One recommendation was not adopted.**  Section 4 proposed a fourth branch —
+Mie for the equal-volume sphere at x > 50 in the EUV — because the
+geometric-optics limit assumes an opaque grain and returns g = 0 (section 3).
+That branch does not exist: `spheroid_optics.f90` still dispatches on
+`X_RAYLEIGH_MAX = 0.1` / `X_GEOMETRIC_MIN = 50` alone, no flag was added, and
+the table's flag column below 0.0912 um reads 46,008 T-matrix, 59,834
+geometric-optics, 1,135 Rayleigh (measured here on the table in the tree).  The
+upstream table header states this openly — "where the size parameter leaves the
+T-matrix range the Rayleigh dipole limit (x < 0.1) and the geometric optics
+limit (x > 50) are used, exactly as the Q table itself does" — so it is a known
+approximation, not an oversight, but section 3's objection to g = 0 for a
+translucent grain stands and is **open**.
+
+## What it did to MoCHII
+
+1. **The extension is gone.**  `grain_model_mod` still asks for the grid down
+   to `1.23984/par%eion_max`, but SEDust prepends points only when that is
+   shorter than the table's first wavelength.  At the default
+   `par%eion_max` = 100 eV that is 0.0124 um against the table's 1.0e-4 um, so
+   nothing is prepended; astrodust and DL07 come back with NLAM = 1762 and
+   lambda(1) = 1.0e-4 um at 100 eV, at 150 eV, and with no `lam_min` at all —
+   the same grid all three times.  An extension appears only above
+   `par%eion_max` = 12398.4 eV, and astrodust then *refuses* it (build status 6:
+   the band's optics are the same spheroid and this tree carries the Q table
+   without the T-matrix), which `build_grain_model` turns into a message naming
+   `par%eion_max`.  SEDust does not silently substitute an equal-volume sphere.
+2. **The ionizing-band grains changed identity.**  The old kext table's header
+   recorded its own EUV as "Mie for the VOLUME-EQUIVALENT SPHERE on the same
+   Draine & Hensley (2021) dielectric function"; the new one is the same
+   random-orientation T-matrix on the same b/a = 1.4 oblate spheroid as the rest
+   of the table.  That, not the disappearance of a code path, is the physical
+   content of this update: a shape approximation was replaced by the shape the
+   model is defined on.
+3. **How much it moved.**  Above 0.0912 um, nothing beyond rounding.  Below it
+   the curve was recomputed (590 -> 633 grid points).  Over the band MoCHII
+   transports, 13.598–100 eV (137 points), the astrodust table differs from the
+   old one by at most 1.010e-2 (C_ext), 3.798e-2 (C_abs), 4.645e-2 (C_sca), with
+   medians 5.44e-3 / 1.11e-2 / 9.48e-3, and the band integrals move **+0.459%**
+   (C_ext) and **+0.910%** (C_abs).  Much larger differences, up to 1300x, sit
+   in 1.0e-4–1.1e-4 um, i.e. at the 12.4 keV end — **outside** anything MoCHII
+   transports.  The two must not be quoted together.
+4. **The gate tightened.**  With no extension there is no interpolation:
+   every model wavelength is a table wavelength, so `tests/grain_kext` measures
+   rounding on both sides of 0.0912 um and its EUV tolerance went 3e-2 -> 1e-9.
+5. **Cost.**  Building the 1.56x longer grid takes 156.4 s (astrodust), about
+   73 s (DL07) and 0.55 s (Zubko) per rank at `par%sed_NT` = 200, paid at
+   startup.  The corresponding figure on the 1129-point grid was not measured
+   before the table was replaced.
+
+## Earlier adoption note (2026-08-02)
+
+One thing this memo assumes changed before the table did: `dust_extinction` no
+longer performs the size integral at call time.  It serves the model's
+*precomputed* size-integrated curve — `SEDust/data/kext_astrodust_MW_euv.dat`,
 `kext_dl07_MW_euv.dat`, `kext_zubko_BARE_GR_S.dat` — interpolated onto the
 model's own wavelength grid `m%lam`; the size integral is now the separate
 `size_integrated_extinction`, which is what wrote those tables.  Which table a
@@ -18,8 +95,11 @@ The section 7 "decide the default" step (S6) resolved to the grain model: with
 the dusty smoke tests (`sedust_smoke`, `dustemis_smoke`, `pahlive_smoke`) now
 run that way — astrodust, so extinction and emission are one set of grains —
 rather than through the D03 `ion_dust_kext` file they carried while this was
-under review.  Everything below is the record of the 2026-07-21 review and is
-left as written.
+under review.
+
+---
+
+Everything below is the 2026-07-21 review as written.
 
 Context: the SEDust_v1.00 `dust_extinction` API (commit `765eff2`) lets an
 RT host take its dust opacity from the same model object, on the same
@@ -217,19 +297,47 @@ MoCHII side (the payoff):
 
 ## 8. Staged plan (upstream SEDust_v1.00 work)
 
+Outcome added 2026-08-04; see the preamble for the numbers.
+
 - S1. Regime-map script: (a, lambda) occupancy of Rayleigh/T-matrix/Mie
       zones on the extension grid; pick the Mie/GO lambda threshold.
+      — *not verifiable from this tree*; the MoCHII copy of SEDust carries
+      `tmatrix/output/` only.
 - S2. Mie branch in `run_tmatrix` + gate (ii) overlap comparison; ADT
       cross-check at |m-1| < 0.03.
+      — **not done.**  `spheroid_optics.f90` still dispatches on
+      `X_RAYLEIGH_MAX = 0.1` / `X_GEOMETRIC_MIN = 50` with no fourth branch and
+      no new flag, so 59,834 of the 106,977 EUV rows are the geometric-optics
+      limit with g = 0.  Section 3's objection is therefore still open.
 - S3. Extend `DH21_wave` to 10 A; regenerate the new columns; gates (i),
       (iii), (iv); append and re-verify the untouched columns.
+      — **done, and past the recommended floor**: the new axis
+      `DH21_wave_to_12keV` runs to 1.0e-4 um (12.4 keV), 1762 points.  It is not
+      the proposed uniform 200/decade continuation: points 0–631 follow the DH21
+      dielectric function's own energy axis so its absorption edges are resolved
+      as tabulated, point 632 is an interpolated 0.0912*(1-1e-4) placed to
+      resolve the Lyman-limit step of the *radiation field*, and 633–1761 are the
+      original `DH21_wave`.  The append-and-verify discipline held: the old
+      columns reproduce row for row.
 - S4. Regenerate qlib graphite from `callqcomp` on the extended grid;
       PAH branch activates automatically.
+      — **superseded, not done as written.**  `qlib_gra_D16MGemt_1.400` is
+      still 169 x 1009 with the 0.0912 um floor.  The carbonaceous absorption
+      above 21.4 eV, where the DL07 PAH cross section is zero by construction,
+      instead comes from D03 graphite by Mie on the Draine 2003 dielectric
+      functions (1/3 parallel + 2/3 perpendicular), as the kext table header
+      records.
 - S5. Pipeline smoke (gate v) + regenerate `kext_astrodust_MW.dat`.
+      — **done**: `kext_astrodust_MW.dat`, `kext_astrodust_MW_euv.dat` (both
+      1762 points, 1.0e-4–3.981e4 um) and `kext_dl07_MW_euv.dat` (1823 points,
+      6.2054e-5–3.981e4 um) are regenerated.
 - S6. MoCHII host adoption: band optics from `dust_extinction`
       (option-gated), d_dusty re-gate, then decide the default.
+      — **done** 2026-08-02, resolved to the grain model (see the adoption note
+      in the preamble).
 
-Open decisions for the author: extension floor (24.8 A vs 10 A —
-recommend 10 A); ADT as check-only vs production branch (recommend
-check-only); whether/when MoCHII's default band optics switch from D03 to
-astrodust (a model choice with gate re-baselining attached).
+Of the three open decisions listed for the author, two are settled: the
+extension floor went to 1 A rather than either candidate, and MoCHII's default
+band optics are the grain model named by `par%dust_model`.  ADT as a check on
+the x > 50 EUV rows is still open, and is now the natural way to bound the
+error S2 left in place.

@@ -75,9 +75,12 @@ infrared dust/PAH spectrum.
   (`SEDust/data/kext_*.dat`) on the model's own wavelength grid, and a gate
   (`tests/grain_kext`) checks that curve against the size integral over the
   model as built, so a table belonging to other grains cannot pass unnoticed.
-  The astrodust and DL07 optics are extended into the EUV from their dielectric
-  functions; Zubko needs no extension, its own DustEM optics already spanning
-  0.001-10000 um.
+  The astrodust and DL07 grids reach the whole ionizing band on their own: the
+  T-matrix optics table spans 1.0e-4 to 3.981e4 um (1762 wavelengths), so below
+  the Lyman limit the grains are the b/a = 1.4 oblate spheroid solved on the
+  DH21 dielectric function rather than a sphere approximation, and no extension
+  is built at any photon energy the code transports.  Zubko is on its own DustEM
+  grid, 0.001-10000 um.
 - **Dust emission transport**: the reradiated infrared is itself launched and
   transported through the same grain opacity, and the reabsorbed part returns
   to the grain heating until it converges (`dust_emis_transport`, on by
@@ -146,6 +149,10 @@ The SEDust data directory is resolved automatically relative to the
 executable at run time, so dust emission works from any working directory
 without setting `par%sed_workdir`.
 
+MoCHII's default astrodust Q table is the EUV companion
+`SEDust/tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat` (1762 wavelengths,
+`1.0e-4`--`3.981e4` um), because MoCHII transports photoionizing radiation.
+
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
 data, algorithms, and validation results; `docs/MoCHII_fitting.pdf` for
@@ -160,4 +167,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-03 00:13 KST
+Last updated: 2026-08-04 10:42 KST

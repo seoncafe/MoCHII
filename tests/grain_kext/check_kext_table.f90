@@ -34,23 +34,32 @@ program check_kext_table
 !       loads, still covers the band, and still looks like a plausible
 !       extinction curve.  TOL_TABLE_NODE.
 !
-!   (b) lambda < 0.0912 um.  MoCHII asks SEDust to extend the grid down to
-!       1.23984/eion_max um so the ionizing band is resolved, and the extended
-!       nodes are NOT the table's nodes, so the log(lambda)-log(C)
-!       interpolation enters.  That error is real but bounded and is not a
-!       defect.  TOL_EUV_INTERP.
+!   (b) lambda < 0.0912 um, the ionizing band itself.  MoCHII asks SEDust to
+!       carry the grid down to 1.23984/eion_max um, but the astrodust Q table
+!       now starts at 1.0e-4 um (12.4 keV), so no eion_max below 12398.4 eV
+!       reaches past it: the model grid stays the table grid here too, and the
+!       kext tables are on that same grid, so again nothing is interpolated.
+!       The check is therefore the same statement as (a) -- served value equals
+!       table value -- kept separate because the two halves sit in different
+!       numerical regimes (C_sca and C_abs are orders apart across the seam).
+!       TOL_EUV_INTERP.  Should a case with a genuine extension be added (it
+!       needs a library built WITH_TMATRIX, or the model would refuse), the
+!       log(lambda)-log(C) interpolation returns here and this tolerance has to
+!       go back to the ~3e-2 the extended nodes used to cost.
 !
 !   (c) The two integrals the transport actually uses.  s_abs(E) = C_abs/C_ext
 !       (lambda_ref) is the band absorption MoCHII carries per unit reference
 !       extinction, and C_ext(lambda_ref = 0.55 um) is the normalization every
-!       leaf's grey rhokap is built on.  The (b) departures alternate in sign
-!       along the grid, so they cancel here: these two must agree far more
-!       tightly than any single wavelength does.  TOL_SABS_BAND, TOL_CREF.
+!       leaf's grey rhokap is built on.  TOL_SABS_BAND, TOL_CREF.
 !
-! The cases are the grids MoCHII actually builds: astrodust extended to
-! par%eion_max = 100 eV and to 150 eV, astrodust unextended (an emission-only
-! run, par%ion_add_dust = .false.), DL07 extended to 100 eV, and Zubko, which
-! needs no extension.  Everything else is at the par% defaults of define.f90.
+! The cases are the grids MoCHII actually builds: astrodust asked for
+! par%eion_max = 100 eV and for 150 eV, astrodust with no lam_min at all (an
+! emission-only run, par%ion_add_dust = .false.), DL07 asked for 100 eV, and
+! Zubko, which takes no lam_min.  With the current Q table the three astrodust
+! cases build the SAME grid (NLAM = 1762, 1.0e-4 to 3.981e4 um) and must
+! therefore report the same numbers; DL07 is on that grid too, Zubko on its own
+! (NLAM = 1201, 1.0e-3 to 1.0e4 um).  Everything else is at the par% defaults
+! of define.f90.
 !
 ! Build and run:  see tests/grain_kext/run_check.sh  (must run in SEDust/sed/,
 ! the directory all these paths are relative to)
@@ -63,7 +72,7 @@ program check_kext_table
 
   !--- par% defaults of src/define.f90, as grain_model_mod passes them
   character(len=*), parameter :: QTABLE   = &
-     '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400.dat'
+     '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat'
   character(len=*), parameter :: SIZEDIST = '../data/release/size_distribution.dat'
   character(len=*), parameter :: ZUBKO_CONFIG = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
   character(len=*), parameter :: ZUBKO_DIR    = '../data/zubko/'
@@ -79,8 +88,8 @@ program check_kext_table
   real(kind=wp), parameter :: LAM_REF = 0.55_wp        ! par%lambda_ref [um]
 
   !--- 0.0912 um = 13.598 eV: the short end of the T-matrix Q table, hence the
-  !--- boundary between "the model grid is the table grid" and "MoCHII extended
-  !--- the grid below the table's nodes".
+  !--- boundary used to report the original SEDust seam; MoCHII's default EUV
+  !--- Q table now has nodes on both sides of it.
   real(kind=wp), parameter :: LAM_QTAB = 0.0912_wp
   !--- transported band [eV] the band-averaged s_abs of check (c) runs over
   real(kind=wp), parameter :: E_BAND_LO = 13.598_wp, E_BAND_HI = 100.0_wp
@@ -93,25 +102,24 @@ program check_kext_table
   !--- distribution could produce.
   real(kind=wp), parameter :: TOL_TABLE_NODE     = 1.0e-10_wp
   real(kind=wp), parameter :: TOL_TABLE_NODE_DIM = 1.0e-10_wp
-  !--- (b) EUV extension: log-log interpolation between table nodes.  Measured
-  !--- worst single wavelength 1.2e-2 (astrodust on the 100 eV grid), 8.2e-3
-  !--- (150 eV), 1.1e-3 (DL07), 4.8e-13 (Zubko, whose grid is the table's own),
-  !--- and 3.3e-3 / 9.7e-3 / 2.2e-4 / 2.8e-13 on the albedo pair.  3e-2 is ~3x
-  !--- the worst: loose enough that grid refinement or an eion_max change does
-  !--- not trip it, tight enough that a wrong table (which is O(1) here as well
-  !--- as at (a)) still does.  The albedo and <cos> are O(0.1-0.5) across this
-  !--- band, so the same number is the same fractional statement about them.
-  real(kind=wp), parameter :: TOL_EUV_INTERP     = 3.0e-2_wp
-  real(kind=wp), parameter :: TOL_EUV_INTERP_DIM = 3.0e-2_wp
+  !--- (b) the ionizing band, now node-coincident like (a) -- see the header.
+  !--- Measured worst single wavelength 4.8e-13 (astrodust, all three cases),
+  !--- 3.2e-12 (DL07), 4.8e-13 (Zubko), and 8.1e-13 / 1.5e-12 / 2.8e-13 on the
+  !--- albedo pair.  1e-9 is ~300x the worst of those, the same margin (a)
+  !--- carries, and it is seven orders tighter than the 3e-2 the extended nodes
+  !--- needed when the Q table stopped at 0.0912 um.  A wrong table is O(1)
+  !--- here as at (a), so the tightening only widens what the gate catches.
+  !--- The albedo and <cos> are O(0.1-0.5) across this band, so the same number
+  !--- is the same fractional statement about them.
+  real(kind=wp), parameter :: TOL_EUV_INTERP     = 1.0e-9_wp
+  real(kind=wp), parameter :: TOL_EUV_INTERP_DIM = 1.0e-9_wp
   !--- (c) the transported integrals.  Measured on the band-averaged s_abs:
-  !--- 4.1e-6 (astrodust 100 eV), 2.0e-5 (150 eV), 3.9e-6 (DL07), 2.9e-14
-  !--- (Zubko) -- two to three orders below the single wavelengths they are made
-  !--- of, which is the cancellation this check exists to hold.  On C_ext at
-  !--- 0.55 um: 2.8e-14 / 7.0e-15 / 1.4e-14, pure rounding, since 0.55 um sits
-  !--- in the node-coincident region.  The tolerances sit 5x and five orders
-  !--- above those, and both must stay far below TOL_EUV_INTERP: an integral
-  !--- that drifted up to the single-wavelength bound would mean the departures
-  !--- had stopped cancelling and started accumulating.
+  !--- 1.9e-14 (astrodust, all three cases), 3.0e-14 (DL07), 2.9e-14 (Zubko).
+  !--- On C_ext at 0.55 um: 2.8e-14 / 2.1e-14 / 1.4e-14.  Both are pure
+  !--- rounding now that every wavelength is a table node.  The tolerances sit
+  !--- ten and five orders above those; they are left where they were, because
+  !--- what they have to catch is an integral that has stopped agreeing, and
+  !--- both must in any case stay far below TOL_EUV_INTERP.
   real(kind=wp), parameter :: TOL_SABS_BAND = 1.0e-4_wp
   real(kind=wp), parameter :: TOL_CREF      = 1.0e-9_wp
 

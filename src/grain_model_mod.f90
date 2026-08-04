@@ -12,15 +12,25 @@ module grain_model_mod
 ! C_abs of the size distribution that then radiates it away.  Naming the
 ! model (par%dust_model) is therefore enough to fix the dust physics.
 !
-! EUV extension: the astrodust and DL07 models take their wavelength grid from
-! the T-matrix Q table, which bottoms out at 0.0912 um (13.6 eV), so a
-! photoionization run that transports shortward of that (par%ion_add_dust, band
-! up to par%eion_max) asks SEDust for the grid extended down to
-! 1.23984/eion_max um.  Both can be extended: DL07 is dielectric-function Mie
-! throughout, and astrodust computes the extended band from the DH21 dielectric
-! function.  The Zubko model needs no extension -- its own DustEM Q tables span
-! 0.001-10000 um (1.24e-4 eV to 1.24 keV), so build_zubko already returns a grid
-! that reaches well into the EUV, which is why it takes no lam_min.
+! EUV extension, and why MoCHII no longer needs one: the astrodust and DL07
+! models take their wavelength grid from the T-matrix Q table, and that table
+! now spans 1.0e-4 to 3.981e4 um (1762 points), i.e. 12.4 keV down to the far
+! infrared.  MoCHII still asks for the grid extended to the shortest
+! transported wavelength (lam_min = 1.23984/par%eion_max um) whenever
+! par%ion_add_dust, but SEDust prepends points only when that lam_min is
+! SHORTER than the table's first wavelength, so with this table an extension
+! appears only above par%eion_max = 12398.4 eV.  Measured on the grids
+! grain_model_mod builds (tests/grain_kext): astrodust and DL07 come back with
+! NLAM = 1762 and lambda(1) = 1.0e-4 um at eion_max = 100 eV, at 150 eV and
+! with no lam_min at all -- the same grid all three times, none of it extended.
+! Zubko is on its own DustEM grid, NLAM = 1201 over 1.0e-3 to 1.0e4 um, which is
+! why build_zubko takes no lam_min.
+!
+! Above 12398.4 eV the extension does appear, and for astrodust SEDust then
+! refuses it: the band's optics are the same oblate spheroid the Q table is,
+! solved by the T-matrix, and this tree carries no T-matrix (SEDust/tmatrix/
+! holds the Q table alone).  That refusal is build status 6, turned into a
+! message naming par%eion_max in build_grain_model below.
 !
 ! Whether the grid actually spans the transported band is checked, with the
 ! numbers, in gas_opacity_mod at setup -- for every model alike.  A model that
@@ -53,16 +63,17 @@ contains
   !=========================================================================
   !--- Build the model named by par%dust_model.  Every rank builds its
   !--- own copy from the same files, so the result is identical without a
-  !--- broadcast.  When par%ion_add_dust, the astrodust/DL07 grid is extended
+  !--- broadcast.  When par%ion_add_dust, the astrodust/DL07 grid is asked for
   !--- down to the shortest transported wavelength (1.23984/eion_max um) so
-  !--- the ionizing band is resolved; without it (emission-only run) the grid
-  !--- is the native table, bit-identical to the pre-shared inline build.
+  !--- the ionizing band is resolved; the Q table already covers that band for
+  !--- every eion_max below 12398.4 eV, so what comes back is the native table
+  !--- grid, the same one an emission-only run gets.
   subroutine build_grain_model()
     use mpi
     use utility, only : fatal_error
     use ifport,  only : chdir, getcwd
     implicit none
-    integer :: ierr, cstat, st, st_kext
+    integer :: ierr, cstat, st, st_kext, st_euv_optics
     character(len=512) :: cwd_save, msg
     real(kind=wp)      :: lam_min_band
     logical            :: want_euv, kext_named
@@ -72,13 +83,20 @@ contains
     !--- the build status that means "the named extinction table could not be
     !--- read": 5 for build_astrodust / build_dl07, 6 for build_zubko.
     st_kext = 0
+    !--- the build status that means "the EUV band below the Q table was asked
+    !--- for, and its spheroid optics are not in this library": 6, and only
+    !--- build_astrodust returns it.  build_dl07 is Mie on the D03 dielectric
+    !--- functions throughout and needs no such optics; build_zubko is on its
+    !--- own grid and takes no lam_min, and its 6 is st_kext above.
+    st_euv_optics = 0
 
     !--- A blank par%sed_kext leaves the extinction table to SEDust's own default
     !--- for the model, so the standard table names stay in one place (SEDust).
     !--- A named file is instead mandatory: the build fails if it cannot be read.
     kext_named = len_trim(par%sed_kext) > 0
 
-    !--- transport / T_dust in the ionizing band need the EUV extension.
+    !--- transport / T_dust in the ionizing band need the grid to reach that
+    !--- band; the Q table already does, so this only asks and gets the table.
     want_euv     = par%ion_add_dust
     lam_min_band = 1.23984_wp/par%eion_max      ! shortest transported wavelength [um]
 
@@ -86,7 +104,8 @@ contains
     !--- its sed/ directory ('../data/dielectric/...'), so build the model from
     !--- par%sed_workdir (a SEDust sed/ tree) and restore the working directory.
     !--- par%sed_qtable / par%sed_sizedist are given relative to that directory
-    !--- (or absolute).  chdir/getcwd are the Intel IFPORT integer functions
+    !--- (or absolute); MoCHII's default Q table is the EUV companion, not the
+    !--- shorter ordinary-SEDust table.  chdir/getcwd are the Intel IFPORT integer functions
     !--- (return 0 on success).
     cstat = getcwd(cwd_save)
     if (len_trim(par%sed_workdir) > 0) then
@@ -98,7 +117,8 @@ contains
 
     select case (trim(par%dust_model))
     case ('astrodust')
-       st_kext = 5
+       st_kext       = 5
+       st_euv_optics = 6
        if (want_euv) then
           if (kext_named) then
              call build_astrodust(dmodel, trim(par%sed_qtable), trim(par%sed_sizedist), &
@@ -187,6 +207,29 @@ contains
           write(msg,'(5a)') 'par%sed_kext could not be read: ''', &
              trim(par%sed_kext), ''' (relative to par%sed_workdir = ''', &
              trim(par%sed_workdir), ''')'
+       else if (st_euv_optics /= 0 .and. st == st_euv_optics) then
+          !--- par%eion_max carried the transported band shortward of the Q
+          !--- table's own first wavelength, so SEDust set out to build the
+          !--- extreme-ultraviolet band below it.  That band is the same
+          !--- b/a = 1.4 oblate spheroid as the table, solved by the T-matrix,
+          !--- and this tree's libsedust.a is built without one (SEDust/tmatrix/
+          !--- carries the Q table and nothing else), so SEDust refuses rather
+          !--- than answer with the volume-equivalent sphere -- a different
+          !--- particle, and a step at the seam.  Lowering par%eion_max onto
+          !--- With an ordinary 1129-point Q table this can also occur at normal
+          !--- photoionization energies, so first restore the EUV companion in
+          !--- par%sed_qtable.  For a genuinely harder band, lowering par%eion_max
+          !--- onto the table is the way out; the alternative lives in the
+          !--- SEDust tree (build the T-matrix, WITH_TMATRIX=1 ./build_lib.sh,
+          !--- and register use_tmatrix_euv_band_optics before the build).
+          !--- With the shipped table (first wavelength 1.0e-4 um) the branch
+          !--- is reached only for par%eion_max > 12398.4 eV.
+          write(msg,'(a,es10.3,a,es10.3,a)') &
+             'par%eion_max = ', par%eion_max, ' eV carries the transported '// &
+             'band to ', lam_min_band, ' um, shorter than the astrodust Q '// &
+             'table: use the EUV companion Q table (the default *_euv.dat) '// &
+             'for normal photoionization runs; if it is already selected, '// &
+             'lower par%eion_max onto the table or rebuild with T-matrix EUV optics'
        else
           write(msg,'(3a,i0,a)') 'SEDust could not build the ''', &
              trim(par%dust_model), ''' dust model (status=', st, &
@@ -220,19 +263,21 @@ contains
   !---
   !--- How far the two are apart, as tests/grain_kext measures it -- worst
   !--- single wavelength, relative on C_ext and C_abs, absolute on the pair
-  !--- (albedo, albedo*<cos>) the transport uses as probabilities:
-  !---   * lambda >= 0.0912 um the model grid IS the table grid, so the table
-  !---     value comes back unchanged: 4.9e-13 on the cross sections, 4.2e-13 on
-  !---     the albedo pair.
-  !---   * below 0.0912 um, on the EUV extension MoCHII asks for, the extended
-  !---     nodes are not the table's nodes, so the log-log interpolation enters:
-  !---     1.16e-2 for astrodust on the eion_max=100 eV grid (8.20e-3 at 150 eV),
-  !---     1.13e-3 for DL07, and 4.82e-13 for Zubko, whose grid is the table's
-  !---     own; 3.3e-3 / 9.7e-3 / 2.2e-4 / 2.8e-13 on the albedo pair.
-  !---   * those departures alternate in sign and cancel in the integrals that
-  !---     matter: the band-averaged s_abs over 13.598-100 eV agrees to 4.1e-6
-  !---     (astrodust 100 eV), 2.0e-5 (150 eV), 3.9e-6 (DL07), and C_ext at
-  !---     lambda_ref = 0.55 um to 2.8e-14.
+  !--- (albedo, albedo*<cos>) the transport uses as probabilities.  Every
+  !--- wavelength MoCHII builds is a node of the table (the Q table and the
+  !--- kext tables are on one grid, and no run below eion_max = 12398.4 eV
+  !--- extends off it), so nothing is interpolated and the table value comes
+  !--- back as written, to the 13 digits it is written with:
+  !---   * lambda >= 0.0912 um: 4.9e-13 on the cross sections, 4.2e-13 on the
+  !---     albedo pair (astrodust); 4.7e-13 / 3.1e-13 (DL07); 4.9e-13 / 2.7e-13
+  !---     (Zubko).
+  !---   * lambda < 0.0912 um, the ionizing band itself: 4.8e-13 / 8.1e-13
+  !---     (astrodust), 3.2e-12 / 1.5e-12 (DL07), 4.8e-13 / 2.8e-13 (Zubko).
+  !---     The three astrodust cases the gate builds -- eion_max = 100 eV,
+  !---     150 eV, and no lam_min -- give the same grid and the same numbers.
+  !---   * the integrals: the band-averaged s_abs over 13.598-100 eV agrees to
+  !---     1.9e-14 (astrodust), 3.0e-14 (DL07), 2.9e-14 (Zubko), and C_ext at
+  !---     lambda_ref = 0.55 um to 2.8e-14 / 2.1e-14 / 1.4e-14.
   !---
   !--- What the table presumes: it was computed from the model's DEFAULT inputs.
   !--- Changing par%sed_sizedist / par%sed_qtable / par%sed_dl07_sdindex /
@@ -240,7 +285,7 @@ contains
   !--- that extinguishes, and the two then no longer describe the same dust.
   !--- tests/grain_kext catches exactly that: it compares the served curve with
   !--- the size integral over the model as built, so a table belonging to other
-  !--- grains shows up as a large departure at lambda >= 0.0912 um.
+  !--- grains shows up as a large departure, at any wavelength.
   !---
   !--- Cross sections are per H atom [cm^2/H], the same normalization as the
   !--- kext table read from a file, so gas_opacity_mod / dust_temp_mod divide

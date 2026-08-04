@@ -379,7 +379,10 @@ public
      !--- SEDust optics/size-distribution paths, resolved relative to
      !--- par%sed_workdir (build_astrodust is called from there so that
      !--- SEDust's own '../data/dielectric/...' relative reads resolve too).
-     character(len=256) :: sed_qtable       = '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400.dat'
+     !--- MoCHII is a photoionization host: use the EUV companion Q table by
+     !--- default (1e-4--3.981e4 um, 1762 wavelengths).  The unsuffixed table
+     !--- remains available for ordinary, non-ionizing SEDust use.
+     character(len=256) :: sed_qtable       = '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat'
      character(len=256) :: sed_sizedist     = '../data/release/size_distribution.dat'
      !--- SEDust sed/ directory (self-contained under the MoCHII tree (SEDust/)).
      !--- Blank (default) = auto-resolve to <executable dir>/SEDust/sed at

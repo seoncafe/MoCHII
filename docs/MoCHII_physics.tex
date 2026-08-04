@@ -2447,13 +2447,25 @@ The three parts of the dust coupling, now complete:
   (\lambda_{\rm ref})$.  By default these come from the grain model named
   by \code{par\%dust\_model},
   so that the power a cell absorbs is set by the same grains that
-  reradiate it in Section~\ref{sec:sedust}; the astrodust and DL07 models
-  are extended below the T-matrix table's $0.0912\,\mu$m end down to
-  $1.24/E_{\max}$ using their own dielectric functions (DH21 astrodust,
-  D03 silicate and graphite), and each optics module refuses a wavelength
-  its dielectric table does not cover rather than let a clamped refractive
-  index pass as physics.  The Zubko model is not extended and needs no
-  extension: its own DustEM optics tables span
+  reradiate it in Section~\ref{sec:sedust}.  No model is extended: the
+  astrodust and DL07 grids come from the random-orientation T-matrix table,
+  which spans $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m in 1762
+  wavelengths, i.e.\ 12.4~keV down to the far infrared, so below the Lyman
+  limit the optics are the same $b/a = 1.4$ oblate spheroid on the DH21
+  dielectric function as above it (with the Rayleigh, $x < 0.1$, and
+  geometric-optics, $x > 50$, limits wherever the size parameter leaves the
+  T-matrix range, exactly as the rest of the table does) rather than a
+  volume-equivalent-sphere approximation.  \code{grain\_model\_mod} still asks
+  for the grid down to $1.24/E_{\max}$, but SEDust prepends points only when
+  that is \emph{shorter} than the table's first wavelength: at
+  $E_{\max} = 100$~eV it is not ($0.0124\,\mu$m against
+  $1.0{\times}10^{-4}\,\mu$m), and an extension can arise only above
+  $E_{\max} = 12398.4$~eV.  There astrodust refuses to build one --- that
+  band's optics are the same spheroid, and this tree carries the Q table
+  without the T-matrix solver --- and the refusal is turned into a message
+  naming \code{par\%eion\_max}; a clamped refractive index or a silent
+  equal-volume sphere is never passed off as physics.  The Zubko model needs no
+  extension either: its own DustEM optics tables span
   0.001--$10^4\,\mu$m (1.24~keV down to $1.24{\times}10^{-4}$~eV), so the
   whole ionizing band is already tabulated, which is why
   \code{build\_zubko} takes no \code{lam\_min}.  Whichever model is named,
@@ -2536,10 +2548,10 @@ SEDust's \code{size\_integrated\_extinction}.  Which table a run serves is
 for the named \code{par\%dust\_model}, so those file names are written down in
 one place; naming a file instead makes it mandatory, and the build stops with
 that file named if it cannot be read.  The standard tables are
-\code{kext\_astrodust\_MW\_euv.dat} (1719 wavelengths,
-$1.0{\times}10^{-4}$--$3.98{\times}10^{4}\,\mu$m),
-\code{kext\_dl07\_MW\_euv.dat} (1761,
-$6.2{\times}10^{-5}$--$3.98{\times}10^{4}\,\mu$m), and
+\code{kext\_astrodust\_MW\_euv.dat} (1762 wavelengths,
+$1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m),
+\code{kext\_dl07\_MW\_euv.dat} (1823,
+$6.2054{\times}10^{-5}$--$3.981{\times}10^{4}\,\mu$m), and
 \code{kext\_zubko\_BARE\_GR\_S.dat} (1201, $10^{-3}$--$10^{4}\,\mu$m).
 
 Serving a table instead of redoing the integral is exact where the model
@@ -2550,7 +2562,7 @@ Cross sections are compared relative to themselves (they set rates); the
 albedo $a$ and the product $a\langle\cos\rangle$ absolutely, because the
 transport uses them as the probability that an interaction scatters and the
 forward displacement it carries.  The worst departure on each side of the
-T-matrix short end $0.0912\,\mu$m:
+Lyman limit $0.0912\,\mu$m, which the gate keeps as its reporting boundary:
 \begin{center}\small
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
@@ -2560,30 +2572,38 @@ model as built & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
  & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
  & $s_{\rm abs}$ & $C_{\rm ext}(\lambda_{\rm ref})$ \\
 \midrule
-astrodust, $E_{\max} = 100$~eV & 4.9e--13 & 4.2e--13 & 1.2e--2 & 3.3e--3
-   & 4.1e--6 & 2.8e--14 \\
-astrodust, $E_{\max} = 150$~eV & 4.9e--13 & 4.2e--13 & 8.2e--3 & 9.7e--3
-   & 2.0e--5 & 2.8e--14 \\
-astrodust, no extension        & 4.9e--13 & 4.2e--13 & ---     & ---
-   & ---     & 2.8e--14 \\
-dl07, $E_{\max} = 100$~eV      & 4.7e--13 & 3.3e--13 & 1.1e--3 & 2.2e--4
-   & 3.9e--6 & 7.0e--15 \\
-zubko                          & 4.9e--13 & 2.7e--13 & 4.8e--13 & 2.8e--13
-   & 2.9e--14 & 1.4e--14 \\
+astrodust, $E_{\max} = 100$~eV     & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
+   & 1.95e--14 & 2.83e--14 \\
+astrodust, $E_{\max} = 150$~eV     & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
+   & 1.95e--14 & 2.83e--14 \\
+astrodust, no \code{lam\_min}      & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
+   & 1.95e--14 & 2.83e--14 \\
+dl07, $E_{\max} = 100$~eV          & 4.65e--13 & 3.07e--13 & 3.21e--12 & 1.50e--12
+   & 2.95e--14 & 2.12e--14 \\
+zubko                              & 4.91e--13 & 2.72e--13 & 4.83e--13 & 2.77e--13
+   & 2.89e--14 & 1.42e--14 \\
+\midrule
+tolerance                          & 1e--10 & 1e--10 & 1e--9 & 1e--9
+   & 1e--4 & 1e--9 \\
 \bottomrule
 \end{tabular}
 \end{center}
-At $\lambda \ge 0.0912\,\mu$m the model grid \emph{is} the table grid
-(Zubko's grid is its own DustEM table), so the served value is the table
-value and the only difference is the 13 significant digits the tables are
-written with.  Below it, on the EUV extension, the extended nodes are not
-the table's nodes and the interpolation enters at the percent level at a
-single wavelength --- but those departures alternate in sign and cancel in
-the two integrals the transport is actually built on: the band-averaged
-$s_{\rm abs}$ over 13.598--100~eV agrees to $4{\times}10^{-6}$ and the
+Nothing here is interpolation any more: the model grid \emph{is} the table
+grid on both sides of the Lyman limit, so the served value is the table value
+and the only difference is the 13 significant digits the tables are written
+with.  The three astrodust rows are identical because they are the same grid
+--- asking for $1.24/E_{\max}$ at 100~eV, at 150~eV, or not asking at all all
+return the native 1762-point table.  DL07 is the one case where the two grids
+are not the same object: its kext table is the finer of the two (1823 points
+from $6.2054{\times}10^{-5}\,\mu$m against the model's 1762 from
+$1.0{\times}10^{-4}\,\mu$m), but the model's nodes fall on table nodes to
+rounding, which is why its numbers sit at $10^{-12}$ rather than $10^{-13}$.
+The two integrals the transport is actually built on follow: the band-averaged
+$s_{\rm abs}$ over 13.598--100~eV agrees to $2$--$3{\times}10^{-14}$ and the
 normalization $C_{\rm ext}(\lambda_{\rm ref} = 0.55\,\mu$m) to
-$3{\times}10^{-14}$, two to five orders below the single wavelengths they
-are made of.
+$1$--$3{\times}10^{-14}$.  Because no interpolation is left to bound, the
+tolerance below the Lyman limit was tightened from $3{\times}10^{-2}$ to
+$10^{-9}$.
 
 What the table presumes is that it was computed from that model's
 \emph{default} inputs.  Changing \code{par\%sed\_sizedist},
@@ -2591,8 +2611,26 @@ What the table presumes is that it was computed from that model's
 \code{par\%sed\_zubko\_config} moves the grains that emit without moving the
 curve that extinguishes, and the two then no longer describe the same dust.
 That is exactly what the gate catches: a table belonging to other grains
-departs by $O(1)$ at $\lambda \ge 0.0912\,\mu$m, where the two are otherwise
-equal to 13 digits.
+departs by $O(1)$ where the two are otherwise equal to 13 digits.
+
+\medskip\noindent
+\textbf{What the longer Q table changed.}  The astrodust table used to stop at
+the Lyman limit (169 radii $\times$ 1129 wavelengths), and everything below it
+was built at run time by extending the model with Mie theory for the
+volume-equivalent sphere.  It now runs to $1.0{\times}10^{-4}\,\mu$m in 1762
+wavelengths, so that region is the spheroid itself.  Above $0.0912\,\mu$m the
+size-integrated curve is unchanged to rounding (worst $1.4{\times}10^{-10}$ on
+$C_{\rm ext}$); below it, it was recomputed.  Over the band MoCHII transports,
+13.598--100~eV (137 grid points), the new curve departs from the old by at most
+$1.010{\times}10^{-2}$ ($C_{\rm ext}$), $3.798{\times}10^{-2}$ ($C_{\rm abs}$)
+and $4.645{\times}10^{-2}$ ($C_{\rm sca}$), with medians
+$5.44{\times}10^{-3}$, $1.11{\times}10^{-2}$ and $9.48{\times}10^{-3}$; the
+band integrals move $+0.459\%$ ($C_{\rm ext}$) and $+0.910\%$
+($C_{\rm abs}$).  Far larger differences, up to a factor $1300$, sit at
+$1.0$--$1.1{\times}10^{-4}\,\mu$m --- the 12.4~keV end of the table, outside
+anything MoCHII transports --- and the two must not be quoted together.
+Building the longer grid costs 156.4~s (astrodust), about 73~s (DL07) and
+0.55~s (Zubko) at \code{par\%sed\_NT} $= 200$, paid once per rank at startup.
 
 \subsection{Stochastic dust emission (SEDust coupling)}
 \label{sec:sedust}
@@ -2606,16 +2644,15 @@ exact by construction:
 \begin{itemize}
 \item \textbf{Shape from the local field.}  For each leaf, the band
   tally $J_b$ is converted to $J_\lambda$ on the SEDust wavelength grid
-  --- for astrodust the native 1129-point Q-table grid,
-  0.0912--$4{\times}10^4\,\mu$m, or, when \code{par\%ion\_add\_dust}
-  extends it to $1.24/E_{\max}$, 1302 points from
-  $0.0124\,\mu$m at $E_{\max} = 100$~eV.  With the extension the whole
-  transported band falls on the grid and the grains absorb it with their own
-  cross sections at their own wavelengths; only in an emission-only run
-  (\code{ion\_add\_dust} off, native grid) is the part of $J$ below
-  $0.0912\,\mu$m deposited into the shortest SEDust bin, which conserves the
-  absorbed power but slightly underestimates the hardness of the stochastic
-  temperature spikes.  SEDust then
+  --- for astrodust and DL07 the native 1762-point Q-table grid,
+  $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m, and for Zubko its own
+  1201-point DustEM grid, $10^{-3}$--$10^{4}\,\mu$m.  The whole transported
+  band falls on the grid either way, with or without
+  \code{par\%ion\_add\_dust}, so the grains absorb it with their own cross
+  sections at their own wavelengths and no part of $J$ has to be deposited into
+  the shortest SEDust bin.  (While the astrodust grid stopped at the Lyman
+  limit, an emission-only run did exactly that: energy-conserving, but it
+  underestimated the hardness of the stochastic temperature spikes.)  SEDust then
   returns the emission spectrum of the grain population in this field:
   equilibrium large grains plus the full temperature-distribution solve
   for small grains and PAHs.
@@ -2628,9 +2665,11 @@ exact by construction:
   not the same thing: a model grid is the grid of its optics tables and can
   reach far past the illuminated band --- the Zubko/ZDA tables start at
   $10^{-3}\,\mu$m (1.24~keV), 91 times harder than a field cut off at the
-  Lyman limit --- and measuring the grid there would raise the bound by that
-  factor with no photon to justify it, coarsening the enthalpy bins (a fixed
-  bin count spread over a 91-fold wider window).  The threshold is
+  Lyman limit, and the astrodust and DL07 Q-table grid now starts a further
+  decade up, at $1.0{\times}10^{-4}\,\mu$m (12.4~keV) --- and measuring the
+  grid there would raise the bound by that factor with no photon to justify it,
+  coarsening the enthalpy bins (a fixed bin count spread over a
+  correspondingly wider window).  The threshold is
   deliberately one-sided: both refinement loops expand a window whose top bin
   is still populated, so an underestimate costs iterations and is recovered,
   while their contraction is guarded and capped.
@@ -3616,9 +3655,10 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   He\,\textsc{i} but are not transported (Section~\ref{sec:twophoton}).
   Immaterial wherever He$^{2+}$ is absent, as in both Lexington
   benchmarks; it belongs to the hard-spectrum track.
-\item The EUV part of the leaf field, below the SEDust optics grid, is
-  folded into the shortest SEDust bin (energy-conserving; spike
-  hardness slightly underestimated).
+\item With the default astrodust or DL07 SEDust optics, the EUV part of the
+  leaf field lies on the 1762-point EUV Q-table grid and is not folded into a
+  shorter-wavelength bin.  A custom Q/kext table that does not cover the
+  transported band is rejected at setup rather than silently clamped.
 \item The thermal-loop line cooling is suppressed to the local $n_e$ by
   default (\code{cooling\_model = local\_ne}) through the $(T,n_e)$ table
   of Section~\ref{sec:cool}, and the H-impact [C\,\textsc{ii}]
