@@ -1,23 +1,44 @@
 #!/bin/bash
-# Populate the SEDust optics data this tree does not keep in git.
+# Refresh this tree's SEDust data from a canonical SEDust tree.
 #
-# Large generated optics files are excluded by .gitignore.  MoCHII's default
-# photoionization path needs the EUV companion Q table; the base Q table is
-# copied as well so the embedded SEDust tree remains complete:
+# You normally do NOT need this script: everything MoCHII opens at run time is
+# kept in git, including each model's optics product (.gitignore un-ignores
+# SEDust/data/*/*.h5), so a fresh checkout runs the dust path as it stands.
+# Run it to bring this copy up to date with a newer SEDust, or to fetch the one
+# file deliberately kept out of git -- the 17 MB D16 spheroid Q-library
+# data/dielectric/qlib_gra_D16MGemt_1.400, read only by q_graphite_d16_mod,
+# which no par%dust_model selects.
 #
-#   tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat   (33 MB)
-#     The random-orientation T-matrix Q table of the b/a = 1.4 astrodust
-#     spheroid, 169 radii x 1762 wavelengths spanning 1.0e-4 to 3.981e4 um.
-#     It is par%sed_qtable's default for MoCHII, and both the 'astrodust' and
-#     'dl07' models read it.  ('zubko' is on its own DustEM tables under
-#     data/zubko/, which are committed, and needs nothing from here.)
+# WHAT THE LAYOUT IS.  SEDust keeps one directory per dust model, holding what
+# that model owns -- its optics product sedust_<model>.h5 and, where the model
+# IS a set of files, the files that define it -- and keeps what the models SHARE
+# beside those directories:
 #
-#   data/dielectric/qlib_gra_D16MGemt_1.400             (17 MB)
-#     The D16 graphite spheroid Q-library, read only by q_graphite_d16_mod,
-#     which nothing selects by default.
+#   data/astrodust/  data/dl07/  data/zubko/     one per par%dust_model
+#   data/dielectric/                             optical constants, PAH cross sections
+#   data/release/                                published tables + the size distribution
 #
-# Everything else the dust path reads is committed.  This script re-copies it
-# as well, so it also serves as a full refresh from a canonical SEDust tree.
+# WHAT IS COPIED, AND WHAT IS NOT.  sedust_<model>.h5 is the form the optics
+# take here: it carries the model's wavelength axis, its cross-section tables
+# and its size-integrated extinction curve (/kext) together, and MoCHII reads
+# the optics from it alone -- par%sed_data_dir names the directory, build_dust
+# resolves the file.  SEDust also writes the same optics as text (the Q tables
+# q_*.dat and the extinction curves kext_*.dat), and those are NOT copied: they
+# are ~250 MB of a second copy of what the .h5 already holds, and nothing in a
+# MoCHII run opens one.  Every other file in a model directory is an INPUT
+# rather than a product -- Zubko's ZDA config, size distributions, DustEM optics
+# and calorimetry; astrodust's DH21 size/wavelength tabulations -- so the rule
+# below is "the directory, minus SEDust's own text products".
+#
+# The sources under sed/src/ and sed/build_lib.sh are byte-identical to their
+# SEDust v1.00 counterparts, so `cmp` against that tree is the whole check that
+# this copy is current.  The one file of the library that reaches into the
+# T-matrix, src/euv_astrodust_tmatrix.f90, is deliberately not copied: it serves
+# the astrodust EUV band, which only a lam_min shorter than the model's own axis
+# asks for, and MoCHII passes no lam_min.  Without it the archive links with no
+# T-matrix at all, and euv_tmatrix = .true. is refused (build_dust status 8;
+# build_lib.sh's own message quotes build_astrodust's 6) instead of being
+# answered with a different grain.
 #
 # >>> EDIT the path below to your own SEDust location, or run with
 # >>>   SEDUST_SRC=/your/path/to/SEDust ./populate_data.sh
@@ -30,25 +51,26 @@ if [ ! -d "$SED" ]; then
   exit 1
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$HERE/data/dielectric" "$HERE/data/release" "$HERE/data/zubko" "$HERE/tmatrix/output"
-# Dielectric functions and PAH cross sections.  index_DH21Ad_P0.20_0.00_1.400
-# is the astrodust refractive index the Q table above was computed from; SEDust
-# reads it when a run asks for wavelengths below the table's own short end.
-cp "$SED"/data/dielectric/{DH21_aeff,index_CpaD03,index_CpeD03,index_DH21Ad_P0.20_0.00_1.400,index_silD03,PAHion.31,PAHneu.31,q_D16graphite.dat,qlib_gra_D16MGemt_1.400} "$HERE/data/dielectric/"
-# Size-integrated extinction curves dust_extinction serves to the transport,
-# one for each par%dust_model (calc_kext.x writes them in the SEDust tree).
-# The three below are the tables SEDust falls to when par%sed_kext is blank.
-cp "$SED"/data/{kext_astrodust_MW_euv.dat,kext_dl07_MW_euv.dat,kext_zubko_BARE_GR_S.dat} "$HERE/data/"
-# The plain astrodust curve, written by `calc_kext.x astrodust`: the same 1762
-# wavelengths as the _euv one, taking the whole range straight off the Q table
-# instead of recomputing below 0.0912 um from the dielectric function.  The two
-# agree to 5e-8 on C_ext, C_abs and C_sca; nothing selects this one on its own,
-# and it is here for a run that names it through par%sed_kext.
-cp "$SED"/data/kext_astrodust_MW.dat "$HERE/data/"
-cp "$SED"/data/kext_dl07_MW.dat "$HERE/data/"
+
+# Shared material data.  A dielectric function belongs to no one model -- DL07
+# and Zubko read the same D03 astrosilicate -- so it sits beside the model
+# directories rather than inside one of them.  build_dust resolves them from the
+# data directory it is given, the same one the model directories come from, so
+# they have to be here and nowhere else.
+mkdir -p "$HERE/data/dielectric" "$HERE/data/release"
+cp "$SED"/data/dielectric/{index_CpaD03,index_CpeD03,index_silD03,index_DH21Ad_P0.20_0.00_1.400,PAHion.31,PAHneu.31,q_D16graphite.dat,qlib_gra_D16MGemt_1.400} "$HERE/data/dielectric/"
 cp "$SED"/data/release/{extinction.dat,kext_albedo_WD_MW_3.1_60_D03.all_2003,scattering.dat,size_distribution.dat} "$HERE/data/release/"
-cp "$SED"/tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400.dat "$HERE/tmatrix/output/"
-cp "$SED"/tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat "$HERE/tmatrix/output/"
-# Zubko (ZDA 2004 BARE-GR-S) optics/calorimetry/config for par%dust_model='zubko'
-cp "$SED"/data/zubko/* "$HERE/data/zubko/"
+
+# One directory per model, minus SEDust's own text optics products.  The two
+# name patterns are what SEDust writes and what the .h5 already contains:
+# q_*.dat from make_qtable.x, kext_*.dat from calc_kext.x.  Neither pattern
+# matches an input -- Zubko's DustEM tables are Gra_/suvSil_/PAH_*.dat and
+# astrodust's DH21 refractive-index tabulation is q_DH21Ad_*.dat.gz.
+for m in astrodust dl07 zubko; do
+  mkdir -p "$HERE/data/$m"
+  find "$SED/data/$m" -maxdepth 1 -type f \
+       ! -name 'q_*.dat' ! -name 'kext_*.dat' \
+       -exec cp {} "$HERE/data/$m/" \;
+done
+
 echo "Populated SEDust data under $HERE (from $SED)"

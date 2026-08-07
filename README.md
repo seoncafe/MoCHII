@@ -145,13 +145,15 @@ make                              # -> MoCHII.x  (MPI Fortran + HDF5)
 mpirun -np 8 ./MoCHII.x input.in
 ```
 
-The SEDust data directory is resolved automatically relative to the
-executable at run time, so dust emission works from any working directory
-without setting `par%sed_workdir`.
+`par%sed_data_dir` is resolved automatically relative to the executable at run
+time, so dust emission works from any working directory without setting a
+path. Everything the dust model is made of resolves inside that one directory.
 
-MoCHII's default astrodust Q table is the EUV companion
-`SEDust/tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat` (1762 wavelengths,
-`1.0e-4`--`3.981e4` um), because MoCHII transports photoionizing radiation.
+The optics of the named `par%dust_model` come from
+`SEDust/data/<model>/sedust_<model>.h5`, which carries the wavelength axis, the
+cross-section tables and the size-integrated extinction curve together. The
+default astrodust axis runs `1.0e-4`--`3.981e4` um (1762 wavelengths), spanning
+the ionizing band MoCHII transports.
 
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
@@ -167,4 +169,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-04 10:42 KST
+Last updated: 2026-08-08 06:20 KST

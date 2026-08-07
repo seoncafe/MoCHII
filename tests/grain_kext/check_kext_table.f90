@@ -3,19 +3,20 @@ program check_kext_table
 ! Gate: the dust extinction MoCHII transports is the extinction of the grains
 ! MoCHII lets radiate.
 !
-! grain_model_mod builds one SEDust model and hands gas_opacity_mod its
-! (lambda, albedo, <cos>, C_ext) curve through dust_extinction.  That routine
-! no longer integrates over grain size at call time: it serves the PRECOMPUTED
-! size-integrated curve of a data/kext_*.dat table -- the file the builder was
-! given through kext_path -- interpolated onto the model's own wavelength grid.
-! The size integral over the model as built is a separate routine,
-! size_integrated_extinction, and it is what wrote those tables.  A transport
-! host must not call it -- SEDust's own rt_example says so, and for MoCHII's
-! reasons too: it re-does the triple sum over populations, sizes and
-! wavelengths, it returns the number already on disk, and taking some
-! wavelengths from it and others from the table would make the run's own optics
-! inconsistent.  Writing a table, and checking one, are the uses it exists for,
-! and this gate is the second.
+! grain_model_mod builds one SEDust model -- one build_dust call, one data
+! directory, the whole stored wavelength axis (include_euv) and no lam_min --
+! and hands gas_opacity_mod its (lambda, albedo, <cos>, C_ext) curve through
+! dust_extinction.  That routine does not integrate over grain size at call
+! time: it serves the PRECOMPUTED size-integrated curve the builder loaded
+! (/kext of the model's own product, or the file par%sed_kext names),
+! interpolated onto the model's own wavelength grid.  The size integral over
+! the model as built is a separate routine, size_integrated_extinction, and it
+! is what wrote those curves.  A transport host must not call it -- SEDust's
+! own rt_example says so, and for MoCHII's reasons too: it re-does the triple
+! sum over populations, sizes and wavelengths, it returns the number already on
+! disk, and taking some wavelengths from it and others from the stored curve
+! would make the run's own optics inconsistent.  Writing a curve, and checking
+! one, are the uses it exists for, and this gate is the second.
 !
 ! So the two must agree, and where they do not the physics says how much.
 ! Four quantities are compared, each the way the transport reads it: C_ext
@@ -24,150 +25,130 @@ program check_kext_table
 ! albedo*<cos> (the forward displacement a scattering carries) absolutely,
 ! because they are probabilities the photon uses as they stand.
 !
-!   (a) lambda >= 0.0912 um.  The model grid here IS the table grid (both come
-!       from the T-matrix Q table, and Zubko's grid is its own DustEM table),
-!       so no interpolation happens and the served value is the table value.
-!       Any departure beyond the 13 significant digits the tables are written
-!       with means the table does not belong to this model -- a different size
-!       distribution, a different Q table, a different ZDA config.  That is the
-!       one failure this design can hide, because a mismatched table still
-!       loads, still covers the band, and still looks like a plausible
-!       extinction curve.  TOL_TABLE_NODE.
+!   (a) lambda >= 0.0912 um.  The model grid here IS the curve's grid -- both
+!       are read from the same product -- so no interpolation happens and the
+!       served value is the stored value.  Any departure beyond what separates
+!       the two halves of that product (see the tolerances below) means the
+!       curve does not belong to this model: a different size distribution,
+!       different optics, a different ZDA config.  That is the one failure this
+!       design can hide, because a mismatched curve still loads, still covers
+!       the band, and still looks like a plausible extinction curve.
 !
-!   (b) lambda < 0.0912 um, the ionizing band itself.  MoCHII asks SEDust to
-!       carry the grid down to 1.23984/eion_max um, but the astrodust Q table
-!       now starts at 1.0e-4 um (12.4 keV), so no eion_max below 12398.4 eV
-!       reaches past it: the model grid stays the table grid here too, and the
-!       kext tables are on that same grid, so again nothing is interpolated.
-!       The check is therefore the same statement as (a) -- served value equals
-!       table value -- kept separate because the two halves sit in different
-!       numerical regimes (C_sca and C_abs are orders apart across the seam).
-!       TOL_EUV_INTERP.  Should a case with a genuine extension be added (it
-!       needs a library built WITH_TMATRIX, or the model would refuse), the
-!       log(lambda)-log(C) interpolation returns here and this tolerance has to
-!       go back to the ~3e-2 the extended nodes used to cost.
+!   (b) lambda < 0.0912 um, the ionizing band itself.  Nothing changes there:
+!       include_euv takes the whole axis, the stored curve spans that same
+!       whole axis, and no lam_min extends the grid past it.  The check is
+!       therefore the same statement as (a), kept separate because the two
+!       halves sit in different numerical regimes (C_sca and C_abs are orders
+!       apart across the seam).  Should a case with a genuine extension be
+!       added (it needs par%eion_max above 12398.4 eV, and a library built
+!       WITH_TMATRIX, or astrodust would refuse), the log(lambda)-log(C)
+!       interpolation returns here and the tolerance has to go back to the
+!       ~3e-2 the extended nodes used to cost.
 !
 !   (c) The two integrals the transport actually uses.  s_abs(E) = C_abs/C_ext
 !       (lambda_ref) is the band absorption MoCHII carries per unit reference
 !       extinction, and C_ext(lambda_ref = 0.55 um) is the normalization every
-!       leaf's grey rhokap is built on.  TOL_SABS_BAND, TOL_CREF.
+!       leaf's grey rhokap is built on.  TOL_SABS_BAND, and TOL_KEXT_NODE for
+!       C_ext(lambda_ref).
 !
-! The cases are the grids MoCHII actually builds: astrodust asked for
-! par%eion_max = 100 eV and for 150 eV, astrodust with no lam_min at all (an
-! emission-only run, par%ion_add_dust = .false.), DL07 asked for 100 eV, and
-! Zubko, which takes no lam_min.  With the current Q table the three astrodust
-! cases build the SAME grid (NLAM = 1762, 1.0e-4 to 3.981e4 um) and must
-! therefore report the same numbers; DL07 is on that grid too, Zubko on its own
-! (NLAM = 1201, 1.0e-3 to 1.0e4 um).  Everything else is at the par% defaults
-! of define.f90.
+! The cases are the three models MoCHII can build, each with the arguments
+! grain_model_mod passes -- there is no lam_min case to vary any more, and
+! include_euv is fixed .true. there, so one case per model is the whole set.
+! Measured grids: astrodust NLAM = 1762 over 1.0000e-04 to 3.9811e+04 um, DL07
+! NLAM = 1823 over 6.2054e-05 to 3.9811e+04 um (its OWN axis now, no longer the
+! astrodust one it used to borrow), Zubko NLAM = 1201 over 1.0000e-03 to
+! 1.0000e+04 um.  Everything else is at the par% defaults of define.f90.
 !
-! Build and run:  see tests/grain_kext/run_check.sh  (must run in SEDust/sed/,
-! the directory all these paths are relative to)
+! Build and run:  see tests/grain_kext/run_check.sh, which passes the data
+! directory as argv(1).  Runs from any working directory.
 !---------------------------------------------------------------------------
   use constants, only : wp
-  use dust_lib,  only : dust_model_t, build_astrodust, build_dl07, build_zubko, &
+  use dust_lib,  only : dust_model_t, build_dust, &
                         dust_extinction, size_integrated_extinction, &
                         dust_nlam, dust_lambda
   implicit none
 
-  !--- par% defaults of src/define.f90, as grain_model_mod passes them
-  character(len=*), parameter :: QTABLE   = &
-     '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat'
-  character(len=*), parameter :: SIZEDIST = '../data/release/size_distribution.dat'
-  character(len=*), parameter :: ZUBKO_CONFIG = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
-  character(len=*), parameter :: ZUBKO_DIR    = '../data/zubko/'
-  !--- SEDust's standard table for each model: what a run gets when
-  !--- par%sed_kext is blank.  Named here so the gate exercises the same files.
-  character(len=*), parameter :: KEXT_ASTRODUST = '../data/kext_astrodust_MW_euv.dat'
-  character(len=*), parameter :: KEXT_DL07      = '../data/kext_dl07_MW_euv.dat'
-  character(len=*), parameter :: KEXT_ZUBKO     = '../data/kext_zubko_BARE_GR_S.dat'
+  !--- par% defaults of src/define.f90, as grain_model_mod passes them.
+  !--- par%sed_data_dir comes in on the command line, the way a run gets it
+  !--- from read_input: build_dust resolves every file the model is made of
+  !--- inside it, dielectric functions included, so the gate needs no
+  !--- particular working directory either.  Absent, the SEDust sed/ default.
+  character(len=512) :: DATA_DIR = '../data'               ! par%sed_data_dir
   integer,       parameter :: NT      = 200
   real(kind=wp), parameter :: T_LO    = 2.7_wp, T_HI = 5.0e3_wp
   integer,       parameter :: SDINDEX = 7
   real(kind=wp), parameter :: U_ISRF  = 1.0_wp
   real(kind=wp), parameter :: LAM_REF = 0.55_wp        ! par%lambda_ref [um]
 
-  !--- 0.0912 um = 13.598 eV: the short end of the T-matrix Q table, hence the
-  !--- boundary used to report the original SEDust seam; MoCHII's default EUV
-  !--- Q table now has nodes on both sides of it.
+  !--- 0.0912 um = 13.598 eV: the Lyman limit, where SEDust cuts the stored
+  !--- axis when include_euv is not asked for, hence the boundary the two
+  !--- numerical regimes are reported on either side of.
   real(kind=wp), parameter :: LAM_QTAB = 0.0912_wp
   !--- transported band [eV] the band-averaged s_abs of check (c) runs over
   real(kind=wp), parameter :: E_BAND_LO = 13.598_wp, E_BAND_HI = 100.0_wp
 
-  !--- (a) node-coincident: the served value is a table read, so the only
-  !--- difference allowed is the 13-digit precision of the table file itself --
-  !--- measured 4.7-4.9e-13 on the cross sections and 2.7-4.2e-13 on the albedo
-  !--- pair, all five cases.  Three orders of margin on that still leaves eight
-  !--- orders between here and the smallest table mismatch a changed size
-  !--- distribution could produce.
-  real(kind=wp), parameter :: TOL_TABLE_NODE     = 1.0e-10_wp
-  real(kind=wp), parameter :: TOL_TABLE_NODE_DIM = 1.0e-10_wp
-  !--- (b) the ionizing band, now node-coincident like (a) -- see the header.
-  !--- Measured worst single wavelength 4.8e-13 (astrodust, all three cases),
-  !--- 3.2e-12 (DL07), 4.8e-13 (Zubko), and 8.1e-13 / 1.5e-12 / 2.8e-13 on the
-  !--- albedo pair.  1e-9 is ~300x the worst of those, the same margin (a)
-  !--- carries, and it is seven orders tighter than the 3e-2 the extended nodes
-  !--- needed when the Q table stopped at 0.0912 um.  A wrong table is O(1)
-  !--- here as at (a), so the tightening only widens what the gate catches.
-  !--- The albedo and <cos> are O(0.1-0.5) across this band, so the same number
-  !--- is the same fractional statement about them.
-  real(kind=wp), parameter :: TOL_EUV_INTERP     = 1.0e-9_wp
-  real(kind=wp), parameter :: TOL_EUV_INTERP_DIM = 1.0e-9_wp
-  !--- (c) the transported integrals.  Measured on the band-averaged s_abs:
-  !--- 1.9e-14 (astrodust, all three cases), 3.0e-14 (DL07), 2.9e-14 (Zubko).
-  !--- On C_ext at 0.55 um: 2.8e-14 / 2.1e-14 / 1.4e-14.  Both are pure
-  !--- rounding now that every wavelength is a table node.  The tolerances sit
-  !--- ten and five orders above those; they are left where they were, because
-  !--- what they have to catch is an integral that has stopped agreeing, and
-  !--- both must in any case stay far below TOL_EUV_INTERP.
-  real(kind=wp), parameter :: TOL_SABS_BAND = 1.0e-4_wp
-  real(kind=wp), parameter :: TOL_CREF      = 1.0e-9_wp
+  !--- What separates the served curve from the integral, model by model, is how
+  !--- that model's product was written -- not how the gate reads it.  Every
+  !--- model wavelength is a node of the stored curve, so nothing is
+  !--- interpolated on either side of 0.0912 um; what is left is whether /kext
+  !--- and /qtable of one sedust_<model>.h5 were computed from the SAME numbers.
+  !---
+  !--- They are, for all three, and one tolerance therefore covers them.  It was
+  !--- two: DL07's and Zubko's /kext used to be written from the text q_*.dat
+  !--- optics (7 significant digits) while /qtable of the same file carried full
+  !--- double precision, which put those two models at the 7th digit and needed
+  !--- 1e-6 where astrodust sat at 1e-9.  Both halves of every product now come
+  !--- from one set of numbers.  Measured here (worst single wavelength, cross
+  !--- sections / albedo pair, lam >= 0.0912 um then the ionizing band):
+  !---   astrodust  0.0 / 0.0            3.3e-16 / 1.1e-16
+  !---   dl07       2.7e-15 / 6.7e-16    4.2e-16 / 3.3e-16
+  !---   zubko      5.8e-16 / 2.2e-16    6.3e-16 / 2.2e-16
+  !--- and on C_ext(0.55 um): 0.0 (astrodust), 0.0 (DL07), 7.2e-15 (Zubko).
+  !--- That is rounding on a double, so 1e-12 leaves three orders of headroom
+  !--- and still catches a curve belonging to other grains, which is O(1).
+  real(kind=wp), parameter :: TOL_KEXT_NODE = 1.0e-12_wp
+  !--- (c) the band-averaged s_abs.  Measured 0.0 (astrodust), 0.0 (DL07),
+  !--- 6.9e-15 (Zubko) -- an integral over 137 wavelengths, so the single-node
+  !--- departures above average down rather than add.  What it has to catch is
+  !--- an integral that has stopped agreeing, so it stays above the node
+  !--- tolerance, by four orders; 1e-4 was eleven orders above the measurement
+  !--- and no longer watched anything.
+  real(kind=wp), parameter :: TOL_SABS_BAND = 1.0e-8_wp
 
   type(dust_model_t) :: m
   integer :: st
   logical :: ok
 
   ok = .true.
+  if (command_argument_count() >= 1) call get_command_argument(1, DATA_DIR)
 
-  write(*,'(a)') '=== table-served extinction vs the size integral that wrote the table ==='
+  write(*,'(2a)') 'par%sed_data_dir = ', trim(DATA_DIR)
+  write(*,'(a)') '=== served extinction vs the size integral that wrote it ==='
   write(*,'(a)') 'worst single-wavelength departure on each side of 0.0912 um -- relative'
   write(*,'(a)') 'for the cross sections (C_ext, C_abs), absolute for the scattering pair'
   write(*,'(a)') '(albedo, albedo*<cos>) -- then the two band integrals the transport uses.'
-  write(*,'(/,a24,4a12,2a12)') 'case', 'C >=.0912', 'a,ag>=.0912', &
-     'C <.0912', 'a,ag<.0912', 'band s_abs', 'C_ext(ref)'
+  write(*,'(/,a22,a6,2a11,4a11,2a11)') 'case', 'NLAM', 'lam(1)', 'lam(N)', &
+     'C >=.0912', 'a,ag>=.0912', 'C <.0912', 'a,ag<.0912', 'band s_abs', 'C_ext(ref)'
 
-  !--- astrodust, EUV-extended to par%eion_max = 100 eV
-  call build_astrodust(m, QTABLE, SIZEDIST, NT, T_LO, T_HI, status=st, &
-                       lam_min=1.23984_wp/100.0_wp, kext_path=KEXT_ASTRODUST)
-  call compare_served_with_integral('astrodust, EUV 100 eV', m, st, ok)
+  !--- The three models grain_model_mod can build, with its arguments: the whole
+  !--- stored axis (include_euv), no lam_min, and the model's own /kext (a blank
+  !--- par%sed_kext, so kext_path is left out here too).
+  call build_dust(m, 'astrodust', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
+                  status=st, sd_index=SDINDEX, u_isrf=U_ISRF)
+  call compare_served_with_integral('astrodust', m, st, TOL_KEXT_NODE, ok)
 
-  !--- astrodust, EUV-extended to 150 eV (a harder spectrum's band)
-  call build_astrodust(m, QTABLE, SIZEDIST, NT, T_LO, T_HI, status=st, &
-                       lam_min=1.23984_wp/150.0_wp, kext_path=KEXT_ASTRODUST)
-  call compare_served_with_integral('astrodust, EUV 150 eV', m, st, ok)
+  call build_dust(m, 'dl07', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
+                  status=st, sd_index=SDINDEX, u_isrf=U_ISRF)
+  call compare_served_with_integral('dl07', m, st, TOL_KEXT_NODE, ok)
 
-  !--- astrodust with no extension: par%ion_add_dust = .false., the native
-  !--- T-matrix grid, entirely inside the table's nodes.
-  call build_astrodust(m, QTABLE, SIZEDIST, NT, T_LO, T_HI, status=st, &
-                       kext_path=KEXT_ASTRODUST)
-  call compare_served_with_integral('astrodust, no extension', m, st, ok)
+  call build_dust(m, 'zubko', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
+                  status=st, sd_index=SDINDEX, u_isrf=U_ISRF)
+  call compare_served_with_integral('zubko', m, st, TOL_KEXT_NODE, ok)
 
-  !--- DL07, EUV-extended to 100 eV
-  call build_dl07(m, QTABLE, SIZEDIST, SDINDEX, U_ISRF, NT, T_LO, T_HI, status=st, &
-                  lam_min=1.23984_wp/100.0_wp, kext_path=KEXT_DL07)
-  call compare_served_with_integral('dl07, EUV 100 eV', m, st, ok)
-
-  !--- Zubko: its own DustEM tables already span the ionizing band, so the model
-  !--- grid is the table grid everywhere and nothing is interpolated.
-  call build_zubko(m, ZUBKO_CONFIG, ZUBKO_DIR, NT, T_LO, T_HI, status=st, &
-                   kext_path=KEXT_ZUBKO)
-  call compare_served_with_integral('zubko', m, st, ok)
-
-  write(*,'(/,a,4(a,es8.1))') 'tolerances:', '  node ', TOL_TABLE_NODE, &
-     ' / ', TOL_TABLE_NODE_DIM, '   EUV ', TOL_EUV_INTERP, ' / ', TOL_EUV_INTERP_DIM
-  write(*,'(a,2(a,es8.1))') '           ', ' band s_abs ', TOL_SABS_BAND, &
-     '   C_ext(ref) ', TOL_CREF
-  write(*,'(/,a)') 'GATE (dust extinction table = the model''s own size integral): ' // &
+  write(*,'(/,a,a,es8.1)') 'tolerances:', &
+     '  single wavelength (/kext vs its own size integral) ', TOL_KEXT_NODE
+  write(*,'(a,es8.1)') '            band s_abs ', TOL_SABS_BAND
+  write(*,'(/,a)') 'GATE (dust extinction curve = the model''s own size integral): ' // &
      merge('PASS', 'FAIL', ok)
   if (.not. ok) error stop 1
 
@@ -178,10 +159,15 @@ contains
   !--- integral over the same model gives, split at 0.0912 um, plus the two
   !--- band integrals the transport is normalized on.
   !=========================================================================
-  subroutine compare_served_with_integral(label, m, st_build, ok)
+  subroutine compare_served_with_integral(label, m, st_build, tol, ok)
     character(len=*),   intent(in)    :: label
     type(dust_model_t), intent(in)    :: m
     integer,            intent(in)    :: st_build
+    !--- How far apart this model's /kext and /qtable were written; see where
+    !--- the two constants are declared for which model gets which and why.
+    !--- The cross sections are held to it relatively, the albedo pair
+    !--- absolutely -- both O(0.1-1) quantities, so it is the same statement.
+    real(kind=wp),      intent(in)    :: tol
     logical,            intent(inout) :: ok
     real(kind=wp), allocatable :: lam(:)
     real(kind=wp), allocatable :: Ce_t(:), Ca_t(:), Cs_t(:), g_t(:)
@@ -195,7 +181,7 @@ contains
     logical :: have_band
 
     if (st_build /= 0) then
-       write(*,'(a24,a,i0,a)') label, '   BUILD FAILED (status=', st_build, ')'
+       write(*,'(a22,a,i0,a)') label, '   BUILD FAILED (status=', st_build, ')'
        ok = .false.
        return
     end if
@@ -207,15 +193,15 @@ contains
     call dust_extinction(m, Ce_t, Ca_t, Cs_t, gbar=g_t, status=st_t)
     call size_integrated_extinction(m, Ce_i, Ca_i, Cs_i, gbar=g_i, status=st_i)
     if (st_t /= 0 .or. st_i /= 0) then
-       write(*,'(a24,a,i0,a,i0,a)') label, '   EXTINCTION FAILED (served=', st_t, &
+       write(*,'(a22,a,i0,a,i0,a)') label, '   EXTINCTION FAILED (served=', st_t, &
           ', integral=', st_i, ')'
        ok = .false.
        deallocate(lam, Ce_t, Ca_t, Cs_t, g_t, Ce_i, Ca_i, Cs_i, g_i)
        return
     end if
 
-    !--- (a) + (b): worst single-wavelength departure on each side of the
-    !--- T-matrix short end, over all four transported quantities.
+    !--- (a) + (b): worst single-wavelength departure on each side of the Lyman
+    !--- limit, over all four transported quantities.
     !--- The cross sections C_ext (optical depth) and C_abs (the heated
     !--- fraction) are compared RELATIVE to themselves: they set rates, and a
     !--- fractional error in them is a fractional error in the transport.
@@ -226,7 +212,7 @@ contains
     !--- That weighting is physics, not leniency, and it is what keeps the far
     !--- infrared honest: there C_sca falls to 1e-10 of C_ext, its own relative
     !--- accuracy collapses (Mie's small-x scattering series is
-    !--- cancellation-limited, and the shipped DL07 table and the size integral
+    !--- cancellation-limited, and the shipped DL07 curve and the size integral
     !--- part company at the 4e-8 level there), yet the scattering it describes
     !--- cannot move a photon.  In the optical, where the albedo is 0.6-0.7,
     !--- the same measure is as tight as a direct comparison.
@@ -267,40 +253,40 @@ contains
           nb = nb + 1
        end if
     end do
-    !--- an unextended grid touches the band only at its 0.0912 um endpoint,
-    !--- so there is no band average to form there.
+    !--- a grid cut at the Lyman limit touches the band only at its 0.0912 um
+    !--- endpoint, so there is no band average to form there.
     have_band = (nb >= 2 .and. sabs_i > 0.0_wp)
     dev_sabs = 0.0_wp
     if (have_band) dev_sabs = abs(sabs_t/sabs_i - 1.0_wp)
 
     if (have_band) then
-       write(*,'(a24,6es12.2)') label, dev_node, dim_node, dev_euv, dim_euv, &
-          dev_sabs, dev_cref
+       write(*,'(a22,i6,2es11.4,6es11.2)') label, n, lam(1), lam(n), &
+          dev_node, dim_node, dev_euv, dim_euv, dev_sabs, dev_cref
     else
-       write(*,'(a24,4es12.2,a12,es12.2)') label, dev_node, dim_node, dev_euv, dim_euv, &
-          '  n/a', dev_cref
+       write(*,'(a22,i6,2es11.4,4es11.2,a11,es11.2)') label, n, lam(1), lam(n), &
+          dev_node, dim_node, dev_euv, dim_euv, '  n/a', dev_cref
     end if
 
-    if (dev_node > TOL_TABLE_NODE) then
+    if (dev_node > tol) then
        write(*,'(2a,es10.3,a,es11.4,a)') '  FAIL: ', &
-          'the served cross sections are not the table at lam >= 0.0912 um: ', &
-          dev_node, ' at ', lam_node, ' um (is the table this model''s?)'
+          'the served cross sections are not the stored curve at lam >= 0.0912 um: ', &
+          dev_node, ' at ', lam_node, ' um (is the curve this model''s?)'
        ok = .false.
     end if
-    if (dim_node > TOL_TABLE_NODE_DIM) then
+    if (dim_node > tol) then
        write(*,'(2a,es10.3,a,es11.4,a)') '  FAIL: ', &
-          'the served scattering pair is not the table at lam >= 0.0912 um: ', &
-          dim_node, ' at ', lam_dnode, ' um (is the table this model''s?)'
+          'the served scattering pair is not the stored curve at lam >= 0.0912 um: ', &
+          dim_node, ' at ', lam_dnode, ' um (is the curve this model''s?)'
        ok = .false.
     end if
-    if (dev_euv > TOL_EUV_INTERP) then
+    if (dev_euv > tol) then
        write(*,'(2a,es10.3,a,es11.4,a)') '  FAIL: ', &
-          'EUV interpolation departs by ', dev_euv, ' at ', lam_euv, ' um'
+          'the ionizing band departs by ', dev_euv, ' at ', lam_euv, ' um'
        ok = .false.
     end if
-    if (dim_euv > TOL_EUV_INTERP_DIM) then
+    if (dim_euv > tol) then
        write(*,'(2a,es10.3,a,es11.4,a)') '  FAIL: ', &
-          'EUV scattering-pair interpolation departs by ', dim_euv, ' at ', &
+          'the ionizing-band scattering pair departs by ', dim_euv, ' at ', &
           lam_deuv, ' um'
        ok = .false.
     end if
@@ -309,7 +295,7 @@ contains
           '  FAIL: band-averaged s_abs (13.598-100 eV) departs by ', dev_sabs
        ok = .false.
     end if
-    if (dev_cref > TOL_CREF) then
+    if (dev_cref > tol) then
        write(*,'(a,es10.3)') '  FAIL: C_ext at lambda_ref = 0.55 um departs by ', dev_cref
        ok = .false.
     end if

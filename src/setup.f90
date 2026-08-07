@@ -35,17 +35,17 @@ contains
   read(unit,parameters)
   close(unit)
 
-  !--- Resolve the SEDust directory relative to the executable when the user
-  !--- leaves par%sed_workdir blank, so a fresh checkout runs dust emission from
-  !--- any working directory without editing paths.  argv(0) is the path to
-  !--- MoCHII.x; take its directory and append SEDust/sed.
-  if (len_trim(par%sed_workdir) == 0) then
+  !--- Resolve the SEDust data directory relative to the executable when the
+  !--- user leaves par%sed_data_dir blank, so a fresh checkout runs dust
+  !--- emission from any working directory without editing paths.  argv(0) is
+  !--- the path to MoCHII.x; take its directory and append SEDust/data.
+  if (len_trim(par%sed_data_dir) == 0) then
      call get_command_argument(0, exepath)
      islash = index(trim(exepath), '/', back=.true.)
      if (islash > 0) then
-        par%sed_workdir = exepath(1:islash-1) // '/SEDust/sed'
+        par%sed_data_dir = exepath(1:islash-1) // '/SEDust/data'
      else
-        par%sed_workdir = 'SEDust/sed'
+        par%sed_data_dir = 'SEDust/data'
      end if
   end if
 

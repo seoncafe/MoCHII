@@ -4,7 +4,9 @@ Date: 2026-07-21.  Status when written: review only, no implementation.
 **The extension was built upstream and MoCHII now runs on it** — with one of the
 review's recommendations left out, recorded below.  Sections 1–8 are the
 2026-07-21 review, left as written; this preamble records what was actually
-built and what it did to MoCHII.
+built and what it did to MoCHII, in the order it happened: the table itself
+(2026-08-04), then the data layout and host API it is delivered through
+(2026-08-07).
 
 ## What was executed (upstream SEDust, adopted 2026-08-04)
 
@@ -17,9 +19,11 @@ recommended 10 A floor, all the way to the DH21 dielectric function's own end:
 | `q_astrodust_P0.20_Fe0.00_1.400_euv.dat` | — | 169 x 1762, **1.0e-4**–3.981e4 um |
 | file size | 21 MB | 33 MB (EUV companion) |
 
-MoCHII's default `par%sed_qtable` points to the `_euv.dat` companion because
-MoCHII is a photoionization code; the unsuffixed 1129-point file is retained
-for ordinary SEDust use and is not an adequate MoCHII default.
+MoCHII took the `_euv.dat` companion as its default Q table, because MoCHII is a
+photoionization code and the unsuffixed 1129-point file is not an adequate
+default for one.  That choice is no longer expressed as a file name: since
+2026-08-07 the two are one array in the model's HDF5 product and `include_euv`
+picks the view (see below).
 
 The short end is therefore 12.4 keV, not the 1.24 keV of section 4's
 recommended floor.  The wavelength axis is a separate grid file
@@ -44,17 +48,20 @@ translucent grain stands and is **open**.
 
 ## What it did to MoCHII
 
-1. **The extension is gone.**  `grain_model_mod` still asks for the grid down
+1. **The extension is gone.**  `grain_model_mod` still asked for the grid down
    to `1.23984/par%eion_max`, but SEDust prepends points only when that is
    shorter than the table's first wavelength.  At the default
    `par%eion_max` = 100 eV that is 0.0124 um against the table's 1.0e-4 um, so
-   nothing is prepended; astrodust and DL07 come back with NLAM = 1762 and
+   nothing was prepended; astrodust and DL07 came back with NLAM = 1762 and
    lambda(1) = 1.0e-4 um at 100 eV, at 150 eV, and with no `lam_min` at all —
-   the same grid all three times.  An extension appears only above
-   `par%eion_max` = 12398.4 eV, and astrodust then *refuses* it (build status 6:
+   the same grid all three times.  An extension appeared only above
+   `par%eion_max` = 12398.4 eV, and astrodust then *refused* it (build status 6:
    the band's optics are the same spheroid and this tree carries the Q table
-   without the T-matrix), which `build_grain_model` turns into a message naming
+   without the T-matrix), which `build_grain_model` turned into a message naming
    `par%eion_max`.  SEDust does not silently substitute an equal-volume sphere.
+   Since 2026-08-07 `grain_model_mod` does not ask at all: no `lam_min` is
+   passed, so neither the prepend nor the refusal is reachable from MoCHII, and
+   the grid is the stored axis in every run.  The reasons are below.
 2. **The ionizing-band grains changed identity.**  The old kext table's header
    recorded its own EUV as "Mie for the VOLUME-EQUIVALENT SPHERE on the same
    Draine & Hensley (2021) dielectric function"; the new one is the same
@@ -73,21 +80,148 @@ translucent grain stands and is **open**.
 4. **The gate tightened.**  With no extension there is no interpolation:
    every model wavelength is a table wavelength, so `tests/grain_kext` measures
    rounding on both sides of 0.0912 um and its EUV tolerance went 3e-2 -> 1e-9.
-5. **Cost.**  Building the 1.56x longer grid takes 156.4 s (astrodust), about
+   (Held for astrodust; DL07 and Zubko moved to 1e-6 on 2026-08-07, for a
+   reason that is a property of the products rather than of the grid — see
+   below and `docs/SEDUST_API_AUDIT.md`.)
+5. **Cost.**  Building the 1.56x longer grid took 156.4 s (astrodust), about
    73 s (DL07) and 0.55 s (Zubko) per rank at `par%sed_NT` = 200, paid at
    startup.  The corresponding figure on the 1129-point grid was not measured
-   before the table was replaced.
+   before the table was replaced.  Re-measured on the HDF5 products below.
+
+## How the table is delivered now (2026-08-07)
+
+SEDust reorganized what it ships and how a host asks for it, and MoCHII follows.
+The table of section 3 did not change; the way MoCHII reaches it did.
+
+**One file per model, and it is HDF5.**  `data/` is now one directory per dust
+model — `astrodust/`, `dl07/`, `zubko/` — beside the two the models share,
+`dielectric/` (optical constants, PAH cross sections) and `release/` (published
+tables and the size distribution).  A model's optics are one product,
+`data/<model>/sedust_<model>.h5`, holding its wavelength axis (`/grid/lambda`),
+its `(lambda, a_eff)` cross-section tables (`/qtable`) and its size-integrated
+extinction curve (`/kext`) together, with the index `i_lyman` at which the axis
+crosses the Lyman limit.  The EUV and non-EUV forms are therefore no longer two
+files but one array and a cut, and `include_euv` picks the view.
+
+**One host call, and one directory.**  `build_dust(m, model, data_dir, ...)`
+resolves everything the model is made of from `data_dir` — the optics product,
+the size distribution, the ZDA config, and the dielectric functions the optics
+were computed on — so `par%sed_qtable`, `par%sed_sizedist`,
+`par%sed_zubko_config` and `par%sed_zubko_dir` are replaced by a single
+`par%sed_data_dir`, blank by default and resolved to `<executable
+dir>/SEDust/data` at run time.  `par%sed_workdir` is gone with them: SEDust used
+to open its dielectric functions on paths hard-coded relative to `sed/` with no
+`iostat`, so the host had to `chdir` into a SEDust `sed/` tree or the process
+died before a status existed; those opens now go through the same data root and
+carry `iostat`, and a bad directory comes back as a status
+(`docs/SEDUST_API_AUDIT.md`, Finding 1).  `par%sed_kext` stays as the override;
+blank now means `/kext` of the model's own product.  `grain_model_mod` went from
+eight build calls to two.
+
+**`include_euv = .true.`, and no `lam_min`.**  Three reasons, all measured or
+read out of SEDust: (a) with the whole axis the astrodust grid already starts at
+1.0e-4 um = 12398.4 eV, so `lam_min = 1.23984/par%eion_max` does nothing below
+that; (b) `lam_min` is a coverage requirement rather than a grid — a model that
+cannot reach it refuses to build, and Zubko's grid *is* its own optics table, so
+a floor passed uniformly would take that model out rather than widen it;
+(c) whether the grid spans the transported band is checked with the numbers in
+`gas_opacity_mod` at setup, for every model alike.  This is what retires item 1
+above.
+
+**Measured grids**, with the arguments `grain_model_mod` passes:
+
+| model | NLAM | lambda(1) [um] | lambda(N) [um] |
+|---|---:|---|---|
+| astrodust | 1762 | 1.0000e-04 | 3.9810e+04 |
+| dl07 | 1823 | 6.2054e-05 | 3.9810e+04 |
+| zubko | 1201 | 1.0000e-03 | 1.0000e+04 |
+
+DL07's is its **own** axis now.  It used to be handed the astrodust Q table to
+borrow a grid from, and came back on astrodust's 1762 points from 1.0e-4 um; its
+product carries its own 1823 points from 6.2054e-05 um, where the D03 optical
+constants its optics are Mie on actually end.
+
+**The optics did not move.**  astrodust built the old way (`build_astrodust` on
+the text `_euv` Q table) against the new way (`build_dust` on the product):
+the wavelength axis is identical (relative difference 0.0) and the served
+extinction agrees to 4.91e-13 (C_ext), 4.85e-13 (C_abs), 4.72e-13 (C_sca) and
+5.0e-14 on `<cos>` — the precision the text file was written with, so the two
+are the same numbers.
+
+**The text products are gone from this tree.**  SEDust writes the same optics as
+text (`q_*.dat` from `make_qtable.x`, `kext_*.dat` from `calc_kext.x`); nothing
+in a MoCHII run opens one, so the 257 MB they occupied was removed and
+`SEDust/populate_data.sh` no longer copies them.  Everything else in a model
+directory is an input rather than a product — Zubko's ZDA config, size
+distributions, DustEM optics and calorimetry; astrodust's DH21 tabulations — and
+stays.
+
+**Cost, re-measured** on the products, single rank at `par%sed_NT` = 200 (the
+build is not OpenMP-parallel; forcing one thread against 72 gives the same
+numbers to 0.05 s):
+
+| model | 2026-08-04 (text tables) | now (HDF5 product) |
+|---|---:|---:|
+| astrodust | 156.4 s | 152.9 s |
+| dl07 | ~73 s | 2.4 s |
+| zubko | 0.55 s | 0.18 s |
+
+astrodust is unchanged, which says the cost is the temperature-grid work
+(enthalpy and the Planck-averaged opacity over `par%sed_NT` points), not reading
+the table.  DL07's 30x is real work removed: given the astrodust Q table it had
+to solve Mie on the D03 dielectric functions for each of its four populations,
+and it now reads its own stored `/qtable`.
+
+**One gate tolerance.**  `tests/grain_kext` holds all three models to
+`TOL_KEXT_NODE = 1e-12`, worst measured 3.3e-16 (astrodust), 2.7e-15 (DL07),
+7.2e-15 (Zubko) — rounding on a double.  It was two tolerances, 1e-9 for
+astrodust and 1e-6 for the other two, because `calc_kext.x` wrote their `/kext`
+from the 7-digit text optics while `/qtable` of the same file carried full
+double precision; both halves of every product now come from one set of
+numbers.  `docs/SEDUST_API_AUDIT.md` records that and four other properties of
+the v1.00 API a host used to have to work around, all since resolved.
+
+## Zubko optics (2026-08-07)
+
+Zubko's product now stores two sets of optics and the caller picks:
+`zubko_optics = 'zda'` (default) is the tables the Camps et al. (2015) benchmark
+distributes, which is what the seven codes it compares against read;
+`'mie_d03'` is SEDust's own recomputation, Mie on the Draine (2003) optical
+constants, under `/qtable/*_mie_d03` with `/kext_mie_d03` beside it.  MoCHII
+takes the default, the same rule a blank `par%sed_kext` follows, and adds no
+input for it.
+
+That default changes which grains `par%dust_model = 'zubko'` means.  Against the
+curve this tree served before, over the transported band 13.598–100 eV (148
+points): worst single wavelength 1.96e-3 (C_ext), 1.64e-3 (C_abs), 3.80e-3
+(C_sca), band integrals +0.117% / +0.082% / +0.244%, albedo 5.1e-4 and
+&lt;cos&gt; 2.1e-3 absolute, `C_ext`(0.55 um) +0.027%.  Longward of 1 um it
+reaches 7.7% at 6958 um, which is where the distributed graphite table and the
+D03 Mie recomputation differ by 8% in `Q_abs`.  No MoCHII test or example input
+names `zubko` — `par%dust_model` defaults to `astrodust`, whose product did not
+change — so nothing recorded moves; `tests/grain_kext` is the only case that
+builds it.
+
+Part of the difference is the PAH population.  Measured on the distributed
+tables: their PAH `Q_sca` and &lt;cos&gt; are identical to graphite's at the same
+radius, every one of 28 radii x 1201 wavelengths, and their `Q_abs` is identical
+to graphite at the 303 wavelengths shortward of 0.0578 um (21.2 eV, the DL07
+PAH-to-graphite transition).  The recomputation used to store no scattering for
+the PAHs at all, so it now carries theirs as well — `C_sca` up to 3.7e-3 higher,
+`C_abs` unchanged to the last bit.
 
 ## Earlier adoption note (2026-08-02)
 
 One thing this memo assumes changed before the table did: `dust_extinction` no
 longer performs the size integral at call time.  It serves the model's
-*precomputed* size-integrated curve — `SEDust/data/kext_astrodust_MW_euv.dat`,
-`kext_dl07_MW_euv.dat`, `kext_zubko_BARE_GR_S.dat` — interpolated onto the
-model's own wavelength grid `m%lam`; the size integral is now the separate
-`size_integrated_extinction`, which is what wrote those tables.  Which table a
-run serves is `par%sed_kext` (MoCafe's convention: blank takes SEDust's own
-standard table for the named `par%dust_model`, a named file is mandatory).  The
+*precomputed* size-integrated curve — then the text tables
+`SEDust/data/kext_astrodust_MW_euv.dat`, `kext_dl07_MW_euv.dat`,
+`kext_zubko_BARE_GR_S.dat`, since 2026-08-07 `/kext` of the model's own product —
+interpolated onto the model's own wavelength grid `m%lam`; the size integral is
+now the separate `size_integrated_extinction`, which is what wrote those curves.
+Which curve a run serves is `par%sed_kext` (MoCafe's convention: blank takes
+SEDust's own standard curve for the named `par%dust_model`, a named file is
+mandatory).  The
 gate `tests/grain_kext` holds the served curve against the size integral over
 the model as built, so a table that does not belong to that model is caught.
 The section 7 "decide the default" step (S6) resolved to the grain model: with
@@ -330,11 +464,15 @@ Outcome added 2026-08-04; see the preamble for the numbers.
 - S5. Pipeline smoke (gate v) + regenerate `kext_astrodust_MW.dat`.
       — **done**: `kext_astrodust_MW.dat`, `kext_astrodust_MW_euv.dat` (both
       1762 points, 1.0e-4–3.981e4 um) and `kext_dl07_MW_euv.dat` (1823 points,
-      6.2054e-5–3.981e4 um) are regenerated.
+      6.2054e-5–3.981e4 um) are regenerated.  Those file names are upstream's;
+      MoCHII now takes the same curve from `/kext` of the model's product and
+      does not carry the text form.
 - S6. MoCHII host adoption: band optics from `dust_extinction`
       (option-gated), d_dusty re-gate, then decide the default.
       — **done** 2026-08-02, resolved to the grain model (see the adoption note
-      in the preamble).
+      in the preamble).  The option gating is gone with it: `par%dust_model`
+      names the grains and `build_dust` resolves everything else from
+      `par%sed_data_dir` (2026-08-07).
 
 Of the three open decisions listed for the author, two are settled: the
 extension floor went to 1 A rather than either candidate, and MoCHII's default

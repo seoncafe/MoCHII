@@ -581,8 +581,11 @@ contains
        '# sum L_lambda dlambda over the bins below = ', esum, &
        ' erg/s (equals L_esc by construction)'
     write(unit,'(a)') '# lambda[um]   L_lambda[erg/s/um]'
+    !--- e3 on the luminosity, for the reason sedust_mod gives where it writes
+    !--- '_dustsed.txt': this grid is sedust_lambda_grid(), reaching 1.0e-4 um,
+    !--- and an exponent needing three digits loses its 'E' without it.
     do k = 1, size(lam)
-       write(unit,'(es13.5,es15.6)') lam(k), Llam(k)
+       write(unit,'(es13.5,es16.6e3)') lam(k), Llam(k)
     end do
     close(unit)
     write(*,'(2a)') ' DUSTRT: escaping IR spectrum written to: ', trim(outname)

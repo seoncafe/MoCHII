@@ -376,43 +376,46 @@ public
      !--- reemission (approximate, equilibrium mixture-mean opacity, no PAH).
      character(len=8)   :: dust_emission_method = 'lucy'
      character(len=16)  :: dust_model   = 'astrodust'
-     !--- SEDust optics/size-distribution paths, resolved relative to
-     !--- par%sed_workdir (build_astrodust is called from there so that
-     !--- SEDust's own '../data/dielectric/...' relative reads resolve too).
-     !--- MoCHII is a photoionization host: use the EUV companion Q table by
-     !--- default (1e-4--3.981e4 um, 1762 wavelengths).  The unsuffixed table
-     !--- remains available for ordinary, non-ionizing SEDust use.
-     character(len=256) :: sed_qtable       = '../tmatrix/output/q_astrodust_P0.20_Fe0.00_1.400_euv.dat'
-     character(len=256) :: sed_sizedist     = '../data/release/size_distribution.dat'
-     !--- SEDust sed/ directory (self-contained under the MoCHII tree (SEDust/)).
-     !--- Blank (default) = auto-resolve to <executable dir>/SEDust/sed at
-     !--- run time (see read_input), so a fresh checkout works from any path.
-     !--- Set an explicit absolute path here only to override that.
-     character(len=256) :: sed_workdir      = ''
+     !--- SEDust data directory: the ONE directory build_dust resolves
+     !--- everything the named dust_model needs from, including the shared
+     !--- material data SEDust used to open relative to its own sed/ directory.
+     !---   <sed_data_dir>/<dust_model>/sedust_<dust_model>.h5
+     !---        the model's optics -- wavelength axis, cross-section tables and
+     !---        size-integrated extinction curve (/kext) in one file;
+     !---   <sed_data_dir>/release/size_distribution.dat
+     !---        the grain size distribution (not optics, so beside them);
+     !---   <sed_data_dir>/dielectric/
+     !---        the optical constants and PAH cross sections the optics are
+     !---        computed on, shared by the models;
+     !---   <sed_data_dir>/zubko/ZDA_BARE_GR_S_Config.dat
+     !---        the ZDA component definition, for dust_model = 'zubko'.
+     !--- Blank (default) = auto-resolve to <executable dir>/SEDust/data at run
+     !--- time (see read_input), so a fresh checkout works from any working
+     !--- directory.  A path set here is taken as given: absolute, or relative
+     !--- to the directory the run is launched from.
+     character(len=256) :: sed_data_dir     = ''
      integer            :: sed_NT           = 200
      real(kind=wp)      :: sed_Tlo          = 2.7_wp
      real(kind=wp)      :: sed_Thi          = 5.0e3_wp
-     !--- DL07 (Draine & Li 2007; dust_model='dl07') reuses sed_qtable and
-     !--- sed_sizedist (same files as astrodust).  sed_dl07_sdindex = WD01
-     !--- size-distribution index (7 = MW R_V=3.1, b_C=6e-5); sed_dl07_uisrf =
-     !--- reference radiation-field scaling U (1 = MMP83 diffuse ISM).
+     !--- DL07 (Draine & Li 2007; dust_model='dl07') is built from its own
+     !--- product under sed_data_dir, on its own wavelength axis.
+     !--- sed_dl07_sdindex = WD01 size-distribution index (7 = MW R_V=3.1,
+     !--- b_C=6e-5); sed_dl07_uisrf = reference radiation-field scaling U
+     !--- (1 = MMP83 diffuse ISM), the field its PAH ionization balance is
+     !--- computed at.  Both are ignored by the other models.
      integer            :: sed_dl07_sdindex = 7
      real(kind=wp)      :: sed_dl07_uisrf   = 1.0_wp
-     !--- Zubko (ZDA 2004 BARE-GR-S; dust_model='zubko'): the ZDA config
-     !--- file and the DustEM optics/calorimetry directory, resolved from
-     !--- sed_workdir (defaults point at the copied SEDust/data/zubko).
-     character(len=256) :: sed_zubko_config = '../data/zubko/ZDA_BARE_GR_S_Config.dat'
-     character(len=256) :: sed_zubko_dir    = '../data/zubko/'
      !--- Precomputed size-integrated extinction curve (lambda, albedo, <cos>,
      !--- C_ext/H, C_abs/H, C_sca/H) that SEDust interpolates onto the model
      !--- wavelength grid to give the transport its cross sections.  Blank
-     !--- (default) = the standard table of the named dust_model, which is the
-     !--- EUV-extended product covering the plain grid as well
-     !--- (SEDust/data/kext_astrodust_MW_euv.dat, kext_dl07_MW_euv.dat,
-     !--- kext_zubko_BARE_GR_S.dat).  Naming a file here makes it mandatory --
-     !--- the run stops if it cannot be read -- and it must have been computed
-     !--- from the same model and size distribution the emission uses, which is
-     !--- what SEDust's calc_kext.x writes.  Resolved from sed_workdir.
+     !--- (default) = /kext of the named dust_model's own product
+     !--- (<sed_data_dir>/<dust_model>/sedust_<dust_model>.h5), written from the
+     !--- same optics the model is built on and spanning its whole wavelength
+     !--- axis.  Naming a file here overrides it, and that file must have been
+     !--- computed from the same model and size distribution the emission uses,
+     !--- which is what SEDust's calc_kext.x writes.  Either way the curve is
+     !--- mandatory: the build fails if it cannot be read.  Taken as given:
+     !--- absolute, or relative to the directory the run is launched from.
      !--- Not to be confused with ion_dust_kext, which REPLACES the served curve
      !--- with a file of its own and so leaves the emission on other grains.
      character(len=256) :: sed_kext         = ''
@@ -719,7 +722,7 @@ public
      !--- scattered fraction simply passes (absorption-only treatment).
      logical            :: ion_dust_scatter = .false.
      !--- SEDust stochastic dust emission at output time (needs
-     !--- ion_add_dust + sed_workdir/sed_qtable/sed_sizedist paths).
+     !--- ion_add_dust + sed_data_dir).
      logical            :: dust_sed     = .false.
      !--- transport the thermal infrared the grains reradiate: emit packets
      !--- from every leaf in proportion to Heat_dust V, carry them through the

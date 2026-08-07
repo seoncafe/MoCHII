@@ -22,9 +22,9 @@ module sedust_mod
 ! energy-conservingly into the shortest SEDust bin (the stochastic spike
 ! hardness is slightly underestimated there — documented approximation).
 !
-! SEDust reads its dielectric tables relative to its sed/ directory:
-! par%sed_workdir must point at a SEDust sed/ tree (e.g. the MoCafe copy,
-! read-only) and par%sed_qtable / par%sed_sizedist at the optics tables.
+! par%sed_data_dir names the one SEDust data directory the model is built
+! from -- its optics product, the size distribution, the dielectric functions
+! and the ZDA config all resolve inside it (grain_model_mod).
 !---------------------------------------------------------------------------
   use define
   use dust_lib,        only : dust_model_t, dust_emission, dust_nlam, dust_lambda
@@ -260,8 +260,14 @@ contains
        write(unit,'(a,es14.6,a)') '# integral L_lambda dlambda = ', esum, &
           ' erg/s (equals sum Heat_dust V by construction)'
        write(unit,'(a)') '# lambda[um]   L_lambda[erg/s/um]'
+       !--- e3 on the luminosity: this spectrum runs over the model's whole
+       !--- wavelength axis, which reaches 1.0e-4 um (12.4 keV), and L_lambda
+       !--- underflows to ~1e-250 there.  Without an explicit exponent width
+       !--- Fortran omits the 'E' once the exponent needs three digits
+       !--- ('8.490906-249'), which is standard-conforming output that no
+       !--- ordinary reader parses -- tests/d_dusty/check_sedust.py among them.
        do k = 1, nl_sed
-          write(unit,'(es13.5,es15.6)') lam_sed(k), Ltot(k)
+          write(unit,'(es13.5,es16.6e3)') lam_sed(k), Ltot(k)
        end do
        close(unit)
        write(*,'(2a)') ' SEDU: dust SED written to: ', trim(outname)

@@ -61,7 +61,12 @@ ifeq ($(DEBUG), 1)
    endif
 endif
 
-LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(HDF5_LIBS) $(SEDUST_LIB) $(OMPFLAG)
+# libsedust.a reads the SEDust optics products as HDF5, so it must come
+# BEFORE the HDF5 libraries: a static archive resolves left to right, and
+# it is libsedust that needs those symbols.  The other order leaves ~100
+# undefined references.  A text-only archive (HDF5=0 ./build_lib.sh) needs
+# none of them and links either way.
+LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(SEDUST_LIB) $(HDF5_LIBS) $(OMPFLAG)
 #*********************************************************************
 .SUFFIXES: .f .f90 .o
 
