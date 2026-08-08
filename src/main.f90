@@ -112,6 +112,14 @@ program main
        call hei_cascade_setup()
      end block
   end if
+  !--- He III case-B cascade through He II: the free-bound integral is built
+  !--- over the transported band, so it needs par%eion_max fixed too.
+  if (par%diffuse_field .and. par%heii_diffuse) then
+     block
+       use heii_cascade_mod, only : heii_cascade_setup
+       call heii_cascade_setup()
+     end block
+  end if
   if (par%solve_te) call cooling_setup()
   !--- report the (T, n_e) cooling tables built by species_setup/cooling_setup
   !--- (par%cooling_model = 'local_ne'); a no-op otherwise.

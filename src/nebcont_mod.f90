@@ -3,213 +3,75 @@ module nebcont_mod
 ! MoCHII: nebular continuum emission (port of MOCASSIN emission_mod::fb_ff
 ! + twoPhoton/HeI2photSub).
 !
-! Components, per (n_e n_ion), in units of 1e-40 erg cm^3 s^-1 Hz^-1:
-!  - BELOW each species' first ionization edge: the tabulated continuum
-!    coefficients data/gamma{HI,HeI,HeII}.dat (21 T x paired-edge nu
-!    points; log-log T interpolation, linear-in-nu interpolation of
-!    log gamma between edge pairs, exactly as MOCASSIN fb_ff).
-!    VERIFIED (2026-07-12, tools check vs a hydrogenic Kramers Milne sum):
-!    the tables are free-bound PLUS free-free combined — do not add ff
-!    again inside the table range.  The Ercolano & Storey (2006)
-!    machine-readable swap remains a drop-in at this interface.
-!  - ABOVE the table range: Milne-relation free-bound from the ground
-!    photoionization cross sections (photo_xsec VFKY96) + free-free with
-!    the Hummer getGauntFF Gaunt factor (Z=1 for H II/He II, Z=2 for
-!    He III), as in fb_ff.
-!  - Two-photon: H I 2s (Nussbaumer & Schmutz 1984 spectral shape;
-!    Pengelly 1964 alpha_eff(2s); Osterbrock q(2^2S-2^2P) collisional
-!    suppression), He II 2s (NS84 Z-scaled; Storey & Hummer 1995
-!    alpha_eff), He I 2^1S (Almog & Netzer 1989 A = 51.3 s^-1 shape from
-!    data/HeI2phot.dat; Benjamin, Skillman & Smits 1999 alpha_eff).
+! The free-bound + free-free coefficients and their provenance live in
+! recomb_continuum_mod, which this module and heii_cascade_mod share so that
+! the written continuum and the transported He II free-bound packets cannot
+! come from different tables.  What is added here:
+!  - Two-photon: H I 2s and He II 2s (Nussbaumer & Schmutz 1984 spectral
+!    shape, hydrogenic_twophoton_mod; Pengelly 1964 alpha_eff(2s) with the
+!    Osterbrock q(2^2S-2^2P) collisional suppression for H I, Storey &
+!    Hummer 1995 alpha_eff for He II), He I 2^1S (Drake, Victor & Dalgarno
+!    1969 shape from data/HeI2phot.dat, owned by hei_twophoton_mod;
+!    Benjamin, Skillman & Smits 1999 alpha_eff).
+!  - The output grid and the grid-integrated write.
 !
-! The MOCASSIN origin reallocates its logGamma scratch on every call; here
-! everything is read and stored once at setup (nebcont_setup).
 ! Output (nebcont_write): '<base>_nebcont.txt' — the grid-integrated
 ! continuum L_nu on a log frequency grid, total and per component.
 !---------------------------------------------------------------------------
   use define
+  use recomb_continuum_mod, only : recomb_continuum_setup, gamma_tab, &
+                                   gamma_milne, gamma_ff, &
+                                   HCRYD_K, NU_HI, NU_HEI, NU_HEII
   implicit none
   private
 
   public :: nebcont_setup, nebcont_write
 
-  interface
-     subroutine getGauntFF(z, log10Te, xlf, g, iflag)
-        implicit none
-        integer, intent(out) :: iflag
-        real, intent(in)  :: log10Te, z
-        real, dimension(:), intent(in)  :: xlf
-        real, dimension(size(xlf)), intent(out) :: g
-     end subroutine getGauntFF
-  end interface
-
-  !--- tabulated continuum coefficients (log10 of 1e-40 erg cm^3/s/Hz)
-  type gamma_table
-     integer :: nT = 0, nnu = 0
-     real(kind=wp), allocatable :: tk(:), nu(:), lg(:,:)   ! (nnu, nT)
-  end type gamma_table
-  type(gamma_table) :: gtab(3)          ! 1=HI, 2=HeI, 3=HeII
-
-  !--- He I two-photon shape table (y, A(y)) from HeI2phot.dat
-  integer :: nhe2q = 0
-  real(kind=wp), allocatable :: he2q_y(:), he2q_A(:)
-
   !--- output frequency grid [Ryd]
   integer, parameter :: NNU_OUT = 400
   real(kind=wp) :: nu_out(NNU_OUT)
-
-  real(kind=wp), parameter :: RYD_ERG   = 2.1798723611035e-11_wp
-  real(kind=wp), parameter :: HCRYD_K   = 157807.0_wp       ! Ryd/k [K]
-  real(kind=wp), parameter :: MILNE_C   = 4.9874105e-6_wp   ! (h^2/2 pi me k)^1.5 Ryd^2 [cm K^1.5]
-  real(kind=wp), parameter :: NU_HI     = 0.999466_wp       ! edges [Ryd]
-  real(kind=wp), parameter :: NU_HEI    = 1.80804_wp
-  real(kind=wp), parameter :: NU_HEII   = 4.001067_wp
 
 contains
 
   !=========================================================================
   subroutine nebcont_setup()
-    use mpi
-    use utility, only : fatal_error
+    use hei_twophoton_mod, only : hei_2ph_setup, hei_2ph_is_ready
+    use heii_cascade_mod,  only : heii_cascade_setup, heii_cascade_is_ready
     implicit none
-    character(len=16) :: fn(3)
-    integer :: k, i, unit, ios, ierr
+    integer :: i
 
-    fn = [character(len=16) :: 'gammaHI.dat', 'gammaHeI.dat', 'gammaHeII.dat']
-    do k = 1, 3
-       open(newunit=unit, file=trim(par%data_dir)//'/'//trim(fn(k)), &
-            status='old', iostat=ios)
-       if (ios /= 0) call fatal_error('cannot open ' // &
-          trim(par%data_dir)//'/'//trim(fn(k)) // ' (par%data_dir)')
-       read(unit,*) gtab(k)%nT, gtab(k)%nnu
-       allocate(gtab(k)%tk(gtab(k)%nT), gtab(k)%nu(gtab(k)%nnu), &
-                gtab(k)%lg(gtab(k)%nnu, gtab(k)%nT))
-       read(unit,*) gtab(k)%tk
-       do i = 1, gtab(k)%nnu
-          read(unit,*) gtab(k)%nu(i), gtab(k)%lg(i,:)
-       end do
-       close(unit)
-       gtab(k)%lg = log10(max(gtab(k)%lg, 1.0e-30_wp))
-    end do
+    call recomb_continuum_setup()
 
-    !--- He I two-photon shape
-    open(newunit=unit, file=trim(par%data_dir)//'/HeI2phot.dat', &
-         status='old', iostat=ios)
-    if (ios == 0) then
-       nhe2q = 0
-       allocate(he2q_y(64), he2q_A(64))
-       do
-          read(unit,*,iostat=ios) he2q_y(nhe2q+1), he2q_A(nhe2q+1)
-          if (ios /= 0) exit
-          nhe2q = nhe2q + 1
-          if (nhe2q >= 64) exit
-       end do
-       close(unit)
-    end if
+    !--- He I 2^1S two-photon shape.  hei_twophoton_mod owns HeI2phot.dat --
+    !--- one reader, one normalization -- and main.f90 has already built it
+    !--- when the He I cascade emits into the diffuse field; build it here
+    !--- otherwise, since the written continuum needs the same shape.
+    if (.not. hei_2ph_is_ready()) call hei_2ph_setup()
+    !--- likewise the SH95 alpha_eff(2^2S) behind the He II two-photon term
+    if (.not. heii_cascade_is_ready()) call heii_cascade_setup()
 
     !--- output grid 0.008 - 4.2 Ryd (lambda ~ 11.4 um - 217 A)
     do i = 1, NNU_OUT
        nu_out(i) = exp(log(0.008_wp) + (log(4.2_wp) - log(0.008_wp)) &
                    *real(i-1,wp)/real(NNU_OUT-1,wp))
     end do
-    if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
-       ' NEBC: continuum tables loaded (', nhe2q, ' He I 2q shape points)'
+    if (mpar%p_rank == 0) write(*,'(a)') ' NEBC: continuum tables loaded'
   end subroutine nebcont_setup
-
-  !=========================================================================
-  ! Tabulated fb+ff coefficient for species k at (nu, T); 0 outside the
-  ! table nu range.  Linear log-gamma interpolation between edge pairs,
-  ! log-log linear in T (clamped) — the fb_ff scheme.
-  !=========================================================================
-  real(kind=wp) function gamma_tab(k, nu, T) result(g)
-    implicit none
-    integer,       intent(in) :: k
-    real(kind=wp), intent(in) :: nu, T
-    integer :: iT, i, ilo
-    real(kind=wp) :: w, lg1, lg2, lg
-
-    g = 0.0_wp
-    if (nu < gtab(k)%nu(1) .or. nu >= gtab(k)%nu(gtab(k)%nnu)) return
-    !--- nu segment: pairs (2i-1, 2i) span the inter-edge intervals
-    ilo = 0
-    do i = 1, gtab(k)%nnu/2
-       if (nu >= gtab(k)%nu(2*i-1) .and. nu < gtab(k)%nu(2*i)) then
-          ilo = 2*i - 1
-          exit
-       end if
-    end do
-    if (ilo == 0) return
-    !--- T bracket (clamped)
-    if (T <= gtab(k)%tk(1)) then
-       iT = 1;  w = 0.0_wp
-    else if (T >= gtab(k)%tk(gtab(k)%nT)) then
-       iT = gtab(k)%nT - 1;  w = 1.0_wp
-    else
-       do iT = 1, gtab(k)%nT - 1
-          if (T < gtab(k)%tk(iT+1)) exit
-       end do
-       w = log10(T/gtab(k)%tk(iT)) / log10(gtab(k)%tk(iT+1)/gtab(k)%tk(iT))
-    end if
-    lg1 = gtab(k)%lg(ilo,  iT)*(1.0_wp - w) + gtab(k)%lg(ilo,  iT+1)*w
-    lg2 = gtab(k)%lg(ilo+1,iT)*(1.0_wp - w) + gtab(k)%lg(ilo+1,iT+1)*w
-    lg  = lg2 + (lg1 - lg2)*(gtab(k)%nu(ilo+1) - nu) &
-          / (gtab(k)%nu(ilo+1) - gtab(k)%nu(ilo))
-    g = 10.0_wp**lg
-  end function gamma_tab
-
-  !=========================================================================
-  ! Milne free-bound to the ground level above the edge (fb_ff expression):
-  ! gamma = 4 pi sigma statW hcRyd MILNE_C nu^3/T^1.5 exp(-(nu-nu0) Ryd/kT)
-  ! in 1e-40 units.  statW = g_ground(recombined)/(2 g_ground(ion)).
-  !=========================================================================
-  real(kind=wp) function gamma_milne(nu, nu0, sigma_cm2, statW, T) result(g)
-    implicit none
-    real(kind=wp), intent(in) :: nu, nu0, sigma_cm2, statW, T
-    g = 0.0_wp
-    if (nu < nu0) return
-    g = fourpi*sigma_cm2*statW*RYD_ERG*MILNE_C*nu**3/(T*sqrt(T)) &
-        * exp(-(nu - nu0)*HCRYD_K/T) * 1.0e40_wp
-  end function gamma_milne
-
-  !=========================================================================
-  ! Free-free coefficient [1e-40 erg cm^3/s/Hz]:
-  ! gamma_ff = 6.8391e-38 Z^2 g_ff exp(-h nu/kT)/sqrt(T) * 1e40
-  !=========================================================================
-  real(kind=wp) function gamma_ff(nu, T, Z) result(g)
-    implicit none
-    real(kind=wp), intent(in) :: nu, T
-    integer,       intent(in) :: Z
-    real :: xlf(1), gf(1)
-    integer :: iflag
-    if (par%gaunt_vh14) then
-       block
-         use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
-         call gaunt_vh14_setup()
-         gf(1) = real(gauntff_vh14(real(Z,wp), T, nu))
-       end block
-    else
-       xlf(1) = real(log10(nu))
-       call getGauntFF(real(log10(real(Z,wp))), real(log10(T)), xlf, gf, iflag)
-    end if
-    g = 6.8391e-38_wp*real(Z*Z,wp)*real(gf(1),wp) &
-        * exp(-nu*HCRYD_K/T)/sqrt(T) * 1.0e40_wp
-  end function gamma_ff
 
   !=========================================================================
   ! Two-photon coefficients (1e-40 erg cm^3/s/Hz), MOCASSIN formulas.
   !=========================================================================
   real(kind=wp) function gamma_2q_HI(nu, T, ne) result(g)
+    use hydrogenic_twophoton_mod, only : h2q_photons_per_y
     implicit none
     real(kind=wp), intent(in) :: nu, T, ne
-    real(kind=wp) :: y, Ay, gNu, a2s, q, fac
+    real(kind=wp) :: y, gNu, a2s, q, fac
     real(kind=wp), parameter :: nu0 = 0.7496_wp
     g = 0.0_wp
     y = nu/nu0
     if (y >= 1.0_wp) return
     a2s = 0.8368_wp*(T*1.0e-4_wp)**(-0.723_wp)      ! [1e-13 cm^3/s], Pengelly 64
-    Ay  = 202.0_wp*(y*(1.0_wp-y)*(1.0_wp-(4.0_wp*y*(1.0_wp-y))**0.8_wp) &
-          + 0.88_wp*((y*(1.0_wp-y))**1.53_wp)*(4.0_wp*y*(1.0_wp-y))**0.8_wp)
-    gNu = h_planck_cgs*y*Ay/8.2249_wp               ! [erg/Hz]
+    gNu = h_planck_cgs*y*h2q_photons_per_y(y)       ! [erg/Hz]
     if (T <= 1.0e4_wp) then
        q = 5.31e-4_wp
     else if (T >= 2.0e4_wp) then
@@ -221,34 +83,25 @@ contains
     g = a2s*1.0e-13_wp*gNu/(1.0_wp + ne*q/8.23_wp) * 1.0e40_wp
   end function gamma_2q_HI
 
+  !--- He II two-photon.  alpha_eff(2^2S) comes from heii_cascade_mod, the
+  !--- same SH95 table that sets how much of the He III cascade leaves through
+  !--- 2^2S in the diffuse field, so the written continuum and the transported
+  !--- packets describe one nebula.  The shape is normalized on its own
+  !--- integral (two photons per decay); the port divided it by a quoted
+  !--- 8.226 x 64 s^-1, which reproduced the pair count to 0.05%.
   real(kind=wp) function gamma_2q_HeII(nu, T) result(g)
+    use hydrogenic_twophoton_mod, only : h2q_photons_per_y
+    use heii_cascade_mod,         only : heii_alpha_2s
     implicit none
     real(kind=wp), intent(in) :: nu, T
-    real(kind=wp) :: y, Ay, gNu, a2s, fac
+    real(kind=wp) :: y, gNu, a2s
     real(kind=wp), parameter :: nu0 = 3.00_wp
     g = 0.0_wp
     y = nu/nu0
     if (y >= 1.0_wp) return
-    !--- SH95 alpha_eff(2s) [1e-13 cm^3/s] interpolation (ne = 100 values)
-    if (T <= 5000.0_wp) then
-       a2s = 6.161_wp
-    else if (T >= 30000.0_wp) then
-       a2s = 2.035_wp
-    else if (T <= 10000.0_wp) then
-       fac = log10(4.091_wp/6.161_wp)/log10(2.0_wp)
-       a2s = 10.0_wp**(log10(6.161_wp) + fac*log10(T/5000.0_wp))
-    else if (T <= 15000.0_wp) then
-       fac = log10(3.189_wp/4.091_wp)/log10(1.5_wp)
-       a2s = 10.0_wp**(log10(4.091_wp) + fac*log10(T/10000.0_wp))
-    else
-       fac = log10(2.035_wp/3.189_wp)/log10(2.0_wp)
-       a2s = 10.0_wp**(log10(3.189_wp) + fac*log10(T/15000.0_wp))
-    end if
-    Ay = 64.0_wp*0.9994667_wp*202.0_wp &
-         *(y*(1.0_wp-y)*(1.0_wp-(4.0_wp*y*(1.0_wp-y))**0.8_wp) &
-         + 0.88_wp*((y*(1.0_wp-y))**1.53_wp)*(4.0_wp*y*(1.0_wp-y))**0.8_wp)
-    gNu = h_planck_cgs*y*Ay/(8.226_wp*64.0_wp)
-    g = a2s*1.0e-13_wp*gNu * 1.0e40_wp
+    a2s = heii_alpha_2s(T)                          ! [cm^3/s], SH95 n_e = 100
+    gNu = h_planck_cgs*y*h2q_photons_per_y(y)       ! [erg/Hz]
+    g = a2s*gNu * 1.0e40_wp
   end function gamma_2q_HeII
 
   !--- He I two-photon continuum.  The emitting population is 2^1S, fed both
@@ -265,28 +118,31 @@ contains
   !--- as one power law -- under its stated assumption that every singlet ends
   !--- in 2^1S.  That is the p_584 -> 0 limit, and it disagreed with
   !--- diffuse_mod's p_584 -> 1 limit about the fate of the same decay.
+  !---
+  !--- The shape comes from hei_twophoton_mod, normalized on the table's own
+  !--- integral so that the decay emits exactly two photons.  The port divided
+  !--- the same table by a separately quoted A = 51.3 s^-1, but the tabulation
+  !--- carries A = 50.93 (it is Drake, Victor & Dalgarno 1969 psi times that
+  !--- A value, as CHIANTI's heseq_2photon.dat shows with A = 50.94), so the
+  !--- written continuum radiated 1.9945 photons per decay while the packets
+  !--- transported 2.  A pair is two photons; the normalization is not a
+  !--- constant the shape can disagree with.
   real(kind=wp) function gamma_2q_HeI(nu, T, xHI, xHeI) result(g)
-    use hei_cascade_mod, only : hei_584_ionizes_H
+    use hei_cascade_mod,   only : hei_584_ionizes_H
+    use hei_twophoton_mod, only : hei_2ph_photons_per_y
     implicit none
     real(kind=wp), intent(in) :: nu, T, xHI, xHeI
-    real(kind=wp) :: y, Ay, a2s, w
+    real(kind=wp) :: y, a2s
     real(kind=wp), parameter :: nu0 = 1.514_wp
-    integer :: j
     g = 0.0_wp
     y = nu/nu0
-    if (y >= 1.0_wp .or. nhe2q < 2) return
+    if (y >= 1.0_wp) return
     !--- BSS99 Table 1 + JSM, in units of 1e-14 cm^3 s^-1
     a2s = 2.06_wp*(T/1.0e4_wp)**(-0.451_wp) &
           + (1.0_wp - hei_584_ionizes_H(T, xHI, xHeI)) &
             *4.17_wp*(T/1.0e4_wp)**(-0.695_wp)
-    do j = 1, nhe2q-1
-       if (y <= he2q_y(j+1)) exit
-    end do
-    w  = (y - he2q_y(j))/(he2q_y(j+1) - he2q_y(j))
-    Ay = he2q_A(j)*(1.0_wp - w) + he2q_A(j+1)*w
-    if (Ay < 9.2163086e-3_wp) Ay = 0.0_wp
-    !--- result in 1e-40 units: a2s [1e-14] x (h x 1e26 = 0.66262) x y Ay/A
-    g = a2s*0.66262_wp*y*Ay/51.3_wp
+    !--- result in 1e-40 units: a2s [1e-14] x (h x 1e26 = 0.66262) x y n(y)
+    g = a2s*0.66262_wp*y*hei_2ph_photons_per_y(y)
   end function gamma_2q_HeI
 
   !=========================================================================

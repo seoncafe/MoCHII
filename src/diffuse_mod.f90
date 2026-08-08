@@ -6,9 +6,13 @@ module diffuse_mod
 ! The explicit field replaces that: the equilibrium runs with CASE A rates
 ! and every recombination to the ground level emits an ionizing packet,
 ! transported exactly like a stellar packet.  Three continua:
-!     H II  + e -> H I(1s)   : E >= 13.598 eV
-!     He II + e -> He I(1^1S): E >= 24.587 eV
-!     He III+ e -> He II(1s) : E >= 54.416 eV
+!     H II  + e -> H I(1s)   : E >= 13.598 eV      (channel 1)
+!     He II + e -> He I(1^1S): E >= 24.587 eV      (channel 2)
+!     He III+ e -> He II(1s) : E >= 54.416 eV      (channel 3)
+! and two EXCITED-level cascades, which the ground continua leave out and
+! which are ionizing because the decay energies exceed 13.598 eV:
+!     He II  n=2 terms       : channel 4, par%hei_diffuse  (hei_cascade_mod)
+!     He III case-B cascade  : channel 5, par%heii_diffuse (heii_cascade_mod)
 ! with rates alpha_1 = alpha_A - alpha_B per channel and photon energies
 ! sampled as E = E_th + kT_e * x, x ~ Exp(1) (the near-threshold Milne
 ! shape to the accuracy of the band bins).
@@ -29,14 +33,17 @@ module diffuse_mod
   use hei_twophoton_mod, only : hei_2ph_sample_energy, &
                                hei_2ph_energy_per_decay
   use hei_cascade_mod,   only : hei_branch_fractions, hei_584_ionizes_H
+  use heii_cascade_mod,  only : heii_branch_luminosity, heii_fb_sample_energy, &
+                                heii_2q_sample_energy, E_HEII_LYA
   implicit none
   private
 
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
 
+  integer, parameter :: NCH = 5                 ! diffuse emission channels
   real(kind=wp), allocatable :: dif_cdf(:)      ! leaf CDF (total energy)
-  real(kind=wp), allocatable :: dif_ch(:,:)     ! (4, nleaf) channel luminosities
+  real(kind=wp), allocatable :: dif_ch(:,:)     ! (NCH, nleaf) channel luminosities
   real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
   integer(kind=int64) :: diffuse_nphot = 0
 
@@ -62,6 +69,7 @@ contains
     real(kind=wp), intent(in) :: lpacket
     real(kind=wp) :: T, ne, nH, vol, kT_eV, a1
     real(kind=wp) :: be3s, be1p, be1s
+    real(kind=wp) :: lfb, llya, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
     integer :: il, ic
 
@@ -69,7 +77,7 @@ contains
        if (size(dif_cdf) /= gas_nleaf) deallocate(dif_cdf, dif_ch)
     end if
     if (.not. allocated(dif_cdf)) then
-       allocate(dif_cdf(gas_nleaf), dif_ch(4, gas_nleaf))
+       allocate(dif_cdf(gas_nleaf), dif_ch(NCH, gas_nleaf))
     end if
 
     do il = 1, gas_nleaf
@@ -104,6 +112,15 @@ contains
                                    be3s, be1p, be1s)
           dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
        end if
+       !--- channel 5: He III case-B cascade through He II
+       !--- (par%heii_diffuse).  The free-bound term already carries its own
+       !--- coefficient [erg cm^3/s]; the two n = 2 exits are branches of
+       !--- alphaB_HeIII, which heii_branch_luminosity applies.
+       dif_ch(5,il) = 0.0_wp
+       if (par%heii_diffuse) then
+          call heii_branch_luminosity(T, lfb, llya, l2q)
+          dif_ch(5,il) = ne*nHeIII*vol*(lfb + llya + l2q)
+       end if
     end do
 
     !--- leaf CDF over total energy
@@ -126,7 +143,7 @@ contains
     use ion_band_mod, only : ion_Ltot, ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
-    real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(4), ub
+    real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(NCH), ub
     real(kind=wp) :: be3s, be1p, be1s
     integer :: lo, hi, mid, il, ic, ch
 
@@ -156,25 +173,25 @@ contains
     photon%ky = sint*sin(phi)
     photon%kz = cost
 
-    !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1);
-    !--- the He I excited channel (4) samples its decay branch by
-    !--- energy luminosity (fixed line energies; the two-photon branch
-    !--- draws from the Drake et al. 1969 shape, hei_2ph_sample_energy).
-    w = dif_ch(:,il)
-    u = rand_number()*sum(w)
-    if (u <= w(1)) then
-       ch = 1;  eph = eth_HI
-    else if (u <= w(1) + w(2)) then
-       ch = 2;  eph = eth_HeI
-    else if (u <= w(1) + w(2) + w(3)) then
-       ch = 3;  eph = eth_HeII
-    else
-       ch = 4
+    !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1); the two
+    !--- excited channels sample their path by energy luminosity and then the
+    !--- energy within it -- channel 4 the He I decay branch (fixed line
+    !--- energies, or the Drake et al. 1969 two-photon shape), channel 5 the
+    !--- He III cascade path (free-bound CDF, the 40.813 eV line, or the
+    !--- Nussbaumer & Schmutz two-photon shape).
+    w  = dif_ch(:,il)
+    ch = pick_channel(w, rand_number())
+    if (ch == 1) then
+       eph = eth_HI
+    else if (ch == 2) then
+       eph = eth_HeI
+    else if (ch == 3) then
+       eph = eth_HeII
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), rand_number())
-    else
+    else if (ch == 4) then
        call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
                                 be3s, be1p, be1s)
        ub = rand_number()*(be3s + be1p + be1s)
@@ -185,6 +202,13 @@ contains
        else
           eph = hei_2ph_sample_energy(rand_number())
        end if
+    else
+       !--- drawn into named variables first: argument evaluation order is not
+       !--- specified, and the two draws are the u(8), u(9) of the Sobol
+       !--- launcher in that order.
+       ub = rand_number()
+       u  = rand_number()
+       eph = heii_cascade_energy(gas_Te(il), ub, u)
     end if
 
     !--- bin index by binary search of the band edges (the one source of truth
@@ -211,11 +235,16 @@ contains
   !   u(1)   emitting leaf (dif_cdf inverse);
   !   u(2-4) uniform position within the leaf;
   !   u(5)   mu = 2u-1;                 u(6) phi = 2 pi u;
-  !   u(7)   emission channel (dif_ch inverse over the 4 channels);
+  !   u(7)   emission channel (dif_ch inverse over the NCH channels);
   !   u(8)   first energy variate: channels 1-3 the Exp(1) via -log(u);
-  !          channel 4 the He I decay-branch pick;
+  !          channel 4 the He I decay-branch pick; channel 5 the He II
+  !          cascade-path pick (free-bound / Ly-alpha / two-photon);
   !   u(9)   second energy variate: the He I two-photon energy from the
-  !          tabulated Drake shape (else unused).
+  !          tabulated Drake shape, or the channel-5 free-bound / two-photon
+  !          energy (else unused).
+  ! The fifth channel reuses dimensions 8 and 9 rather than adding any, since
+  ! its path pick and its energy draw are the same two decisions channel 4
+  ! makes.
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
@@ -223,7 +252,7 @@ contains
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
-    real(kind=wp) :: uu, cost, sint, phi, half, eph, kT_eV, w(4), ub
+    real(kind=wp) :: uu, cost, sint, phi, half, eph, kT_eV, w(NCH), ub
     real(kind=wp) :: be3s, be1p, be1s
     integer :: lo, hi, mid, il, ch
 
@@ -257,21 +286,19 @@ contains
     !--- the He I excited channel (4) samples its decay branch by energy
     !--- luminosity (fixed line energies; the two-photon branch from the
     !--- tabulated Drake shape).
-    w = dif_ch(:,il)
-    uu = u(7)*sum(w)
-    if (uu <= w(1)) then
-       ch = 1;  eph = eth_HI
-    else if (uu <= w(1) + w(2)) then
-       ch = 2;  eph = eth_HeI
-    else if (uu <= w(1) + w(2) + w(3)) then
-       ch = 3;  eph = eth_HeII
-    else
-       ch = 4
+    w  = dif_ch(:,il)
+    ch = pick_channel(w, u(7))
+    if (ch == 1) then
+       eph = eth_HI
+    else if (ch == 2) then
+       eph = eth_HeI
+    else if (ch == 3) then
+       eph = eth_HeII
     end if
     if (ch <= 3) then
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), u(8))
-    else
+    else if (ch == 4) then
        call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
                                 be3s, be1p, be1s)
        ub = u(8)*(be3s + be1p + be1s)
@@ -282,6 +309,8 @@ contains
        else
           eph = hei_2ph_sample_energy(u(9))
        end if
+    else
+       eph = heii_cascade_energy(gas_Te(il), u(8), u(9))
     end if
 
     photon%inu = ion_bin_of(eph)
@@ -323,6 +352,46 @@ contains
     !--- non-ionizing and so correctly absent from the band.
     e1s = (f1s + f1p*(1.0_wp - p584))*hei_2ph_energy_per_decay()
   end subroutine hei_branch_energies
+
+  !--- Emission channel from the uniform u: the first channel whose cumulative
+  !--- energy luminosity passes u, over the channels that carry any.  A
+  !--- channel switched off has weight zero and is skipped rather than left to
+  !--- a final else, so a rounding step past the cumulative sum cannot select
+  !--- it and reach a sampler that was never set up.  The comparison is the
+  !--- same expression the if-chain used, so the draw is unchanged.
+  integer function pick_channel(w, u) result(ch)
+    real(kind=wp), intent(in) :: w(NCH), u
+    real(kind=wp) :: acc, tot
+    integer :: i
+    tot = sum(w)
+    acc = 0.0_wp
+    ch  = 1
+    do i = 1, NCH
+       if (w(i) <= 0.0_wp) cycle
+       acc = acc + w(i)
+       ch  = i
+       if (u*tot <= acc) return
+    end do
+  end function pick_channel
+
+  !--- Photon energy [eV] of one He III cascade packet (channel 5).  The path
+  !--- is picked by ENERGY luminosity from the same three terms
+  !--- heii_branch_luminosity puts in the emission table, so the branch CDF
+  !--- and the channel luminosity cannot disagree.  One routine for both
+  !--- launchers, for the same reason.
+  real(kind=wp) function heii_cascade_energy(T_K, u_path, u_energy) result(eph)
+    real(kind=wp), intent(in) :: T_K, u_path, u_energy
+    real(kind=wp) :: lfb, llya, l2q, ub
+    call heii_branch_luminosity(T_K, lfb, llya, l2q)
+    ub = u_path*(lfb + llya + l2q)
+    if (ub <= lfb) then
+       eph = heii_fb_sample_energy(T_K, u_energy)
+    else if (ub <= lfb + llya) then
+       eph = E_HEII_LYA
+    else
+       eph = heii_2q_sample_energy(u_energy)
+    end if
+  end function heii_cascade_energy
 
   real(kind=wp) function ground_mean_energy(ich, eth, kT_eV, T_K) result(mean_e)
     integer,       intent(in) :: ich

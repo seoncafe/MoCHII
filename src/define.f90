@@ -632,6 +632,17 @@ public
      !--- (hei_twophoton_mod), and the trapped 584 A photon split between
      !--- photoionizing H and collisional conversion to 2^1S.
      logical            :: hei_diffuse  = .false.
+     !--- He II EXCITED-level recombination radiation as a fifth diffuse
+     !--- channel (needs diffuse_field): what a He III case-B recombination
+     !--- radiates on its way down through He II.  Unlike the He I cascade
+     !--- this is not a small correction -- the He II n = 2 threshold at
+     !--- 13.604 eV sits just above the hydrogen edge, so the whole Balmer
+     !--- continuum ionizes H, and the 2^2S pair spans 40.813 eV.  Three
+     !--- paths (heii_cascade_mod): free-bound into n >= 2 (7.5-10% of the
+     !--- channel), 2^2P Ly-alpha at 40.813 eV (64-70%), and the 2^2S
+     !--- two-photon continuum (22-26%).  Matters only where He III exists,
+     !--- so it is the hard-spectrum (PN/AGN) case that turns it on.
+     logical            :: heii_diffuse = .false.
      !--- free-free Gaunt factors from the van Hoof et al. (2014) table
      !--- (data/gauntff_vh14.dat) instead of the ported Hummer (1988)
      !--- getGauntFF — the PLAN item-3 swap; off by default so the

@@ -2411,10 +2411,93 @@ Owen-scrambled Sobol stream so that their changing count does not disturb
 the direct-source sequence.  Its fixed nine coordinates are: one for the
 leaf CDF; three for the position within that leaf; two for $(\mu,\phi)$;
 one for the channel CDF; one for the ground-continuum energy draw (or
-the excited-He branch); and one for the two-photon energy,
-drawn from the tabulated Drake shape, when that branch is selected.  Coordinates that are irrelevant to a selected channel
+the excited-He branch, or the He\,\textsc{ii} cascade path); and one for the
+two-photon energy, drawn from the tabulated Drake shape, or for the
+channel-5 free--bound or two-photon energy.  Coordinates that are irrelevant
+to a selected channel
 are still reserved, preserving the global packet-indexed layout across
-iterations and MPI task counts.
+iterations and MPI task counts.  The fifth channel adds no coordinate: its
+path pick and its energy draw are the same two decisions channel~4 makes.
+
+\subsubsection{The He\,\textsc{iii} case-B cascade (channel 5)}
+\label{sec:heiicascade}
+Channel 3 emits the He\,\textsc{ii} \emph{ground} continuum,
+$\alpha_1 = \alpha_A - \alpha_B$, above 54.416~eV.  Everything else a
+He\,\textsc{iii} recombination radiates on its way down through He\,\textsc{ii}
+was dropped, and unlike the He\,\textsc{i} cascade that omission is not a
+small correction: the He\,\textsc{ii} $n=2$ threshold sits at 13.604~eV, a
+hair \emph{above} the hydrogen edge, so the entire Balmer continuum
+photoionizes hydrogen, and the $2^2$S pair spans 40.813~eV rather than
+He\,\textsc{i}'s 20.62~eV.  \code{par\%heii\_diffuse} adds the three paths
+(\code{heii\_cascade\_mod}):
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+path & coefficient & share of the channel \\
+\midrule
+free--bound, $n\ge2$ & $\int(\gamma_{\rm tab} - \gamma_{\rm ff})\,
+  {\rm d}\nu$, 13.598--54.416~eV & $7.4$--$10.2\%$ \\
+Ly$\alpha$, $2^2$P$\rightarrow1^2$S, 40.813~eV &
+  $\alpha_B\,(1-f_{2s})$ & $64.2$--$70.0\%$ \\
+two-photon, $2^2$S$\rightarrow1^2$S & $\alpha_B\,f_{2s}$, 36.090~eV in band &
+  $22.5$--$25.6\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+over $10^4$--$3{\times}10^4$~K.  The two-photon term --- the only one of the
+three the written continuum ever carried --- is under a quarter of the
+channel, which is why adding it alone would have been the wrong repair.
+
+The free--bound term is emitted at the \emph{capture}, not at the $n=2$
+exit, so it carries its own coefficient instead of a branch of $\alpha_B$.
+It is read off the same fb$+$ff tables the written continuum uses
+(\code{recomb\_continuum\_mod}, shared by both consumers for exactly this
+reason) with the free--free term removed, integrated from the hydrogen edge
+to $E_{\rm th}({\rm He\,\textsc{ii}})$ where channel 3 takes over.  Nothing
+is double counted: the tabulated range stops at the He\,\textsc{ii} ground
+edge, so the $n=1$ continuum is structurally absent from it.
+
+The $n=2$ exit branching is
+$f_{2s} = \alpha_{\rm eff}(2^2{\rm S})/\alpha_B$, with \emph{both} parts from
+Storey \& Hummer (1995) at $n_e=100$ --- $\alpha_B$ from the
+\code{alpha-tot} table that follows the emissivity blocks of the CDS file
+\code{e2b.d}, $\alpha_{\rm eff}(2^2{\rm S})$ from the same $n_e=100$ set the
+written He\,\textsc{ii} two-photon continuum already used.  Taking them from
+one source makes the ratio a closure of one cascade calculation rather than
+a difference of determinations, the error that put a 2.4\% He\,\textsc{i}
+bias into the diffuse packet count when $\alpha_B$ was formed as
+$\alpha_A - \alpha_1$ across sources.  It gives $f_{2s} = 0.242$ at 5~kK
+rising to $0.311$ at 30~kK.  The \emph{rate} that branching multiplies is
+MoCHII's own $\alpha_B({\rm He\,\textsc{iii}})$, the one the ionization
+balance uses, exactly as channel 4 applies its fractions to
+$\alpha_B({\rm He\,\textsc{ii}})$.  The one independent check available on
+the $2^2$P branch is MOCASSIN's He\,\textsc{ii} Ly$\alpha$ emissivity fit,
+$10^{-0.792\log_{10}T_e + 6.01}{\times}10^{-25}\,{\rm erg\,cm^3\,s^{-1}}$,
+which the closure reproduces to $2.3$--$6.1\%$ over 5--30~kK
+(\code{tests/heii\_cascade/}).
+
+Two approximations, with their range.  He\,\textsc{ii} Ly$\alpha$ is emitted
+at 40.813~eV and transported as a continuum photon; in reality it resonantly
+scatters off He\,\textsc{ii} many times first, but since 40.8~eV cannot
+photoionize He\,\textsc{ii} (54.4~eV) the scattering only diffuses it
+spatially before hydrogen or He\,\textsc{i} absorbs it, and the He$^{2+}$
+zone is compact wherever it exists.  This is what \textsc{Mocassin} does with
+its \code{HeIILyman} lines.  Second, only Ly$\alpha$ is emitted: case B routes
+every cascade through $n=2$, so Ly$\beta$ and above are converted rather than
+emitted.  Lines ending on $n\ge2$ all fall below the 13.604~eV series limit
+and are correctly absent from the band.
+
+Measured end to end on a $10^5$~K blackbody in the HII40 geometry, where
+He$^{2+}$ is abundant, switching the channel on raises the diffuse-field
+luminosity by 44\% ($2.32 \rightarrow 3.33{\times}10^{38}$~erg\,s$^{-1}$) and
+$L({\rm H}\beta)$ by $0.98\%$, leaves the He\,\textsc{ii} lines within
+$0.11\%$ in absolute terms, raises the He\,\textsc{i} lines by $0.2$--$0.3\%$ (the
+40.8~eV photons ionize He$^0$ as well), and drops
+[C\,\textsc{i}]\,9827,\,9853 by $9.0\%$ as the extra ionizing photons reach
+the partly neutral edge.  Off by default, so nothing recorded moves; it is
+the hard planetary-nebula and AGN spectra of Section~\ref{sec:limits} that
+turn it on.  Both Lexington benchmarks have essentially no He$^{2+}$ and are
+unaffected either way.
 
 \subsection{Solution-driven I-front re-refinement}
 \label{sec:refine}
@@ -3049,9 +3132,33 @@ He\,\textsc{ii} & $n_e n_{\rm HeIII}$ & 3.00   &
 \end{tabular}
 \end{center}
 with the Nussbaumer \& Schmutz (1984) shape $A(y)$, $y = \nu/\nu_0$, for
-H\,\textsc{i} and (scaled by $Z^6 = 64$ in both $A$ and $A_{2q}$) for
-He\,\textsc{ii}, and the Almog \& Netzer (1989) tabulated shape for
-He\,\textsc{i}.  The He\,\textsc{i} entry has a history worth recording.  The
+H\,\textsc{i} and He\,\textsc{ii} (\code{hydrogenic\_twophoton\_mod}), and the
+Drake, Victor \& Dalgarno (1969) tabulated shape,
+\code{data/HeI2phot.dat}, for He\,\textsc{i} (\code{hei\_twophoton\_mod}).
+
+Each shape is normalized on \emph{its own} integral, so that
+$\int_0^1 n(y)\,{\rm d}y = 2$ exactly: a decay emits a pair, and the pair
+count is a property of the transition rather than a constant supplied
+alongside the shape.  The port instead divided each shape by a separately
+quoted $A_{2q}$ --- $8.2249\,{\rm s^{-1}}$ for H\,\textsc{i},
+$8.226{\times}64$ for He\,\textsc{ii}, $51.3$ for He\,\textsc{i} --- which
+reproduces two photons per decay only to $-0.014\%$, $+0.05\%$ and $+0.28\%$
+respectively.  The He\,\textsc{i} case was the one that mattered, because
+\code{hei\_twophoton\_mod} had always normalized the \emph{same} table on its
+own integral for the transported packets: the tabulation carries
+$A = 50.93\,{\rm s^{-1}}$, not $51.3$, so the written continuum radiated
+$1.9945$ photons per decay while the packets transported $2$.  The value the
+table carries is confirmed externally --- CHIANTI's
+\code{heseq\_2photon.dat} is the same Drake et al.\ distribution divided by
+$A = 50.94\,{\rm s^{-1}}$, and MoCHII's table reproduces it times that $A$ to
+the rounding of the published three decimals.  Comparing the two shape
+determinations directly, MoCHII's H-sequence fit and CHIANTI's Goldman \&
+Drake (1981) $\psi$ tables agree to $0.42\%$ at worst (at $y=0.98$, where the
+tabulation ends) and to $0.2\%$ over the bulk, with identical
+$\langle y\rangle = 0.5$; CHIANTI's own $Z=1$ and $Z=2$ tables differ by less
+than $0.05\%$, which is what licenses using one shape for both ions.
+
+The He\,\textsc{i} entry has a history worth recording.  The
 port took MOCASSIN's $6.23{\times}10^{-14}(T_4)^{-0.827}$, which is the
 recombination coefficient to \emph{all} singlets --- the exact sum
 $2.06{\times}10^{-14}+4.17{\times}10^{-14}$ of the $2^1$S and $2^1$P
@@ -3118,14 +3225,14 @@ $2^1{\rm S}$ and He\,\textsc{ii} $2s$ is absent, as it is in \textsc{Mocassin},
 \textbf{Transport} (\code{diffuse\_mod}, Section~\ref{sec:diffuse}).  Only
 helium two-photon photons can ionize anything: the H\,\textsc{i} continuum
 stops at 10.2~eV, so omitting it costs nothing.  The He\,\textsc{i}
-$2^1{\rm S}$ branch is one of the four diffuse channels and carries its
+$2^1{\rm S}$ branch is one of the diffuse channels and carries its
 H-ionizing fraction 0.55644 from the Drake table (Section~\ref{sec:diffuse};
-the flat surrogate's 0.56 is no longer used).  The He\,\textsc{ii}
-continuum, which extends to
-40.8~eV and can ionize both H and He\,\textsc{i}, is \emph{not} transported,
-and neither is He\,\textsc{ii} Ly$\alpha$ --- of no consequence wherever
-He$^{2+}$ is absent (both Lexington benchmarks), an omission to close for
-the hard planetary-nebula and AGN spectra of Section~\ref{sec:limits}.
+the flat surrogate's 0.56 is no longer used).  The He\,\textsc{ii} pair,
+which spans 40.813~eV and so ionizes both H and He\,\textsc{i}, is the
+two-photon term of the fifth channel, \code{par\%heii\_diffuse}
+(Section~\ref{sec:heiicascade}).  It is not transported alone: it is one of
+three paths a He\,\textsc{iii} case-B recombination takes, and the smallest
+of the three that matters.
 
 %==========================================================================
 \section{Validation gates and results}

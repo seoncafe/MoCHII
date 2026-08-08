@@ -1,0 +1,25 @@
+# MoCHII: He II n = 2 exit branching for the He III case-B cascade
+# alpha_B: Storey & Hummer (1995, MNRAS 272, 41) alpha-tot, Z = 2, case B, n_e = 100 cm^-3,
+#          from the block following the emissivities of the CDS file e2b.d
+# alpha_2s: SH95 alpha_eff(2^2S), Z = 2, case B, n_e = 100 cm^-3 (4 anchors, 5000-30000 K)
+# f_2s = alpha_2s/alpha_B is a closure of ONE cascade calculation; f_2p = 1 - f_2s
+# written by tools/fitting/make_heii_cascade.py
+# columns: T [K], alpha [cm^3 s^-1]; log-log interpolation, clamped outside
+ALPHA_B 12
+  5.0000e+02   1.2620e-11
+  1.0000e+03   7.8260e-12
+  3.0000e+03   3.6570e-12
+  5.0000e+03   2.5450e-12
+  7.5000e+03   1.8970e-12
+  1.0000e+04   1.5330e-12
+  1.2500e+04   1.2970e-12
+  1.5000e+04   1.1280e-12
+  2.0000e+04   9.0300e-13
+  3.0000e+04   6.5400e-13
+  5.0000e+04   4.2880e-13
+  1.0000e+05   2.3410e-13
+ALPHA_2S 4
+  5.0000e+03   6.1610e-13
+  1.0000e+04   4.0910e-13
+  1.5000e+04   3.1890e-13
+  3.0000e+04   2.0350e-13

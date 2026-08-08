@@ -40,6 +40,7 @@ module hei_twophoton_mod
 
   public :: hei_2ph_setup, hei_2ph_sample_energy
   public :: hei_2ph_photons_per_decay, hei_2ph_energy_per_decay
+  public :: hei_2ph_photons_per_y
   public :: hei_2ph_is_ready
 
   !--- 2^1S - 1^1S transition energy [eV]
@@ -49,6 +50,7 @@ module hei_twophoton_mod
 
   integer,       save :: n_pts = 0
   real(kind=wp), save :: tab_y(MAX_PTS), tab_A(MAX_PTS)
+  real(kind=wp), save :: tot_A = 0.0_wp                ! Int_0^1 A(y) dy
   real(kind=wp), save :: cdf_e(NCDF), grid_y(NCDF)   ! energy-weighted CDF
   real(kind=wp), save :: n_per_decay = 0.0_wp        ! in-band photons per decay
   real(kind=wp), save :: e_per_decay = 0.0_wp        ! in-band energy per decay [eV]
@@ -74,6 +76,19 @@ contains
   real(kind=wp) function hei_2ph_energy_per_decay() result(e)
     e = e_per_decay
   end function hei_2ph_energy_per_decay
+
+  !--- Photons emitted per unit y per 2^1S decay, over the FULL pair spectrum.
+  !--- Normalized on the table's own integral, so Int_0^1 dy = 2 exactly: the
+  !--- pair count is a property of the decay, not a constant to be supplied
+  !--- alongside the shape.  Multiplying by h nu gives the spectral energy per
+  !--- decay, which is how nebcont_mod forms gamma_nu(He I 2q) -- so the
+  !--- written continuum and the transported packets carry one normalization.
+  real(kind=wp) function hei_2ph_photons_per_y(y) result(p)
+    real(kind=wp), intent(in) :: y
+    p = 0.0_wp
+    if (.not. ready) return
+    p = 2.0_wp*shape_A(y)/tot_A
+  end function hei_2ph_photons_per_y
 
   !=========================================================================
   ! A(y) by linear interpolation of the tabulated shape; zero outside [0,1].
@@ -126,6 +141,7 @@ contains
              *(tab_A(i) + 4.0_wp*shape_A(ym) + tab_A(i+1))
     end do
     if (tot <= 0.0_wp) call fatal_error('HeI2phot.dat integrates to zero')
+    tot_A = tot
 
     !--- the ionizing window, truncated at the band edge if that is lower
     e_hi = min(E_TOT, par%eion_max)
