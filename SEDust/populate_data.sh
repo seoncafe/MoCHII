@@ -18,7 +18,7 @@
 # IS a set of files, the files that define it -- and keeps what the models SHARE
 # beside those directories:
 #
-#   data/astrodust/  data/dl07/  data/zubko/     one per par%dust_model
+#   data/astrodust/  data/dl07/  data/mrn/  data/zubko/   one per par%dust_model
 #   data/dielectric/                             optical constants, PAH cross sections
 #   data/release/                                published tables + the size distribution
 #
@@ -32,7 +32,10 @@
 # MoCHII run opens one.  Every other file in a model directory is an INPUT
 # rather than a product -- Zubko's ZDA config, size distributions, DustEM optics
 # and calorimetry; astrodust's DH21 size/wavelength tabulations -- so the rule
-# below is "the directory, minus SEDust's own text products".
+# below is "the directory, minus SEDust's own text products".  MRN's directory
+# comes out of that rule with the product alone, which is right: that model is
+# a power law and two D03 dielectric functions, both of them stated in code and
+# in dielectric/, so it owns no input file of its own.
 #
 # The sources under sed/src/ and sed/build_lib.sh are byte-identical to their
 # SEDust v1.00 counterparts, so `cmp` against that tree is the whole check that
@@ -70,7 +73,7 @@ cp "$SED"/data/release/{extinction.dat,kext_albedo_WD_MW_3.1_60_D03.all_2003,sca
 # q_*.dat from make_qtable.x, kext_*.dat from calc_kext.x.  Neither pattern
 # matches an input -- Zubko's DustEM tables are Gra_/suvSil_/PAH_*.dat and
 # astrodust's DH21 refractive-index tabulation is q_DH21Ad_*.dat.gz.
-for m in astrodust dl07 zubko; do
+for m in astrodust dl07 mrn zubko; do
   mkdir -p "$HERE/data/$m"
   find "$SED/data/$m" -maxdepth 1 -type f \
        ! -name 'q_*.dat' ! -name 'kext_*.dat' \

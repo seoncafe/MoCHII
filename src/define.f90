@@ -342,7 +342,19 @@ public
      !--- Dust-related parameters
      real(kind=wp) :: hgg           = 0.6761
      real(kind=wp) :: albedo        = 0.3253
-     real(kind=wp) :: cext_dust     = 1.6059e-21
+     !--- Reference extinction of the run's grains, C_ext/H at lambda_ref
+     !--- [cm^2 per H].  Every leaf's grey opacity is n_dust times this per
+     !--- code length, so it is a property of the grains named by dust_model
+     !--- (or of the table ion_dust_kext names) rather than an independent
+     !--- choice.  NEGATIVE (the default) = take it from those grains, which is
+     !--- what gas_opacity_mod::dust_reference_extinction does before the grid
+     !--- is built; the run prints the value it took.  A positive value is
+     !--- taken as given -- for reproducing a published normalization, say --
+     !--- and the run then prints it beside the grains' own number with the
+     !--- ratio, and says so when they differ by more than 1%.  A run with
+     !--- ion_add_dust = .false. carries no grains in the band and resolves a
+     !--- negative value to 0.
+     real(kind=wp) :: cext_dust     = -1.0_wp
      logical       :: use_stokes    = .true.
      character(len=128) :: scatt_mat_file = ''
      !--- SED (multi-wavelength) mode.  When
@@ -375,6 +387,22 @@ public
      !--- stochastic + PAH; iterable); 'bw01' = Bjorkman & Wood 2001 immediate
      !--- reemission (approximate, equilibrium mixture-mean opacity, no PAH).
      character(len=8)   :: dust_emission_method = 'lucy'
+     !--- The grain population, which fixes BOTH the transport cross sections
+     !--- and the emission (grain_model_mod), so naming it is the whole dust
+     !--- physics of a run:
+     !---   'astrodust' Hensley & Draine (2023) single composite grain + PAHs,
+     !---               b/a = 1.4 oblate spheroids on the DH21 dielectric
+     !---               function (the default);
+     !---   'dl07'      Draine & Li (2007) astrosilicate + carbonaceous grains
+     !---               + PAHs, on the WD01 size distribution;
+     !---   'mrn'       Mathis, Rumpl & Nordsieck (1977) graphite + silicate
+     !---               a^-3.5 power law over 0.005-0.25 um, Mie on the D03
+     !---               dielectric functions.  It has NO PAH component -- its
+     !---               smallest grain is a 50 A graphite sphere -- so a run on
+     !---               it carries no aromatic features and par%sed_pah_live
+     !---               has nothing to weight;
+     !---   'zubko'     Zubko, Dwek & Arendt (2004) BARE-GR-S, on that model's
+     !---               own ZDA optics tables.
      character(len=16)  :: dust_model   = 'astrodust'
      !--- SEDust data directory: the ONE directory build_dust resolves
      !--- everything the named dust_model needs from, including the shared

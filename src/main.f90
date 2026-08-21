@@ -13,7 +13,8 @@ program main
   use grid_mod_amr
   use octree_mod,      only : amr_grid
   use ion_band_mod,    only : ion_setup, ion_Ltot
-  use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill
+  use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill, &
+                              dust_reference_extinction
   use jtally_mod,      only : jtally_ion_setup, &
                               slab_tally_setup, slab_tally_reduce, &
                               slab_write_Imu, slab_tally_on
@@ -55,6 +56,11 @@ program main
   !--- setup
   call read_input()
   call setup_procedure()
+  !--- the run's grain optics BEFORE the grid: grid_create_amr multiplies
+  !--- par%cext_dust into every leaf's grey rhokap, and par%cext_dust is the
+  !--- reference extinction of those very grains (gas_opacity_mod).  Loading
+  !--- the table needs nothing but par% and the files it names.
+  call dust_reference_extinction()
   call grid_create_amr(grid)
   !--- species BEFORE ion_setup: with par%ion_align_edges the band setup
   !--- queries the active metal photoionization thresholds.  species_setup

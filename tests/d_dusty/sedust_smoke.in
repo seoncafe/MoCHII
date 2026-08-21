@@ -42,12 +42,14 @@
  !--- Dust in the ionizing band, from the SAME grains that emit below:
  !--- no par%ion_dust_kext, so the extinction is the astrodust model's own
  !--- size-integrated curve (gate tests/grain_kext), not the WD01/D03 table.
- !--- cext_dust must move with it -- it is the model's C_ext/H at
- !--- par%lambda_ref = 0.55 um, which the run prints as
- !--- 'ION: C_ext/H at lambda_ref'.  For astrodust that is 2.9780e-22, 0.29%
- !--- from the HD23 author release (SEDust/data/release/extinction.dat
- !--- interpolated to 0.55 um: 2.9867e-22), and 0.61x the WD01/D03 value this
- !--- test used to carry -- a model difference, not an error.
+ !--- cext_dust is that model's C_ext/H at par%lambda_ref = 0.55 um, which the
+ !--- run prints as 'ION: C_ext/H at lambda_ref'.  Leaving it negative (the
+ !--- default) takes exactly that number, so a run need not state it at all;
+ !--- it is pinned here because this is a recorded gate.  For astrodust it is
+ !--- 2.9780e-22, 0.29% from the HD23 author release
+ !--- (SEDust/data/release/extinction.dat interpolated to 0.55 um: 2.9867e-22),
+ !--- and 0.61x the WD01/D03 value this test used to carry -- a model
+ !--- difference, not an error.
  par%ion_add_dust  = .true.
  par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
  par%ion_dust_scatter = .true.

@@ -68,20 +68,23 @@ infrared dust/PAH spectrum.
 - **Dust and PAHs**: grain absorption/scattering competing with the gas for
   ionizing photons, ionization-dependent dust survival with a PAH split,
   equilibrium dust temperatures, and stochastic dust/PAH emission spectra
-  via the SEDust library (astrodust, DL07, Zubko grain models).  One grain
-  model supplies both the transport cross sections and the emission, so the
-  energy a cell absorbs is set by the same grains that radiate it back out:
-  the transport reads the model's precomputed size-integrated extinction curve
-  (`/kext` of `SEDust/data/<model>/sedust_<model>.h5`, the same product the
-  cross sections come from) on the model's own wavelength grid, and a gate
+  via the SEDust library (astrodust, DL07, MRN, Zubko grain models; MRN is
+  the classic graphite + silicate power law and carries no PAHs at all, so a
+  run on it has no aromatic features).  One grain model supplies both the
+  transport cross sections and the emission, so the energy a cell absorbs is
+  set by the same grains that radiate it back out: the transport reads the
+  model's precomputed size-integrated extinction curve (`/kext` of
+  `SEDust/data/<model>/sedust_<model>.h5`, the same product the cross
+  sections come from) on the model's own wavelength grid, and a gate
   (`tests/grain_kext`) checks that curve against the size integral over the
-  model as built, so a table belonging to other grains cannot pass unnoticed.
-  The astrodust and DL07 grids reach the whole ionizing band on their own: the
-  T-matrix optics table spans 1.0e-4 to 3.981e4 um (1762 wavelengths), so below
-  the Lyman limit the grains are the b/a = 1.4 oblate spheroid solved on the
-  DH21 dielectric function rather than a sphere approximation, and no extension
-  is built at any photon energy the code transports.  Zubko is on its own DustEM
-  grid, 0.001-10000 um.
+  model as built, so a table belonging to other grains cannot pass
+  unnoticed.  The astrodust, DL07 and MRN grids reach the whole ionizing band
+  on their own: the T-matrix optics table spans 1.0e-4 to 3.981e4 um (1762
+  wavelengths), so below the Lyman limit the grains are the b/a = 1.4 oblate
+  spheroid solved on the DH21 dielectric function rather than a sphere
+  approximation, and no extension is built at any photon energy the code
+  transports.  MRN shares the DL07 axis, both being Mie on the D03
+  dielectric functions.  Zubko is on its own DustEM grid, 0.001-10000 um.
 - **Dust emission transport**: the reradiated infrared is itself launched and
   transported through the same grain opacity, and the reabsorbed part returns
   to the grain heating until it converges (`dust_emis_transport`, on by
@@ -149,6 +152,9 @@ mpirun -np 8 ./MoCHII.x input.in
 `par%sed_data_dir` is resolved automatically relative to the executable at run
 time, so dust emission works from any working directory without setting a
 path. Everything the dust model is made of resolves inside that one directory.
+`par%cext_dust`, the reference extinction every leaf's grey opacity is built
+on, is likewise resolved from the grains the run carries unless a run states
+one outright, so naming `par%dust_model` is the whole dust physics.
 
 The optics of the named `par%dust_model` come from
 `SEDust/data/<model>/sedust_<model>.h5`, which carries the wavelength axis, the
@@ -170,4 +176,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-21 10:27 KST
+Last updated: 2026-08-22 06:01 KST

@@ -51,13 +51,15 @@ program check_kext_table
 !       leaf's grey rhokap is built on.  TOL_SABS_BAND, and TOL_KEXT_NODE for
 !       C_ext(lambda_ref).
 !
-! The cases are the three models MoCHII can build, each with the arguments
+! The cases are the four models MoCHII can build, each with the arguments
 ! grain_model_mod passes -- there is no lam_min case to vary any more, and
 ! include_euv is fixed .true. there, so one case per model is the whole set.
 ! Measured grids: astrodust NLAM = 1762 over 1.0000e-04 to 3.9811e+04 um, DL07
 ! NLAM = 1823 over 6.2054e-05 to 3.9811e+04 um (its OWN axis now, no longer the
-! astrodust one it used to borrow), Zubko NLAM = 1201 over 1.0000e-03 to
-! 1.0000e+04 um.  Everything else is at the par% defaults of define.f90.
+! astrodust one it used to borrow), MRN NLAM = 1823 over the same axis as DL07
+! (both are Mie on the D03 dielectric functions, so both take that floor),
+! Zubko NLAM = 1201 over 1.0000e-03 to 1.0000e+04 um.  Everything else is at
+! the par% defaults of define.f90.
 !
 ! Build and run:  see tests/grain_kext/run_check.sh, which passes the data
 ! directory as argv(1).  Runs from any working directory.
@@ -93,7 +95,7 @@ program check_kext_table
   !--- interpolated on either side of 0.0912 um; what is left is whether /kext
   !--- and /qtable of one sedust_<model>.h5 were computed from the SAME numbers.
   !---
-  !--- They are, for all three, and one tolerance therefore covers them.  It was
+  !--- They are, for all four, and one tolerance therefore covers them.  It was
   !--- two: DL07's and Zubko's /kext used to be written from the text q_*.dat
   !--- optics (7 significant digits) while /qtable of the same file carried full
   !--- double precision, which put those two models at the 7th digit and needed
@@ -101,18 +103,24 @@ program check_kext_table
   !--- from one set of numbers.  Measured here (worst single wavelength, cross
   !--- sections / albedo pair, lam >= 0.0912 um then the ionizing band):
   !---   astrodust  0.0 / 0.0            3.3e-16 / 1.1e-16
-  !---   dl07       2.7e-15 / 6.7e-16    4.2e-16 / 3.3e-16
+  !---   dl07       2.7e-15 / 7.8e-16    4.2e-16 / 3.3e-16
+  !---   mrn        4.2e-16 / 2.2e-16    4.7e-16 / 3.3e-16
   !---   zubko      5.8e-16 / 2.2e-16    6.3e-16 / 2.2e-16
-  !--- and on C_ext(0.55 um): 0.0 (astrodust), 0.0 (DL07), 7.2e-15 (Zubko).
+  !--- and on C_ext(0.55 um): 0.0 (astrodust), 0.0 (DL07), 7.1e-15 (MRN),
+  !--- 7.2e-15 (Zubko).
   !--- That is rounding on a double, so 1e-12 leaves three orders of headroom
-  !--- and still catches a curve belonging to other grains, which is O(1).
+  !--- and still catches a curve belonging to other grains, which is O(1).  The
+  !--- last digit of these moves when the library is recompiled -- the served
+  !--- curve is read off the product and does not, but the integral the gate
+  !--- recomputes is a sum the optimizer may reassociate -- so read them as the
+  !--- regime, not as a baseline to reproduce.
   real(kind=wp), parameter :: TOL_KEXT_NODE = 1.0e-12_wp
-  !--- (c) the band-averaged s_abs.  Measured 0.0 (astrodust), 0.0 (DL07),
-  !--- 6.9e-15 (Zubko) -- an integral over 137 wavelengths, so the single-node
-  !--- departures above average down rather than add.  What it has to catch is
-  !--- an integral that has stopped agreeing, so it stays above the node
-  !--- tolerance, by four orders; 1e-4 was eleven orders above the measurement
-  !--- and no longer watched anything.
+  !--- (c) the band-averaged s_abs.  Measured 0.0 (astrodust), 2.2e-16 (DL07),
+  !--- 7.6e-15 (MRN), 6.9e-15 (Zubko) -- an integral over 137 wavelengths, so
+  !--- the single-node departures above average down rather than add.  What it
+  !--- has to catch is an integral that has stopped agreeing, so it stays above
+  !--- the node tolerance, by four orders; 1e-4 was eleven orders above the
+  !--- measurement and no longer watched anything.
   real(kind=wp), parameter :: TOL_SABS_BAND = 1.0e-8_wp
 
   type(dust_model_t) :: m
@@ -130,7 +138,7 @@ program check_kext_table
   write(*,'(/,a22,a6,2a11,4a11,2a11)') 'case', 'NLAM', 'lam(1)', 'lam(N)', &
      'C >=.0912', 'a,ag>=.0912', 'C <.0912', 'a,ag<.0912', 'band s_abs', 'C_ext(ref)'
 
-  !--- The three models grain_model_mod can build, with its arguments: the whole
+  !--- The four models grain_model_mod can build, with its arguments: the whole
   !--- stored axis (include_euv), no lam_min, and the model's own /kext (a blank
   !--- par%sed_kext, so kext_path is left out here too).
   call build_dust(m, 'astrodust', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
@@ -140,6 +148,10 @@ program check_kext_table
   call build_dust(m, 'dl07', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
                   status=st, sd_index=SDINDEX, u_isrf=U_ISRF)
   call compare_served_with_integral('dl07', m, st, TOL_KEXT_NODE, ok)
+
+  call build_dust(m, 'mrn', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
+                  status=st, sd_index=SDINDEX, u_isrf=U_ISRF)
+  call compare_served_with_integral('mrn', m, st, TOL_KEXT_NODE, ok)
 
   call build_dust(m, 'zubko', trim(DATA_DIR), NT, T_LO, T_HI, include_euv=.true., &
                   status=st, sd_index=SDINDEX, u_isrf=U_ISRF)

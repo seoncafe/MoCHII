@@ -120,15 +120,16 @@ contains
     !--- rank reached the failure and flushes before aborting.
     if (st /= 0) then
        if (st == 90) then
-          !--- build_dust knows four models and MoCHII offers three of them.
+          !--- Of the models build_dust codes, MoCHII offers the four whose
+          !--- optics come with the tree.
           write(msg,'(3a)') 'par%dust_model = ''', trim(par%dust_model), &
-             ''' unknown (use ''astrodust'', ''dl07'', or ''zubko'')'
+             ''' unknown (use ''astrodust'', ''dl07'', ''mrn'' or ''zubko'')'
        else if (st == 91) then
-          !--- SEDust's fourth model is defined by a descriptor file, and MoCHII
-          !--- has no input that names one.
+          !--- SEDust's remaining model is defined by a descriptor file, and
+          !--- MoCHII has no input that names one.
           write(msg,'(a)') 'par%dust_model = ''from_files'' needs a model '// &
              'descriptor, which MoCHII has no input for (use ''astrodust'', '// &
-             '''dl07'', or ''zubko'')'
+             '''dl07'', ''mrn'' or ''zubko'')'
        else if (st == 5) then
           !--- the extinction curve the transport reads its cross sections off
           !--- is not readable.
@@ -182,13 +183,14 @@ contains
   !--- and the model grid come out of one product, so every wavelength MoCHII
   !--- builds is a node of the curve; nothing is interpolated, and what is left
   !--- is rounding on a double:
-  !---   * lambda >= 0.0912 um: 0.0 / 0.0 (astrodust), 2.7e-15 / 6.7e-16
-  !---     (DL07), 5.8e-16 / 2.2e-16 (Zubko).
+  !---   * lambda >= 0.0912 um: 0.0 / 0.0 (astrodust), 2.7e-15 / 7.8e-16
+  !---     (DL07), 4.2e-16 / 2.2e-16 (MRN), 5.8e-16 / 2.2e-16 (Zubko).
   !---   * lambda < 0.0912 um, the ionizing band itself: 3.3e-16 / 1.1e-16
-  !---     (astrodust), 4.2e-16 / 3.3e-16 (DL07), 6.3e-16 / 2.2e-16 (Zubko).
+  !---     (astrodust), 4.2e-16 / 3.3e-16 (DL07), 4.7e-16 / 3.3e-16 (MRN),
+  !---     6.3e-16 / 2.2e-16 (Zubko).
   !---   * the integrals: the band-averaged s_abs over 13.598-100 eV agrees to
-  !---     0.0 (astrodust), 0.0 (DL07), 6.9e-15 (Zubko), and C_ext at
-  !---     lambda_ref = 0.55 um to 0.0 / 0.0 / 7.2e-15.
+  !---     0.0 (astrodust), 2.2e-16 (DL07), 7.6e-15 (MRN), 6.9e-15 (Zubko), and
+  !---     C_ext at lambda_ref = 0.55 um to 0.0 / 0.0 / 7.1e-15 / 7.2e-15.
   !---
   !--- What the table presumes: it was computed from the model's DEFAULT inputs.
   !--- Changing par%sed_dl07_sdindex / par%sed_dl07_uisrf, or pointing

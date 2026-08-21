@@ -22,7 +22,7 @@ module gas_opacity_mod
   implicit none
   private
 
-  public :: gas_opacity_setup, gas_opacity_fill
+  public :: gas_opacity_setup, gas_opacity_fill, dust_reference_extinction
   public :: ion_dust_sabs, ion_dust_ssca, ion_dust_g
   public :: ion_dust_sabs_at, ion_dust_ssca_at, ion_dust_g_at
 
@@ -55,6 +55,17 @@ module gas_opacity_mod
   integer       :: dust_tab_n    = 0
   real(kind=wp) :: dust_tab_cref = 0.0_wp
 
+  !--- how far par%cext_dust, when a run states one outright, may sit from the
+  !--- table's own C_ext/H at par%lambda_ref before the run says so.  What this
+  !--- has to catch is a value left over from OTHER grains, which is O(1) --
+  !--- astrodust to MRN is 1.68x -- so 1% is loose by two orders and still
+  !--- unmissable.  Tighter would cry wolf on a deliberately rounded
+  !--- normalization: the 19 inputs on the WD01/D03 kext file pin 4.868e-22,
+  !--- the quoted Milky Way C_ext(V) per H, where that file interpolated at
+  !--- 0.55 um gives 4.8606e-22 -- 0.15% apart, and the rounded number is the
+  !--- one they mean.
+  real(kind=wp), parameter :: CEXT_DUST_TOL = 1.0e-2_wp
+
 contains
 
   !=========================================================================
@@ -66,19 +77,47 @@ contains
   end subroutine gas_opacity_setup
 
   !=========================================================================
-  subroutine ion_dust_read()
+  !=========================================================================
+  !--- The extinction of the grains this run carries, at par%lambda_ref, and
+  !--- the (lambda, albedo, <cos>, C_ext/H) table it is interpolated from.
+  !---
+  !--- This is what par%cext_dust IS.  Every leaf's grey opacity is built as
+  !--- n_dust C_ext(lambda_ref) per code length (grid_mod_amr), so that number
+  !--- is a PROPERTY OF THE NAMED GRAINS, not an independent choice: it is the
+  !--- same C_ext/H the band ratios below are divided by.  It used to be typed
+  !--- into the namelist beside par%dust_model, which gave one quantity two
+  !--- sources -- and the wrong one is silent, because a stale value does not
+  !--- fail, it just scales every leaf's dust optical depth.  So par%cext_dust
+  !--- < 0, the default, means "the grains this run carries", and a value given
+  !--- outright is still taken as given, with both numbers printed so that a
+  !--- deliberate renormalization stays visible and an accidental one does not.
+  !---
+  !--- Called BEFORE the grid is built (main.f90), because grid_create_amr
+  !--- multiplies par%cext_dust into every leaf's rhokap.  Loading the table
+  !--- depends on nothing but par% and the files it names, so that order is
+  !--- free; the band tabulation ion_dust_read does with the same table needs
+  !--- the band, which needs the grid, and stays where it is.
+  !---
+  !--- A run with no dust in the band loads no optics and has no reference
+  !--- extinction to speak of: par%cext_dust < 0 becomes 0 there, and the grey
+  !--- rhokap it would otherwise scale is read by nothing (the dust heating,
+  !--- the SED and the packet opacity are all under par%ion_add_dust).
+  subroutine dust_reference_extinction()
     use mpi
     use grain_model_mod, only : grain_extinction_table, dmodel
     implicit none
     real(kind=wp), allocatable :: lam(:), alb(:), cext(:), gcos(:)
     character(len=512) :: line
-    real(kind=wp) :: v(4), lref, cref, aref, lb, w, lam_short, lam_long
-    integer :: unit, ios, n, i, b, ierr
+    real(kind=wp) :: v(4), cref, lam_short, lam_long, given
+    integer :: unit, ios, n, i, ierr
     logical :: from_model
 
-    if (allocated(ion_dust_sabs)) return
-    allocate(ion_dust_sabs(nnu_band), ion_dust_ssca(nnu_band), &
-             ion_dust_g(nnu_band))
+    if (dust_tab_n > 0) return
+
+    if (.not. par%ion_add_dust) then
+       if (par%cext_dust < 0.0_wp) par%cext_dust = 0.0_wp
+       return
+    end if
 
     !--- optics source: a kext file OVERRIDES the model (backward compatible);
     !--- an empty par%ion_dust_kext takes the (lambda, albedo, <cos>, C_ext/H)
@@ -150,21 +189,78 @@ contains
     end if
 
     cref = interp_log(lam, cext, n, par%lambda_ref)
-    !--- retain the sorted table for exact-energy evaluation (ion_dust_*_at);
-    !--- the bin loop below is left untouched so ion_dust_*(b) stay identical.
+    !--- retain the sorted table: the bin arrays and the exact-energy
+    !--- evaluators (ion_dust_*_at) are both built on it, so they cannot come
+    !--- from two different reads.
     dust_tab_n = n;  dust_tab_cref = cref
     if (allocated(dust_tab_lam)) deallocate(dust_tab_lam, dust_tab_alb, &
        dust_tab_gcos, dust_tab_cext)
     allocate(dust_tab_lam(n), dust_tab_alb(n), dust_tab_gcos(n), dust_tab_cext(n))
     dust_tab_lam  = lam(1:n);   dust_tab_alb  = alb(1:n)
     dust_tab_gcos = gcos(1:n);  dust_tab_cext = cext(1:n)
+    deallocate(lam, alb, cext, gcos)
+
+    !--- resolve par%cext_dust against the table just loaded.
+    given = par%cext_dust
+    if (given < 0.0_wp) par%cext_dust = cref
+
+    if (mpar%p_rank == 0) then
+       if (from_model) then
+          write(*,'(3a,i0,a)') ' ION: dust optics = ', trim(par%dust_model), &
+             ' (SEDust grain model, ', n, ' wavelengths)'
+          write(*,'(a,es10.3,a,es10.3,a,f7.1,a)') &
+             ' ION: model grid [um]           = [', dust_tab_lam(1), ', ', &
+             dust_tab_lam(n), '] (to ', 1.23984_wp/dust_tab_lam(1), ' eV)'
+          !--- the model name does not identify the optics: the curve above is
+          !--- the size-integrated table the builder loaded, and which table it
+          !--- was decides the extinction this run transports.
+          write(*,'(2a)') ' ION: extinction table          = ', &
+             trim(dmodel%kext_path)
+       else
+          write(*,'(2a)')       ' ION: dust kext table = ', trim(par%ion_dust_kext)
+       end if
+       write(*,'(a,es11.4)') ' ION: C_ext/H at lambda_ref     = ', cref
+       if (given < 0.0_wp) then
+          write(*,'(a)') ' ION: cext_dust                 = that value (par%cext_dust < 0)'
+       else
+          write(*,'(a,es11.4,a,f9.5,a)') &
+             ' ION: cext_dust                 = ', given, ' as given (x', &
+             given/max(cref, tiny(1.0_wp)), ' of the table)'
+          if (abs(given/max(cref, tiny(1.0_wp)) - 1.0_wp) > CEXT_DUST_TOL) then
+             write(*,'(a)') ' ION: WARNING: par%cext_dust is not this table''s '// &
+                'C_ext/H at lambda_ref, so the'
+             write(*,'(a)') ' ION:          grid dust optical depth is scaled by '// &
+                'the ratio above.  Leave'
+             write(*,'(a)') ' ION:          par%cext_dust negative to take the '// &
+                'grains'' own value.'
+          end if
+       end if
+    end if
+  end subroutine dust_reference_extinction
+
+  !=========================================================================
+  !--- The ionizing-band ratios, tabulated on the band the run transports from
+  !--- the table dust_reference_extinction retained.
+  subroutine ion_dust_read()
+    implicit none
+    real(kind=wp) :: lb
+    integer :: b
+
+    if (allocated(ion_dust_sabs)) return
+    call dust_reference_extinction()
+    allocate(ion_dust_sabs(nnu_band), ion_dust_ssca(nnu_band), &
+             ion_dust_g(nnu_band))
+
     do b = 1, nnu_band
        lb = 1.23984_wp/ion_e_of(b)          ! um
-       ion_dust_sabs(b) = (1.0_wp - interp_lin(lam, alb, n, lb)) &
-                          * interp_log(lam, cext, n, lb) / cref
-       ion_dust_ssca(b) = interp_lin(lam, alb, n, lb) &
-                          * interp_log(lam, cext, n, lb) / cref
-       ion_dust_g(b)    = interp_lin(lam, gcos, n, lb)
+       ion_dust_sabs(b) = (1.0_wp - interp_lin(dust_tab_lam, dust_tab_alb, &
+                                               dust_tab_n, lb)) &
+                          * interp_log(dust_tab_lam, dust_tab_cext, &
+                                       dust_tab_n, lb) / dust_tab_cref
+       ion_dust_ssca(b) = interp_lin(dust_tab_lam, dust_tab_alb, dust_tab_n, lb) &
+                          * interp_log(dust_tab_lam, dust_tab_cext, &
+                                       dust_tab_n, lb) / dust_tab_cref
+       ion_dust_g(b)    = interp_lin(dust_tab_lam, dust_tab_gcos, dust_tab_n, lb)
     end do
     !--- S0 invariant: the bin arrays are exactly the *_at evaluators at the bin
     !--- centers (same retained table, same expression).  Silent on success, so
@@ -179,21 +275,6 @@ contains
           error stop 'ion_dust_*_at disagrees with the bin array'
     end do
     if (mpar%p_rank == 0) then
-       if (from_model) then
-          write(*,'(3a,i0,a)') ' ION: dust optics = ', trim(par%dust_model), &
-             ' (SEDust grain model, ', n, ' wavelengths)'
-          write(*,'(a,es10.3,a,es10.3,a,f7.1,a)') &
-             ' ION: model grid [um]           = [', lam(1), ', ', lam(n), &
-             '] (to ', 1.23984_wp/lam(1), ' eV)'
-          !--- the model name does not identify the optics: the curve above is
-          !--- the size-integrated table the builder loaded, and which table it
-          !--- was decides the extinction this run transports.
-          write(*,'(2a)') ' ION: extinction table          = ', &
-             trim(dmodel%kext_path)
-       else
-          write(*,'(2a)')       ' ION: dust kext table = ', trim(par%ion_dust_kext)
-       end if
-       write(*,'(a,es11.4)') ' ION: C_ext/H at lambda_ref     = ', cref
        write(*,'(a,2f8.3)')  ' ION: sabs at band edges        = ', &
           ion_dust_sabs(1), ion_dust_sabs(nnu_band)
        if (par%ion_dust_scatter) write(*,'(a,2f8.3,a,2f7.3)') &
@@ -201,7 +282,6 @@ contains
           ion_dust_ssca(1), ion_dust_ssca(nnu_band), &
           ',  g = ', ion_dust_g(1), ion_dust_g(nnu_band)
     end if
-    deallocate(lam, alb, cext, gcos)
   end subroutine ion_dust_read
 
   real(kind=wp) function ion_e_of(b) result(e)
