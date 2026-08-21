@@ -44,14 +44,14 @@
  !--- size-integrated curve (gate tests/grain_kext), not the WD01/D03 table.
  !--- cext_dust must move with it -- it is the model's C_ext/H at
  !--- par%lambda_ref = 0.55 um, which the run prints as
- !--- 'ION: C_ext/H at lambda_ref'.  For astrodust that is 2.9744e-22, 0.4%
+ !--- 'ION: C_ext/H at lambda_ref'.  For astrodust that is 2.9780e-22, 0.29%
  !--- from the HD23 author release (SEDust/data/release/extinction.dat
  !--- interpolated to 0.55 um: 2.9867e-22), and 0.61x the WD01/D03 value this
  !--- test used to carry -- a model difference, not an error.
  par%ion_add_dust  = .true.
  par%dust_emis_transport = .false.   ! pinned: recorded gate predates IR transport
  par%ion_dust_scatter = .true.
- par%cext_dust     = 2.9744e-22
+ par%cext_dust     = 2.9780e-22
  par%DGR           = 1.0
 
  !--- SEDust stochastic dust SED (output time)

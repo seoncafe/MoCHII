@@ -4,10 +4,14 @@
 # You normally do NOT need this script: everything MoCHII opens at run time is
 # kept in git, including each model's optics product (.gitignore un-ignores
 # SEDust/data/*/*.h5), so a fresh checkout runs the dust path as it stands.
-# Run it to bring this copy up to date with a newer SEDust, or to fetch the one
-# file deliberately kept out of git -- the 17 MB D16 spheroid Q-library
-# data/dielectric/qlib_gra_D16MGemt_1.400, read only by q_graphite_d16_mod,
-# which no par%dust_model selects.
+# Run it to bring the DATA of this copy up to date with a newer SEDust, or to
+# fetch the one file deliberately kept out of git -- the 17 MB D16 spheroid
+# Q-library data/dielectric/qlib_gra_D16MGemt_1.400, read only by
+# q_graphite_d16_mod, which no par%dust_model selects.  It copies data and
+# nothing else: the library sources under sed/src/ are a separate step, done by
+# hand against the same tree, and an optics product that came out of a newer
+# SEDust than the sources here is exactly the pairing to avoid.  See the
+# paragraph on sed/src/ below for what that step covers.
 #
 # WHAT THE LAYOUT IS.  SEDust keeps one directory per dust model, holding what
 # that model owns -- its optics product sedust_<model>.h5 and, where the model

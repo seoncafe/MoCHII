@@ -72,7 +72,8 @@ infrared dust/PAH spectrum.
   model supplies both the transport cross sections and the emission, so the
   energy a cell absorbs is set by the same grains that radiate it back out:
   the transport reads the model's precomputed size-integrated extinction curve
-  (`SEDust/data/kext_*.dat`) on the model's own wavelength grid, and a gate
+  (`/kext` of `SEDust/data/<model>/sedust_<model>.h5`, the same product the
+  cross sections come from) on the model's own wavelength grid, and a gate
   (`tests/grain_kext`) checks that curve against the size integral over the
   model as built, so a table belonging to other grains cannot pass unnoticed.
   The astrodust and DL07 grids reach the whole ionizing band on their own: the
@@ -169,4 +170,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-08-09 06:26 KST
+Last updated: 2026-08-21 10:27 KST
