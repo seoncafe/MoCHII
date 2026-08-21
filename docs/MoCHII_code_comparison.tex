@@ -22,6 +22,7 @@
 \newcommand{\Torus}{\textsc{Torus}}
 \newcommand{\Mocassin}{\textsc{Mocassin}}
 \newcommand{\Cloudy}{\textsc{Cloudy}}
+\newcommand{\Colt}{\textsc{Colt}}
 \newcommand{\HII}{H\,\textsc{ii}}
 \newcommand{\HI}{H\,\textsc{i}}
 \newcommand{\HeI}{He\,\textsc{i}}
@@ -36,7 +37,8 @@
 
 \title{MoCHII Among the Monte Carlo Photoionization Codes:\\
 An Algorithmic and Physical Comparison with M$^3$, MAPPINGS V 5.2.1,\\
-\textsc{ionize}, \textsc{CMacIonize}, \textsc{Torus}, and \textsc{Mocassin}}
+\textsc{ionize}, \textsc{CMacIonize}, \textsc{Torus}, \textsc{Mocassin},
+and \textsc{Colt}}
 \author{Kwang-Il Seon}
 \date{\docmoddate}
 \maketitle
@@ -49,12 +51,14 @@ principal pairwise comparison is with \Mthree{} (Messenger Monte Carlo
 MAPPINGS V) and its parent \Mappings{}, whose local trees are
 \code{\char`~/RT\_Codes/MAPPINGS/M3-main} and
 \code{\char`~/RT\_Codes/MAPPINGS/mappings\_V-521}.
-Section~\ref{sec:others} adds three further three-dimensional codes:
+Section~\ref{sec:others} adds four further three-dimensional codes:
 \Wood{}, the code of Wood, Mathis \& Ercolano (2004) that supplies the WME
 column of the Lexington benchmark tables; \CMI{}, which its own source
-describes as the C++ version of that code; and \Torus{}, a
+describes as the C++ version of that code; \Torus{}, a
 radiation-hydrodynamics code whose photoionization loop borrows from both
-\Wood{} and \Mocassin{}.  \Mocassin{} is \MoCHII{}'s quantitative validation
+\Wood{} and \Mocassin{}; and \Colt{}, whose 2025 update aims at the same
+gas layer \MoCHII{} builds and whose source says several things its paper
+does not.  \Mocassin{} is \MoCHII{}'s quantitative validation
 reference and appears throughout.  Section~\ref{sec:hlines} compares the one
 emission process all of them compute, the hydrogen recombination lines,
 together with \Cloudy{} c25.00, which is the one code in reach that solves the
@@ -393,13 +397,14 @@ the physical question. \\
 \label{sec:others}
 
 \Mthree{} is not the only three-dimensional Monte Carlo photoionization code
-this comparison has to account for.  Three others are close enough in method
+this comparison has to account for.  Four others are close enough in method
 that \MoCHII{}'s choices are best read against them: \Wood{}, the code of
 Wood, Mathis \& Ercolano (2004) that supplies the WME column of the Lexington
 benchmark tables; \CMI{}, which its own source calls ``the C++ version of
 Kenny Wood's photoionization code'' (\code{src/CMacIonize.cpp}:392--393); and
 \Torus{}, a radiation-hydrodynamics code whose photoionization loop borrows
-from both \Wood{} and \Mocassin{}.  \Mocassin{} itself is \MoCHII{}'s
+from both \Wood{} and \Mocassin{}; and \Colt{}, whose 2025 update aims at
+the same gas layer \MoCHII{} builds.  \Mocassin{} itself is \MoCHII{}'s
 quantitative validation reference and appears throughout this memo rather
 than as a separate subsection.
 
@@ -707,8 +712,208 @@ Section~\ref{sec:hlines} shows, missing helium lines entirely.  \MoCHII{}
 sits with \Torus{} on transport and observation and with \Mocassin{} on gas
 microphysics, and it is the only one of the five whose thermal balance and
 emergent line list are computed from the same level populations at the same
-electron density.  How each of them actually solves the ionization state, and
-where the metals enter it, is Section~\ref{sec:ionsolve}.
+electron density.  \Colt{} is described as acquiring that property in 2025,
+but the level-population solver is not in its public tree, so the claim
+stands unqualified for now; Section~\ref{sec:colt} reads that code against
+the same axes.  How each of them actually solves the ionization
+state, and where the metals enter it, is Section~\ref{sec:ionsolve}.
+
+\subsection{\Colt{}: the fifth code, and what its source says that its paper
+does not}
+\label{sec:colt}
+
+\Colt{} (Cosmic Lyman-$\alpha$ Transfer) is read here in its own tree,
+\code{\char`~/RT\_Codes/colt} at \code{d787fb8} (2026-08-21), on the same
+standard as the four above.  The published description is McClymont, Smith
+\& Tacchella (2025) \cite{mcclymont2025}, a preprint and not yet a
+published paper; where the source and the paper disagree, this section
+follows the source and says so.  \Colt{} belongs in this comparison
+because its 2025 update is aimed at exactly \MoCHII{}'s layer: an
+ionization solver over ten elements, a nebular continuum from free--free,
+free--bound and two-photon emission, and metal line emission from level
+populations.
+
+\textbf{What is in the tree and what is not.}  The ionization solver, the
+rate compilation, the Verner cross sections, the free-free Gaunt factors,
+the nebular continuum and the diffuse-source construction are all present
+and are read below.  The \emph{thermal} equilibrium solver of the paper's
+Sections 2.5--2.6 is not: \code{grep} for \code{bisect} over the tree
+returns nothing, there is no cooling function, no Compton term, and no
+CHIANTI data anywhere.  What \code{equilibrium\_update} does with the
+temperature is reconstruct it from the internal energy
+(\code{ionization/\allowbreak ionization.cc}:1946--1960), with multiplicative limiters
+\code{T\_inc\_factor} / \code{T\_dec\_factor} on how far it may move in one
+pass.  The level-population solver is likewise absent.  By the hierarchy
+of Section~\ref{sec:purpose} the thermal solve, the CHIANTI level
+populations and the Courant-limited cooling are level-1 evidence for
+\Colt{} --- described, not connected in this checkout --- and the rest of
+this subsection is level~2 or better.
+
+\textbf{The ionization solve is the same ratio chain, and hydrogen carries
+no charge exchange.}  This is the sixth code read for
+Section~\ref{sec:ionsolve} and it does not change that section's finding.
+Hydrogen is \code{cHI = (bHI + gHI/ne)/aHII}, \code{xHI = 1/(1 + cHI)}
+(\code{:1901--1902}) --- collisional plus photoionization over
+recombination, with no charge transfer term, exactly as in \Mocassin{},
+\CMI{}, \Torus{} and \Wood{}.  Helium carries one against \HI{} in its
+recombination denominator (\code{:1913--1914}), one-way.  The metals are a
+nearest-neighbor ratio chain written as a recurrence,
+\code{c\_ions[ai] = (beta + chi\_HII\,HIIe + chi\_HeII\,HeIIe + gamma/ne) /
+(alpha + xi\_HI\,HIe + xi\_HeI\,HeIe)} then
+\code{denom = 1 + c\_ions[ai]\,denom} (\code{:1926--1928}), one element at a
+time inside a fixed-point loop on $\nelec$ that is damped by
+\code{xe = 0.5\,(xe + xe\_prev)} (\code{:1942}) and exits at
+$|\Delta x_{\rm e}| < 10^{-9}$ or errors out after 100 passes.  So
+\Colt{} sits with \MoCHII{}'s \code{'metal\_only'} mode, not with its
+default.  On one axis it is ahead of \MoCHII{}: its charge exchange runs
+against four partners, \HI{} and \HeI{} for recombination and \HII{} and
+\HeII{} for ionization (Kingdon \& Ferland 1996), where \MoCHII{} carries
+the hydrogen pair only.
+
+\textbf{Metal opacity: \Colt{} has it.}  \code{k\_gas\_abs} sums
+$n_{\rm ion}\sigma_{\rm ion}$ over every active ion of every active atom
+(\code{ionization/\allowbreak ray\_\allowbreak trace.cc}:1492--1505), so the ionizing field is
+attenuated by the metals and not merely tallied against them.  That places
+\Colt{} with \MoCHII{} and apart from \CMI{}, \Torus{} and \Wood{} on the
+axis of Section~\ref{sec:ionsolve}.  Absorption is continuous
+(\code{weight *= exp(-dtau\_abs)}, \code{:1456}) with a path-length rate
+estimator; dust scattering is by sampled optical depth.
+
+\textbf{The diffuse field: the paper understates what the code does.}  The
+paper says of cell-based nebular continuum emission that ``our current
+implementation uses Case B rates which assume on-the-spot absorption of
+the ionizing component, and so it is not appropriate to incorporate this
+emission, although we plan to relax this assumption in the future.''  The
+ionization module nevertheless builds and launches it.  Three flags,
+\code{free\_free}, \code{free\_bound} and \code{two\_photon}, all
+\code{false} by default (\code{ionization/vars.cc}:16--18), turn on
+cell-based sources whose frequency is drawn from a bin cumulative
+distribution assembled from free--free for $Z=1$ (\HII{} and \HeII{}) and
+$Z=2$ (\HeIII{}), free--bound for
+\HII{}$\rightarrow$\HI{}, \HeII{}$\rightarrow$\HeI{} and
+\HeIII{}$\rightarrow$\HeII{}, and two-photon for \HI{} and \HeII{}
+(\code{ionization/\allowbreak ray\_\allowbreak trace.cc}:479--551).  The free-bound tables are
+Ercolano \& Storey (2006), the same source as \MoCHII{}'s, and they stop
+below 1~Ryd, so they carry the $n \ge 2$ continuum and do not duplicate
+the ground-state recombination that the hard-coded $\alpha_{\rm B}$
+assumes on the spot.
+
+Read against \MoCHII{}, that splits two ways.  \MoCHII{} is ahead on how
+much of the recombination cascade is resolved: it samples the three ground
+continua from the Milne free-bound spectrum with the transport cross
+sections, splits the \HeI{} cascade by temperature-dependent branch
+fractions, and carries the \HeIII{} case-B cascade as a fifth channel
+worth $44\%$ of the diffuse-field luminosity on a $10^5$~K blackbody, none
+of which has a counterpart here.  But \Colt{} is ahead on one channel
+\MoCHII{} does not have at all: \textbf{free--free above 13.598~eV is a
+diffuse ionizing source in \Colt{} and is not one in \MoCHII{}}, which is
+the open item recorded in \code{md/HARD\_SPECTRUM\_PLAN.md}.  It is now
+also a worked example rather than a note: the same cell emissivity
+\MoCHII{} already computes for the written continuum is what \Colt{} feeds
+to its bin cumulative distribution.
+
+\textbf{\HI{} and \HeI{} recombination.}  $\alpha_{\rm B}(\HII{})$ is the
+Hui \& Gnedin (1997) fit (\code{rates.h}:101), giving
+$2.5918{\times}10^{-13}$ at $10^4$~K, on the canonical value to $0.07\%$.
+$\alpha_{\rm B}(\HeI{})$ is the companion power law
+$1.26{\times}10^{-14}\lambda^{0.75}$ (\code{:118}) plus a dielectronic term
+that is negligible below $10^5$~K; together they give
+$2.616{\times}10^{-13}$ at $10^4$~K, which is $\mathbf{0.60}$ times the
+$4.3719{\times}10^{-13}$ \MoCHII{} takes from Badnell and the
+$4.3583{\times}10^{-13}$ \Cloudy{} derives level by level from the Milne
+relation.  This memo already carries the warning that \Mocassin{}'s
+$\alpha_{\rm A}(\HeI{})$ is $11\%$ high because it is Verner \& Ferland
+(1996) applied with no special case for helium; the same warning applies
+here with the opposite sign and six times the size.  It is the expected
+consequence of a fit built for intergalactic reionization bookkeeping, and
+it means \Colt{} helium fractions are not a reference for an \HII{} region
+without that factor subtracted.  Metal recombination is by contrast
+current: radiative plus dielectronic from Badnell, stated at
+\code{ionization/\allowbreak ionization.cc}:1962 and evaluated ion by ion in
+\code{rates.h}.
+
+\textbf{Two-photon: \Colt{} keeps the collision partners apart.}  The
+suppression is written out in full, \code{alpha * A\_2q / (A\_2q + q\_e * ne
++ q\_p * nHII)} (\code{nebcont.cc}:364), with $q_{\rm e}$ and $q_{\rm p}$
+each built from the Pengelly \& Seaton (1964) expression --- reduced
+masses, $D_{nl} = Z^{-2}\,6n^2(n^2-l^2-l-1)$, and the smaller of the two
+impact-parameter cutoffs (\code{:340--363}).  $\alpha_{\rm eff}(2s)$ comes
+from a two-dimensional Hummer \& Storey (1987) table in
+$(\log T, \log \nelec)$; \MoCHII{} uses the Pengelly (1964) power law for
+\HI{} and SH95 for \HeII{}.  Two differences are worth carrying away.
+
+\emph{The two prescriptions disagree by a factor near six.}  Evaluated at
+$10^4$~K, the \Colt{} expression gives $q_{\rm e}+q_{\rm p} =
+3.24{\times}10^{-3}\,{\rm cm^3\,s^{-1}}$ at $\nelec = 100$ falling to
+$2.80{\times}10^{-3}$ at $10^4$ (the weak density dependence is the Debye
+cutoff), against the single $5.31{\times}10^{-4}$ \MoCHII{} takes from
+Osterbrock's table by way of \Mocassin{}.  The consequence is the
+surviving fraction of the \HI{} two-photon continuum:
+
+\begin{center}\small
+\begin{tabular}{rrrr}
+\toprule
+$\nelec$ [cm$^{-3}$] & \MoCHII{} & \Colt{} & ratio \\
+\midrule
+   100 & 0.994 & 0.962 & 0.97 \\
+  1000 & 0.939 & 0.731 & 0.78 \\
+  3000 & 0.838 & 0.485 & 0.58 \\
+ 10000 & 0.608 & 0.227 & 0.37 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+At the $100\,{\rm cm^{-3}}$ of HII20 and HII40 the disagreement is $3\%$ of
+a term that is itself a few percent, so nothing recorded moves.  At the
+$3000\,{\rm cm^{-3}}$ of PN150 it is a factor $1.7$ in the transported
+continuum, and that gate is stage HS4.  Which prescription is right is not
+settled here and needs the printed Osterbrock table and Pengelly \& Seaton
+(1964) itself; it is an open check, listed as such in
+\code{MoCHII\_physics.pdf}.
+
+\emph{And one slip, stated as read.}  \code{HeII\_2p\_rate}
+(\code{nebcont.cc}:373--375) instantiates the template with the atomic
+number argument $1$ while its own trailing comment reads
+\code{// HeII (Z=2)}, so the \HeII{} branch takes
+$A_{2q} = 8.2249\,{\rm s^{-1}}$ instead of $526.7$ and $D_{nl} = 72$
+instead of $18$.  The companion \code{HeII\_2p\_freq} (\code{:401--403})
+does pass $2$, so the spectral shape is right and only the collisional
+denominator is affected.  The critical density is then $256\times$ too
+low: at $\nelec = 10^4\,{\rm cm^{-3}}$ the \HeII{} two-photon continuum is
+suppressed to $0.227$ where the \HeII{} constants give $0.983$, and at
+$10^5$ to $0.031$ against $0.863$.  At $100\,{\rm cm^{-3}}$ it is $3.8\%$
+and does not matter.  \Colt{} has not been built or run here, so this is a
+reading of the source and nothing more; it is recorded because \MoCHII{}
+transports the same channel through
+\code{par\%heii\_diffuse} and any future comparison of the two would run
+straight into it.  \Colt{} omits \HeI{} two-photon emission altogether,
+commented out at \code{:404--409} with the note ``No rates for HeI (data
+are poor) but expected to be small''; \MoCHII{} transports and writes it
+from the Drake, Victor \& Dalgarno (1969) distribution as CHIANTI
+tabulates it.  Finally, \Colt{} normalizes the Nussbaumer \& Schmutz (1984)
+shape by the separately quoted $A_{2q}$, \code{h * x * A\_nu / A\_2q}
+(\code{:393}) --- the arrangement \MoCHII{} moved off, because dividing a
+tabulated shape by a constant it does not integrate to reproduces the pair
+count only to $-0.014\%$ for \HI{}, $+0.05\%$ for \HeII{} and $+0.28\%$
+for \HeI{}.
+
+\textbf{Convergence.}  \Colt{} iterates transport against abundances until
+the relative change in the \emph{total} number of \HI{} recombinations
+falls below \code{max\_error}, default $0.01$
+(\code{ionization/\allowbreak ionization.cc}:2198, \code{Ionization.h}:27; the paper
+quotes $0.001$ as an example), with an optional pre-conditioning stage
+that starts at a looser target and tightens geometrically.  It is a
+global integral criterion of the same class as
+\code{par\%conv\_crit='vol'}, applied to one scalar rather than to the
+ionization state and the temperature.
+
+\textbf{Ion inventory.}  Ten elements, H He C N O Ne Mg Si S Fe, with the
+enumeration reaching C\,\textsc{vi}, N\,\textsc{vii}, O\,\textsc{viii},
+Ne\,\textsc{viii}, Mg\,\textsc{x}, Si\,\textsc{xii}, S\,\textsc{xiv} and
+Fe\,\textsc{xvi} (\code{source/proto.h}:331--341), against \MoCHII{}'s
+eleven elements at \HII{}-region stages.  Stage HS2 of
+Section~\ref{sec:hardplan} takes the registry in that direction.
 
 %==============================================================================
 \section{Radiative-transfer algorithms}
@@ -940,15 +1145,18 @@ Comparisons of this family normally stop at the atomic data and the thermal
 solver, and leave the structure of the ionization solve as an assumption:
 that the established codes solve the ionization of every element as one
 coupled nonlinear system, and that \MoCHII{}'s element-by-element cascade is
-a reduction of that.  Five codes were read in their own sources to settle it
---- \Mocassin{}, \CMI{}, \Torus{}, \Wood{}, and \Cloudy{} c25.00 --- and
-\emph{none of them does}.  Every one solves one element at a time inside
-nested outer iterations, and four of the five use the same nearest-neighbor
-ratio chain \MoCHII{} uses.  The electron temperature is an outer root find
+a reduction of that.  Six codes were read in their own sources to settle it
+--- \Mocassin{}, \CMI{}, \Torus{}, \Wood{}, \Colt{}, and \Cloudy{} c25.00
+--- and \emph{none of them does}.  Every one solves one element at a time
+inside nested outer iterations, and five of the six use the same
+nearest-neighbor ratio chain \MoCHII{} uses.  The electron temperature is an outer root find
 in all five; it is never an unknown of the ionization system.  The ratio
 chain is therefore the standard method of the field, not a
 \MoCHII{}-specific approximation.  \Cloudy{} departs from it on exactly two
 axes, both identified below, and neither of them is element coupling.
+\Colt{} was added to the audit after its source became available and did not
+change the finding; its entry is Section~\ref{sec:colt} and its row is in
+Table~\ref{tab:ionsolve}.
 \Mappings{} and \Mthree{} were not part of this audit, and no claim is made
 here about their solve structure.
 
@@ -991,7 +1199,7 @@ and $n_{\rm HII}$ as inputs and returns the chain product for one element.
 
 \begingroup\footnotesize\setlength{\tabcolsep}{3pt}
 \begin{longtable}{P{0.13\textwidth}P{0.145\textwidth}P{0.08\textwidth}P{0.09\textwidth}P{0.09\textwidth}P{0.08\textwidth}P{0.115\textwidth}P{0.11\textwidth}}
-\caption{How the ionization system is solved in the five codes read in source
+\caption{How the ionization system is solved in the six codes read in source
 for this subsection, with \MoCHII{} as the last row.  Entries describe the
 connected photoionization path, not what exists in the tree.  ``not audited''
 means the axis was not read for that code and no claim is made about it.}
@@ -1027,6 +1235,11 @@ no & no & no & not audited & outer secant in $\log$, from iteration 5 \\
 into hydrogen's own rows & yes, summed then Brent root find & yes, all shells
 & continua and lines, both re-ionize & outer Brent inside the pressure
 loop \\
+
+\Colt{} & chain as a recurrence, fixed point on $\nelec$ damped 0.5 &
+separate & no; four partners, all one-way & yes, summed into $x_{\rm e}$ &
+yes, every active ion & no metal channel; H/He free--free, free--bound and
+two-photon, opt-in & none in this tree; $\Te$ from the internal energy \\
 
 \MoCHII{} & chain, but solved for its root at each $\nelec$ rather than
 substituted into & separate & \textbf{yes} & yes, default on, damped fixed
@@ -2016,6 +2229,10 @@ inherits decades of MAPPINGS development and has been published against the HII2
 and PN150 Lexington/Meudon standards.  Its three-dimensional blister,
 bipolar, and fractal applications demonstrate the importance of geometry
 for spatially resolved line diagnostics \cite{jin2022,jin2022fractal}.
+Because both codes have now been published against HII20 and HII40, the
+two line lists can be set side by side without running anything; that is
+Section~\ref{sec:m3bench}, and it is the one place in this memo where a
+\MoCHII{} number is compared with an \Mthree{} number on the same input.
 
 \MoCHII{} is newer, but its current repository contains unusually granular
 gates:
@@ -2047,6 +2264,299 @@ the inspected 5.2.1 tree does not provide a gate hierarchy as explicit as
 the current \MoCHII{} test directories.  A controlled local benchmark is
 still required before attributing any line difference to geometry rather
 than to the 5.1.13-versus-5.2.1 atomic and solver divergence.
+
+\subsection{\texorpdfstring{\Mthree{}}{M3}'s published benchmark fluxes
+against \MoCHII{}'s}
+\label{sec:m3bench}
+
+Both codes have now been published against the same standards, so the
+comparison can be made from the two papers without running either.
+Jin et al.\ (2022) Tables~2 and~3 give \Mthree{} at $33^3$ and $55^3$ cells
+beside MAPPINGS, \Cloudy{}, \Mocassin{}3D, RR and PH, with the median and
+$1\sigma$ spread of those five \cite{jin2022}.  \MoCHII{}'s column is
+\code{results/continuous\_energy/m1\_oxfix}, the production inputs under
+the current defaults; its composition matches Jin Table~1 entry for entry
+(He $0.1$, C $2.2{\times}10^{-4}$, N $4.0{\times}10^{-5}$,
+O $3.3{\times}10^{-4}$, Ne $5.0{\times}10^{-5}$,
+S $9.0{\times}10^{-6}$), so nothing has to be corrected for abundance.
+The \Mthree{} column below is the $55^3$ one.
+
+\begingroup\small\setlength{\tabcolsep}{5pt}
+\begin{longtable}{P{0.26\textwidth}rrrrr}
+\caption{HII40.  Line fluxes relative to H$\beta$, except H$\beta$ itself.
+``Med$\pm\sigma$'' is Jin et al.'s median and spread over MAPPINGS,
+\Cloudy{}, \Mocassin{}3D, RR and PH; it is \emph{not} the ten-column
+reference set used elsewhere in this memo.}
+\label{tab:m3hii40}\\
+\toprule
+Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\small\itshape Table~\ref{tab:m3hii40} continued.}\\
+\toprule
+Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+H$\beta$ [$10^{37}$ erg\,s$^{-1}$] & 1.98 & 2.05 & 0.03 & 1.930 & 0.975 \\
+\HeI{} 5876              & 0.115   & 0.116   & 0.047   & 0.1067  & 0.928 \\
+C\,\textsc{ii}] 2325+    & 0.164   & 0.164   & 0.027   & 0.1696  & 1.034 \\
+C\,\textsc{iii}] 1907+1909 & 0.076 & 0.071   & 0.013   & 0.0554  & 0.729 \\
+{}[N\,\textsc{ii}] 122 $\mu$m & 0.029 & 0.030 & 0.003   & 0.0319  & 1.099 \\
+{}[N\,\textsc{ii}] 6584+6548 & 0.632 & 0.723 & 0.082   & 0.6855  & 1.085 \\
+{}[N\,\textsc{ii}] 5755  & 0.0053  & 0.0053  & 0.0007  & 0.00583 & 1.099 \\
+{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.297 & 0.294 & 0.029 & 0.2904 & 0.978 \\
+{}[O\,\textsc{i}] 6300+6363 & 0.0290 & 0.0094 & 0.0150 & 0.02409 & 0.831 \\
+{}[O\,\textsc{ii}] 7320+7330 & 0.027 & 0.027  & 0.005   & 0.03405 & 1.261 \\
+{}[O\,\textsc{ii}] 3726+3729 & 2.05  & 2.05   & 0.14    & 2.247   & 1.096 \\
+{}[O\,\textsc{iii}] 52+88 $\mu$m & 2.55 & 2.34 & 0.11   & 2.445   & 0.959 \\
+{}[O\,\textsc{iii}] 5007+4959 & 2.37 & 2.17   & 0.26    & 2.354   & 0.993 \\
+{}[O\,\textsc{iii}] 4363 & 0.00421 & 0.0035  & 0.0008  & 0.00431 & 1.023 \\
+{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.199 & 0.199 & 0.015 & 0.2045  & 1.028 \\
+{}[Ne\,\textsc{iii}] 15.5 $\mu$m & 0.290 & 0.294 & 0.066 & 0.2859 & 0.986 \\
+{}[Ne\,\textsc{iii}] 3869+3968 & 0.069 & 0.083 & 0.013  & 0.0710  & 1.029 \\
+{}[S\,\textsc{ii}] 6716+6731 & 0.194 & 0.141  & 0.045   & 0.3205  & 1.652 \\
+{}[S\,\textsc{ii}] 4068+4076 & 0.0086 & 0.0070 & 0.0021 & 0.01382 & 1.607 \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.534 & 0.567 & 0.033 & 0.5076  & 0.950 \\
+{}[S\,\textsc{iii}] 9532+9069 & 1.04  & 1.21   & 0.10    & 0.9986  & 0.960 \\
+\end{longtable}
+\endgroup
+
+At HII40 the two codes agree within $10\%$ on 16 of the 21 entries and the
+median ratio is $1.02$.  More usefully, they leave the 1995-era median in
+the same direction wherever either of them leaves it: H$\beta$ low,
+[O\,\textsc{i}] 6300+6363 far high ($3.1\times$ the median for \Mthree{},
+$2.6\times$ for \MoCHII{}), [O\,\textsc{iii}] 4363 high ($1.20$, $1.23$),
+[O\,\textsc{iii}] 52+88 $\mu$m high ($1.09$, $1.05$), both [S\,\textsc{ii}]
+doublets high, both [S\,\textsc{iii}] diagnostics low, [Ne\,\textsc{iii}]
+3869+3968 low.  The five entries outside $10\%$ are
+C\,\textsc{iii}] 1907+1909 ($0.73$), [O\,\textsc{i}] ($0.83$),
+[O\,\textsc{ii}] 7320+7330 ($1.26$), and the two [S\,\textsc{ii}] doublets
+($1.65$, $1.61$).
+
+That agreement is weaker evidence than it looks, and Jin et al.\ supply the
+reason themselves.  Their Section~8 measures the resolution sensitivity of
+each line between $33^3$ and $55^3$: most move under a few percent, but
+[O\,\textsc{i}] 6300+6363 moves $32\%$, [O\,\textsc{ii}] 7320+7330 moves
+$35\%$, [S\,\textsc{ii}] 6716+6731 moves $23\%$ and [S\,\textsc{ii}]
+4068+4076 moves $20\%$.  Those are exactly the lines on which the two
+Monte Carlo codes exceed the median together, and they are the lines that
+form in the ionization front, which both codes resolve on a Cartesian mesh
+where the one-dimensional codes integrate it adaptively.  Two codes
+agreeing because they share a method is not independent confirmation of the
+physics --- the same trap that cost a retracted conclusion in
+\code{md/HII40\_CLOUDY\_RESIDUAL\_INVESTIGATION.md}.
+
+Two entries are informative in the other direction.  \HeI{} 5876 is the one
+line where \Mthree{} sits on the median ($0.115$ against $0.116$) and
+\MoCHII{} does not ($0.1067$, $7\%$ low): the \HeI{} deficit is
+\MoCHII{}'s alone among these codes, it appears at HII40 and not at HII20
+(Table~\ref{tab:m3hii20}, ratio $0.982$), and HII40 is the benchmark with a
+He$^+$ zone deep enough for a front offset to accumulate.  That is a new
+constraint for the open residual investigation, not an explanation of it.
+And [O\,\textsc{iii}] 5007+4959, 4363 and 52+88 $\mu$m all agree with
+\Mthree{} to $1$--$4\%$ while sitting $5$--$23\%$ above the median, which
+says the oxygen result is a two-code statement rather than a \MoCHII{} one.
+
+\subsubsection*{The sulfur result, and where it comes from}
+
+HII20 separates \MoCHII{} from \Mthree{} where HII40 did not.
+
+\begingroup\small\setlength{\tabcolsep}{5pt}
+\begin{longtable}{P{0.26\textwidth}rrrrr}
+\caption{HII20, columns as in Table~\ref{tab:m3hii40}.}
+\label{tab:m3hii20}\\
+\toprule
+Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\small\itshape Table~\ref{tab:m3hii20} continued.}\\
+\toprule
+Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+H$\beta$ [$10^{36}$ erg\,s$^{-1}$] & 4.81 & 4.89 & 0.09 & 4.684 & 0.974 \\
+\HeI{} 5876              & 0.0071  & 0.0072  & 0.0016  & 0.00697 & 0.982 \\
+C\,\textsc{ii}] 2325+    & 0.059   & 0.059   & 0.010   & 0.0694  & 1.177 \\
+{}[N\,\textsc{ii}] 122 $\mu$m & 0.072 & 0.071 & 0.001   & 0.0731  & 1.016 \\
+{}[N\,\textsc{ii}] 6584+6548 & 0.783 & 0.803 & 0.056   & 0.8447  & 1.079 \\
+{}[N\,\textsc{ii}] 5755  & 0.0028  & 0.0028  & 0.0003  & 0.00325 & 1.162 \\
+{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.0027 & 0.0027 & 0.0007 & 0.00394 & 1.457 \\
+{}[O\,\textsc{i}] 6300+6363 & 0.0241 & 0.0088 & 0.0091 & 0.01576 & 0.654 \\
+{}[O\,\textsc{ii}] 7320+7330 & 0.0064 & 0.0080 & 0.0017 & 0.01225 & 1.913 \\
+{}[O\,\textsc{ii}] 3726+3729 & 1.24  & 1.17    & 0.13    & 1.409   & 1.136 \\
+{}[O\,\textsc{iii}] 52+88 $\mu$m & 0.0029 & 0.0029 & 0.0007 & 0.00338 & 1.165 \\
+{}[O\,\textsc{iii}] 5007+4959 & 0.0019 & 0.0014 & 0.0005 & 0.00215 & 1.129 \\
+{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.296 & 0.290 & 0.013 & 0.3038  & 1.026 \\
+{}[S\,\textsc{ii}] 6716+6731 & 0.529 & 0.499   & 0.039   & 0.781   & 1.476 \\
+{}[S\,\textsc{ii}] 4068+4076 & 0.016 & 0.015   & 0.003   & 0.02293 & 1.433 \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.324 & 0.371 & 0.042  & 0.2159  & 0.666 \\
+{}[S\,\textsc{iii}] 9532+9069 & 0.441 & 0.526  & 0.060   & 0.3044  & 0.690 \\
+\end{longtable}
+\endgroup
+
+\MoCHII{}'s two S$^+$ diagnostics are high by $1.57$ and $1.53$ against the
+median and its two S$^{2+}$ diagnostics low by $0.582$ and $0.579$.  Each
+pair moves by one factor, and each pair contains one infrared
+fine-structure line whose emissivity barely depends on $\Te$ and one
+temperature-sensitive optical line: a $\Te$ error or a level-population
+error would separate the members of a pair, and a shift in the ion fraction
+would not.  Weighted by emission measure, \MoCHII{}'s HII20 sulfur is
+S$^+$ $0.609$ / S$^{2+}$ $0.387$ / S$^{3+}$ $0.000$; carrying both pairs
+onto the median needs about $0.39$ / $0.62$, that is an S$^+$/S$^{2+}$
+ratio too high by a factor near $2.5$.  HII40 carries the same sign at
+about a third of the size (S$^+$ $0.131$ / S$^{2+}$ $0.821$ / S$^{3+}$
+$0.046$; [S\,\textsc{ii}] $2.27$ and $1.98$ times the median,
+[S\,\textsc{iii}] $0.90$ and $0.83$).
+
+The cause is in the atomic data, and both trees can be read directly.
+
+\emph{The photoionization cross section is excluded.}  \MoCHII{}'s
+S$^+$ outer-shell fit (\code{data/atomic/element\_s.txt},
+\code{TRANSITION 2}: $E_0 = 8.787$, $\sigma_0 = 313.6$~Mb, $y_a = 3.442$,
+$P = 12.81$, $y_w = 0.7354$, $y_0 = 2.782$, $y_1 = 0.1788$) and
+\Mthree{}'s (\code{lab/data/ionisation/PHIONDAT2.txt}:82) are the same
+seven numbers.  Whatever separates the codes on sulfur, it is not the
+cross section.
+
+\emph{The recombination is not.}  \MoCHII{} takes
+$\alpha({\rm S^{2+}}\rightarrow{\rm S^+})$ from Badnell, radiative plus
+dielectronic; at $6926$~K the dielectronic term is $2.2$ times the
+radiative one.  \Mthree{} reads its radiative term from
+\code{RRECOMDAT.txt}:154 as the power law
+$1.8{\times}10^{-12}(T/10^4)^{-0.686}$, within $10\%$ of \MoCHII{}'s, and
+its dielectronic term from \code{DRECOMDAT.txt}:163, a Shull \& Van
+Steenberg (1982) two-term fit whose lowest excitation energy is
+$8.2{\times}10^{4}$~K \cite{shull1982} and which is therefore six orders of
+magnitude below the radiative term at nebular temperatures.  The totals:
+
+\begin{center}\small
+\begin{tabular}{rrrr}
+\toprule
+$T$ [K] & \MoCHII{} & \Mthree{} & ratio \\
+\midrule
+ 5000 & $8.38{\times}10^{-12}$ & $2.90{\times}10^{-12}$ & 2.89 \\
+ 6926 & $6.68{\times}10^{-12}$ & $2.32{\times}10^{-12}$ & 2.88 \\
+ 8170 & $5.97{\times}10^{-12}$ & $2.08{\times}10^{-12}$ & 2.87 \\
+10000 & $5.23{\times}10^{-12}$ & $1.84{\times}10^{-12}$ & 2.85 \\
+20000 & $3.81{\times}10^{-12}$ & $2.06{\times}10^{-12}$ & 1.85 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+in cm$^3$\,s$^{-1}$.  Since
+$n({\rm S^+})/n({\rm S^{2+}}) = \nelec\alpha/\Gamma$ and the two codes
+share $\sigma_{\rm pi}$, a factor $2.9$ in $\alpha$ is a factor $2.9$ in
+the ratio at fixed radiation field --- the right sign and about the right
+size for the factor near $2.5$ the line ratios ask for.  The whole
+difference is the low-temperature dielectronic recombination of S$^{2+}$,
+which Badnell computed and Shull \& Van Steenberg's fit does not reach.
+
+\emph{A third code sides with \MoCHII{}.}  \Colt{} carries the same rate as
+two inline functions, \code{alpha\_RR\_SIII} (\code{rates.h}:1539) and
+\code{alpha\_DR\_SIII} (\code{:1612}), and every constant in both is
+\MoCHII{}'s: $2.478{\times}10^{-11}$, $0.4642$, $329.4$, $2.166{\times}10^7$,
+$0.3351$, $7.63{\times}10^5$ for the radiative term and the same seven
+$(c_i, E_i)$ pairs for the dielectronic one.  Two independent
+implementations reading the same Badnell tables is not an independent
+determination --- it is the same source twice, the trap recorded in the
+physics lessons --- but it does settle where the disagreement lives.  It is
+\Mthree{} that is alone, and the disagreement is a choice of compilation
+rather than an error in either code.
+
+The direction of the modern data is worth stating before the decisive test
+below.  MAPPINGS's own tree carries a \emph{third} determination for this
+one rate, \code{lab/data/ionisation/RECOMDAT2.txt}, headed ``Badnell 2015
+empirically adjusted DR and RR recombination for SIII $\to$ SII''.  Summing
+its three tabulated levels as its own header prescribes gives $1.89$ times
+\MoCHII{}'s Badnell total at $6926$~K and $5.4$ times the rate \Mthree{}
+actually uses; how those levels should be combined is a question this memo
+does not settle, and the number is quoted with that caveat.  What is not in
+doubt is that no source file in the \Mthree{} tree reads it ---
+\code{grep} for \code{RECOMDAT2} over \code{src/} returns nothing, while
+\code{RRECOMDAT} and \code{DRECOMDAT} are opened in \code{mapinit.f}:1323
+and \code{:1464} --- so it is present and unconnected, which is precisely
+the level-1-versus-level-2 distinction of Section~\ref{sec:purpose}.
+
+\emph{And \Cloudy{} c25.00 settles it.}  The check named above has now been
+run.  \Cloudy{}'s own test suite carries this benchmark as
+\code{tsuite/auto/hii\_coolstar.in} --- ``dust free cool HII region model,
+Lexington 1995'', a $20$~kK blackbody at $Q({\rm H}) = 10^{49}$,
+$n_{\rm H} = 100$, $R_{\rm in} = 3{\times}10^{18}$~cm, on the same
+abundances --- and it was run here unchanged except for lowering
+\code{print line faint} so the weak lines print (c25.00, 190 zones, 2
+iterations, 55~s, all 30 monitors passing).  Set beside the same median:
+
+\begingroup\small
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+& Med & \Mthree{} & \Cloudy{} c25.00 & \MoCHII{} \\
+\midrule
+{}[S\,\textsc{ii}] 6716+6731  & 0.499  & 0.529  & 0.7441 & 0.781 \\
+\quad ratio to median         &        & 1.06   & \textbf{1.49}   & \textbf{1.57} \\
+{}[S\,\textsc{ii}] 4068+4076  & 0.015  & 0.016  & 0.0226 & 0.0229 \\
+\quad ratio to median         &        & 1.07   & \textbf{1.51}   & \textbf{1.53} \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.371 & 0.324 & 0.2090 & 0.2159 \\
+\quad ratio to median         &        & 0.87   & \textbf{0.56}   & \textbf{0.58} \\
+{}[S\,\textsc{iii}] 9532+9069 & 0.526  & 0.441  & 0.2933 & 0.3044 \\
+\quad ratio to median         &        & 0.84   & \textbf{0.56}   & \textbf{0.58} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\endgroup
+
+\noindent
+\Cloudy{} c25.00 reproduces \MoCHII{}'s excess and deficit on all four
+diagnostics to $1.5$--$5\%$ ($\MoCHII{}/\Cloudy{} = 1.050$, $1.015$,
+$1.033$, $1.038$), and both sit at $\sim\!1.5\times$ the 1995-era median on
+S$^+$ and $\sim\!0.57\times$ on S$^{2+}$ while \Mthree{} stays near it.
+Over the seventeen entries of Table~\ref{tab:m3hii20} the two agree to a
+median ratio of $1.033$, fifteen of them within $10\%$, and the
+volume-weighted $\Te({\rm H^+})$ agrees to $0.05\%$ --- $6923.1$~K against
+$6926.4$~K.  \textbf{The [S\,\textsc{ii}] excess and the
+[S\,\textsc{iii}] deficit are what modern low-temperature dielectronic
+recombination of S$^{2+}$ does to the sulfur balance, and the Lexington
+median encodes the older data.  They are not a \MoCHII{} defect.}
+
+Two independent confirmations come with that run.  The recombination files
+are the same bytes: \code{badnell\_dr.dat} and \code{badnell\_rr.dat} of
+\Cloudy{} c25.00 are md5-identical to \MoCHII{}'s, both headed
+\code{(C)20230512} and \code{(C)20230511}, and the $(16,14,1)$ rows are the
+constants quoted above.  And \Cloudy{}'s regression history names the
+mechanism and dates it.  In \code{hii\_coolstar.in} the monitor for
+[S\,\textsc{ii}] 6720 carries
+\code{>>chng 14 dec 14, from 0.6213 to 0.7149, update S2+ - S+ DR to
+Badnell+ 2015 ApJ}, a $+15\%$ step, and the three [S\,\textsc{iii}]
+monitors carry mirrored downward steps of the same date --- $0.2735
+\rightarrow 0.2325$ at 18.7 $\mu$m, $0.4458 \rightarrow 0.3789$ at
+33.5 $\mu$m, $0.269 \rightarrow 0.2317$ at 9531~\AA{} --- followed by
+\code{>>chng 23 may 11, update RR DR to 2022 Badnell work}, which is the
+release both codes now read.  So there are three vintages of one rate in
+play: Shull \& Van Steenberg (1982), which is what \Mthree{} actually runs
+on; the 2015 adjustment, which MAPPINGS ships unread; and the 2023 release,
+which \MoCHII{} and \Cloudy{} both read.  The two codes on the newest data
+agree with each other and disagree with the benchmark.
+
+\emph{[O\,\textsc{i}] is a different question and the same run separates
+it.}  \Cloudy{} c25.00 gives [O\,\textsc{i}] 6300+6363 $= 0.0084$, sitting
+on the median $0.0088$, against \MoCHII{}'s $0.0158$ and \Mthree{}'s
+$0.0241$.  No data-vintage argument covers that: it separates the two
+three-dimensional Monte Carlo codes from both one-dimensional references
+together, which is the front-resolution reading of the paragraphs above and
+not an atomic-data one.  The same holds at a smaller size for
+[O\,\textsc{ii}] 7320+7330, where \Cloudy{} ($1.41\times$ the median) sits
+with \MoCHII{} ($1.53$) rather than with \Mthree{} ($0.80$) --- so that one
+is \emph{not} front resolution, and it is unexplained.
+
+This has the same shape as the $\alpha_{\rm A}(\HeI{})$ caution already
+recorded for \Mocassin{} and the $\alpha_{\rm B}(\HeI{})$ one for \Colt{}:
+a cross-code disagreement traced to data vintage, to be subtracted before it
+is read as a transport or geometry error.
 
 %==============================================================================
 \section{Software architecture and maintainability}
@@ -2537,7 +3047,28 @@ number is the input to HS7, which is why HS4 deliberately precedes it.
 \emph{Acceptance:} land inside (or bracket) the published Lexington
 PN150 cross-code spread, with each residual attributed one lever at a
 time (binning, diffuse channels, density-dependent cooling, data
-vintage) exactly as the HII40 campaign did.
+vintage) exactly as the HII40 campaign did.  That spread does not have
+to be assembled: Jin et al.\ (2022) Table~4 tabulates 40 PN150 lines
+for MAPPINGS, \Cloudy{}, \Mocassin{}3D and PH with the median and
+$1\sigma$, beside \Mthree{} itself at $33^3$ and $55^3$
+\cite{jin2022}, and it covers every line of the list above except
+[S\,\textsc{iv}] 10.5 $\mu$m and [Ar\,\textsc{v}].  Read it with the
+resolution caveat its own Section~8 attaches: at PN150 the
+$33^3\rightarrow55^3$ change exceeds $10\%$ on
+[N\,\textsc{i}] 5200+5198, [O\,\textsc{i}] 63.1 $\mu$m,
+[O\,\textsc{i}] 6300+6363, [Ne\,\textsc{ii}] 12.8 $\mu$m,
+Si\,\textsc{ii}] 2335+, [S\,\textsc{ii}] 6716+6731 and
+[S\,\textsc{ii}] 4069+4076, reaching $40\%$ on [O\,\textsc{i}]
+6300+6363.  Two \MoCHII{}-side items are specific to this density.
+PN150 is the first gate at which the H\,\textsc{i} two-photon
+collisional suppression bites --- $n_{\rm H} = 3000$ cm$^{-3}$ against
+$n_{\rm crit} \simeq 1.6{\times}10^4$ cm$^{-3}$ is a $16\%$ reduction
+of that continuum, where HII20/HII40 at $100$ cm$^{-3}$ carry under
+$1\%$.  And the sulfur lines are on the list, so the
+$\alpha({\rm S^{2+}}\rightarrow{\rm S^+})$ vintage difference of
+Section~\ref{sec:m3bench} will appear here too and must be separated
+from geometry before anything else is read into
+[S\,\textsc{ii}] 6716+6731.
 
 \subsection{HS5: AGN SED input}
 
@@ -2900,6 +3431,20 @@ Sutherland, R. S., Dopita, M. A., Binette, L., et al.\ 2022,
 \bibitem{lucy1999}
 Lucy, L. B. 1999, ``Computing Radiative Equilibria with Monte Carlo
 Techniques,'' A\&A, 344, 282.
+
+\bibitem{mcclymont2025}
+McClymont, W., Smith, A., \& Tacchella, S. 2025,
+``Modelling the nebular emission of galaxies across cosmic time with
+\textsc{Colt},'' arXiv:2510.13952 (submitted; not yet published),
+\url{https://doi.org/10.48550/arXiv.2510.13952}.
+
+\bibitem{badnell2006}
+Badnell, N. R. 2006, ``Radiative Recombination Data for Modeling Galactic
+Formation, Evolution, and Star Formation,'' ApJS, 167, 334.
+
+\bibitem{shull1982}
+Shull, J. M., \& Van Steenberg, M. 1982, ``The Ionization Equilibrium of
+Astrophysically Abundant Elements,'' ApJS, 48, 95.
 
 \bibitem{verner1996}
 Verner, D. A., Ferland, G. J., Korista, K. T., \& Yakovlev, D. G. 1996,

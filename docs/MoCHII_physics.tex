@@ -2819,7 +2819,7 @@ and reemission refer to one population.
   emission spectrum: the bin from the trapezoid cumulative and the
   wavelength \emph{inside} the bin in closed form from the same
   piecewise-linear density, so the sampled wavelength is continuous and
-  no bin centre enters.  Packets are allocated by stratified sampling of
+  no bin center enters.  Packets are allocated by stratified sampling of
   the cumulative leaf luminosity with one shared offset, so the counts
   telescope to exactly $N$ and the launched luminosity equals
   $\sum {\rm Heat\_dust}\,V$ identically.  Each rank walks only its own
@@ -3187,7 +3187,65 @@ collisional suppression
 with $q_{2s\text{-}2p} = 5.31{\times}10^{-4}$ (at $T \le 10^4$~K) falling to
 $4.71{\times}10^{-4}\,{\rm cm^3\,s^{-1}}$ (at $T \ge 2{\times}10^4$~K), so
 the continuum is quenched above
-$n_{\rm crit} \simeq 1.6{\times}10^4\,{\rm cm^{-3}}$.  No factor is applied
+$n_{\rm crit} \simeq 1.6{\times}10^4\,{\rm cm^{-3}}$.  At the
+$100\,{\rm cm^{-3}}$ of the HII20 and HII40 benchmarks that factor is
+under $1\%$; the first case where it matters is the PN150 standard at
+$3000\,{\rm cm^{-3}}$, where it removes $16\%$ of the continuum.
+
+Two things about that coefficient are worth stating explicitly, because
+the form above hides both.  \emph{First}, $2s$ is depopulated by protons as
+well as by electrons, and the physical suppression is
+$1 + (n_{\rm p}q_{\rm p} + n_e q_{\rm e})/A_{2q}$; the single
+$n_e q$ written here is that expression with $n_{\rm p}$ set to
+$n_e$.  Where hydrogen is fully ionized and helium supplies few
+electrons that is a good identity, and it is why the lumped form survives
+in \textsc{Mocassin}, which is where this code took it.  Where the
+electrons come from carbon instead of from hydrogen --- the partly neutral
+zone, the PDR skin --- $n_{\rm p} \ll n_e$ and the lumped form
+over-suppresses; the continuum there is already a lower bound for the
+reason given at the end of this paragraph, and this adds to it.  Codes that
+keep the two partners apart evaluate each rate in the Pengelly \& Seaton
+(1964) formalism; \textsc{Colt} does, writing the denominator out as
+$A_{2q} + q_{\rm e}n_e + q_{\rm p}n_{\rm HII}$ with reduced masses,
+$D_{nl} = Z^{-2}6n^2(n^2-l^2-l-1)$ and the smaller of the two
+impact-parameter cutoffs (\code{source/nebcont.cc}:340--364 of
+\code{\char`~/RT\_Codes/colt}).
+
+\emph{Second, and larger than the first:} that implementation and this one
+disagree about the \emph{size} of the quenching, not only about how the
+partners are counted.  Evaluated at $10^4$~K, the Pengelly \& Seaton
+expression gives $q_{\rm e}+q_{\rm p} = 3.24{\times}10^{-3}\,{\rm
+cm^3\,s^{-1}}$ at $n_e = 100$, falling only to $2.80{\times}10^{-3}$ at
+$n_e = 10^4$ (the weak density dependence is the Debye cutoff), against the
+single $5.31{\times}10^{-4}$ used here --- a factor $6.1$.  The critical
+density is $2.5{\times}10^3\,{\rm cm^{-3}}$ rather than
+$1.6{\times}10^4$, and the surviving fraction of the continuum is
+
+\begin{center}
+\begin{tabular}{rrrr}
+\hline
+$n_e$ [cm$^{-3}$] & this code & Pengelly \& Seaton & ratio \\
+\hline
+   100 & 0.994 & 0.962 & 0.97 \\
+  1000 & 0.939 & 0.731 & 0.78 \\
+  3000 & 0.838 & 0.485 & 0.58 \\
+ 10000 & 0.608 & 0.227 & 0.37 \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent
+so at the $100\,{\rm cm^{-3}}$ of HII20 and HII40 the choice is worth $3\%$
+of a term that is itself a few percent and nothing recorded moves, while at
+the $3000\,{\rm cm^{-3}}$ of the PN150 gate it is a factor $1.7$ in the
+transported continuum.  Which is right is \emph{not} decided here.  The
+number this code uses reaches it through \textsc{Mocassin}
+\code{emission\_mod.f90}:605--615, whose only provenance note is ``the value
+given in table 4.10 from Osterbrock'', and it has not been checked against
+the printed table --- so it is not even established whether
+$5.31{\times}10^{-4}$ is the proton-plus-electron sum or the proton term
+alone.  Settling it needs Osterbrock's table and Pengelly \& Seaton (1964)
+itself, and it should be settled before PN150 is used as a gate.  No factor is applied
 to the helium terms: $A_{2q}$ is $51.3\,{\rm s^{-1}}$ for
 He\,\textsc{i} $2^1{\rm S}$ and $526\,{\rm s^{-1}}$ for He\,\textsc{ii}
 $2s$, putting their critical densities one to two orders of magnitude
