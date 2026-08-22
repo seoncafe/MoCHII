@@ -102,7 +102,7 @@ program check_kext_table
   !--- 1e-6 where astrodust sat at 1e-9.  Both halves of every product now come
   !--- from one set of numbers.  Measured here (worst single wavelength, cross
   !--- sections / albedo pair, lam >= 0.0912 um then the ionizing band):
-  !---   astrodust  0.0 / 0.0            3.3e-16 / 1.1e-16
+  !---   astrodust  0.0 / 8.3e-24        2.8e-16 / 1.1e-16
   !---   dl07       2.7e-15 / 7.8e-16    4.2e-16 / 3.3e-16
   !---   mrn        4.2e-16 / 2.2e-16    4.7e-16 / 3.3e-16
   !---   zubko      5.8e-16 / 2.2e-16    6.3e-16 / 2.2e-16

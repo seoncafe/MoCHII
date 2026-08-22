@@ -3066,9 +3066,81 @@ $n_{\rm crit} \simeq 1.6{\times}10^4$ cm$^{-3}$ is a $16\%$ reduction
 of that continuum, where HII20/HII40 at $100$ cm$^{-3}$ carry under
 $1\%$.  And the sulfur lines are on the list, so the
 $\alpha({\rm S^{2+}}\rightarrow{\rm S^+})$ vintage difference of
-Section~\ref{sec:m3bench} will appear here too and must be separated
-from geometry before anything else is read into
-[S\,\textsc{ii}] 6716+6731.
+Section~\ref{sec:m3bench} reaches this gate too and must be separated from
+geometry before anything is read into [S\,\textsc{ii}] 6716+6731.  How
+much of it reaches here has been measured, and it is not what HII20 would
+have predicted.
+\textbf{The sulfur offset has been measured at this density, before the gate
+runs.}  \Cloudy{}'s test suite carries the PN150 benchmark as
+\code{tsuite/auto/pn\_paris.in} --- ``Paris meeting PN'', and its
+parameters are Jin Table~1 entry for entry ($150$~kK blackbody,
+$n_{\rm H} = 3000$, $R_{\rm in} = 10^{17}$~cm, He $0.1$,
+C $3.0{\times}10^{-4}$, N $1.0{\times}10^{-4}$, O $6.0{\times}10^{-4}$,
+Ne $1.5{\times}10^{-4}$, Mg and Si $3.0{\times}10^{-5}$,
+S $1.5{\times}10^{-5}$, Cl/Ar/Fe off).  It was run here unchanged except
+for lowering \code{print line faint} (c25.00, 187 zones, 33~s, all 69
+monitors within tolerance), and renormalized from its \code{Ca B} 4861
+normalization to H\,\textsc{i} 4861 (a factor $1.0071$).  Against the
+median of Jin Table~4:
+
+\begingroup\small
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+& Med & $\sigma$ & \Mthree{} & \Cloudy{} c25.00 & ratio to median \\
+\midrule
+{}[S\,\textsc{ii}] 6716+6731    & 0.359 & 0.050 & 0.311 & 0.6162 & \textbf{1.72} \\
+{}[S\,\textsc{ii}] 4069+4076    & 0.064 & 0.012 & 0.049 & 0.1170 & \textbf{1.83} \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.527 & 0.084 & 0.526 & 0.5067 & 0.96 \\
+{}[S\,\textsc{iii}] 33.6 $\mu$m & 0.210 & 0.032 & 0.200 & 0.1879 & 0.89 \\
+{}[S\,\textsc{iii}] 9532+9069   & 2.02  & 0.08  & 2.02  & 1.9853 & 0.98 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\endgroup
+
+\noindent
+so the offset does not simply carry over from HII20: the [S\,\textsc{ii}]
+excess is \emph{larger} ($1.72$ and $1.83$ against $1.49$ and $1.51$) while
+the [S\,\textsc{iii}] deficit has \emph{gone} ($0.96$, $0.89$, $0.98$
+against $0.56$, $0.56$).  \Cloudy{}'s own volume-mean ionization says why.
+At PN150 sulfur is S$^+$ $0.162$ / S$^{2+}$ $0.402$ / S$^{3+}$ $0.335$ /
+S$^{4+}$ $0.075$ / S$^{5+}$ $0.022$, so S$^{2+}$ sits in the middle of a
+chain and whatever a faster $\alpha({\rm S^{2+}}\rightarrow{\rm S^+})$
+takes out of it is refilled from S$^{3+}$; at HII20, where the same average
+is S$^+$ $0.61$ / S$^{2+}$ $0.39$ / S$^{3+}$ $0.000$, S$^{2+}$ is the top
+stage and has nothing above it to draw on, so both members of the pair
+move.  \Cloudy{}'s regression history shows the same asymmetry directly:
+the 2014-12-14 \code{update S2+ - S+ DR to Badnell+ 2015 ApJ} moved this
+model's [S\,\textsc{ii}] 6720 by $0.4412 \rightarrow 0.499$ ($+13\%$) and
+its [S\,\textsc{iii}] 9531 by only $1.449 \rightarrow 1.378$ ($-5\%$).
+
+\emph{What that means for the gate.}  When \MoCHII{} runs PN150 it should
+be \emph{expected} to land near $1.7$--$1.8$ times the published
+[S\,\textsc{ii}] with [S\,\textsc{iii}] on the median, and neither is a
+defect.  The corollary matters more: at this density [S\,\textsc{iii}]
+agreeing with the published spread does \emph{not} clear the sulfur data,
+because the vintage difference barely shows there.  Four other departures
+of \Cloudy{} c25.00 from the same median should be subtracted before any
+\MoCHII{} residual is attributed to geometry or transport: He\,\textsc{ii}
+4686 at $0.82\times$ ($-6\sigma$), [Ne\,\textsc{iii}] 3869+3968 at
+$0.72\times$ ($-2.8\sigma$), $L({\rm H}\beta)$ at $1.08\times$
+($2.897{\times}10^{35}$ against $2.68$), and [O\,\textsc{iii}] 5007+4959 at
+$1.08\times$.  [O\,\textsc{i}] 6300+6363 is the one that needs no
+correction at all: $0.1538$ against a median of $0.154$.
+
+\emph{And the gate is still blocked on HS2, quantitatively.}  That same
+ionization structure puts $10.1\%$ of sulfur above S$^{3+}$
+(S$^{4+}$ $0.075$ + S$^{5+}$ $0.022$ + S$^{6+}$ $0.004$), while
+\MoCHII{}'s registry stops at S\,\textsc{iv}
+(\code{data/atomic/element\_s.txt}, \code{ELEMENT s 16 4}), so S$^{3+}$ is
+its terminal stage and would absorb that $10\%$.  [S\,\textsc{iv}]
+10.5 $\mu$m is meanwhile the strongest sulfur line in the model at $2.46$
+relative to H$\beta$.  The S $4\!\rightarrow\!6$ row of the HS2 table above
+is therefore not optional for this gate, and the same argument reads off
+the other rows: Ne$^{4+}$ and above, O$^{4+}$ and above, and the
+Mg/Si stage tracking are all populated here.
+
 
 \subsection{HS5: AGN SED input}
 
