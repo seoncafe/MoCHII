@@ -37,9 +37,12 @@
 # a power law and two D03 dielectric functions, both of them stated in code and
 # in dielectric/, so it owns no input file of its own.
 #
-# The sources under sed/src/ and sed/build_lib.sh are byte-identical to their
-# SEDust v1.00 counterparts, so `cmp` against that tree is the whole check that
-# this copy is current.  The one file of the library that reaches into the
+# The sources under sed/src/ are byte-identical to their SEDust v1.00
+# counterparts, so `cmp` against that tree is the whole check that this copy is
+# current.  sed/build_lib.sh is the one exception: it differs from upstream's by
+# a single entry, dustem_io, which SEDust v1.00 added as a library module (see
+# `use dustem_io` in sed_astrodust.f90) without adding it to its own build_lib.sh
+# source list.  The one file of the library that reaches into the
 # T-matrix, src/euv_astrodust_tmatrix.f90, is deliberately not copied: it serves
 # the astrodust EUV band, which only a lam_min shorter than the model's own axis
 # asks for, and MoCHII passes no lam_min.  Without it the archive links with no
@@ -73,6 +76,13 @@ cp "$SED"/data/release/{extinction.dat,kext_albedo_WD_MW_3.1_60_D03.all_2003,sca
 # q_*.dat from make_qtable.x, kext_*.dat from calc_kext.x.  Neither pattern
 # matches an input -- Zubko's DustEM tables are Gra_/suvSil_/PAH_*.dat and
 # astrodust's DH21 refractive-index tabulation is q_DH21Ad_*.dat.gz.
+#
+# SEDust v1.00 also builds two further models, themis and g18d, and this loop
+# deliberately leaves them out.  Their wavelength axis runs 0.04 to 1e5 um (800
+# points), so the shortest wavelength they carry is 31.0 eV, while MoCHII
+# transports 13.598-100 eV.  A model that cannot cover the transported band
+# would be refused by the band-coverage check in gas_opacity_mod anyway, so
+# offering it here would only move the failure later.
 for m in astrodust dl07 mrn zubko; do
   mkdir -p "$HERE/data/$m"
   find "$SED/data/$m" -maxdepth 1 -type f \

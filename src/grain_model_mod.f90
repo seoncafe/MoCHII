@@ -18,12 +18,13 @@ module grain_model_mod
 ! extinction curve (/kext) together, so the wavelengths the transport runs on
 ! and the curve it reads its cross sections off come from the same file and
 ! cannot be paired wrongly.  What is not optics sits beside that directory: the
-! size distribution (release/size_distribution.dat), the dielectric functions
-! and PAH cross sections the optics were computed on (dielectric/), and, for
-! Zubko, the ZDA component definition.  Naming the model is therefore all a run
-! does; only par%sed_kext overrides part of it, with an extinction curve of its
-! own.  Nothing outside par%sed_data_dir is read, and nothing is resolved
-! against the working directory, so the run needs no particular one.
+! dielectric functions and PAH cross sections the optics were computed on
+! (dielectric/), and, for Zubko, the ZDA component definition.  The size
+! distributions are analytic and no file is read for one.  Naming the model is
+! therefore all a run does; only par%sed_kext overrides part of it, with an
+! extinction curve of its own.  Nothing outside par%sed_data_dir is read, and
+! nothing is resolved against the working directory, so the run needs no
+! particular one.
 !
 ! include_euv = .true., always, and not tied to par%ion_add_dust.  It selects
 ! the whole of the model's stored wavelength axis instead of its non-ionizing
@@ -107,11 +108,13 @@ contains
     !--- for the length of the build, so EVERY file the model is made of is
     !--- resolved from there and every failure to read one comes back as a
     !--- status in one vocabulary, the same numbers whichever model is named:
-    !--- 1 optics table, 2 size distribution, 3 dielectric function, 5 the
-    !--- extinction curve, 6 calorimetry, 9 the model definition, and 90 / 91
-    !--- for a model name MoCHII cannot offer.  A directory that does not exist
-    !--- is a status too, not a runtime abort, so there is nothing left for this
-    !--- module to guard with a working directory of its own.
+    !--- 1 optics table, 3 dielectric function, 5 the extinction curve, 6
+    !--- calorimetry, 9 the model definition, and 90 / 91 for a model name
+    !--- MoCHII cannot offer.  Status 2, the size distribution, is retired: the
+    !--- size distributions are analytic and no file is read for one.  A
+    !--- directory that does not exist is a status too, not a runtime abort, so
+    !--- there is nothing left for this module to guard with a working directory
+    !--- of its own.
     !--- Every rank builds the same model from the same files, so every rank
     !--- reaches the same status and every rank aborts.  A rank other than 0
     !--- therefore tears the job down while rank 0 is still writing, and a
@@ -121,7 +124,9 @@ contains
     if (st /= 0) then
        if (st == 90) then
           !--- Of the models build_dust codes, MoCHII offers the four whose
-          !--- optics come with the tree.
+          !--- optics come with the tree.  SEDust also builds 'themis' and
+          !--- 'g18d', whose wavelength axis stops at 31 eV and cannot cover
+          !--- the transported band, so MoCHII does not offer them.
           write(msg,'(3a)') 'par%dust_model = ''', trim(par%dust_model), &
              ''' unknown (use ''astrodust'', ''dl07'', ''mrn'' or ''zubko'')'
        else if (st == 91) then
@@ -231,6 +236,19 @@ contains
     allocate(lam(n), alb(n), cosg(n), cext(n), cabs(n), csca(n))
     lam = dust_lambda(dmodel)
     call dust_extinction(dmodel, cext, cabs, csca, gbar=cosg, status=st)
+    !--- Status 4 is the one code dust_extinction means as a warning: the model
+    !--- carries no asymmetry parameter, so gbar came back 0 by convention
+    !--- rather than as a measurement, while C_ext / C_abs / C_sca are valid.
+    !--- Treating it as fatal would refuse such a model outright; treating it as
+    !--- success would scatter isotropically and never say so.  All four models
+    !--- MoCHII offers return 0, so this line is a guard against a model added
+    !--- later, not a condition any current run reaches.
+    if (st == 4) then
+       if (mpar%p_rank == 0) write(*,'(3a)') &
+          'WARNING: the ''', trim(par%dust_model), &
+          ''' model carries no <cos>; the scattering is isotropic (gbar = 0)'
+       st = 0
+    end if
     if (st /= 0) then
        select case (st)
        case (2)

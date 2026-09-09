@@ -403,6 +403,9 @@ public
      !---               has nothing to weight;
      !---   'zubko'     Zubko, Dwek & Arendt (2004) BARE-GR-S, on that model's
      !---               own ZDA optics tables.
+     !--- SEDust also builds 'themis' and 'g18d', whose wavelength axis stops at
+     !--- 31 eV and cannot cover the transported band, so MoCHII does not offer
+     !--- them.
      character(len=16)  :: dust_model   = 'astrodust'
      !--- SEDust data directory: the ONE directory build_dust resolves
      !--- everything the named dust_model needs from, including the shared
@@ -410,8 +413,6 @@ public
      !---   <sed_data_dir>/<dust_model>/sedust_<dust_model>.h5
      !---        the model's optics -- wavelength axis, cross-section tables and
      !---        size-integrated extinction curve (/kext) in one file;
-     !---   <sed_data_dir>/release/size_distribution.dat
-     !---        the grain size distribution (not optics, so beside them);
      !---   <sed_data_dir>/dielectric/
      !---        the optical constants and PAH cross sections the optics are
      !---        computed on, shared by the models;

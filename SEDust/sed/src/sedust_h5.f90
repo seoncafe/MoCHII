@@ -63,6 +63,9 @@ module sedust_h5
    public :: h5_group, h5_group_open, h5_group_close, h5_unlink
    public :: h5_write_1d, h5_write_2d, h5_write_3d, h5_write_6d
    public :: h5_read_1d, h5_read_2d, h5_read_3d, h5_read_6d
+   ! A dataset whose values are a small set of codes rather than a measured
+   ! quantity: written as one byte each, read back as default integers.
+   public :: h5_write_2d_i8, h5_read_2d_int
    public :: h5_dims
    public :: h5_put_attr_d, h5_put_attr_i, h5_put_attr_s
    public :: h5_get_attr_d, h5_get_attr_i, h5_get_attr_s
@@ -115,10 +118,19 @@ contains
    end subroutine h5_create_file
 
    subroutine h5_open_file(path, fid, ok)
+      ! Ask the filesystem before asking HDF5.  A product that is simply not
+      ! there is the ordinary case for a caller that falls back to the text
+      ! tables, and HDF5 answers it by printing its whole error stack to
+      ! stdout -- which turned every such fallback, documented as quiet, into
+      ! twenty lines of diagnostics.  A file that exists and cannot be opened
+      ! still reaches HDF5 and still reports.
       character(len=*), intent(in)  :: path
       integer(h5id_k),   intent(out) :: fid
       logical,          intent(out) :: ok
       integer :: e
+      logical :: there
+      inquire(file=trim(path), exist=there)
+      if (.not. there) then;  fid = 0;  ok = .false.;  return;  end if
       call h5fopen_f(trim(path), H5F_ACC_RDONLY_F, fid, e)
       ok = (e == 0)
    end subroutine h5_open_file
@@ -130,6 +142,9 @@ contains
       integer(h5id_k),  intent(out) :: fid
       logical,          intent(out) :: ok
       integer :: e
+      logical :: there
+      inquire(file=trim(path), exist=there)
+      if (.not. there) then;  fid = 0;  ok = .false.;  return;  end if
       call h5fopen_f(trim(path), H5F_ACC_RDWR_F, fid, e)
       ok = (e == 0)
    end subroutine h5_open_rw
@@ -276,6 +291,37 @@ contains
    end subroutine write_real
 
 
+   subroutine h5_write_2d_i8(loc, name, a, units, long_name)
+      ! A 2-D array of small integer codes.  The FILE type is one signed byte;
+      ! the caller keeps default integers and HDF5 converts on the way out, so
+      ! nothing here has to know an int8 Fortran kind.  Codes are not measured
+      ! quantities: storing them as doubles costs eight bytes to carry three
+      ! distinct values, and says they are continuous when they are not.
+      integer(h5id_k),  intent(in) :: loc
+      character(len=*), intent(in) :: name
+      integer,          intent(in) :: a(:,:)
+      character(len=*), intent(in), optional :: units, long_name
+      integer(hsize_t) :: d(2), ch(2)
+      integer(h5id_k)  :: sid, did, dcpl
+      integer :: e
+      d = [int(size(a,1), hsize_t), int(size(a,2), hsize_t)]
+      call h5screate_simple_f(2, d, sid, e)
+      ch = d
+      if (ch(1) > int(LAM_CHUNK, hsize_t)) ch(1) = int(LAM_CHUNK, hsize_t)
+      call h5pcreate_f(H5P_DATASET_CREATE_F, dcpl, e)
+      call h5pset_chunk_f(dcpl, 2, ch, e)
+      call h5pset_shuffle_f(dcpl, e)
+      call h5pset_deflate_f(dcpl, GZIP_LEVEL, e)
+      call h5dcreate_f(loc, trim(name), H5T_STD_I8LE, sid, did, e, dcpl_id=dcpl)
+      call h5dwrite_f(did, H5T_NATIVE_INTEGER, a, d, e)
+      if (present(units))     call h5_put_attr_s(did, 'units', units)
+      if (present(long_name)) call h5_put_attr_s(did, 'long_name', long_name)
+      call h5dclose_f(did, e)
+      call h5pclose_f(dcpl, e)
+      call h5sclose_f(sid, e)
+   end subroutine h5_write_2d_i8
+
+
    ! ---- readers -------------------------------------------------------
    subroutine h5_dims(loc, name, d, ok)
       ! Shape of a dataset, so a caller can allocate before reading.
@@ -347,6 +393,36 @@ contains
       call h5sclose_f(msid, e);  call h5sclose_f(sid, e);  call h5dclose_f(did, e)
       ok = (e == 0)
    end subroutine h5_read_2d
+
+
+   subroutine h5_read_2d_int(loc, name, a, ok, i0)
+      ! h5_read_2d for a dataset of integer codes.  The memory type is the
+      ! default integer whatever the file holds, so this reads a product
+      ! written with one-byte codes and a product written before that, whose
+      ! codes are doubles, without either the caller or the file saying which.
+      integer(h5id_k),  intent(in)  :: loc
+      character(len=*), intent(in)  :: name
+      integer, allocatable, intent(out) :: a(:,:)
+      logical,          intent(out) :: ok
+      integer, optional, intent(in) :: i0
+      integer(hsize_t), allocatable :: d(:)
+      integer(hsize_t) :: off(2), cnt(2)
+      integer(h5id_k)  :: did, sid, msid
+      integer :: e, lo
+      ok = .false.
+      call h5_dims(loc, name, d, ok);  if (.not. ok) return
+      lo = 1;  if (present(i0)) lo = max(1, i0)
+      cnt = [d(1) - int(lo-1, hsize_t), d(2)]
+      allocate(a(cnt(1), cnt(2)))
+      call h5dopen_f(loc, trim(name), did, e)
+      call h5dget_space_f(did, sid, e)
+      off = [int(lo-1, hsize_t), 0_hsize_t]
+      call h5sselect_hyperslab_f(sid, H5S_SELECT_SET_F, off, cnt, e)
+      call h5screate_simple_f(2, cnt, msid, e)
+      call h5dread_f(did, H5T_NATIVE_INTEGER, a, cnt, e, mem_space_id=msid, file_space_id=sid)
+      call h5sclose_f(msid, e);  call h5sclose_f(sid, e);  call h5dclose_f(did, e)
+      ok = (e == 0)
+   end subroutine h5_read_2d_int
 
    subroutine h5_read_3d(loc, name, a, ok, i0)
       ! (n_lam, n_a, n_k); i0 cuts the wavelength dimension as above.
@@ -592,6 +668,17 @@ contains
       integer(h5id_k), intent(in) :: loc;  character(len=*), intent(in) :: name
       integer, intent(out) :: v;  logical, intent(out) :: ok
       v = 0;  ok = .false.
+   end subroutine
+   subroutine h5_write_2d_i8(loc, name, a, units, long_name)
+      integer(h5id_k), intent(in) :: loc;  character(len=*), intent(in) :: name
+      integer, intent(in) :: a(:,:)
+      character(len=*), intent(in), optional :: units, long_name
+   end subroutine
+   subroutine h5_read_2d_int(loc, name, a, ok, i0)
+      integer(h5id_k), intent(in) :: loc;  character(len=*), intent(in) :: name
+      integer, allocatable, intent(out) :: a(:,:);  logical, intent(out) :: ok
+      integer, optional, intent(in) :: i0
+      ok = .false.
    end subroutine
    subroutine h5_get_attr_s(loc, name, v, ok)
       integer(h5id_k), intent(in) :: loc;  character(len=*), intent(in) :: name
