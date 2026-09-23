@@ -24,11 +24,12 @@
  par%eion_min=13.598
  par%eion_max=100.0
  par%tstar=4.0e4
- par%He_abund=0.0
+ par%abund_He=0.0
  par%xHI_init=1.0
  par%ion_add_dust=.false.
  par%gas_niter=0
  par%te_fixed=1.0e4
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%source_geometry='slab'
  par%slab_faces='both'
  par%slab_top_mode='beam'

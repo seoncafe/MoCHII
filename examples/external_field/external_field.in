@@ -40,7 +40,7 @@
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! spectral shape of the external field [K]
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0e-3         ! start ionized; the front recombines inward
 
  !--- external isotropic field only (no internal star)
@@ -59,6 +59,7 @@
  par%gas_tol       = 7.0e-3         ! just above the MC noise floor at 8e6 photons
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 
  !--- peel-off imaging toward the default +z observer; direc0 gives exp(+tau)
  par%ion_peel      = .true.

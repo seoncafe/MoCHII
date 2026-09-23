@@ -32,12 +32,13 @@
  par%xHI_init      = 1.0e-3
  par%xHeI_init     = 0.0
  par%xHeII_init    = 1.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  par%gas_niter     = 20
  par%gas_tol       = 3.0e-3
  par%te_fixed      = 1.0e4
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0
  par%case_ab       = 'A'
  par%diffuse_field = .true.

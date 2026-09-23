@@ -15,7 +15,7 @@
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0e-3
  par%xHeI_init     = 0.0
  par%xHeII_init    = 1.0
@@ -25,6 +25,7 @@
  par%gas_tol       = 2.0e-3
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 
  par%refine_front  = .true.         ! re-refine the octree on the front
  par%refine_iter   = 1              ! re-refine once the front is established,

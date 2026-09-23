@@ -207,7 +207,7 @@ contains
   !   electrons         sum(ne V)        -> ne by volume
   !   dust extinction   sum(rhokap V)    -> rhokap by volume
   !   thermal energy    sum(n_tot Te V)  -> Te by n_tot V, with
-  !                                         n_tot = nH(1 + He_abund) + ne
+  !                                         n_tot = nH(1 + abund_He) + ne
   ! Where a region holds no material the fractions and Te carry no thermal
   ! content, and the plain volume average is used so the value stays inside
   ! the range of the old leaves instead of being invented.
@@ -252,7 +252,7 @@ contains
           smx1 = smx1 + wm*gas_xHI(jl)
           smx2 = smx2 + wm*gas_xHeI(jl)
           smx3 = smx3 + wm*gas_xHeII(jl)
-          wt   = (gas_nH(jl)*(1.0_wp + par%He_abund) + gas_ne(jl))*ov
+          wt   = (gas_nH(jl)*(1.0_wp + par%abund_He) + gas_ne(jl))*ov
           st   = st   + wt
           ste  = ste  + wt*gas_Te(jl)
           svx1 = svx1 + ov*gas_xHI(jl)
@@ -321,11 +321,11 @@ contains
        vol  = (2.0_wp*leaf_half(il))**3
        a(1) = a(1) + gas_nH(il)*vol
        a(2) = a(2) + gas_nH(il)*gas_xHI(il)*vol
-       a(3) = a(3) + gas_nH(il)*par%He_abund*gas_xHeI(il)*vol
-       a(4) = a(4) + gas_nH(il)*par%He_abund*gas_xHeII(il)*vol
+       a(3) = a(3) + gas_nH(il)*par%abund_He*gas_xHeI(il)*vol
+       a(4) = a(4) + gas_nH(il)*par%abund_He*gas_xHeII(il)*vol
        a(5) = a(5) + gas_ne(il)*vol
        a(6) = a(6) + amr_grid%rhokap(il)*vol
-       a(7) = a(7) + (gas_nH(il)*(1.0_wp + par%He_abund) + gas_ne(il)) &
+       a(7) = a(7) + (gas_nH(il)*(1.0_wp + par%abund_He) + gas_ne(il)) &
                      *gas_Te(il)*vol
     end do
 
@@ -334,11 +334,11 @@ contains
        vol  = (2.0_wp*half/2.0_wp**nlev_(il))**3
        b(1) = b(1) + s_nH(il)*vol
        b(2) = b(2) + s_nH(il)*s_x1(il)*vol
-       b(3) = b(3) + s_nH(il)*par%He_abund*s_x2(il)*vol
-       b(4) = b(4) + s_nH(il)*par%He_abund*s_x3(il)*vol
+       b(3) = b(3) + s_nH(il)*par%abund_He*s_x2(il)*vol
+       b(4) = b(4) + s_nH(il)*par%abund_He*s_x3(il)*vol
        b(5) = b(5) + s_ne(il)*vol
        b(6) = b(6) + s_rk(il)*vol
-       b(7) = b(7) + (s_nH(il)*(1.0_wp + par%He_abund) + s_ne(il)) &
+       b(7) = b(7) + (s_nH(il)*(1.0_wp + par%abund_He) + s_ne(il)) &
                      *s_te(il)*vol
     end do
 

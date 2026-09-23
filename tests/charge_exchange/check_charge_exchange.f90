@@ -105,7 +105,7 @@ program check_charge_exchange
   par%metal_ne       = .true.
   par%charge_exchange = 'two_way'
   par%case_ab        = 'B'
-  par%He_abund       = 0.1_wp
+  par%abund_He       = 0.1_wp
   par%ci_model       = 'voronov'
   par%recomb_model   = 'badnell_milne'
   !--- the n-level (T, n_e) cooling tables play no part here and are built by

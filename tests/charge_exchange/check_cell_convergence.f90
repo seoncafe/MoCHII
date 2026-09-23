@@ -31,7 +31,7 @@ program check_cell_convergence
   par%metal_ne        = .true.
   par%charge_exchange = 'two_way'
   par%case_ab         = 'B'
-  par%He_abund        = 0.1_wp
+  par%abund_He        = 0.1_wp
   par%ci_model        = 'voronov'
   par%recomb_model    = 'badnell_milne'
   par%cooling_model   = 'low_density'

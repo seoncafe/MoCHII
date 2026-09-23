@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "python"))
 from mochii_output import HeiMetaData, RatesData          # noqa: E402
 
 ATOM = os.path.join(HERE, "..", "..", "data", "atomic")
-YHE = 0.1                                     # par%He_abund in all three runs
+YHE = 0.1                                     # par%abund_He in all three runs
 NH = {"hei_low_density": 100.0, "hei_high_density": 1.0e4,
       "hei_low_density_fuv": 100.0}
 RCUT = {"hei_low_density": 1.0, "hei_high_density": 0.038}   # core radius [pc]
@@ -75,7 +75,7 @@ NCRIT = A31 / Q31_0                           # A_31/(q_31a+q_31b) ~ 3945
 def load(base):
     """Return radius [pc], n_2s3, Phi_3, n_e, T_e, and n_HeII for a run.
 
-    n_HeII = nH * He_abund * x_HeII with nH the run's uniform density and
+    n_HeII = nH * abund_He * x_HeII with nH the run's uniform density and
     x_HeII from the rates file (leaf order matches the heimeta file)."""
     hm = HeiMetaData(os.path.join(HERE, base + "_heimeta.h5"), atomic_dir=ATOM)
     rt = RatesData(os.path.join(HERE, base + "_rates.h5"))

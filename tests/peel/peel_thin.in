@@ -25,13 +25,14 @@
  par%xHI_init      = 1.0e-4
  par%xHeI_init     = 0.0
  par%xHeII_init    = 0.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  !--- G1 iteration (case B on-the-spot, fixed Te)
  par%gas_niter     = 0
  par%gas_tol       = 2.0e-3
  par%te_fixed      = 1.0e4
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0
  par%case_ab       = 'B'
 

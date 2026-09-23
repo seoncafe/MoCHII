@@ -26,7 +26,7 @@
  par%xHI_init      = 1.0
  par%xHeI_init     = 0.1
  par%xHeII_init    = 0.9
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  !--- iteration: thermal balance + metals, case B

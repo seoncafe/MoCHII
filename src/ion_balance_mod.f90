@@ -78,7 +78,7 @@ contains
     !--- below to multiply-adds).
     if (with_metal_ne .or. with_metal_cx) call species_ne_prepare(il, T)
 
-    yHe = par%He_abund
+    yHe = par%abund_He
     if (caseA) then
        aH = alphaA_HII(T);  aHe2 = alphaA_HeII(T);  aHe3 = alphaA_HeIII(T)
     else
@@ -362,7 +362,7 @@ contains
     integer :: il, ierr
 
     T   = par%te_fixed
-    yHe = par%He_abund
+    yHe = par%abund_He
     w   = par%ion_relax
     caseA = trim(par%case_ab) == 'A'
 

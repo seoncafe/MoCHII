@@ -23,10 +23,11 @@
  par%xHI_init      = 0.1
  par%xHeI_init     = 1.0
  par%xHeII_init    = 0.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'g0_gamma.h5'
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 /

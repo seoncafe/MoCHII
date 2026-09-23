@@ -29,7 +29,7 @@
  par%tstar         = 4.0e4
 
  par%xHI_init      = 1.0
- par%He_abund      = 0.0
+ par%abund_He      = 0.0
  par%ion_add_dust  = .false.
 
  par%gas_niter     = 0
@@ -48,4 +48,5 @@
  par%save_direc0   = .true.
  par%nxim          = 201
  par%nyim          = 201
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 /

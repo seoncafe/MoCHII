@@ -189,7 +189,7 @@ contains
     real(kind=wp) :: nHI, nHeI, nHeII, R_secHI, R_secHeI
 
     nleaf = amr_grid%nleaf
-    yHe = par%He_abund
+    yHe = par%abund_He
     do il = 1, nleaf
        nH   = gas_nH(il)
        xHI  = gas_xHI(il);  xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il)

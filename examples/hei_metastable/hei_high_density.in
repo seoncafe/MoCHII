@@ -36,7 +36,7 @@
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 3.177837e38    ! ionizing-band luminosity [erg/s]
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0e-3
 
  par%gas_niter     = 40
@@ -44,6 +44,7 @@
  par%gas_tol       = 5.0e-3
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 
  par%atomic_dir      = '../../data/atomic'   ! for hei_metastable.txt
  par%hei_metastable  = .true.                ! 2^3S diagnostic (no physics change)

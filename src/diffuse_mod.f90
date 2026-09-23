@@ -92,8 +92,8 @@ contains
        kT_eV  = kboltz_cgs*T/ev2erg
        xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
        nHII    = nH*(1.0_wp - gas_xHI(il))
-       nHeII_n = nH*par%He_abund*gas_xHeII(il)
-       nHeIII  = nH*par%He_abund*xHeIII
+       nHeII_n = nH*par%abund_He*gas_xHeII(il)
+       nHeIII  = nH*par%abund_He*xHeIII
        !--- channel energy luminosities [erg/s]
        a1 = alphaA_HII(T)   - alphaB_HII(T)
        dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(1, eth_HI, kT_eV, T)*ev2erg*vol

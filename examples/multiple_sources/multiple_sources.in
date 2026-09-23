@@ -30,7 +30,7 @@
 
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! global fallback shape; unused since src_tstar is set
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0e-3
 
  !--- two internal point sources with distinct temperature and luminosity
@@ -56,6 +56,7 @@
  par%gas_tol       = 5.0e-3
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 
  par%file_format   = 'hdf5'
  par%out_file      = 'multiple_sources.h5'

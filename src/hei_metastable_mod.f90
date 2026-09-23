@@ -95,7 +95,7 @@ contains
     !--- already ALLREDUCEd before output; sub-threshold bins give sigma_3 = 0.
     call hei_phi3(phi3, nleaf)
 
-    yHe = par%He_abund
+    yHe = par%abund_He
     do il = 1, nleaf
        nH  = gas_nH(il);   ne = gas_ne(il);   Te = gas_Te(il)
        Tc  = min(max(Te, hm_Tmin), hm_Tmax)            ! clamp to the fit range

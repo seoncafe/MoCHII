@@ -29,7 +29,7 @@ gen_input () {   # $1=tag $2=nphot $3=mode(random|sobol) $4=seedval
  par%xHI_init      = 0.1
  par%xHeI_init     = 1.0
  par%xHeII_init    = 0.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
  par%source_geometry = 'point'
  par%launch_sequence = '$3'

@@ -8,7 +8,7 @@ module gas_opacity_mod
 !   kap = nH * [ x_HI sigma_HI(E) +
 !                y_He (x_HeI sigma_HeI(E) + x_HeII sigma_HeII(E)) + metals ]
 !         * distance2cm   (+ grey dust rhokap when par%ion_add_dust)
-! with y_He = par%He_abund = n_He/n_H.  This module owns the two leaf-resident
+! with y_He = par%abund_He = n_He/n_H.  This module owns the two leaf-resident
 ! ingredients of that expression: the dust extinction table (read once, then
 ! evaluated at the exact energy through ion_dust_*_at), and the grey grain
 ! extinction density rhokap, which follows the live ionization state.

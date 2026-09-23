@@ -29,7 +29,7 @@
  par%add_fuv       = .true.
  par%efuv_min      = 6.0
  par%nnu_fuv       = 16
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0
 
  par%nsource       = 0

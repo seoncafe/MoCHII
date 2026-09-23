@@ -17,7 +17,7 @@
  par%xHI_init      = 0.1
  par%xHeI_init     = 1.0
  par%xHeII_init    = 0.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  par%source_geometry = 'point'
@@ -25,4 +25,5 @@
  par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/v1_new.h5'
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 12345
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 /

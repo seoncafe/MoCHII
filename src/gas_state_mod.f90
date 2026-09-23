@@ -69,7 +69,7 @@ contains
        gas_xHeII(:) = par%xHeII_init
        do il = 1, nleaf
           gas_ne(il) = gas_nH(il) * ( (1.0_wp - gas_xHI(il)) &
-                       + par%He_abund*(gas_xHeII(il) &
+                       + par%abund_He*(gas_xHeII(il) &
                        + 2.0_wp*max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))) )
        end do
        gas_Te(:) = par%te_fixed
@@ -85,7 +85,7 @@ contains
        end if
        write(*,'(a,2f8.4)')  ' GAS: x_HeI, x_HeII initialized to ', &
                              par%xHeI_init, par%xHeII_init
-       write(*,'(a,f8.4)')   ' GAS: He abundance n_He/n_H = ', par%He_abund
+       write(*,'(a,f8.4)')   ' GAS: He abundance n_He/n_H = ', par%abund_He
     end if
   end subroutine gas_state_setup
 

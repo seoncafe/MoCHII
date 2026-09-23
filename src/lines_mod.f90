@@ -149,7 +149,7 @@ contains
             T  = gas_Te(il);  ne = gas_ne(il)
             vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
             do kk = 1, nlhe
-               emis(kk) = ne*nH*par%He_abund*xHeIII &
+               emis(kk) = ne*nH*par%abund_He*xHeIII &
                           *sh95_emis(kk, T, ne, ion=2)
                LHe(kk)  = LHe(kk) + emis(kk)*vol
             end do
@@ -196,7 +196,7 @@ contains
             T  = gas_Te(il);  ne = gas_ne(il)
             vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
             do kk = 1, nlhe1
-               emis(kk) = ne*nH*par%He_abund*gas_xHeII(il) &
+               emis(kk) = ne*nH*par%abund_He*gas_xHeII(il) &
                           *sh95_emis(kk, T, ne, ion=3)
                LHe1(kk) = LHe1(kk) + emis(kk)*vol
             end do

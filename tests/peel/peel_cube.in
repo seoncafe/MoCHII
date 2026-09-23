@@ -26,7 +26,7 @@
  par%xHI_init      = 1.0e-3
  par%xHeI_init     = 0.0
  par%xHeII_init    = 1.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
 
  !--- thermal + metals (HII20 abundances + Mg/Fe gas-phase)
  par%gas_niter     = 6

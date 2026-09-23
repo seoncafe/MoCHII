@@ -25,7 +25,7 @@
  par%tstar         = 4.0e4
 
  par%xHI_init      = 1.0
- par%He_abund      = 0.0
+ par%abund_He      = 0.0
 
  par%gas_niter     = 0
 
@@ -35,4 +35,5 @@
 
  par%file_format   = 'hdf5'
  par%out_file      = 'note_extracols.h5'
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 /

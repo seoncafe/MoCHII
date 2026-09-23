@@ -37,7 +37,7 @@ gen () {  # $1=tag $2=mode(random|sobol) $3=seed
  par%xHI_init      = 1.0
  par%xHeI_init     = 1.0
  par%xHeII_init    = 0.0
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
  par%gas_niter     = 40
  par%gas_tol       = 5.0e-3

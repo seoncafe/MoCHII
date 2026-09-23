@@ -171,8 +171,8 @@ contains
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        xHeIII  = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
        nHII    = nH*(1.0_wp - gas_xHI(il))
-       nHeII_n = nH*par%He_abund*gas_xHeII(il)
-       nHeIII  = nH*par%He_abund*xHeIII
+       nHeII_n = nH*par%abund_He*gas_xHeII(il)
+       nHeIII  = nH*par%abund_He*xHeIII
        do i = 1, NNU_OUT
           nu = nu_out(i)
           e_eV = nu*13.605693_wp

@@ -362,7 +362,7 @@ parameter & default & meaning \\
 \endlastfoot
 \code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
 \code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
-\code{He\_abund} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
+\code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
 \code{gas\_niter} & 0 & iterations (0 = a single rates-only pass) \\
 \code{gas\_tol} & 1e-3 & convergence tolerance on $x_{\rm HII}$ (measure set by \code{conv\_crit}) \\
 \code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended).  See \S\ref{sec:convergence} \\
@@ -442,8 +442,8 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{solve\_te} & F & bisection on $T_e$ coupled with the ionization \\
-\code{te\_fixed} & 1e4 & fixed $T_e$ [K] when \code{solve\_te} is off \\
+\code{solve\_te} & T & bisection on $\log T_e$ in [\code{te\_min}, \code{te\_max}] coupled with the ionization (heating = cooling in every leaf); F holds every leaf at \code{te\_fixed} \\
+\code{te\_fixed} & 1e4 & $T_e$ [K] of every leaf when \code{solve\_te} is off; with it on, only the starting $T_e$ of the first pass \\
 \code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
 \code{gas\_tol\_te} & 1e-3 & convergence on $\max|\Delta T_e|/T_e$ \\
 \code{cooling\_model} & 'local\_ne' & line cooling in the thermal loop: 'local\_ne' (default) suppresses each ion's cooling fit to the local $n_e$ with a $(T, n_e)$ table built from its $n$-level solve, so the thermal balance and the emergent lines are one physics; 'low\_density' uses the $n_e\to0$ fits directly (the coronal limit, exact in diffuse gas; reproduces earlier gates) \\
@@ -895,7 +895,7 @@ A minimal thermal + metals + dust input (from \code{d\_dusty}):
  par%nnu_ion = 32
  par%eion_min = 13.598           par%eion_max = 100.0
  par%tstar = 4.0e4               par%luminosity = 3.178e38
- par%xHI_init = 1.0e-3           par%He_abund = 0.1
+ par%xHI_init = 1.0e-3           par%abund_He = 0.1
  par%gas_niter = 60              par%gas_tol = 2.0e-3
  par%solve_te = .true.           par%atomic_dir = '../../data/atomic'
  par%use_metals = .true.

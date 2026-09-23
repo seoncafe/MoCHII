@@ -748,7 +748,7 @@ public
      real(kind=wp)      :: xHI_init     = 1.0_wp
      real(kind=wp)      :: xHeI_init    = 1.0_wp
      real(kind=wp)      :: xHeII_init   = 0.0_wp
-     real(kind=wp)      :: He_abund     = 0.1_wp
+     real(kind=wp)      :: abund_He     = 0.1_wp
      !--- add dust absorption into the ionizing band (dusty Stromgren
      !--- competition).  The leaf grey rhokap is
      !--- scaled per bin by (1-albedo) C_ext(E)/C_ext(lambda_ref) read
@@ -793,7 +793,8 @@ public
      !--- ionization equilibrium + opacity feedback iteration.
      !--- gas_niter = 0 keeps the single-pass behavior (no solve).
      !--- Convergence: max |delta x_HII| < gas_tol.  te_fixed [K] is the
-     !--- fixed electron temperature used when solve_te is off.
+     !--- electron temperature of every leaf when solve_te is off, and the
+     !--- starting temperature of the first pass when it is on.
      !--- ion_relax < 1 under-relaxes x between iterations (sharp I-fronts).
      integer            :: gas_niter    = 0
      real(kind=wp)      :: gas_tol      = 1.0e-3_wp
@@ -839,11 +840,14 @@ public
      !--- charge; it is retained only to reproduce the recorded gates and the
      !--- published benchmark numbers, and is NOT a physics option.
      character(len=16)  :: charge_exchange = 'two_way'
-     !--- thermal balance.  solve_te replaces the fixed-Te solve
-     !--- with heating = cooling bisection in [te_min, te_max]; convergence
+     !--- thermal balance.  solve_te (default .true.) solves heating =
+     !--- cooling by bisection on log T in [te_min, te_max] in every leaf,
+     !--- with the ionization re-solved at each trial T; convergence
      !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling
-     !--- coefficient files are read from atomic_dir.
-     logical            :: solve_te     = .false.
+     !--- coefficient files are read from atomic_dir.  With solve_te the
+     !--- value of te_fixed is only the starting Te of the first pass;
+     !--- .false. holds every leaf at te_fixed for the whole run.
+     logical            :: solve_te     = .true.
      real(kind=wp)      :: te_min       = 1.0e3_wp
      real(kind=wp)      :: te_max       = 5.0e4_wp
      real(kind=wp)      :: gas_tol_te   = 1.0e-3_wp
@@ -854,10 +858,6 @@ public
      !--- from any working directory; set it explicitly to point elsewhere.
      !--- atomic_dir defaults to <data_dir>/atomic when left blank.
      character(len=256) :: data_dir     = ''
-     !--- trace-metal registry.  An element is active when its
-     !--- abundance n(X)/n(H) > 0; defaults are the MOCASSIN HII20/HII40
-     !--- benchmark abundances.  use_metals enables the cascade + metal
-     !--- cooling inside the thermal balance.
      !--- solution-driven I-front re-refinement.  At iteration
      !--- refine_iter the octree is rebuilt: level refine_lmax where
      !--- refine_eps < x_HI < 1-refine_eps or a face-neighbor x_HI jump
@@ -880,6 +880,14 @@ public
      !--- approximation retained to reproduce earlier runs; 'threshold'
      !--- emits at Eth and is a sensitivity diagnostic, not a model.
      character(len=16)  :: diffuse_energy_model = 'milne'
+     !--- trace-metal registry.  use_metals is the master switch: when
+     !--- .false. species_setup is never called, so the abund_<El> values
+     !--- below are not read at all -- no metal ionization, opacity,
+     !--- electrons, heating, cooling or lines, whatever they hold.  When
+     !--- .true., an element is active if its abundance n(X)/n(H) > 0;
+     !--- the defaults are the MOCASSIN HII20/HII40 benchmark abundances.
+     !--- metal_ne, metal_heat and ion_metal_abs then switch the metal
+     !--- electrons, photoheating and opacity individually.
      logical            :: use_metals   = .false.
      !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
      !--- 16/34 levels) instead of the compact 13/14-level defaults.

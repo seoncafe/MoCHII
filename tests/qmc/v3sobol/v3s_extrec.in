@@ -27,7 +27,7 @@
  par%tstar         = 4.0e4
 
  par%xHI_init      = 1.0
- par%He_abund      = 0.0
+ par%abund_He      = 0.0
  par%ion_add_dust  = .false.
 
  par%gas_niter     = 0
@@ -39,4 +39,5 @@
  par%out_file      = 'v3s_extrec.h5'
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 101
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 /

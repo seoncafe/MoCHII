@@ -48,7 +48,7 @@ contains
                         gamma_HeI(il) + sec_dgamma_HeI(il), gamma_HeII(il), &
                         nH, T, caseA, xHI, xHeI, xHeII, ne, il)
     heat = nH*( xHI*sec_heat_HI(il) &
-           + par%He_abund*(xHeI*sec_heat_HeI(il) + xHeII*sec_heat_HeII(il)) )
+           + par%abund_He*(xHeI*sec_heat_HeI(il) + xHeII*sec_heat_HeII(il)) )
     net = heat - cooling_total(T, nH, ne, xHI, xHeI, xHeII)
     !--- trace-metal line cooling (registry)
     if (par%use_metals) then
@@ -187,7 +187,7 @@ contains
        xHeII_new(il) = (1.0_wp - w)*gas_xHeII(il) + w*xHeII
        xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
        ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
-                    + par%He_abund*(xHeII_new(il) + 2.0_wp*xHeIII))
+                    + par%abund_He*(xHeII_new(il) + 2.0_wp*xHeIII))
        !--- metal electrons in the WRITTEN state too (the solve already
        !--- had them in its closure; the state n_e drives the n-level
        !--- excitation and the outputs — in the PDR zone it IS the

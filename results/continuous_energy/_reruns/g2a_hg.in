@@ -27,7 +27,7 @@
  par%xHeI_init     = 0.0
  par%xHeII_init    = 1.0
  par%recomb_model  = 'hui_gnedin'
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%ion_add_dust  = .false.
 
  !--- G1 iteration (case B on-the-spot, fixed Te)

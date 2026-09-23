@@ -14,7 +14,7 @@
  par%nnu_ion       = 32
  par%tstar         = 4.0e4          ! blackbody source [K]
  par%luminosity    = 3.178e42       ! ionizing-band luminosity [erg/s]
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0
  par%xHeI_init     = 0.1
  par%xHeII_init    = 0.9

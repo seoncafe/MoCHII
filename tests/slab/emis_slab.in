@@ -21,7 +21,7 @@
  par%eion_min=13.598
  par%eion_max=100.0
  par%tstar=4.0e4
- par%He_abund=0.1
+ par%abund_He=0.1
  par%xHI_init=1.0
  par%gas_niter=40
  par%gas_tol=3.0e-3

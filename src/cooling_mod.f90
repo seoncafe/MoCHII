@@ -247,9 +247,9 @@ implicit none
     xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
     nHI    = nH*xHI
     nHII   = nH*(1.0_wp - xHI)
-    nHeI   = nH*par%He_abund*xHeI
-    nHeII_n= nH*par%He_abund*xHeII
-    nHeIII = nH*par%He_abund*xHeIII
+    nHeI   = nH*par%abund_He*xHeI
+    nHeII_n= nH*par%abund_He*xHeII
+    nHeIII = nH*par%abund_He*xHeIII
 
     !--- recombination cooling
     if (caseA) then

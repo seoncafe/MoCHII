@@ -34,7 +34,7 @@
  !--- par%luminosity intentionally UNSET: the ionizing luminosity is derived
  !--- from the file.  Uncommenting the next line would rescale the file to it:
  !  par%luminosity = 3.177837e38
- par%He_abund      = 0.1
+ par%abund_He      = 0.1
  par%xHI_init      = 1.0e-3
 
  par%gas_niter     = 40
@@ -42,6 +42,7 @@
  par%gas_tol       = 5.0e-3
  par%case_ab       = 'B'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
 
  par%source_geometry = 'point'
  par%out_file        = 'physical_spectrum.h5'

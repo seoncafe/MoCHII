@@ -76,7 +76,7 @@ contains
     end if
     kap = gas_nH(il)*( &
          gas_xHI(il)*photon%ionphys%sigma_HI &
-       + par%He_abund*(gas_xHeI(il)*photon%ionphys%sigma_HeI &
+       + par%abund_He*(gas_xHeI(il)*photon%ionphys%sigma_HeI &
        + gas_xHeII(il)*photon%ionphys%sigma_HeII) + metal) &
        * par%distance2cm
     if (par%ion_add_dust) then
