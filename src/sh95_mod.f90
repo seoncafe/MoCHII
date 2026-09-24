@@ -3,8 +3,9 @@ module sh95_mod
 ! MoCHII: line emissivities on a (T, n_e) grid:
 ! H I (ion 1) and He II (ion 2) are recombination line emissivities from
 ! Storey & Hummer (1995, MNRAS 272, 41) via tools/fitting/make_sh95_lines.py,
-! in the case that matches the ionization balance (par%case_ab:
-! sh95_{hi,heii}_caseA.txt for case A, sh95_{hi,heii}_caseB.txt for case B).
+! in the case set by the Lyman-line optical depth, par%line_case (default
+! 'B'; 'follow' ties it to par%case_ab): sh95_{hi,heii}_caseA.txt for case A,
+! sh95_{hi,heii}_caseB.txt for case B.
 ! He I (ion 3, hei_porter_caseB.txt) from Porter et al. (2012, 2013) via
 ! tools/fitting/make_hei_lines.py is a case-B collisional-radiative total
 ! (it already includes collisional excitation out of the 2^3S metastable, so

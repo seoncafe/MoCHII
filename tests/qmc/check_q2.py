@@ -83,7 +83,7 @@ for s in (12345, 777, 2024):
 print("\n=== Q2(c) stellar vs diffuse stream decorrelation ===")
 # The two streams are independent randomized replicates of the same net: the
 # criterion is that their dim-1 sequences DIFFER by O(1) (a different scramble
-# key = an independent replicate; docs/QUASI_RANDOM_LAUNCH.md).  The raw dim-1
+# key = an independent replicate; md/QUASI_RANDOM_LAUNCH.md).  The raw dim-1
 # CORRELATION is reported for information only: at N=2^m a single-tree
 # Laine-Karras Owen scramble carries just one key bit at the coarsest (top-bit)
 # level, so |corr| ~ 0.5-0.8 is intrinsic and appears identically between two

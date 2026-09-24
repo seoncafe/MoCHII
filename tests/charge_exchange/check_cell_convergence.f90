@@ -1,6 +1,6 @@
 program check_cell_convergence
 !---------------------------------------------------------------------------
-! Gate G-M1f (docs/ION_BALANCE_CONVERGENCE_PLAN.md): with two-way charge
+! Gate G-M1f (md/ION_BALANCE_CONVERGENCE_PLAN.md): with two-way charge
 ! exchange a partially neutral cell must reach its converged state inside one
 ! solve_ion_cell call, and the neutral fraction must stay physical.
 !

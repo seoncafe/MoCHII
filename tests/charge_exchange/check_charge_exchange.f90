@@ -104,6 +104,9 @@ program check_charge_exchange
   par%use_metals     = .true.
   par%metal_ne       = .true.
   par%charge_exchange = 'two_way'
+  !--- the balance residual below is formed with the metal terms alone, so
+  !--- the He-H exchange (gated in check_helium_charge_exchange) is held off
+  par%helium_charge_exchange = .false.
   par%case_ab        = 'B'
   par%abund_He       = 0.1_wp
   par%ci_model       = 'voronov'

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""He I 2^3S metastable diagnostic gate (docs/HEI_10833_PLAN.md H2).
+"""He I 2^3S metastable diagnostic gate (md/HEI_10833_PLAN.md H2).
 
 Independently recomputes the module's n_2s3 (and Phi_3) from the data-file
 coefficients on each run's OWN converged state, and checks the OH18 analytic
@@ -16,10 +16,16 @@ Gates:
      radiative ratio is within a few %, the EUV-only Phi_3 being << A_31 in the
      core); high-d n_3/n_HeII moves toward the plateau (n_e > n_crit); a pure
      n_e scan reproduces plateau and n_crit.
-  3. Phi_3 (add_fuv run): Phi_3 integrated independently from the rates-file
-     J_nu matches the module Phi_3; the full-chain n_2s3 (large soft-UV Phi_3,
-     so the sigma_3 cross section is exercised) still matches to machine
-     precision.
+  3. Phi_3 (add_fuv run): the module's Phi_3 is a path estimator scored at each
+     packet's own energy; the bin-center quadrature of the rates-file J_nu
+     (a diagnostic spectrum) must agree with it to within the error of that
+     quadrature, bounded here by how much sigma_3/E varies across each bin.
+     The full-chain n_2s3 (large soft-UV Phi_3, so the sigma_3 cross section
+     is exercised) still matches to machine precision.
+
+The sink carries q_31g (2^3S -> 1^1S, the detailed-balance inverse of q_13)
+and C_3 (e-impact ionization of 2^3S, Black 1981), both added 2026-09-24 and Q_31 is the Garcia Munoz (2025) form, as in
+hei_metastable_mod.
 """
 import os
 import sys
@@ -78,15 +84,31 @@ def alpha3(T):
 
 
 def qexc(T, key):
-    pref, sc, Ee, div, a, b, cc, d = C[key]
+    """q = beta (a exp(bT) + c exp(dT)) exp(-Eexc/kT) / (g_l sqrt T)."""
+    beta, Ee, gl, a, b, cc, d = C[key]
     kT = KB_EV * T
     ups = a * np.exp(b * T) + cc * np.exp(d * T)
-    return pref * np.sqrt(sc / kT) * np.exp(-Ee / kT) * ups / div
+    return beta * ups * np.exp(-Ee / kT) / (gl * np.sqrt(T))
+
+
+def qdeexc_ground(T):
+    """q_31g = q_13 (g_1/g_3) exp(E_13/kT), Boltzmann factor removed."""
+    beta, Ee, gl, a, b, cc, d = C["QEXC13"]
+    ups = a * np.exp(b * T) + cc * np.exp(d * T)
+    return beta * ups / (3.0 * np.sqrt(T))
+
+
+def cion3(T):
+    """C_3 = A T^p exp(-T0/T): e-impact ionization of 2^3S (Black 1981)."""
+    A, p, T0 = C["CION3"]
+    return A * T ** p * np.exp(-T0 / T)
 
 
 def penning(T):
-    Ts, Alo, plo, Ahi, phi = C["PENNING"]
-    return np.where(T <= Ts, Alo * (300.0 / T) ** plo, Ahi * (300.0 / T) ** phi)
+    """Garcia Munoz (2025): A exp(c/T + d1 lnT + d2 lnT^2 + d3 lnT^3)."""
+    A, c, d1, d2, d3 = C["PENNING"]
+    lt = np.log(T)
+    return A * np.exp(c / T + lt * (d1 + lt * (d2 + lt * d3)))
 
 
 def sigma3(E):
@@ -99,10 +121,11 @@ def n3_closed(ne, Te, nHI, nHeI, nHeII, Phi3):
     q13 = qexc(Tc, "QEXC13")
     q31a = qexc(Tc, "QEXC31A")
     q31b = qexc(Tc, "QEXC31B")
+    q31g = qdeexc_ground(Tc)
     Q31 = penning(Tc)
     A31 = C["A31"][0]
     src = a3 * ne * nHeII + q13 * ne * nHeI
-    snk = A31 + Phi3 + ne * (q31a + q31b) + nHI * Q31
+    snk = A31 + Phi3 + ne * (q31a + q31b + q31g + cion3(Tc)) + nHI * Q31
     return src / snk
 
 
@@ -182,7 +205,7 @@ def kappa0_hand(n3, Te, rows, v_turb=0.0):
 
 
 def stage2_gate():
-    """docs/HEI_10833_PLAN.md H5: 10833 absorption column / tau diagnostic."""
+    """md/HEI_10833_PLAN.md H5: 10833 absorption column / tau diagnostic."""
     import tempfile
     print("\n[Stage 2: 10833 absorption diagnostic]")
     rows = read_line10833(ATOM)
@@ -274,15 +297,16 @@ def main():
     print("\n[analytic limits, one-zone from the data file]")
     T0 = 1e4
     a3 = alpha3(T0)
-    q31 = qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B")
+    q31 = (qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B") + qdeexc_ground(T0)
+           + cion3(T0))
     A31 = C["A31"][0]
     lowd = a3 * 100.0 / A31
     plateau = a3 / q31
     ncrit = A31 / q31
     check("low-density ratio alpha_3 ne/A_31 @ne=100,1e4K = %.4e (spec 1.65e-7)"
           % lowd, abs(lowd / 1.65e-7 - 1.0) < 0.03)
-    check("plateau alpha_3/(q31a+q31b) = %.4e" % plateau, plateau > 0)
-    check("n_crit = A_31/(q31a+q31b) = %.1f cm^-3 (few x 1e3)" % ncrit,
+    check("plateau alpha_3/(q31a+q31b+q31g+C3) = %.4e" % plateau, plateau > 0)
+    check("n_crit = A_31/(q31a+q31b+q31g+C3) = %.1f cm^-3 (few x 1e3)" % ncrit,
           1e3 < ncrit < 1e4)
     # n_e scan: ratio crosses 0.5*plateau near n_crit
     ne = np.logspace(1, 6, 400)
@@ -355,8 +379,18 @@ def main():
     m = df["nH"] > 0.0
     pos = m & (df["Phi3"] > 0.0)
     rel = np.abs(Phi3_ref[pos] - df["Phi3"][pos]) / df["Phi3"][pos]
-    check("hei_fuv Phi_3 vs independent J_nu integration: worst rel = %.2e"
-          % rel.max(), rel.max() < 1e-6, "(tol 1e-6)")
+    # quadrature-error bound: largest departure of the bin mean of sigma_3/E
+    # from its bin-center value (the J_nu shape inside a bin is not known)
+    tolq = 0.0
+    for Ec, dE in zip(Ebin, dEbin):
+        Es = np.linspace(Ec - 0.5 * dE, Ec + 0.5 * dE, 401)
+        f = sigma3(Es) / Es
+        fc = sigma3(np.array([Ec]))[0] / Ec
+        if fc > 0.0:
+            tolq = max(tolq, abs(f.mean() / fc - 1.0))
+    check("hei_fuv Phi_3 path estimator vs bin-center J_nu quadrature: "
+          "worst rel = %.2e" % rel.max(), rel.max() < 2.0 * tolq,
+          "(tol 2x the bin quadrature bound %.2e)" % tolq)
     check("hei_fuv Phi_3 > 0 in the ionized region (max = %.3e s^-1)"
           % df["Phi3"][m].max(), df["Phi3"][m].max() > 0.0)
     # full-chain agreement WITH Phi_3 (exercises sigma_3 in the module).

@@ -96,6 +96,7 @@ OBJS	= \
 	jtally_mod.o \
 	dust_ir_band_mod.o \
 	photo_xsec.o \
+	photoelectron_degradation_mod.o \
 	recomb_mod.o \
 	milne_recomb_spectrum_mod.o \
 	hei_twophoton_mod.o \
@@ -110,6 +111,7 @@ OBJS	= \
 	species_mod.o \
 	gas_opacity_mod.o \
 	ion_packet_mod.o \
+	hei_metastable_mod.o \
 	ion_score_mod.o \
 	raytrace_amr.o \
 	ion_peel_mod.o \
@@ -125,7 +127,6 @@ OBJS	= \
 	nebcont_mod.o \
 	sh95_mod.o \
 	lines_mod.o \
-	hei_metastable_mod.o \
 	gas_rates_mod.o \
 	ion_balance_mod.o \
 	thermal_mod.o \

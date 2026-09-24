@@ -8,7 +8,7 @@ module qmc_mod
 ! sources, component and entry-surface variables); a scrambled Sobol net fills
 ! that cube more uniformly than independent draws, reducing
 ! launch noise while keeping every post-launch transport draw on the existing
-! Mersenne Twister.  See docs/QUASI_RANDOM_LAUNCH.md.
+! Mersenne Twister.  See md/QUASI_RANDOM_LAUNCH.md.
 !
 ! Sobol point by index (random access):
 !   x_d(i) = XOR over the set bits k of i of V_d(k),

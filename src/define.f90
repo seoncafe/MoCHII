@@ -103,6 +103,9 @@ public
      real(kind=wp) :: sigma_HeII = 0.0_wp
      integer       :: n_metal = 0
      real(kind=wp) :: sigma_metal(MAX_METAL_TRANSITIONS) = 0.0_wp
+     !--- photoheating coefficient of each transition, sum over the absorbing
+     !--- subshells of sigma_s (1 - E_th,s/E) [cm^2] (species_cross_section)
+     real(kind=wp) :: heat_metal(MAX_METAL_TRANSITIONS) = 0.0_wp
      real(kind=wp) :: dust_abs = 0.0_wp
      real(kind=wp) :: dust_sca = 0.0_wp
      real(kind=wp) :: dust_g = 0.0_wp
@@ -330,7 +333,7 @@ public
      !--- .true. = rank 0 serves batches of num_send_at_once on demand.  On
      !--- hii40_bench at 70 ranks that takes the transport pass from a median
      !--- 52.1 s to 43.4 s (+20%), against the +29% upper bound the harmonic
-     !--- mean predicts in docs/MPI_LOAD_BALANCE_2026-08-02.md.
+     !--- mean predicts in md/MPI_LOAD_BALANCE_2026-08-02.md.
      !--- MoCafe defaults it .true.; MoCHII keeps .false. because with the
      !--- default launch_sequence = 'random' the schedule also selects which
      !--- rank draws which packet, i.e. the realization, so every recorded
@@ -608,7 +611,8 @@ public
      real(kind=wp)      :: abund_Cl     = 0.0_wp
      real(kind=wp)      :: abund_Ca     = 0.0_wp
      !--- metal photoionization absorption in the packet opacity (active with
-     !--- use_metals): sum over stages of n_el frac_i sigma_VFKY96,i(E).
+     !--- use_metals): sum over stages of n_el frac_i sigma_i(E), the phfit2
+     !--- cross sections of species_mod::species_cross_section.
      !--- Small next to H/He above 13.6 eV but NOT negligible for the He
      !--- front: switching it off moves r(He^0 = 0.5) inward by 0.615 pc at
      !--- HII40, because the stages with thresholds in 21-40 eV (Ne I 21.56,
@@ -627,7 +631,7 @@ public
      !--- must reproduce a recorded gate set the two explicitly to .false.
      !--- COST OF SWITCHING THEM OFF, and the domain over which it is known,
      !--- 2026-07-31 on the Lexington benchmarks with only these two switches
-     !--- changed (docs/METAL_COUPLING_PLAN.md, gate G-M2).  Switching both off
+     !--- changed (md/METAL_COUPLING_PLAN.md, gate G-M2).  Switching both off
      !--- lowers <T[NpNe]> by 21.3 K (0.26%) at HII40 and 5.8 K (0.084%) at
      !--- HII20, moves the fronts by at most 0.003 pc and L(Hbeta) by at most
      !--- 0.07%.  The two separate cleanly and add: metal_heat carries nearly
@@ -641,9 +645,12 @@ public
      !--- (tests/continuous_energy/hii{40,20}_continuous.in).
      !--- metal_ne:    electrons from the metal cascade join the n_e
      !---              closure (the only electrons beyond the I-front);
-     !--- metal_heat:  metal photoheating joins the thermal balance
-     !---              (heating integrals accumulated with the metal
-     !---              Gamma's);
+     !--- metal_heat:  the metal ionization energy budget joins the thermal
+     !---              balance: photoheating (heating integrals accumulated
+     !---              with the metal Gamma's) in, recombination kinetic
+     !---              energy and collisional-ionization energy out
+     !---              (species_mod::metal_ionization_cooling, added
+     !---              2026-09-24);
      !--- grain_pe:    grain photoelectric heating + grain recombination
      !---              cooling (Bakes & Tielens 1994 fits) driven by the
      !---              local FUV field in Habing units (needs add_fuv);
@@ -678,11 +685,15 @@ public
      !--- recorded gates reproduce.
      logical            :: gaunt_vh14   = .false.
      !--- secondary ionization of H I / He I by fast photoelectrons
-     !--- (Shull & van Steenberg 1985): a photoelectron with kinetic
-     !--- energy E0 = h nu - E_th above E_sec_ion = 40 eV deposits only
-     !--- f_heat(x) of its excess as heat and drives f_ion(x) E0/E_th
-     !--- secondary H I / He I ionizations (x = ionized fraction of the
-     !--- H+He nuclei); below 40 eV it thermalizes fully.  Off by default.
+     !--- (photoelectron_degradation_mod): a photoelectron of kinetic energy
+     !--- E0 = h nu - E_th above 30 eV deposits f_heat(x, E0) of it as heat
+     !--- (Dalgarno, Yan & Liu 1999 eq. 14 with the (1-x) closure) and
+     !--- spends f_ion(x, E0) on ionizing H I and He I (Shull & van
+     !--- Steenberg 1985 amplitudes with DYL99's E0 dependence), divided
+     !--- over the neutrals actually present; x = n_e/(n_H + n_He) of the
+     !--- current iterate of the cell solve.  Below 30 eV it thermalizes
+     !--- fully.  H I, He I and He II photoelectrons; metal ones are all heat.
+     !--- Off by default.
      logical            :: use_sec_ion  = .false.
      !--- metal free-free cooling in the thermal balance, weighted by the
      !--- net ion charge Z_ion = ionization stage - 1 (a stage-j metal ion
@@ -750,10 +761,11 @@ public
      real(kind=wp)      :: xHeII_init   = 0.0_wp
      real(kind=wp)      :: abund_He     = 0.1_wp
      !--- add dust absorption into the ionizing band (dusty Stromgren
-     !--- competition).  The leaf grey rhokap is
-     !--- scaled per bin by (1-albedo) C_ext(E)/C_ext(lambda_ref) read
-     !--- from the kext table ion_dust_kext (must cover the EUV, e.g.
-     !--- kext_albedo_WD_MW_3.1_60_D03).  EUV dust scattering deferred.
+     !--- competition).  The leaf grey rhokap is scaled at each packet's
+     !--- energy by (1-albedo) C_ext(E)/C_ext(lambda_ref) of the grain model
+     !--- par%dust_model, or of the kext table ion_dust_kext when that is set
+     !--- (it must then cover the EUV, e.g. kext_albedo_WD_MW_3.1_60_D03).
+     !--- Scattering in the band is ion_dust_scatter.
      logical            :: ion_add_dust = .false.
      character(len=256) :: ion_dust_kext = ''
      !--- sample dust scattering in the band (forced first interaction
@@ -840,6 +852,20 @@ public
      !--- charge; it is retained only to reproduce the recorded gates and the
      !--- published benchmark numbers, and is NOT a physics option.
      character(len=16)  :: charge_exchange = 'two_way'
+     !--- He-H charge exchange in the H/He balance (ion_balance_mod):
+     !---   He+  + H  -> He  + H+   radiative (Glover & Jappsen 2007 R26, the
+     !---                           Zygelman et al. 1989 calculation) plus
+     !---                           non-radiative (Kingdon & Ferland 1996),
+     !---   He++ + H  -> He+ + H+   (Kingdon & Ferland 1996),
+     !---   He   + H+ -> He+ + H    (detailed balance on the non-radiative
+     !---                           channel; Kimura et al. 1993 not used,
+     !---                           see ion_balance_mod),
+     !---   He+  + H+ -> He++ + H   (detailed balance on the KF96 rate).  Each reaction
+     !--- enters both balances, so charge is conserved in the pair.  Default
+     !--- on: Cloudy, MOCASSIN and EXHALE all carry it, and without it He+ is
+     !--- overestimated wherever it meets atomic hydrogen.  .false. drops it
+     !--- (reproduction of runs made before 2026-09-24 only).
+     logical            :: helium_charge_exchange = .true.
      !--- thermal balance.  solve_te (default .true.) solves heating =
      !--- cooling by bisection on log T in [te_min, te_max] in every leaf,
      !--- with the ionization re-solved at each trial T; convergence

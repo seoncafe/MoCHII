@@ -17,7 +17,7 @@ module species_mod
 ! par%charge_exchange = 'two_way' the k_CXI and k_CXR terms below enter
 ! hydrogen's balance as well as the cascade's, so the charge each reaction
 ! moves is conserved in the reacting pair (species_metal_sums,
-! ion_balance_mod::solve_ion_cell; docs/METAL_COUPLING_PLAN.md, Stage M1).
+! ion_balance_mod::solve_ion_cell; md/METAL_COUPLING_PLAN.md, Stage M1).
 ! An earlier version of this comment claimed metals never feed back on n_e or
 ! on the opacity; it is withdrawn.
 ! After the H/He + thermal state of a cell is known, the cascade
@@ -36,12 +36,14 @@ module species_mod
   use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval, gbar_ff
   use recomb_mod,  only : ci_dere_ratio
   use nlevel_cooling_mod, only : nlevel_cooling_add, nlevel_cooling_apply
+  use nlevel_mod, only : nlevel_atom_type, nlevel_load, nlevel_has_hcoll, &
+                         nlevel_hcoll_cooling
   implicit none
   private
 
   public :: species_setup, species_gamma_compute, species_fractions
   public :: metal_cooling, metal_freefree, species_write, species_resize
-  public :: species_ne, metal_heating
+  public :: species_ne, metal_heating, metal_ionization_cooling
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached, species_metal_sums
   public :: species_cx_coefficients
@@ -50,8 +52,13 @@ module species_mod
   public :: species_rate_path_score, species_rate_path_reduce
   public :: species_stage_cache_refresh
   public :: species_packet_cross_sections, species_cached_opacity
+  public :: species_cross_section
 
   integer, parameter :: MAX_EL = 11, MAX_ST = 6
+  !--- subshells of a ground-state ion in phfit2 (1s 2s 2p 3s 3p 3d 4s)
+  integer, parameter :: MAX_SHELL = 7
+  !--- points of a tabulated charge-exchange rate coefficient (CXRTAB)
+  integer, parameter :: MAX_CX_TAB = 40
 
   type element_type
      character(len=2) :: name = ''
@@ -60,11 +67,17 @@ module species_mod
      real(kind=wp) :: abund = 0.0_wp
      !--- transition data (index 1..nstage-1)
      real(kind=wp) :: eth(MAX_ST)      = 0.0_wp
-     !--- photo_form 1: VFKY96 (Eth,E0,s0,ya,P,yw,y0,y1); 2: VY95 outer
-     !--- shell (Eth,E0,s0,ya,P,yw,l) for the elements absent from the
-     !--- VFKY96 table (Cl).
-     integer       :: photo_form(MAX_ST) = 1
+     !--- Photoionization cross section, Verner's phfit2 prescription in
+     !--- full: below the first inner-shell edge einn the VFKY96 outer-shell
+     !--- fit photo(1:8) = (Eth,E0,s0,ya,P,yw,y0,y1) (has_ph2); at E >= einn,
+     !--- and at every E when einn = 0 (elements absent from the VFKY96
+     !--- table: Cl), the sum over the occupied subshells of the Verner &
+     !--- Yakovlev (1995) fits shell(1:7,k) = (l,Eth,E0,s0,ya,P,yw).
+     logical       :: has_ph2(MAX_ST)  = .false.
      real(kind=wp) :: photo(8,MAX_ST)  = 0.0_wp
+     real(kind=wp) :: einn(MAX_ST)     = 0.0_wp
+     integer       :: nshell(MAX_ST)   = 0
+     real(kind=wp) :: shell(7,MAX_SHELL,MAX_ST) = 0.0_wp
      real(kind=wp) :: ci(5,MAX_ST)     = 0.0_wp   ! dE,P,A,X,K (Voronov)
      real(kind=wp) :: rr(6,MAX_ST)     = 0.0_wp   ! A,B,T0,T1,C,T2 (Badnell)
      integer       :: ndr(MAX_ST)      = 0
@@ -82,16 +95,30 @@ module species_mod
      real(kind=wp) :: cxi(6,MAX_ST)    = 0.0_wp
      integer       :: cxr_form(MAX_ST) = 0
      real(kind=wp) :: cxr(6,MAX_ST)    = 0.0_wp
+     !--- cxr_form 8: tabulated recombination rate coefficient (CXRTAB row),
+     !--- interpolated log-log in T and clamped to the table's range.
+     integer       :: ncxr_tab(MAX_ST) = 0
+     real(kind=wp) :: cxr_tab_T(MAX_CX_TAB,MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxr_tab_k(MAX_CX_TAB,MAX_ST) = 0.0_wp
      !--- cooling fits per stage (loaded when the file exists)
      logical :: has_cool(MAX_ST) = .false.
      type(cooling_fit_type) :: cool(MAX_ST)
      !--- index into the nlevel_cooling_mod (T, n_e) table for each stage
      !--- (par%cooling_model = 'local_ne'); 0 = no table, keep the fit.
      integer :: cool_idx(MAX_ST) = 0
+     !--- the stage's n-level atom carries atomic-hydrogen impact rates
+     !--- (hatom); used by metal_cooling_H.
+     logical :: has_hcoll(MAX_ST) = .false.
   end type element_type
 
   integer :: n_elements = 0
   type(element_type), target :: elems(MAX_EL)
+  !--- n-level atoms of the stages with atomic-hydrogen impact rates (C I,
+  !--- C II, O I); allocated only for those stages.
+  type hcoll_atom_box
+     type(nlevel_atom_type), allocatable :: a
+  end type hcoll_atom_box
+  type(hcoll_atom_box) :: hatom(MAX_EL, MAX_ST)
 
   !--- Gamma_i(transition, leaf) per element [s^-1]; filled each iteration.
   type gamma_block
@@ -104,7 +131,7 @@ module species_mod
   !--- Metal photoionization/photoheating path estimators: unnormalized
   !--- Sum(path_lum * coeff(E)) accumulated at each packet's exact energy,
   !--- raw(1,:,:) for sigma/(h nu) and raw(2,:,:) for the heating coefficient
-  !--- sigma (1 - E_th/E).  species_gamma_compute turns them into egam/eheat.
+  !--- sum_s sigma_s (1 - E_th,s/E) (species_cross_section).  species_gamma_compute turns them into egam/eheat.
   type metal_rate_path_block
      real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf)
   end type metal_rate_path_block
@@ -177,6 +204,20 @@ contains
              if (trim(par%cooling_model) == 'local_ne') &
                 elems(ie)%cool_idx(i) = nlevel_cooling_add(trim(names(k)), i)
           end if
+          !--- atomic-hydrogen impact: the stage's n-level atom, kept when
+          !--- nlevel_load found hydrogen rates beside it.
+          block
+            type(nlevel_atom_type), allocatable :: atom
+            logical :: ok
+            allocate(atom)
+            write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)//'/nlevel_', &
+               trim(names(k)), '_', i, '.txt'
+            call nlevel_load(trim(fname), atom, ok)
+            if (ok .and. nlevel_has_hcoll(atom)) then
+               call move_alloc(atom, hatom(ie,i)%a)
+               elems(ie)%has_hcoll(i) = .true.
+            end if
+          end block
        end do
        allocate(egam(ie)%g(elems(ie)%nstage-1, nleaf))
        egam(ie)%g = 0.0_wp
@@ -260,23 +301,31 @@ contains
     end do
   end subroutine species_stage_cache_refresh
 
-  subroutine species_packet_cross_sections(energy, sigma, ntransition)
+  !--- cross sections (and, optionally, photoheating coefficients) of every
+  !--- active transition at one packet energy, ordered by threshold.
+  subroutine species_packet_cross_sections(energy, sigma, ntransition, heat)
     real(kind=wp), intent(in)  :: energy
     real(kind=wp), intent(out) :: sigma(MAX_METAL_TRANSITIONS)
     integer,       intent(out) :: ntransition
+    real(kind=wp), intent(out), optional :: heat(MAX_METAL_TRANSITIONS)
+    real(kind=wp) :: h
     integer :: k
     sigma = 0.0_wp
+    if (present(heat)) heat = 0.0_wp
     ntransition = 0
     do k = 1, flat_ntransition
        if (energy < flat_eth(k)) exit
-       sigma(k) = species_sigma(flat_ie(k), flat_it(k), energy)
+       call species_cross_section(flat_ie(k), flat_it(k), energy, sigma(k), h)
+       if (present(heat)) heat(k) = h
        ntransition = k
     end do
   end subroutine species_packet_cross_sections
 
   !=========================================================================
   ! Metal photoionization absorption of a packet (par%ion_metal_abs), per unit
-  ! n_H and per code length: Sum_i abund frac_i sigma_VFKY96,i(E), with the
+  ! n_H and per code length: Sum_i abund frac_i sigma_i(E) (species_cross_
+  ! section: the VFKY96 outer shell, or the VY95 subshell sum above the first
+  ! inner-shell edge), with the
   ! cross sections already evaluated at the packet's exact energy by
   ! species_packet_cross_sections.  Small next to H/He above 13.6 eV, but NOT
   ! negligible for the He front: removing it moves r(He^0 = 0.5) inward by
@@ -326,9 +375,10 @@ contains
   end subroutine species_rate_path_reset
 
 
-  subroutine species_rate_path_score(energy, sigma, ntransition, il, path_lum)
+  subroutine species_rate_path_score(energy, sigma, heat, ntransition, il, path_lum)
     real(kind=wp), intent(in) :: energy
     real(kind=wp), intent(in) :: sigma(MAX_METAL_TRANSITIONS)
+    real(kind=wp), intent(in) :: heat(MAX_METAL_TRANSITIONS)
     integer,       intent(in) :: ntransition, il
     real(kind=wp), intent(in) :: path_lum
     integer :: k, ie, it
@@ -338,7 +388,7 @@ contains
        metal_rate_path(ie)%raw(1,it,il) = metal_rate_path(ie)%raw(1,it,il) &
           + path_lum*sigma(k)/(energy*ev2erg)
        metal_rate_path(ie)%raw(2,it,il) = metal_rate_path(ie)%raw(2,it,il) &
-          + path_lum*sigma(k)*max(1.0_wp-elems(ie)%eth(it)/energy, 0.0_wp)
+          + path_lum*heat(k)
     end do
   end subroutine species_rate_path_score
 
@@ -384,10 +434,14 @@ implicit none
           read(line,*) key, el%eth(it)
        case ('PHOTO')
           read(line,*) key, el%photo(1:8,it)
-          el%photo_form(it) = 1
-       case ('PHOTO2')
-          read(line,*) key, el%photo(1:7,it)
-          el%photo_form(it) = 2
+          el%has_ph2(it) = .true.
+       case ('PHINNER')
+          read(line,*) key, el%einn(it)
+       case ('PHSHELL')
+          if (el%nshell(it) >= MAX_SHELL) &
+             call fatal_error('more than 7 PHSHELL rows in '//trim(fname))
+          el%nshell(it) = el%nshell(it) + 1
+          read(line,*) key, el%shell(1:7,el%nshell(it),it)
        case ('CI')
           read(line,*) key, el%ci(1:5,it)
        case ('RR')
@@ -417,9 +471,28 @@ implicit none
              backspace(unit)
              read(unit,*) key, el%cxr_form(it), el%cxr(1:6,it)
           end if
+       case ('CXRTAB')
+          read(line,*) key, n
+          if (n < 2 .or. n > MAX_CX_TAB) &
+             call fatal_error('CXRTAB size out of range in '//trim(fname))
+          el%ncxr_tab(it) = n
+          backspace(unit)
+          read(unit,*) key, n, el%cxr_tab_T(1:n,it), el%cxr_tab_k(1:n,it)
        end select
     end do
     close(unit)
+    !--- every transition needs its subshell fits; a file written before
+    !--- they were added (PHOTO2 or PHOTO alone) would silently leave the
+    !--- inner shells out, so refuse it and point at the generator.
+    do it = 1, el%nstage - 1
+       if (el%nshell(it) == 0) call fatal_error(trim(fname)// &
+          ' has no PHSHELL rows: regenerate it with '// &
+          'tools/fitting/make_element_data.py')
+       if (el%einn(it) > 0.0_wp .and. .not. el%has_ph2(it)) &
+          call fatal_error(trim(fname)//': PHINNER > 0 without a PHOTO row')
+       if (el%cxr_form(it) == 8 .and. el%ncxr_tab(it) < 2) &
+          call fatal_error(trim(fname)//': CXR form 8 without a CXRTAB row')
+    end do
   end subroutine read_element
 
   !=========================================================================
@@ -449,6 +522,36 @@ implicit none
   !=========================================================================
   ! Charge-exchange rate [cm^3 s^-1]; forms per make_element_data.py.
   !=========================================================================
+  !--- charge-exchange rate coefficients of transition it of element ie at T:
+  !--- ionization X^it + H+ -> X^(it+1) + H0 and recombination
+  !--- X^(it+1) + H0 -> X^it + H+.  The recombination may be tabulated.
+  real(kind=wp) function cxi_rate(ie, it, T) result(k)
+    integer,       intent(in) :: ie, it
+    real(kind=wp), intent(in) :: T
+    k = cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+  end function cxi_rate
+
+  real(kind=wp) function cxr_rate(ie, it, T) result(k)
+    integer,       intent(in) :: ie, it
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lt, w
+    integer :: n, j
+    if (elems(ie)%cxr_form(it) /= 8) then
+       k = cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+       return
+    end if
+    n = elems(ie)%ncxr_tab(it)
+    associate (tt => elems(ie)%cxr_tab_T(1:n,it), kk => elems(ie)%cxr_tab_k(1:n,it))
+      lt = log(min(max(T, tt(1)), tt(n)))
+      j = 1
+      do while (j < n-1 .and. lt > log(tt(j+1)))
+         j = j + 1
+      end do
+      w = (lt - log(tt(j)))/(log(tt(j+1)) - log(tt(j)))
+      k = exp(log(kk(j)) + w*(log(kk(j+1)) - log(kk(j))))
+    end associate
+  end function cxr_rate
+
   real(kind=wp) function cx_rate(form, c, T) result(k)
     integer,       intent(in) :: form
     real(kind=wp), intent(in) :: c(6), T
@@ -476,9 +579,16 @@ implicit none
        k = c(1)*t4**c(2)*(1.0_wp + c(3)*exp(c(4)*t4))
        k = max(k, 0.0_wp)
     case (7)
-       !--- KF96 form with an activation barrier (endothermic reverse).
-       t4 = min(max(t4, 0.5_wp), 5.0_wp)
-       k = c(1)*t4**c(2)*(1.0_wp + c(3)*exp(c(4)*t4))*exp(-c(5)/t4)
+       !--- KF96 form with an activation barrier (the endothermic direction,
+       !--- KF96 Table 3).  Only the fitted form-6 factor is clamped into its
+       !--- validity range; the Boltzmann factor exp(-dE/kT) is exact physics
+       !--- and takes the actual T.  Clamping it too (as until 2026-09-24)
+       !--- froze exp(-dE/kT) at its 5000 K value below 5000 K, overstating
+       !--- the endothermic rate -- 26x for N + H+ at 2000 K -- and breaking
+       !--- detailed balance against the form-6 exothermic partner.
+       k = c(1)*min(max(t4, 0.5_wp), 5.0_wp)**c(2) &
+           *(1.0_wp + c(3)*exp(c(4)*min(max(t4, 0.5_wp), 5.0_wp))) &
+           *exp(-c(5)/t4)
        k = max(k, 0.0_wp)
     case default
        k = 0.0_wp
@@ -528,9 +638,9 @@ implicit none
           cch_cxi(it,ie) = 0.0_wp
           cch_cxr(it,ie) = 0.0_wp
           if (elems(ie)%cxi_form(it) > 0) cch_cxi(it,ie) = &
-             cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+             cxi_rate(ie, it, T)
           if (elems(ie)%cxr_form(it) > 0) cch_cxr(it,ie) = &
-             cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+             cxr_rate(ie, it, T)
        end do
     end do
   end subroutine species_ne_prepare
@@ -635,9 +745,9 @@ implicit none
     if (ie < 1 .or. ie > n_elements) return
     if (it < 1 .or. it > elems(ie)%nstage-1) return
     if (elems(ie)%cxi_form(it) > 0) &
-       k_cxi = cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+       k_cxi = cxi_rate(ie, it, T)
     if (elems(ie)%cxr_form(it) > 0) &
-       k_cxr = cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+       k_cxr = cxr_rate(ie, it, T)
   end subroutine species_cx_coefficients
 
   !=========================================================================
@@ -672,62 +782,38 @@ implicit none
   end function species_ne
 
   !=========================================================================
-  ! H-impact fine-structure cooling [erg s^-1 cm^-3]: [C II] 158 um and
-  ! [O I] 63 um excited by NEUTRAL HYDROGEN collisions — the dominant
-  ! PDR-zone coolant (n_HI/n_e ~ 10^3-10^4 there; the n-level cooling table
-  ! is electron-impact only, so the H channel is added separately).  The
-  ! two-level population saturates above the H critical density, so the
-  ! cooling is the low-density excitation power divided by the two-level
-  ! saturation factor.  The steady state n_u (A_ul + n_HI q_ul^H)
-  ! = n_l n_HI q_lu^H with n_ion = n_l + n_u gives
-  !   Lambda = n_ion n_HI q_lu^H dE / (1 + n_HI (q_ul^H + q_lu^H)/A_ul)
-  ! and hence n_crit,H = A_ul / (q_ul^H + q_lu^H).  BOTH collision
-  ! directions drain the lower level, so q_lu^H belongs in the denominator:
-  ! omitting it leaves the low-density limit right but overestimates the
-  ! dense limit by 1 + (g_u/g_l) e^{-dE/kT}, i.e. 1.8 at 100 K for [C II]
-  ! rising to 3 when kT >> dE, and up to 1.6 for [O I].
-  ! With q_lu^H = (g_u/g_l) q_ul^H e^{-dE/kT},
-  ! q_ul^H([C II]) = 7.6e-10 (T/100)^0.14 (Barinovs et al. 2005),
-  ! q_ul^H([O I]) = 9.2e-11 (T/100)^0.67 cm^3/s, A([C II] 158um) = 2.321e-6
-  ! and A([O I] 63um) = 8.865e-5 s^-1.  n_crit,H is ~1.7e3 for [C II] at
-  ! 100 K (so the factor bites in dense PDR gas, nH ~ 5e3) and ~9e5 for
-  ! [O I] (rarely saturated); at low n_HI it reduces to the low-density
-  ! limit.  The electron channel is left to the density-suppressed n-level
-  ! table (its own saturation), so only n_HI enters the factor here.  That
-  ! split is valid while n_e << n_HI, which is the PDR regime this channel
-  ! matters in; where both colliders are comparable the two saturation
-  ! denominators should be merged into one.  Called from the par%use_metals
-  ! cooling path: it is the coolant that keeps the neutral zone off the
-  ! ~10^4 K runaway under grain photoelectric heating, but it does not
-  ! depend on that heating being enabled.
+  ! Atomic-hydrogen impact line cooling [erg s^-1 cm^-3]: the ground-term
+  ! fine-structure lines of C I (609/370 um), C II (158 um) and O I (63/145
+  ! um) excited by NEUTRAL HYDROGEN -- the dominant coolant of neutral gas,
+  ! where n_HI/n_e ~ 10^3-10^4.  metal_cooling carries electron impact from
+  ! the (T, n_e) table; this adds, for every stage whose n-level atom has
+  ! hydrogen rates (data/atomic/hcoll_<el>_<stage>.txt), n_ion times the
+  ! increment of the radiated power when n_HI q^H joins n_e q^e in one
+  ! statistical equilibrium (nlevel_mod::nlevel_hcoll_cooling).  Both
+  ! colliders therefore saturate the populations together, all ground-term
+  ! transitions are included, and the level energies, A-values and
+  ! populations are those of the atom that writes the line list.
+  ! Rates: Abrahamsson, Krems & Dalgarno (2007) for C I and O I, Barinovs et
+  ! al. (2005) for C II (make_hcoll_fine_structure.py).  Called from the
+  ! par%use_metals cooling path whatever heats the gas.
   !=========================================================================
   real(kind=wp) function metal_cooling_H(il, T, nH, ne, nHI, nHII) result(cool)
     implicit none
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
-    real(kind=wp), parameter :: kb = 1.380649e-16_wp
-    real(kind=wp), parameter :: A_CII = 2.321e-6_wp, A_OI = 8.865e-5_wp
-    real(kind=wp) :: frac(MAX_ST), nion, qlu, qul
-    integer :: ie
+    real(kind=wp) :: frac(MAX_ST), nion
+    integer :: ie, i
     cool = 0.0_wp
+    if (nHI <= 0.0_wp) return
     do ie = 1, n_elements
-       select case (trim(elems(ie)%name))
-       case ('c')
-          if (elems(ie)%nstage < 2) cycle
-          call species_fractions(ie, il, T, ne, nHI, nHII, frac)
-          nion = elems(ie)%abund*nH*frac(2)                 ! C II
-          qul  = 7.6e-10_wp*(T/100.0_wp)**0.14_wp           ! H de-excitation
-          qlu  = 2.0_wp*qul*exp(-91.25_wp/T)                ! g_u/g_l = 4/2
-          cool = cool + nion*nHI*qlu*(91.25_wp*kb) &
-                 / (1.0_wp + nHI*(qul + qlu)/A_CII)
-       case ('o')
-          call species_fractions(ie, il, T, ne, nHI, nHII, frac)
-          nion = elems(ie)%abund*nH*frac(1)                 ! O I
-          qul  = 9.2e-11_wp*(T/100.0_wp)**0.67_wp           ! H de-excitation
-          qlu  = 0.6_wp*qul*exp(-227.7_wp/T)                ! g_u/g_l = 3/5
-          cool = cool + nion*nHI*qlu*(227.7_wp*kb) &
-                 / (1.0_wp + nHI*(qul + qlu)/A_OI)
-       end select
+       if (.not. any(elems(ie)%has_hcoll(1:elems(ie)%nstage))) cycle
+       call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+       do i = 1, elems(ie)%nstage
+          if (.not. elems(ie)%has_hcoll(i)) cycle
+          nion = elems(ie)%abund*nH*frac(i)
+          if (nion <= 0.0_wp) cycle
+          cool = cool + nion*nlevel_hcoll_cooling(hatom(ie,i)%a, T, ne, nHI)
+       end do
     end do
   end function metal_cooling_H
 
@@ -751,29 +837,94 @@ implicit none
     end do
   end function metal_heating
 
+  !=========================================================================
+  ! The loss side of the metal ionization energy budget [erg s^-1 cm^-3]
+  ! (par%metal_heat, the counterpart of metal_heating):
+  !  - recombination removes the kinetic energy of the captured electron,
+  !    beta = k T [ (3/2) alpha + d alpha/d ln T ], exact for a Maxwellian and
+  !    any capture cross section (radiative and dielectronic), from the same
+  !    alpha_rec the cascade uses (see cooling_mod's recombination cooling);
+  !  - collisional ionization removes the ionization energy E_th of the stage.
+  ! Each transition it (stage it -> it+1) contributes
+  !   n_e [ n_(it+1) beta_it + n_it C_it E_th,it ].
+  ! Charge-exchange energy defects are not included (open item: MoCHII
+  ! carries no charge-exchange heating for any reaction).
+  !=========================================================================
+  real(kind=wp) function metal_ionization_cooling(il, T, nH, ne, nHI, nHII) &
+                                                  result(cool)
+    implicit none
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
+    real(kind=wp), parameter :: H = 1.0e-4_wp       ! ln T step of d alpha/d ln T
+    real(kind=wp) :: frac(MAX_ST), nel, a0, beta, cci
+    integer :: ie, it
+    cool = 0.0_wp
+    do ie = 1, n_elements
+       call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+       nel = elems(ie)%abund*nH
+       do it = 1, elems(ie)%nstage-1
+          a0   = alpha_rec(elems(ie), it, T)
+          beta = kboltz_cgs*T*(1.5_wp*a0 + (alpha_rec(elems(ie), it, T*exp(H)) &
+                 - alpha_rec(elems(ie), it, T*exp(-H)))/(2.0_wp*H))
+          cci  = voronov_ci(elems(ie)%ci(1:5,it), T)*ci_dere_ratio(elems(ie)%Z, it)
+          cool = cool + ne*nel*( frac(it+1)*beta &
+                 + frac(it)*cci*elems(ie)%eth(it)*ev2erg )
+       end do
+    end do
+  end function metal_ionization_cooling
+
   real(kind=wp) function el8(ie, it, k)
     integer, intent(in) :: ie, it, k
     el8 = elems(ie)%photo(k, it)
   end function el8
 
   !=========================================================================
-  ! Photoionization cross section of (element ie, stage it) at E [eV]:
-  ! VFKY96 or the VY95 outer-shell form by photo_form.
+  ! Photoionization cross section sig [cm^2] of (element ie, stage it) at
+  ! E [eV], and the photoheating coefficient heat [cm^2] = sum over the
+  ! absorbing shells of sigma_s (1 - E_th,s/E), phfit2's prescription:
+  !   E <  einn : the VFKY96 outer-shell fit, heat = sig (1 - E_th/E);
+  !   E >= einn : sum of the VY95 fits of every occupied subshell with
+  !               E >= E_th,s (einn = 0: at every E).
+  ! The photoelectron of an inner-shell ionization carries E - E_th,s; the
+  ! excitation E_th,s - E_th left in the ion is assumed to leave the gas as
+  ! fluorescence (not transported) and the ion to move up ONE stage.
+  ! KNOWN DEFECT (flagged 2026-09-24): that holds only where the hole lies
+  ! below the double-ionization threshold IP_i + IP_(i+1).  Inside the
+  ! 13.6-100 eV band it does for Mg II 2p (65.7 < 95.2 eV), Ca II 3p
+  ! (40.9 < 62.8) and Cl I-IV 3s, but NOT for Mg I 2p (54.9 > 22.7 eV),
+  ! Ca I 3p (34.4 > 18.0), Fe I 3p (66.0 > 24.1), Fe II 3p (76.2 > 46.9) and
+  ! Fe III 3p (87.1 > 85.6): those holes autoionize (Auger yields 0.995-0.9999,
+  ! Kaastra & Mewe 1993 as tabulated in Cloudy's mewe_nelectron.dat), so the
+  ! ion should move up TWO stages and the Auger electron, ~E_th,s - IP_i -
+  ! IP_(i+1), should heat the gas.  Carrying that needs the stage matrix
+  ! (md/METAL_COUPLING_PLAN.md M4): the nearest-neighbor ratio chain in
+  ! species_fractions cannot represent a two-stage jump.
   !=========================================================================
-  real(kind=wp) function species_sigma(ie, it, E) result(sig)
+  subroutine species_cross_section(ie, it, E, sig, heat)
     use photo_xsec, only : sigma_vy95
-    integer,       intent(in) :: ie, it
-    real(kind=wp), intent(in) :: E
-    if (elems(ie)%photo_form(it) == 2) then
-       sig = sigma_vy95(E, el8(ie,it,1), el8(ie,it,2), el8(ie,it,3), &
-                        el8(ie,it,4), el8(ie,it,5), el8(ie,it,6), &
-                        el8(ie,it,7))
-    else
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(in)  :: E
+    real(kind=wp), intent(out) :: sig, heat
+    real(kind=wp) :: s
+    integer :: k
+    sig = 0.0_wp;  heat = 0.0_wp
+    if (E < elems(ie)%eth(it)) return
+    if (E < elems(ie)%einn(it)) then
        sig = sigma_vfky96(E, el8(ie,it,1), el8(ie,it,2), el8(ie,it,3), &
                           el8(ie,it,4), el8(ie,it,5), el8(ie,it,6), &
                           el8(ie,it,7), el8(ie,it,8))
+       heat = sig*max(1.0_wp - elems(ie)%eth(it)/E, 0.0_wp)
+    else
+       do k = 1, elems(ie)%nshell(it)
+          associate (sh => elems(ie)%shell(:,k,it))
+            if (E < sh(2)) cycle
+            s = sigma_vy95(E, sh(2), sh(3), sh(4), sh(5), sh(6), sh(7), sh(1))
+            sig  = sig + s
+            heat = heat + s*max(1.0_wp - sh(2)/E, 0.0_wp)
+          end associate
+       end do
     end if
-  end function species_sigma
+  end subroutine species_cross_section
 
   !=========================================================================
   ! Stage fractions of element ie in leaf il at (T, n_e, x_HI): the product
@@ -793,10 +944,10 @@ implicit none
             + ne*voronov_ci(elems(ie)%ci(1:5,it), T) &
                *ci_dere_ratio(elems(ie)%Z, it)
        if (elems(ie)%cxi_form(it) > 0) &
-          rion = rion + nHII*cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
+          rion = rion + nHII*cxi_rate(ie, it, T)
        rrec = ne*alpha_rec(elems(ie), it, T)
        if (elems(ie)%cxr_form(it) > 0) &
-          rrec = rrec + nHI*cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
+          rrec = rrec + nHI*cxr_rate(ie, it, T)
        r(it) = rion/max(rrec, tinest)
     end do
     !--- fractions from the ratio chain, normalized.

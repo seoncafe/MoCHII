@@ -20,8 +20,8 @@ module thermal_mod
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
                             gas_Te, gas_nleaf, gas_state_sync
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
-                            sec_dgamma_HI, sec_dgamma_HeI, &
-                            sec_heat_HI, sec_heat_HeI, sec_heat_HeII
+                            heat_HI, heat_HeI, heat_HeII, secondary_ionization
+  use photoelectron_degradation_mod, only : ionized_fraction_svs
   use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne
   use cooling_mod,     only : cooling_total
   implicit none
@@ -41,33 +41,43 @@ contains
     logical,       intent(in)    :: caseA
     real(kind=wp), intent(inout) :: xHI, xHeI, xHeII
     real(kind=wp), intent(out)   :: ne, net
-    real(kind=wp) :: nH, heat
+    real(kind=wp) :: nH, heat, yHe, dgHI, dgHeI, dhHI, dhHeI, dhHeII
 
     nH = gas_nH(il)
-    call solve_ion_cell(gamma_HI(il) + sec_dgamma_HI(il), &
-                        gamma_HeI(il) + sec_dgamma_HeI(il), gamma_HeII(il), &
+    yHe = par%abund_He
+    call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
                         nH, T, caseA, xHI, xHeI, xHeII, ne, il)
-    heat = nH*( xHI*sec_heat_HI(il) &
-           + par%abund_He*(xHeI*sec_heat_HeI(il) + xHeII*sec_heat_HeII(il)) )
+    !--- photoheating; with par%use_sec_ion the part of each fast
+    !--- photoelectron's energy that ionizes or excites instead of heating is
+    !--- taken off, at the state the solve just reached.
+    dhHI = 0.0_wp;  dhHeI = 0.0_wp;  dhHeII = 0.0_wp
+    if (par%use_sec_ion) call secondary_ionization(il, &
+         ionized_fraction_svs(ne, nH, yHe*nH), nH*xHI, nH*yHe*xHeI, &
+         nH*yHe*xHeII, dgHI, dgHeI, dhHI, dhHeI, dhHeII)
+    heat = nH*( xHI*(heat_HI(il) - dhHI) &
+           + yHe*(xHeI*(heat_HeI(il) - dhHeI) + xHeII*(heat_HeII(il) - dhHeII)) )
     net = heat - cooling_total(T, nH, ne, xHI, xHeI, xHeII)
     !--- trace-metal line cooling (registry)
     if (par%use_metals) then
        block
          use species_mod, only : metal_cooling, metal_heating, metal_freefree, &
-                                 metal_cooling_H
+                                 metal_cooling_H, metal_ionization_cooling
          net = net - metal_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
-         !--- H-impact [C II] 158 um / [O I] 63 um fine-structure cooling.
-         !--- The n-level table above is electron-impact only, so the
-         !--- neutral-H collider is a separate channel; it is the dominant
-         !--- coolant wherever the gas is neutral and does not depend on
-         !--- what heats that gas.
+         !--- atomic-hydrogen impact on the C I / C II / O I ground-term
+         !--- fine structure: the increment over the electron-only
+         !--- populations of the table above, from one statistical
+         !--- equilibrium with both colliders; the dominant coolant wherever
+         !--- the gas is neutral, whatever heats it.
          net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
          !--- metal free-free cooling, net-charge weighted (par%metal_freefree)
          if (par%metal_freefree) &
             net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
-         !--- PDR: metal photoheating (par%metal_heat)
+         !--- metal ionization energy budget (par%metal_heat): photoheating
+         !--- in; recombination kinetic energy and collisional-ionization
+         !--- energy out.
          if (par%metal_heat) &
-            net = net + metal_heating(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+            net = net + metal_heating(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI)) &
+                  - metal_ionization_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
        end block
     end if
     !--- PDR: grain photoelectric heating + grain recombination cooling

@@ -273,16 +273,6 @@ program main
         end block
      end if
   end if
-  if (par%use_sec_ion) then
-     block
-       use gas_rates_mod, only : sec_dgamma_HI, sec_dgamma_HeI, &
-            sec_heat_HI, heat_HI, heat_hard_HI
-       if (mpar%p_rank == 0) write(*,'(a,5es16.8)') &
-          ' SECION_TMP sum(dgHI,dgHeI,secHtHI,HtHI,hardHI)=', &
-          sum(sec_dgamma_HI), sum(sec_dgamma_HeI), sum(sec_heat_HI), &
-          sum(heat_HI), sum(heat_hard_HI)
-     end block
-  end if
   call gas_rates_write()
   if (slab_tally_on) then
      call slab_walk_report()

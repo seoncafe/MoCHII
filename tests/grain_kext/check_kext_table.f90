@@ -253,7 +253,7 @@ contains
     dev_cref = abs(cref_t/cref_i - 1.0_wp)
 
     !--- (c) band-averaged absorption per unit reference extinction.  This is
-    !--- MoCHII's ion_dust_sabs = (1 - albedo) C_ext/C_ext(ref) = C_abs/C_ext(ref),
+    !--- MoCHII's ion_dust_sabs_at(E) = (1 - albedo) C_ext/C_ext(ref) = C_abs/C_ext(ref),
     !--- averaged over the model wavelengths inside the transported band, each
     !--- side normalized by its OWN C_ext(ref) as the code would.
     lam_hi = 1.23984_wp/E_BAND_LO;  lam_lo = 1.23984_wp/E_BAND_HI

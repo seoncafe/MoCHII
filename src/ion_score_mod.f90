@@ -12,6 +12,8 @@ module ion_score_mod
 ! while the jt_ion(inu,leaf) tally is only a diagnostic spectrum.
 !---------------------------------------------------------------------------
   use define
+  use photoelectron_degradation_mod, only : N_EDEP, E_SECONDARY, &
+                                            photoelectron_energy_weights
   implicit none
   private
 
@@ -27,16 +29,13 @@ module ion_score_mod
   integer, parameter :: I_GHI = 1, I_GHEI = 2, I_GHEII = 3
   integer, parameter :: I_HHI = 4, I_HHEI = 5, I_HHEII = 6
   integer, parameter :: NHHE = 6
-  !--- secondary-ionization (par%use_sec_ion) path-estimator layout: the nine
-  !--- x-independent band integrals of gas_rates_mod -- three hard-part
-  !--- (photoelectron energy E0 > E_SEC_ION) heating terms and the six
-  !--- secondary H I / He I ionization potentials, one per (secondary,absorber)
-  !--- pair.  E_SEC_ION matches the gas_rates_mod value.
-  integer, parameter :: I_HH_HI = 1, I_HH_HEI = 2, I_HH_HEII = 3
-  integer, parameter :: I_SI_HI_HI = 4, I_SI_HI_HEI = 5, I_SI_HI_HEII = 6
-  integer, parameter :: I_SI_HEI_HI = 7, I_SI_HEI_HEI = 8, I_SI_HEI_HEII = 9
-  integer, parameter :: NSEC = 9
-  real(kind=wp), parameter :: E_SEC_ION = 40.0_wp
+  !--- secondary-ionization (par%use_sec_ion) path-estimator layout: for each
+  !--- absorber (H I, He I, He II) the photoelectron energy deposited above
+  !--- E_SECONDARY, sigma (1 - E_th/E), split onto the N_EDEP energy nodes of
+  !--- photoelectron_degradation_mod by the x-independent weights of E0, so
+  !--- the state-dependent partition is applied afterwards exactly.  Row
+  !--- (a-1)*N_EDEP + k is absorber a, node k.
+  integer, parameter :: NSEC = 3*N_EDEP
   integer, parameter :: ENERGY_ACC_WP = selected_real_kind(18,300)
 
   real(kind=wp), allocatable :: hhe_rate_path(:,:) ! (NHHE,nleaf), rank local then
@@ -49,9 +48,9 @@ module ion_score_mod
                                                    ! per leaf, the EUV grain-heating
                                                    ! integral.
   real(kind=wp), allocatable :: sec_ion_path(:,:)  ! (NSEC,nleaf), rank local then
-                                                   ! reduced; the nine x-independent
-                                                   ! secondary-ionization band
-                                                   ! integrals.
+                                                   ! reduced; the photoelectron
+                                                   ! energy deposited above 30 eV,
+                                                   ! by absorber and energy node.
   real(kind=wp), allocatable :: fuv_field_path(:)  ! (nleaf), rank local then
                                                    ! reduced; Sum(path_lum) over
                                                    ! FUV segments (E < eion_min),
@@ -106,6 +105,13 @@ contains
          call species_rate_path_setup(nleaf)
        end block
     end if
+    !--- He I 2^3S photoionization rate Phi_3 (par%hei_metastable)
+    if (par%hei_metastable) then
+       block
+         use hei_metastable_mod, only : hei_metastable_path_setup
+         call hei_metastable_path_setup(nleaf)
+       end block
+    end if
   end subroutine ion_score_setup
 
   subroutine ion_score_resize(nleaf)
@@ -130,6 +136,12 @@ contains
        block
          use species_mod, only : species_rate_path_reset
          call species_rate_path_reset()
+       end block
+    end if
+    if (par%hei_metastable) then
+       block
+         use hei_metastable_mod, only : hei_metastable_path_reset
+         call hei_metastable_path_reset()
        end block
     end if
   end subroutine ion_score_reset
@@ -162,40 +174,23 @@ contains
     !--- cross section, evaluated at its exact energy.
     if (allocated(dust_abs_path)) &
        dust_abs_path(il) = dust_abs_path(il) + path_lum*photon%ionphys%dust_abs
-    !--- the nine x-independent secondary-ionization band integrals, each
-    !--- accumulated at the packet's own energy (hnu = E*ev2erg).
+    !--- photoelectron energy above E_SECONDARY, by absorber and energy node,
+    !--- at the packet's own energy.
     if (allocated(sec_ion_path)) then
        block
-         real(kind=wp) :: en, xHI, xHeI, xHeII, hnu
-         en    = photon%ionphys%energy_eV
-         xHI   = photon%ionphys%sigma_HI
-         xHeI  = photon%ionphys%sigma_HeI
-         xHeII = photon%ionphys%sigma_HeII
-         hnu   = en*ev2erg
-         if (en > eth_HI + E_SEC_ION) then
-            sec_ion_path(I_HH_HI,il)     = sec_ion_path(I_HH_HI,il)     &
-               + path_lum*xHI*(1.0_wp - eth_HI/en)
-            sec_ion_path(I_SI_HI_HI,il)  = sec_ion_path(I_SI_HI_HI,il)  &
-               + path_lum*(xHI/hnu)*(en - eth_HI)/eth_HI
-            sec_ion_path(I_SI_HEI_HI,il) = sec_ion_path(I_SI_HEI_HI,il) &
-               + path_lum*(xHI/hnu)*(en - eth_HI)/eth_HeI
-         end if
-         if (en > eth_HeI + E_SEC_ION) then
-            sec_ion_path(I_HH_HEI,il)     = sec_ion_path(I_HH_HEI,il)     &
-               + path_lum*xHeI*(1.0_wp - eth_HeI/en)
-            sec_ion_path(I_SI_HI_HEI,il)  = sec_ion_path(I_SI_HI_HEI,il)  &
-               + path_lum*(xHeI/hnu)*(en - eth_HeI)/eth_HI
-            sec_ion_path(I_SI_HEI_HEI,il) = sec_ion_path(I_SI_HEI_HEI,il) &
-               + path_lum*(xHeI/hnu)*(en - eth_HeI)/eth_HeI
-         end if
-         if (en > eth_HeII + E_SEC_ION) then
-            sec_ion_path(I_HH_HEII,il)     = sec_ion_path(I_HH_HEII,il)     &
-               + path_lum*xHeII*(1.0_wp - eth_HeII/en)
-            sec_ion_path(I_SI_HI_HEII,il)  = sec_ion_path(I_SI_HI_HEII,il)  &
-               + path_lum*(xHeII/hnu)*(en - eth_HeII)/eth_HI
-            sec_ion_path(I_SI_HEI_HEII,il) = sec_ion_path(I_SI_HEI_HEII,il) &
-               + path_lum*(xHeII/hnu)*(en - eth_HeII)/eth_HeI
-         end if
+         real(kind=wp) :: en, sig(3), eth(3), w(N_EDEP)
+         integer :: ia
+         en  = photon%ionphys%energy_eV
+         sig = [photon%ionphys%sigma_HI, photon%ionphys%sigma_HeI, &
+                photon%ionphys%sigma_HeII]
+         eth = [eth_HI, eth_HeI, eth_HeII]
+         do ia = 1, 3
+            if (en - eth(ia) <= E_SECONDARY) cycle
+            call photoelectron_energy_weights(en - eth(ia), w)
+            sec_ion_path((ia-1)*N_EDEP+1:ia*N_EDEP, il) = &
+               sec_ion_path((ia-1)*N_EDEP+1:ia*N_EDEP, il) &
+               + path_lum*sig(ia)*(1.0_wp - eth(ia)/en)*w
+         end do
        end block
     end if
     !--- Habing-G0 integral: accumulate path_lum for FUV segments, i.e. those
@@ -224,8 +219,14 @@ contains
        block
          use species_mod, only : species_rate_path_score
          call species_rate_path_score(photon%ionphys%energy_eV, &
-              photon%ionphys%sigma_metal, photon%ionphys%n_metal, &
-              il, path_lum)
+              photon%ionphys%sigma_metal, photon%ionphys%heat_metal, &
+              photon%ionphys%n_metal, il, path_lum)
+       end block
+    end if
+    if (par%hei_metastable) then
+       block
+         use hei_metastable_mod, only : hei_metastable_path_score
+         call hei_metastable_path_score(il, photon%ionphys%energy_eV, path_lum)
        end block
     end if
   end subroutine score_ion_path
@@ -291,6 +292,12 @@ contains
        block
          use species_mod, only : species_rate_path_reduce
          call species_rate_path_reduce()
+       end block
+    end if
+    if (par%hei_metastable) then
+       block
+         use hei_metastable_mod, only : hei_metastable_path_reduce
+         call hei_metastable_path_reduce()
        end block
     end if
   end subroutine ion_score_reduce
@@ -387,18 +394,16 @@ contains
   end subroutine ion_score_report_energy_closure
 
 
-  subroutine ion_score_apply_sec(heat_hard_HI, heat_hard_HeI, heat_hard_HeII, &
-       si_HI_HI, si_HI_HeI, si_HI_HeII, si_HeI_HI, si_HeI_HeI, si_HeI_HeII)
-    !--- Secondary-ionization band integrals per leaf.  sec_ion_path
-    !--- = Sum(path_lum * coeff(E)) with the factor below is the transport form
-    !--- of fJ * coeff(E), since Sum(path_lum) times that factor is 4 pi J dnu.
-    !--- gas_rates_mod's secion_apply then folds the gas state into these nine
-    !--- arrays.
+  subroutine ion_score_apply_sec(edep)
+    !--- Photoelectron energy deposition rate above E_SECONDARY [erg/s per
+    !--- absorber particle], edep(k, a, leaf) for energy node k and absorber
+    !--- a = 1 (H I), 2 (He I), 3 (He II): sec_ion_path with the factor that
+    !--- turns Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu, as for the
+    !--- photoheating.  Summed over k it is the part of heat_* whose
+    !--- photoelectrons exceed E_SECONDARY.
     use octree_mod, only : leaf_half
     implicit none
-    real(kind=wp), intent(out) :: heat_hard_HI(:), heat_hard_HeI(:), heat_hard_HeII(:)
-    real(kind=wp), intent(out) :: si_HI_HI(:),  si_HI_HeI(:),  si_HI_HeII(:)
-    real(kind=wp), intent(out) :: si_HeI_HI(:), si_HeI_HeI(:), si_HeI_HeII(:)
+    real(kind=wp), intent(out) :: edep(:,:,:)
     real(kind=wp) :: fac
     integer :: il
 
@@ -406,15 +411,7 @@ contains
        error stop 'secondary-ionization path estimators are not allocated'
     do il = 1, score_nleaf
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
-       heat_hard_HI(il)   = sec_ion_path(I_HH_HI,il)*fac
-       heat_hard_HeI(il)  = sec_ion_path(I_HH_HEI,il)*fac
-       heat_hard_HeII(il) = sec_ion_path(I_HH_HEII,il)*fac
-       si_HI_HI(il)   = sec_ion_path(I_SI_HI_HI,il)*fac
-       si_HI_HeI(il)  = sec_ion_path(I_SI_HI_HEI,il)*fac
-       si_HI_HeII(il) = sec_ion_path(I_SI_HI_HEII,il)*fac
-       si_HeI_HI(il)   = sec_ion_path(I_SI_HEI_HI,il)*fac
-       si_HeI_HeI(il)  = sec_ion_path(I_SI_HEI_HEI,il)*fac
-       si_HeI_HeII(il) = sec_ion_path(I_SI_HEI_HEII,il)*fac
+       edep(:,:,il) = reshape(sec_ion_path(:,il)*fac, [N_EDEP, 3])
     end do
   end subroutine ion_score_apply_sec
 

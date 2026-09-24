@@ -5,7 +5,7 @@ Same generic-AMR schema as MoCafe's make_amr_sphere.py (columns x, y, z,
 level, nH, T, vx, vy, vz; keys BOXLEN, ORIGINX/Y/Z), but the refinement
 targets the I-front: full level inside a shell around the expected
 Stromgren radius, coarse elsewhere.  This is the refinement that matters
-for the problem (docs/PLAN.md section 4) — the center-biased builder puts
+for the problem (md/PLAN.md section 4) — the center-biased builder puts
 its COARSEST cells at the front.
 
     python3 make_front_refined.py --out amr_sphere_front46.fits

@@ -18,6 +18,20 @@ module nlevel_mod
 ! (de-excitation q_ul = 8.629e-6 Ups/(g_u sqrt T), excitation by detailed
 ! balance) + radiative A; closure sum(n_i) = 1 (Gaussian elimination).
 ! Line emissivity: j_ul = n_u A_ul dE_ul [erg/s per ion].
+!
+! Atomic-hydrogen impact (ground-term fine structure of C I, C II, O I):
+! nlevel_load also reads data/atomic/hcoll_<el>_<stage>.txt beside the atom
+! file when it exists (make_hcoll_fine_structure.py).  Given n_HI, those
+! rates join the electron rates in the SAME statistical equilibrium, so the
+! populations saturate against both colliders together:
+!   R = n_e q^e + n_HI q^H + A.
+! Row: lo hi form Tmin Tmax c_1..c_10.  form 1 is Abrahamsson, Krems &
+! Dalgarno (2007) eq. (1), the EXCITATION rate lo -> hi,
+!   ln(k/1e-11) = sum_{i=0..8} c_(i+2) T^(-i c_1);
+! form 2 is a DE-excitation power law q_hi->lo = c_1 (T/100)^c_2.  The
+! de-excitation rate is taken at T clamped to [Tmin, Tmax] (the range of the
+! calculation; no extrapolation) and excitation follows by detailed balance
+! at the actual T with this atom's level energies.
 ! Every transition is oriented by ENERGY (emitting_level), never by the order
 ! of its two index columns -- CHIANTI does not order them consistently.
 !
@@ -34,8 +48,11 @@ module nlevel_mod
   !--- the Upsilon work is done once for each T across the whole n_e column.
   public :: nlevel_cooling_prepT, nlevel_cooling_solve, nlevel_cooling_at
   public :: MAXLEV
+  !--- atomic-hydrogen impact: the increment of the line cooling over the
+  !--- electron-only populations (species_mod::metal_cooling_H).
+  public :: nlevel_has_hcoll, nlevel_hcoll_cooling
 
-  integer, parameter :: MAXLEV = 40, MAXTR = 600
+  integer, parameter :: MAXLEV = 40, MAXTR = 600, MAXHC = 10
 
   type nlevel_atom_type
      logical :: loaded = .false.
@@ -50,6 +67,12 @@ module nlevel_mod
      real(kind=wp) :: cups(MAXTR) = 0.0_wp, dery(MAXTR) = 0.0_wp
      real(kind=wp) :: st_lo(MAXTR) = 0.0_wp, st_hi(MAXTR) = 0.0_wp
      real(kind=wp) :: coef(16, MAXTR) = 0.0_wp
+     !--- atomic-hydrogen impact rates (hcoll_<el>_<stage>.txt); nhc = 0
+     !--- when the atom has none.
+     integer :: nhc = 0
+     integer :: hc_lo(MAXHC) = 0, hc_hi(MAXHC) = 0, hc_form(MAXHC) = 0
+     real(kind=wp) :: hc_tmin(MAXHC) = 0.0_wp, hc_tmax(MAXHC) = 0.0_wp
+     real(kind=wp) :: hc_c(10, MAXHC) = 0.0_wp
   end type nlevel_atom_type
 
   real(kind=wp), parameter :: COLL_PREF = 8.629e-6_wp
@@ -108,7 +131,99 @@ contains
     close(unit)
     atom%loaded = atom%nlev > 0 .and. atom%nups > 0
     ok = atom%loaded
+    if (ok) call hcoll_load(fname, atom)
   end subroutine nlevel_load
+
+  !=========================================================================
+  ! Atomic-hydrogen impact rates from the sibling file: the basename
+  ! nlevel_<el>_<stage>[_suffix].txt with 'nlevel_' replaced by 'hcoll_'.
+  ! No file -> nhc = 0 (electron impact only).  A malformed file stops the
+  ! run: a silently dropped collider would change the populations.
+  !=========================================================================
+  subroutine hcoll_load(fname, atom)
+    implicit none
+    character(len=*),       intent(in)    :: fname
+    type(nlevel_atom_type), intent(inout) :: atom
+    character(len=1024) :: hname, line
+    character(len=16)   :: key
+    integer :: unit, ios, k, n, ib
+    logical :: exists
+
+    ib = index(fname, 'nlevel_', back=.true.)
+    if (ib == 0) return
+    hname = fname(1:ib-1)//'hcoll_'//fname(ib+7:)
+    inquire(file=trim(hname), exist=exists)
+    if (.not. exists) return
+    open(newunit=unit, file=trim(hname), status='old', iostat=ios)
+    if (ios /= 0) call hcoll_bad(hname, 'cannot be opened')
+    do
+       read(unit,'(a)',iostat=ios) line
+       if (ios /= 0) exit
+       line = adjustl(line)
+       if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
+       read(line,*) key, n
+       if (trim(key) /= 'NHCOL') cycle
+       if (n > MAXHC) call nlevel_toobig(hname, 'NHCOL', n, MAXHC)
+       do k = 1, n
+          read(unit,*,iostat=ios) atom%hc_lo(k), atom%hc_hi(k), &
+             atom%hc_form(k), atom%hc_tmin(k), atom%hc_tmax(k), atom%hc_c(:,k)
+          if (ios /= 0) call hcoll_bad(hname, 'has a short NHCOL row')
+          if (min(atom%hc_lo(k), atom%hc_hi(k)) < 1 .or. &
+              max(atom%hc_lo(k), atom%hc_hi(k)) > atom%nlev .or. &
+              atom%e_cm1(atom%hc_hi(k)) <= atom%e_cm1(atom%hc_lo(k))) &
+             call hcoll_bad(hname, 'names a level pair that is not '// &
+                'lower -> upper in '//trim(fname))
+          if (atom%hc_form(k) /= 1 .and. atom%hc_form(k) /= 2) &
+             call hcoll_bad(hname, 'has an unknown form')
+       end do
+       atom%nhc = n
+    end do
+    close(unit)
+  end subroutine hcoll_load
+
+  subroutine hcoll_bad(hname, what)
+    character(len=*), intent(in) :: hname, what
+    write(*,'(a)') 'ERROR: '//trim(hname)//' '//what//'.'
+    error stop
+  end subroutine hcoll_bad
+
+  logical function nlevel_has_hcoll(atom)
+    type(nlevel_atom_type), intent(in) :: atom
+    nlevel_has_hcoll = atom%nhc > 0
+  end function nlevel_has_hcoll
+
+  !=========================================================================
+  ! Atomic-hydrogen impact rates without the n_HI factor, added into Rh
+  ! (Rh(i,j) = rate j -> i, the convention of the electron matrices).
+  !=========================================================================
+  subroutine hcoll_rate_matrix(atom, T, Rh)
+    implicit none
+    type(nlevel_atom_type), intent(in)    :: atom
+    real(kind=wp),          intent(in)    :: T
+    real(kind=wp),          intent(inout) :: Rh(MAXLEV,MAXLEV)
+    real(kind=wp) :: Tc, de_erg, q_ul, q_lu, s
+    integer :: k, l, u_, i
+
+    do k = 1, atom%nhc
+       l  = atom%hc_lo(k);  u_ = atom%hc_hi(k)
+       de_erg = (atom%e_cm1(u_) - atom%e_cm1(l))*HC_ERG_CM
+       Tc = min(max(T, atom%hc_tmin(k)), atom%hc_tmax(k))
+       select case (atom%hc_form(k))
+       case (1)   ! Abrahamsson et al. (2007) eq. (1): excitation at Tc
+          s = 0.0_wp
+          do i = 9, 1, -1
+             s = s*Tc**(-atom%hc_c(1,k)) + atom%hc_c(i+1,k)
+          end do
+          q_lu = 1.0e-11_wp*exp(s)
+          q_ul = q_lu*(atom%g(l)/atom%g(u_))*exp(de_erg/(kboltz_cgs*Tc))
+       case default   ! de-excitation power law
+          q_ul = atom%hc_c(1,k)*(Tc/100.0_wp)**atom%hc_c(2,k)
+       end select
+       q_lu = (atom%g(u_)/atom%g(l))*q_ul*exp(-de_erg/(kboltz_cgs*T))
+       Rh(u_,l) = Rh(u_,l) + q_lu    ! excitation    l -> u
+       Rh(l,u_) = Rh(l,u_) + q_ul    ! de-excitation u -> l
+    end do
+  end subroutine hcoll_rate_matrix
 
   !=========================================================================
   subroutine nlevel_toobig(fname, key, n, nmax)
@@ -189,34 +304,48 @@ contains
   end subroutine emitting_level
 
   !=========================================================================
-  ! Level populations and line emissivities at (T, ne).
-  ! emis(k) [erg/s per ion] for each NRAD transition k.
+  ! Level populations and line emissivities at (T, ne[, nHI]).
+  ! emis(k) [erg/s per ion] for each NRAD transition k.  nHI adds the
+  ! atomic-hydrogen impact rates when the atom carries them.
   !=========================================================================
-  subroutine nlevel_emissivities(atom, T, ne, emis)
+  subroutine nlevel_emissivities(atom, T, ne, emis, nHI)
     implicit none
     type(nlevel_atom_type), intent(in)  :: atom
     real(kind=wp),          intent(in)  :: T, ne
     real(kind=wp),          intent(out) :: emis(MAXTR)
-    real(kind=wp) :: R(MAXLEV,MAXLEV), M(MAXLEV,MAXLEV+1), pop(MAXLEV)
-    real(kind=wp) :: q_ul, q_lu, de_erg, ups, fac
-    integer :: k, l, u_, i, j, n, ip
+    real(kind=wp), intent(in), optional :: nHI
+    real(kind=wp) :: Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV)
+    real(kind=wp) :: Rh(MAXLEV,MAXLEV), R(MAXLEV,MAXLEV), pop(MAXLEV)
+    real(kind=wp) :: de_erg
+    integer :: k, l, u_
 
-    n = atom%nlev
-    R = 0.0_wp
-    do k = 1, atom%nups
-       call emitting_level(atom, atom%ul_l(k), atom%ul_u(k), l, u_, de_erg)
-       ups  = ups_eval(atom, k, T)
-       q_ul = COLL_PREF/(atom%g(u_)*sqrt(T))*ups
-       q_lu = (atom%g(u_)/atom%g(l))*q_ul*exp(-de_erg/(kboltz_cgs*T))
-       R(u_,l) = R(u_,l) + ne*q_lu    ! excitation    l -> u
-       R(l,u_) = R(l,u_) + ne*q_ul    ! de-excitation u -> l
-    end do
+    call nlevel_cooling_prepT(atom, T, Rcoll, Rrad)
+    R = ne*Rcoll + Rrad
+    if (present(nHI) .and. atom%nhc > 0) then
+       Rh = 0.0_wp
+       call hcoll_rate_matrix(atom, T, Rh)
+       R = R + nHI*Rh
+    end if
+    call level_populations(atom%nlev, R, pop)
     do k = 1, atom%nrad
        call emitting_level(atom, atom%rl(k), atom%ru(k), l, u_, de_erg)
-       R(l,u_) = R(l,u_) + atom%A(k)  ! radiative decay u -> l
+       emis(k) = pop(u_)*atom%A(k)*de_erg
     end do
+  end subroutine nlevel_emissivities
 
-    !--- M n = b with rate matrix (dn/dt = 0) + closure row.
+  !=========================================================================
+  ! Statistical equilibrium: dn/dt = 0 for the rate matrix R (R(i,j) = rate
+  ! j -> i [s^-1]) with the closure sum(n_i) = 1 replacing the first row,
+  ! by Gaussian elimination with partial pivoting.
+  !=========================================================================
+  subroutine level_populations(n, R, pop)
+    implicit none
+    integer,       intent(in)  :: n
+    real(kind=wp), intent(in)  :: R(MAXLEV,MAXLEV)
+    real(kind=wp), intent(out) :: pop(MAXLEV)
+    real(kind=wp) :: M(MAXLEV,MAXLEV+1), fac
+    integer :: i, j, ip
+
     M = 0.0_wp
     do i = 1, n
        do j = 1, n
@@ -228,7 +357,6 @@ contains
     end do
     M(1,1:n) = 1.0_wp
     M(1,n+1) = 1.0_wp
-    !--- Gaussian elimination with partial pivoting.
     do i = 1, n-1
        ip = i
        do j = i+1, n
@@ -244,6 +372,7 @@ contains
           M(j,i:n+1) = M(j,i:n+1) - fac*M(i,i:n+1)
        end do
     end do
+    pop = 0.0_wp
     do i = n, 1, -1
        pop(i) = M(i,n+1)
        do j = i+1, n
@@ -251,12 +380,7 @@ contains
        end do
        pop(i) = pop(i)/M(i,i)
     end do
-
-    do k = 1, atom%nrad
-       call emitting_level(atom, atom%rl(k), atom%ru(k), l, u_, de_erg)
-       emis(k) = pop(u_)*atom%A(k)*de_erg
-    end do
-  end subroutine nlevel_emissivities
+  end subroutine level_populations
 
   !=========================================================================
   ! Collisional line cooling COEFFICIENT
@@ -306,48 +430,12 @@ contains
     real(kind=wp),          intent(in) :: Rcoll(MAXLEV,MAXLEV)
     real(kind=wp),          intent(in) :: Rrad(MAXLEV,MAXLEV)
     real(kind=wp),          intent(in) :: ne
-    real(kind=wp) :: R(MAXLEV,MAXLEV), M(MAXLEV,MAXLEV+1), pop(MAXLEV)
-    real(kind=wp) :: de_erg, fac
-    integer :: k, i, j, n, ip, lo, hi
+    real(kind=wp) :: R(MAXLEV,MAXLEV), pop(MAXLEV)
+    real(kind=wp) :: de_erg
+    integer :: k, lo, hi
 
-    n = atom%nlev
     R = ne*Rcoll + Rrad
-
-    !--- M n = b with rate matrix (dn/dt = 0) + closure row.
-    M = 0.0_wp
-    do i = 1, n
-       do j = 1, n
-          if (i /= j) then
-             M(i,j) = R(i,j)              ! rate j -> i
-             M(i,i) = M(i,i) - R(j,i)     ! loss from i
-          end if
-       end do
-    end do
-    M(1,1:n) = 1.0_wp
-    M(1,n+1) = 1.0_wp
-    !--- Gaussian elimination with partial pivoting.
-    do i = 1, n-1
-       ip = i
-       do j = i+1, n
-          if (abs(M(j,i)) > abs(M(ip,i))) ip = j
-       end do
-       if (ip /= i) then
-          do j = i, n+1
-             fac = M(i,j);  M(i,j) = M(ip,j);  M(ip,j) = fac
-          end do
-       end if
-       do j = i+1, n
-          fac = M(j,i)/M(i,i)
-          M(j,i:n+1) = M(j,i:n+1) - fac*M(i,i:n+1)
-       end do
-    end do
-    do i = n, 1, -1
-       pop(i) = M(i,n+1)
-       do j = i+1, n
-          pop(i) = pop(i) - M(i,j)*pop(j)
-       end do
-       pop(i) = pop(i)/M(i,i)
-    end do
+    call level_populations(atom%nlev, R, pop)
 
     lam = 0.0_wp
     do k = 1, atom%nrad
@@ -369,6 +457,42 @@ contains
     call nlevel_cooling_prepT(atom, T, Rcoll, Rrad)
     lam = nlevel_cooling_solve(atom, Rcoll, Rrad, ne)
   end function nlevel_cooling_at
+
+  !=========================================================================
+  ! Atomic-hydrogen impact increment of the line cooling of one ion
+  ! [erg/s per ion]:
+  !   dP = sum_k [n_u(e + H) - n_u(e)] A_ul dE_ul,
+  ! the radiated power with both colliders in one statistical equilibrium
+  ! minus that with electrons alone at the same (T, n_e).  The thermal
+  ! balance carries the electron part from the (T, n_e) table
+  ! (nlevel_cooling_mod), so adding n_ion dP makes the total the joint
+  ! solve: the two colliders saturate the populations together instead of
+  ! each against its own critical density.  0 when the atom has no hydrogen
+  ! rates or nHI <= 0.
+  !=========================================================================
+  real(kind=wp) function nlevel_hcoll_cooling(atom, T, ne, nHI) result(dP)
+    implicit none
+    type(nlevel_atom_type), intent(in) :: atom
+    real(kind=wp),          intent(in) :: T, ne, nHI
+    real(kind=wp) :: Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV)
+    real(kind=wp) :: Rh(MAXLEV,MAXLEV), R(MAXLEV,MAXLEV)
+    real(kind=wp) :: pe(MAXLEV), peh(MAXLEV), de_erg
+    integer :: k, lo, hi
+
+    dP = 0.0_wp
+    if (atom%nhc == 0 .or. nHI <= 0.0_wp) return
+    call nlevel_cooling_prepT(atom, T, Rcoll, Rrad)
+    Rh = 0.0_wp
+    call hcoll_rate_matrix(atom, T, Rh)
+    R = ne*Rcoll + Rrad
+    call level_populations(atom%nlev, R, pe)
+    R = R + nHI*Rh
+    call level_populations(atom%nlev, R, peh)
+    do k = 1, atom%nrad
+       call emitting_level(atom, atom%rl(k), atom%ru(k), lo, hi, de_erg)
+       dP = dP + (peh(hi) - pe(hi))*atom%A(k)*de_erg
+    end do
+  end function nlevel_hcoll_cooling
 
   !=========================================================================
   integer function nlevel_nlines(atom)

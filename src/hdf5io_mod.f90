@@ -6,7 +6,7 @@ module hdf5io_mod
 ! hdf5_put_keyword/get_keyword, hdf5_get_column_number,
 ! hdf5_read_image/append_image, hdf5_read_table_column/append_table_column.
 !
-! Schema (matches docs/io_layout.md):
+! Schema:
 !   /section_001/data           -- N-D image dataset (image-style HDU)
 !   /section_002/<colname>      -- 1-D table columns (BinTable-style HDU)
 !   /section_NNN/@<key>         -- attributes (FITS keywords)

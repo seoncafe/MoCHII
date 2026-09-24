@@ -13,7 +13,8 @@ module recomb_continuum_mod
 !    inside the table range.  The Ercolano & Storey (2006) machine-readable
 !    swap remains a drop-in at this interface.
 !  - ABOVE the table range: Milne-relation free-bound from the ground
-!    photoionization cross sections (photo_xsec VFKY96) + free-free with the
+!    photoionization cross sections (photo_xsec: exact hydrogenic for H I
+!    and He II, VFKY96 for He I) + free-free with the
 !    Hummer getGauntFF Gaunt factor (Z=1 for H II/He II, Z=2 for He III).
 !
 ! These coefficients have two consumers that must not drift apart: the

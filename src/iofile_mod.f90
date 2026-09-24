@@ -1,13 +1,13 @@
 ! MoCHII: copied from MoCafe_v2.00/src/iofile_mod.f90 (2026-07-11)
 module iofile_mod
 !
-! I/O facade for LaRT. Callers never reference FITS or HDF5 libraries
+! I/O facade. Callers never reference FITS or HDF5 libraries
 ! directly. Backend selection is per io_file_type instance, set by
 ! io_open_new/old based on filename extension (`.h5`/`.hdf5` → HDF5,
 ! else FITS). HDF5 backend is compiled in when -DHDF5 is set; otherwise
 ! HDF5 paths return IO_ERR_NO_HDF5 via the hdf5io_mod stubs.
 !
-! See docs/io_layout.md for the full specification.
+! The HDF5 section layout is described in the hdf5io_mod header.
 !
   use, intrinsic :: iso_fortran_env, only: real32, real64, int32, int64
   use fitsio_mod

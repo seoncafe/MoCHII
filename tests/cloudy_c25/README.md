@@ -14,6 +14,7 @@ published values is code and how much is thirty years of atomic data.
 |---|---|---|
 | `hii40_c25.in` | HII40 (40 kK blackbody) | physics block of `tsuite/auto/hii_paris.in`, unmodified |
 | `hii20_c25.in` | HII20 (20 kK blackbody) | physics block of `tsuite/auto/hii_coolstar.in`, unmodified |
+| `hii40_cool.in` | HII40 | `hii40_c25.in` physics block plus the zone-by-zone cooling (`save cooling`, `save cooling each`), heating and element saves read by `fixed_state_cooling.py` |
 | `wood_lines.dat` | line list read by `save line list` | written for this comparison |
 | `orig_hii_paris.in`, `orig_hii_coolstar.in` | untouched copies of the distributed decks | kept so the physics block can be diffed against ours |
 
@@ -45,10 +46,18 @@ Each takes about 90 seconds.
 The blend composition assumed when comparing a Cloudy line with a benchmark
 row (which components are summed into `blnd 2326`, `blnd 3727`, and so on)
 is documented in `wood_lines.dat` and in
-`paper/tables/make_wood_tables.py`; it was read from c25.00's own
+`MoCHII_paper/tables/make_wood_tables.py`; it was read from c25.00's own
 `data/blends.ini`.
 
-## Consumers in this repository
+## Consumers
 
-- `paper/tables/make_wood_tables.py` — the C25 column of the benchmark tables
-- `paper/python/make_wood_benchmark.py` — the Cloudy curves on the radial figures
+The paper sources live beside this repository, in `../MoCHII_paper/`
+relative to the repository root; its scripts read these files by relative path.
+
+- `MoCHII_paper/tables/make_wood_tables.py` — the C25 column of the benchmark tables
+- `MoCHII_paper/python/make_wood_benchmark.py` — the Cloudy curves on the radial figures
+- `fixed_state_cooling.py` (run with `run_fixed_state.sh`, which builds the n-level
+  driver `fixed_state_nlevel.f90` against `src/*.o`) — MoCHII's cooling terms
+  evaluated on the `hii40_cool.*` state and integrated channel by channel
+  against Cloudy's, plus the temperature-scaling estimate of the paper's
+  fixed-state cooling section

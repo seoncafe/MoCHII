@@ -18,9 +18,11 @@ module milne_recomb_spectrum_mod
 !
 ! so the spectrum and the emission rate are not independent assumptions.
 ! milne_setup evaluates that integral and reports it against the
-! alpha_A - alpha_B that sets the packet count.  They come from unrelated
-! data (Milne + Verner cross sections versus the fitted recombination
-! coefficients) and are reported, never rescaled into agreement.
+! alpha_A - alpha_B that sets the packet count.  That alpha_1 is itself a fit
+! to this same Milne relation on these same cross sections
+! (tools/fitting/fit_alpha1_milne.py, recomb_mod), so the two agree to the
+! fit accuracy (0.01%); the comparison is reported, never rescaled into
+! agreement, so that a drift between the fit and the cross sections shows.
 !
 ! SAMPLING WEIGHT.  MoCHII emits equal-energy packets and fixes their number
 ! from the channel's ENERGY luminosity.  The packet energies must therefore

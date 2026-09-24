@@ -6,9 +6,11 @@ module lines_mod
 ! data/atomic/nlevel_<el>_<stage>.txt, solve the n-level atom per leaf at
 ! the converged (T_e, n_e), multiply by the cascade stage density, and
 ! integrate over the grid:  L_line = sum_leaf j_line n_ion V  [erg/s].
-! H beta from the case-B effective recombination coefficient
-! alpha_eff(Hbeta) = 3.03e-14 (T/1e4)^-0.9 cm^3/s (accurate to a few % at
-! 5-20 kK; Storey & Hummer tables arrive with the emission-map stage).
+! H beta (the normalization of every L/L(Hbeta) column) and the other H I
+! and He II recombination lines from the Storey & Hummer (1995) tables
+! (sh95_mod), He I from Porter et al. (2012, 2013).  The C I, C II and O I
+! ground-term fine structure also carries atomic-hydrogen impact
+! (nlevel_mod, hcoll_<el>_<stage>.txt).
 ! Writes '<base>_lines.txt': element, stage, wavelength, L, L/L(Hbeta).
 !
 ! With par%emis_output, also writes '<base>_emis' (HDF5/FITS): the same
@@ -319,7 +321,9 @@ contains
              nion = elem_abund(ie)*nH*frac(ist)
              if (nion <= 1.0e-30_wp) cycle
              vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
-             call nlevel_emissivities(atom, T, ne, emis)
+             !--- nHI: atomic-hydrogen impact on the ground-term fine
+             !--- structure of C I, C II, O I (hcoll_<el>_<stage>.txt).
+             call nlevel_emissivities(atom, T, ne, emis, nHI)
              Lline(1:nl) = Lline(1:nl) + emis(1:nl)*nion*vol
              if (do_emis) em(1:nl, il) = emis(1:nl)*nion
           end do

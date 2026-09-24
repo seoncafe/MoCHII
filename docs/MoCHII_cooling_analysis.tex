@@ -84,7 +84,7 @@ state, so that no feedback can hide a difference --- localized the problem
 immediately: on an identical state the Tier-1 fits that drive the thermal
 balance delivered $0.72$ of \Cloudy{}'s total cooling while the Tier-2
 $n$-level solve that produces the line output delivered $0.98$.  The gap was
-two defects in the offline fitting pipeline, both in \code{chianti\_cooling.py}
+two defects in the offline fitting code, both in \code{chianti\_cooling.py}
 and its caller.  D1: the lower-level populations were distributed among the
 ground-term fine-structure levels by Boltzmann factors, which at
 $kT \gg \Delta E_{\rm fs}$ is the statistical-weight (high-density) limit and
@@ -235,7 +235,7 @@ computes metal line cooling twice, by two independent routes:
       luminosities.
 \end{description}
 Both are built from the same CHIANTI v11.0.2 files by the same offline
-pipeline, so a disagreement between them on an identical state is internal
+fitting code, so a disagreement between them on an identical state is internal
 evidence, independent of \Cloudy{}.
 
 \paragraph{Consistency checks performed before the comparison was believed.}
@@ -304,6 +304,18 @@ metal recombination (fb)     & $1.6610\times10^{35}$ &  0.05 & 0.000 & 0.000 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\emph{Update 2026-09-24.}  The comparison can now be rerun from the
+repository: the script \code{run\_fixed\_state.sh} in the directory
+\code{tests/cloudy\_c25} recovers the recorded columns of Table~\ref{tab:budget} with the physics of the time.
+On the current code three rows move: the recombination cooling is now
+$\beta = kT[(3/2)\alpha + d\alpha/d\ln T]$ on MoCHII's own $\alpha$, so the
+case-A ratios become 1.616 (H) and 1.410 (\HeI{}) and the case-B sum
+$3.57\times10^{37}$ erg\,s$^{-1}$ (was $3.61$--$3.62$) against \Cloudy{}'s
+$4.02\times10^{37}$; $[\OI{}]$ rises to 0.866 with the hydrogen collisions
+in the $n$-level solve; and the \HI{} collisional row reads 0.995 on the
+current fit (0.989 was the fit before commit \code{297fe79}).  The summed
+line ratio (1.011 density-suppressed, 1.116 zero-density) does not move.
 
 Two further readings of Table~\ref{tab:budget} are worth recording.  First,
 the ions whose Tier-1 ratio is farthest below unity ($\NIII{}$ 0.433,
@@ -582,7 +594,7 @@ $[\SIV{}]$ 10.51~$\mu$m was the one channel of any size that \MoCHII{} did not
 carry at all.  \SIV{} was already tracked in the ionization cascade, so adding
 it was the intended data operation: \code{cooling\_s\_4.txt} (three
 exponential terms, max fit error $0.61\%$) and \code{nlevel\_s\_4.txt} from
-the same pipeline.  In the rebuilt HII40 model $[\SIV{}]$ 10.51~$\mu$m comes
+the same fitting code.  In the rebuilt HII40 model $[\SIV{}]$ 10.51~$\mu$m comes
 out at $0.1868$ of ${\rm H}\beta$ against $0.1894$ from the \Cloudy{} c25.00
 emissivity file, a $1.4\%$ difference.
 
@@ -839,6 +851,25 @@ references and the figures and examples built on the earlier cooling still need
 refreshing to the density-suppressed default, and
 \code{tests/g2a\_thermal/check\_g2a.py} still refers to a coefficient file
 under its former name.
+
+\emph{Update 2026-09-24:} the H-collider term is now density-suppressed,
+together with the electrons.  \code{metal\_cooling\_H} no longer uses a
+two-level formula: the $n$-level atoms of \CI{}, \CII{} and \OI{} carry
+atomic-hydrogen rates, read from
+\code{data/\allowbreak atomic/\allowbreak hcoll\_<el>\_<stage>.txt}
+(Abrahamsson, Krems \& Dalgarno 2007 for \CI{} and \OI{}, Barinovs et al.\
+2005 for \CII{}); the statistical equilibrium is solved with
+$R = \nel q^e + n_{\rm HI} q^{\rm H} + A$, and the thermal balance adds
+$n_{\rm ion}[P(e+{\rm H}) - P(e)]$ to the electron share from the
+$(T, \nel)$ table, so both colliders saturate the populations in one solve
+and every ground-term line ([\OI{}] 63/145\,$\mu$m, [\CI{}]
+609/370\,$\mu$m, [\CII{}] 158\,$\mu$m) is included; the line output uses the
+same atoms.  The unsourced [\OI{}] coefficient
+$9.2{\times}10^{-11}(T/100)^{0.67}$ of the earlier formula was
+$0.20$--$0.46$ of Abrahamsson's over 50--1000~K.  The PDR numbers quoted in
+this paragraph predate that change (details in \code{MoCHII\_physics.pdf},
+PDR-zone physics).  The \code{check\_g2a.py} item is resolved: the checker
+reads \code{data/atomic/cooling\_h\_1.txt}, which exists.
 
 %==========================================================================
 \section{Cooling inventories of the other Monte Carlo codes}
@@ -1257,8 +1288,8 @@ on three of the four largest metal coolants, which adds cooling, while
 can therefore be attributed to a single data difference.  On channels rather
 than data, \MoCHII{} carries three that \Mocassin{} does not ---
 collisional-ionization cooling, metal free-free with the net ion charge, and
-H-impact fine-structure cooling for the photodissociation-region path
-(\Mocassin{}'s $\Upsilon$ tables are electron-impact only) --- and \Mocassin{}
+atomic-hydrogen impact on the \CI{}, \CII{} and \OI{} fine-structure lines
+for neutral gas (\Mocassin{}'s $\Upsilon$ tables are electron-impact only) --- and \Mocassin{}
 carries one that \MoCHII{} does not, the gas--grain collisional term.
 
 \subsection{\Torus{}}
@@ -1725,7 +1756,7 @@ structure); the benchmark runs after the fix are
 \code{tests/g2\_hii/hii\{40,20\}\_bench.in} with their \code{\_rates.h5} and
 \code{\_lines.txt} output; the coefficient files are
 \code{data/atomic/cooling\_<ion>.txt} and \code{nlevel\_<ion>.txt}, each with
-its own provenance header; the fitting pipeline is
+its own provenance header; the fitting code is
 \code{tools/fitting/\{chianti\_cooling,fit\_cooling,fit\_nlevel\}.py}; and the
 benchmark table columns are assembled by
 \code{paper/tables/make\_wood\_tables.py}.  The channel-by-channel budget, the

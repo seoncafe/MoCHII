@@ -586,7 +586,7 @@ class HeiMetaData(_LeafProjectable):
     [s^-1], n_e, T_e, and the leaf geometry.  Adds a line-of-sight ``column_map``
     (from _LeafProjectable) and a ``tau10833_map`` for the 10833 A line-center
     optical depth, using the fine-structure constants from
-    data/atomic/hei_metastable.txt (Stage 2 of docs/HEI_10833_PLAN.md).
+    data/atomic/hei_metastable.txt (Stage 2 of md/HEI_10833_PLAN.md).
     """
 
     def __init__(self, fname, atomic_dir=None):
@@ -666,7 +666,7 @@ class HeiMetaData(_LeafProjectable):
         (default; the blended J'=1,2 pair), 'all', or 0/1/2; ``v_turb`` [km/s].
         When ``warn`` and any pixel has line-center tau > 1, prints a warning:
         the diagnostic assumes optically thin 10833 (line transfer is out of
-        scope; see docs/HEI_10833_PLAN.md sec. 5).  Returns (image, extent).
+        scope; see md/HEI_10833_PLAN.md sec. 5).  Returns (image, extent).
         """
         kappa = self.kappa0_10833(v_turb=v_turb, component=component)
         img, extent, apix = self._deposit(kappa * self.vol_cm3, axis, npix,

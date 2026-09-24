@@ -180,7 +180,7 @@ This gives each branch a different meaning:
   not inferred from the presence of a similarly named MAPPINGS routine.
 \item \MoCHII{} is an independent three-dimensional transport branch built
   from MoCafe rather than MAPPINGS.  Similar physical terms therefore have
-  independent algorithms, atomic-data pipelines, and validation histories.
+  independent algorithms, atomic-data preparation, and validation histories.
 \end{itemize}
 
 Consequently, a discrepancy between \MoCHII{} and \Mthree{} cannot safely
@@ -768,7 +768,8 @@ $|\Delta x_{\rm e}| < 10^{-9}$ or errors out after 100 passes.  So
 default.  On one axis it is ahead of \MoCHII{}: its charge exchange runs
 against four partners, \HI{} and \HeI{} for recombination and \HII{} and
 \HeII{} for ionization (Kingdon \& Ferland 1996), where \MoCHII{} carries
-the hydrogen pair only.
+the hydrogen pair only for the metals (its He--H exchange, added
+2026-09-24, couples helium to hydrogen, not the metals to helium).
 
 \textbf{Metal opacity: \Colt{} has it.}  \code{k\_gas\_abs} sums
 $n_{\rm ion}\sigma_{\rm ion}$ over every active ion of every active atom
@@ -1116,13 +1117,20 @@ inventory is less suitable for hard PN, X-ray, or coronal-ion problems.
 \label{sec:recombdata}
 
 \MoCHII{} uses exact hydrogenic ground-state cross sections for \HI{} and
-\HeII{}, and Verner et al.\ \cite{verner1996} fits for \HeI{} and metals.
+\HeII{}, the Verner et al.\ \cite{verner1996} fit for \HeI{}, and for the
+metals Verner's \code{phfit2} prescription in full: the outer-shell fit
+below the first inner-shell edge and the sum of the Verner \& Yakovlev
+(1995) subshell fits above it, which brings the Mg $2p$, Ca $3p$ and
+Fe $3p$ edges into the 13.6--100~eV band (since 2026-09-24).
 Hydrogen and helium recombination defaults to the Badnell (2023) radiative
-total minus the Mao--Kaastra (2016) ground-state coefficient (case B), with
-the Hui--Gnedin fits retained as an option; metal RR and DR
-are derived primarily from Badnell/CHIANTI v11.0.2 data.  Charge exchange
-uses the modern first-stage rates of Huang et al.\ and the higher-stage
-Kingdon--Ferland compilation.  Each generated file records its source,
+total minus a ground-state coefficient obtained from the Milne relation on
+the transport cross sections (case B), with the Hui--Gnedin fits retained as
+an option; metal RR and DR are derived primarily from Badnell/CHIANTI
+v11.0.2 data.  Charge exchange uses the modern first-stage rates of Huang et
+al., the Barragan et al.\ (2006) tables for N$^{2+}$ and O$^{2+}$, and the
+Kingdon--Ferland compilation for the other higher stages; He--H charge
+exchange enters the H/He balance (\code{par\%helium\_charge\_exchange},
+default on since 2026-09-24).  Each generated file records its source,
 fit range, formula, and maximum fit error.
 
 \Mthree{} uses the established MAPPINGS compilation.  The published code
@@ -1242,7 +1250,7 @@ yes, every active ion & no metal channel; H/He free--free, free--bound and
 two-photon, opt-in & none in this tree; $\Te$ from the internal energy \\
 
 \MoCHII{} & chain, but solved for its root at each $\nelec$ rather than
-substituted into & separate & \textbf{yes} & yes, default on, damped fixed
+substituted into & separate & \textbf{yes}, metal--H and He--H & yes, default on, damped fixed
 point & yes, default on & H/He channels only & outer bisection in
 $\log\Te$ \\
 \end{longtable}
@@ -1526,8 +1534,11 @@ useful when exploring non-Maxwellian interpretations of nebular
 diagnostics.  \MoCHII{} assumes a Maxwellian distribution.
 
 All three codes include secondary-ionization concepts.  \MoCHII{} optionally
-partitions the energy of photoelectrons above 40 eV among heat and
-secondary H/He ionizations following Shull--van Steenberg.  The MAPPINGS
+partitions the energy of H and He photoelectrons above 30 eV among heat
+and secondary H/He ionizations, with the Shull--van Steenberg (1985)
+ionization budget carried to lower energies by the Dalgarno, Yan \& Liu
+(1999) mean energies per ion pair and divided among the neutral targets
+present.  The MAPPINGS
 ion-balance routines call a secondary-ionization module and also include
 cosmic-ray ionization/heating.  The MAPPINGS-derived codes therefore have
 the broader general-plasma framework.  A Compton routine is present in
@@ -1572,9 +1583,10 @@ $\log \Te$ and re-solves the H/He and metal ionization at every trial
 temperature.  Its current budget includes photoionization heating,
 H/He recombination and collisional losses, free-free emission with a
 tabulated Gaunt integral (H/He and, by default, the trace metals with
-their net ion charge), metal-line cooling, optional metal
-photoheating, secondary ionization, and the atomic-PDR grain and neutral
-collision terms.
+their net ion charge), metal-line cooling, metal photoheating (on by
+default), atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and
+O\,\textsc{i} fine-structure lines (always on with the metals), and optionally secondary
+ionization and the grain photoelectric and recombination terms.
 
 The MAPPINGS thermal solver used by \Mappings{} and inherited by \Mthree{}
 includes a broader traditional plasma budget:
@@ -1659,9 +1671,13 @@ is the clearest overall physical advantage of \MoCHII{}.
 
 \MoCHII{} extends the band below 13.6 eV so that low-threshold metals and
 dust see the FUV field beyond the H I-front.  Optional switches include
-electrons from the metal cascade, metal photoheating, Bakes--Tielens grain
-photoelectric heating plus recombination cooling, and neutral-H impact
-cooling in [C\,\textsc{ii}] 158 $\mu$m and [O\,\textsc{i}] 63 $\mu$m.
+electrons from the metal cascade and metal photoheating (both on by
+default) and Bakes--Tielens grain photoelectric heating plus recombination
+cooling (off by default); the neutral-gas coolant, atomic-hydrogen impact on
+the ground-term fine structure of C\,\textsc{i}, C\,\textsc{ii} and
+O\,\textsc{i} (all of [C\,\textsc{i}] 609/370 $\mu$m, [C\,\textsc{ii}]
+158 $\mu$m and [O\,\textsc{i}] 63/145 $\mu$m), is always on and is solved
+with the electrons in one statistical equilibrium.
 This is an atomic PDR skin, not a complete PDR code.  H$_2$/CO chemistry,
 molecular self-shielding, molecular cooling, line transfer, and gas--dust
 collisional coupling remain outside the model.
@@ -2681,7 +2697,7 @@ replacement of either code.
   The existing data-operation design is well suited to this.
 \item \textbf{Add Na, Al, and Ni only when driven by a diagnostic need.}
   Their MAPPINGS implementations provide useful reference behavior, while
-  the \MoCHII{} pipeline should retain explicit provenance and ion-by-ion
+  the \MoCHII{} data files should retain explicit provenance and ion-by-ion
   gates.
 \item \textbf{Retain the present transport architecture.}  The octree,
   analytic estimator, Cartesian DDA, threshold-aligned bins, and peel-off
@@ -2894,7 +2910,7 @@ table-range assumptions in \code{photo\_xsec}).
 
 \subsection{HS2: registry upward in ion stage}
 
-A data operation through the existing fitting pipeline:
+A data operation through the existing fitting code:
 
 \begin{longtable}{P{0.10\textwidth}P{0.12\textwidth}P{0.28\textwidth}P{0.36\textwidth}}
 \caption{Target stages and the diagnostics they unlock.}
@@ -3184,6 +3200,18 @@ The one genuine framework extension of the plan, in four parts:
   \code{sigma\_vy95} evaluator and the \code{PHOTO2} element-file rows
   already exist (the Cl path); the extension is carrying several shells
   with their edges in the aligned-band threshold list.
+  \emph{Update 2026-09-24:} this part is done, in the form \code{phfit2}
+  itself uses, which is not the sum written above: below the first
+  inner-shell edge $E_{\rm inn}$ the outer-shell fit alone, at and above it
+  the sum of the Verner \& Yakovlev subshell fits of \emph{all} occupied
+  subshells, the outer one included (element-file rows \code{PHOTO},
+  \code{PHINNER}, \code{PHSHELL}; \code{PHOTO2} is gone).  The heating is
+  shell-resolved.  Auger yields, the stage matrix and the Auger-electron
+  energetics (parts 2--4) remain open, and they already matter inside the
+  default band: the Mg\,\textsc{i} $2p$, Ca\,\textsc{i} $3p$ and
+  Fe\,\textsc{i}--\textsc{iii} $3p$ vacancies emit a second electron with
+  probability $\ge 0.995$ (Kaastra \& Mewe 1993 as tabulated by
+  \textsc{Cloudy}), which the one-stage bookkeeping does not carry.
 \item \textbf{Auger yields.}  Kaastra \& Mewe (1993) electrons per
   vacancy, shell-resolved, read from the Cloudy data file format
   (\code{mewe\_nelectron.dat}: element, ion, shell, yield
@@ -3261,6 +3289,12 @@ Primary design, keeping ``fitted offline, evaluated online'':
   $<1\%$ in $\Lambda$ over the used $(T,\nelec)$ range; the H-impact
   PDR cooling terms (\code{metal\_cooling\_H}) stay as they are (their
   two-level low-density form is correct in the PDR regime they serve).
+  \emph{Update 2026-09-24:} that last judgment was wrong and is
+  superseded.  The two-level form carried an unsourced [O\,\textsc{i}]
+  coefficient $0.20$--$0.46$ of Abrahamsson et al.\ (2007), no
+  C\,\textsc{i} channel, and a saturation denominator separate from the
+  electrons'; \code{metal\_cooling\_H} now takes the increment of one
+  $n$-level solve with $R = \nelec q^e + n_{\rm HI} q^{\rm H} + A$.
 \end{enumerate}
 
 \emph{Gate HS7:} a two-zone analytic check (one low- and one

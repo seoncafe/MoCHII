@@ -34,9 +34,9 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8170$~K at HII40 and 6926~K at
+the MOCASSIN Lexington benchmarks ($T_e = 8177$~K at HII40 and 6936~K at
 HII20 with the density-suppressed cooling default, matching a current
-\textsc{Cloudy} c25.00 run to $0.49\%$ and $0.24\%$; the zero-density limit
+\textsc{Cloudy} c25.00 run to $0.40\%$ and $0.38\%$; the zero-density limit
 gives 7894 and 6376~K, and both modern codes sit above the 2000-era
 published ranges); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
@@ -63,7 +63,7 @@ MoCHII copies validated modules from MoCafe v2.00 (octree, event-driven
 traversal, MPI shared memory, HDF5/FITS I/O) and adds gas microphysics
 under three design rules:
 (1) \emph{atomic data are fitted offline, evaluated online} --- the Python
-pipeline under \code{tools/fitting/} is the auditable source of every
+fitting code under \code{tools/fitting/} is the auditable source of every
 coefficient in \code{data/atomic/}, and Fortran only evaluates closed
 forms; (2) \emph{adding an ion is a data operation}, realized by the
 species registry (Section~\ref{sec:cascade}); (3) \emph{validation by
@@ -84,6 +84,7 @@ recombination lines, and the nebular continuum.
 %==========================================================================
 \section{The ionizing band and transport}
 \subsection{Continuous energy and diagnostic bins}
+\label{sec:band}
 The ionizing band covers photon energies
 $[E_{\min}, E_{\max}] = [13.598, 100]$~eV.  By default
 (\code{par\%ion\_energy\_mode = 'continuous'}), a packet energy is sampled
@@ -205,7 +206,7 @@ $\lambda$ [\AA{} or $\mu$m] and the value columns as a luminosity
 density $L_X$ (internal sources) or an intensity density $J_X$ (external
 field) in the matching spectral unit; wavelength tables are converted to
 energy and sorted.  The \code{'shape\_ev'} value columns are read as the
-per-eV density $L_E$ on the $E$~[eV] grid; a shape tabulated in
+density per eV $L_E$ on the $E$~[eV] grid; a shape tabulated in
 wavelength or frequency must use the matching \code{per\_*} type, whose
 conversion applies the $\mathrm{d}\lambda/\mathrm{d}E$ (or
 $\mathrm{d}\nu/\mathrm{d}E$) Jacobian, so a raw re-grid onto $E$ under
@@ -250,14 +251,16 @@ the gas opacity varies with both leaf and bin.
 With \code{par\%ion\_metal\_abs} (default on when \code{use\_metals})
 the registry metals join the absorption,
 $\Delta\kappa_b = n_{\rm H}\sum_{\rm el} A_{\rm el} \sum_i
-f_i\,\sigma_{{\rm VFKY96},i}(E_b)\,d_{\rm cm}$, with the stage
-fractions $f_i$ from the same product chain as the cooling, iterated by
-the opacity feedback exactly like $\xHI$.  Above 13.6~eV this is a
-$\sim$10$^{-22}$~cm$^2$ per H perturbation next to H/He and dust; in the
-FUV bins it is the only \emph{gas} opacity.  The absorbed share returns
-to the metals through their own $\Gamma$ integrals, so the bookkeeping
-stays consistent (metal photoheating is not added to the thermal
-balance --- negligible at trace abundances).
+f_i\,\sigma_i(E_b)\,d_{\rm cm}$, with $\sigma_i$ the cross section of
+\S\ref{sec:photo} (Verner's \code{phfit2} prescription, inner shells
+included), the stage fractions $f_i$ from the same product chain as the
+cooling, iterated by the opacity feedback exactly like $\xHI$.  Above
+13.6~eV this is a $\sim$10$^{-22}$~cm$^2$ per H perturbation next to H/He
+and dust; in the FUV bins it is the only \emph{gas} opacity.  The absorbed
+share returns to the metals through their own $\Gamma$ integrals, so the
+bookkeeping stays consistent, and the photoelectron energy it carries
+enters the thermal balance under \code{par\%metal\_heat} (on by default)
+through the shell-resolved heating coefficient of \S\ref{sec:photo}.
 
 Where the band has no scattering and the diffuse field is emitted
 explicitly, every packet's contribution to the mean-intensity tally is
@@ -285,7 +288,11 @@ each absorber $i$
   \label{eq:rates}
 \end{equation}
 the photoionization rate [s$^{-1}$] and photoheating [erg\,s$^{-1}$]
-for each particle of species $i$.
+for each particle of species $i$.  For a metal ion at energies where
+more than one subshell absorbs, the heating factor
+$\sigma_i(1 - E_{{\rm th},i}/E)$ becomes the sum over the absorbing
+subshells $\sum_s \sigma_s\,(1 - E_{{\rm th},s}/E)$, since each subshell
+releases its photoelectron with $E - E_{{\rm th},s}$ (\S\ref{sec:photo}).
 
 %==========================================================================
 \section{Atomic data}
@@ -295,6 +302,7 @@ header (source, version, fit range, maximum fit error).  The generators
 live in \code{tools/fitting/}.
 
 \subsection{Photoionization cross sections}
+\label{sec:photo}
 The one-electron ions H\,\textsc{i} ($Z{=}1$) and He\,\textsc{ii}
 ($Z{=}2$) use the \emph{exact} ground-state hydrogenic cross section
 (Osterbrock \& Ferland 2006, Eq.~2.4; \code{sigma\_hydrogenic}, the same
@@ -309,9 +317,9 @@ form as EXHALE):
 with $\sigma_0 = 6.30{\times}10^{-18}\,\mathrm{cm^2}$ the threshold value
 and $E_{\rm th}$ the true ionization potential (13.598 and 54.416~eV),
 tied to the physical edge (not $13.6\,Z^2$) so it stays aligned with the
-band grid.  He\,\textsc{i} (two electrons) and every metal ion use the
-full VFKY96 single-shell analytic form (Verner, Ferland, Korista \&
-Yakovlev 1996, ApJ 465, 487, Eq.~1):
+band grid.  He\,\textsc{i} (two electrons) uses the full VFKY96
+single-shell analytic form (Verner, Ferland, Korista \& Yakovlev 1996, ApJ
+465, 487, Eq.~1):
 \begin{equation}
   x = \frac{E}{E_0} - y_0,\quad z = \sqrt{x^2 + y_1^2},\quad
   Q = 5.5 - \tfrac{1}{2}P,\quad
@@ -319,20 +327,9 @@ Yakovlev 1996, ApJ 465, 487, Eq.~1):
   z^{-Q}\left(1 + \sqrt{z/y_a}\right)^{-P},
   \label{eq:vfky}
 \end{equation}
-zero below threshold, $\sigma_0$ in Mb.  Parameters were parsed directly
-from the authors' \code{phfit2.f} \code{PH2} (outer-shell) table and
-verified against the EXHALE implementation; H/He values are compiled in
-\code{photo\_xsec.f90}, the registry ions in
-\code{element\_<el>.txt}.  For the elements \emph{absent} from the
-VFKY96 outer-shell table (P, Cl, K --- Opacity-Project gaps; the
-MOCASSIN \code{ph2.dat} read loop skips the same $Z$), the
-Verner \& Yakovlev (1995) outer-shell subshell fit is used instead
-(\code{sigma\_vy95}; \code{PHOTO2} lines):
-$\sigma = \sigma_0[(y-1)^2 + y_w^2]\,y^{-(5.5+l-P/2)}
-(1+\sqrt{y/y_a})^{-P}$ with $y = E/E_0$ and $l$ the subshell orbital
-quantum number --- the same VFKY96/VY95 hybrid as MOCASSIN
-\code{phFitEl}.  Chlorine is the first user of this path.  Among H/He,
-only the He\,\textsc{i} ground state uses VFKY96:
+zero below threshold, $\sigma_0$ in Mb, with the parameters parsed from the
+authors' \code{phfit2.f} \code{PH2} (outer-shell) table, verified against
+the EXHALE implementation, and compiled in \code{photo\_xsec.f90}:
 
 \begin{center}\small
 \begin{tabular}{lrrrrrrrr}
@@ -343,15 +340,108 @@ He\,\textsc{i}  & 24.587 & 13.61  & 949.2 & 1.469 & 3.188 & 2.039 & 0.4434 & 2.1
 \bottomrule
 \end{tabular}
 \end{center}
-plus C\,\textsc{i}--\textsc{iii}, N\,\textsc{i}--\textsc{ii},
-O\,\textsc{i}--\textsc{iii}, Ne\,\textsc{i}--\textsc{iii},
-S\,\textsc{i}--\textsc{iv}, Ar\,\textsc{i}--\textsc{iv} (20 rows, in
-the element files).  The rate-integral gate cross-checks the curves
-against EXHALE's independent implementations.  The exact H\,\textsc{i}
-and He\,\textsc{ii} cross sections give the threshold values
-$\sigma_0/Z^2 = 6.30$ and $1.575$~Mb; the VFKY96 fits they replace for
-H/He agreed with the exact curve to $0.73\%$ (H\,\textsc{i}) and
-$0.43\%$ (He\,\textsc{ii}), and $\sigma_{\rm HeI} = 7.43$~Mb (VFKY96).
+The exact H\,\textsc{i} and He\,\textsc{ii} cross sections give the
+threshold values $\sigma_0/Z^2 = 6.30$ and $1.575$~Mb; the VFKY96 fits they
+replace for H/He agreed with the exact curve to $0.73\%$ (H\,\textsc{i})
+and $0.43\%$ (He\,\textsc{ii}), and $\sigma_{\rm HeI} = 7.43$~Mb (VFKY96).
+
+\paragraph{Metal ions: Verner's \code{phfit2} prescription, inner shells
+included.}  The metals follow what \code{phfit2.f} itself evaluates, which
+is not one fit at all energies.  \code{phfit2} uses the VFKY96 outer-shell
+fit [Eq.~(\ref{eq:vfky}), \code{PH2}] only below the first inner-shell
+threshold $E_{\rm inn}$ --- its \code{einn}, the \code{PH1} threshold of
+shell \code{NINN}$(N_e)$ for an ion with $N_e$ electrons --- and at and
+above $E_{\rm inn}$ it sums the Verner \& Yakovlev (1995, A\&AS 109, 125)
+\code{PH1} fits of every occupied subshell $s$ with $E \ge E_{{\rm th},s}$:
+\begin{equation}
+  \sigma(E) = \sum_{s:\,E \ge E_{{\rm th},s}} \sigma_{0,s}
+  \left[(y-1)^2 + y_{w,s}^2\right] y^{-(5.5 + l_s - P_s/2)}
+  \left(1 + \sqrt{y/y_{a,s}}\right)^{-P_s},
+  \qquad y = E/E_{0,s},
+  \label{eq:vy95}
+\end{equation}
+with $l_s$ the orbital quantum number of the subshell.  \code{phfit2} sets
+$E_{\rm inn} = 0$ for $Z = 15$, 17, 19 and for $Z > 20$ except iron ---
+the elements absent from the VFKY96 outer-shell table, Opacity-Project
+gaps --- so for chlorine the subshell sum is used at every energy, and
+$E_{\rm inn} = 10^{30}$~eV (never reached) for ions with fewer than three
+electrons.  Both branches are zero below the NIST ionization potential
+carried in the element file (\code{ETH}).  The element files carry the
+three pieces as \code{PHOTO} (the \code{PH2} fit, when $E_{\rm inn} > 0$),
+\code{PHINNER} ($E_{\rm inn}$) and one \code{PHSHELL} row for each
+occupied subshell ($l$, $E_{\rm th}$, $E_0$, $\sigma_0$, $y_a$, $P$,
+$y_w$), all parsed directly from \code{phfit2.f} by
+\code{tools/fitting/make\_element\_data.py}; the evaluator is
+\code{species\_mod::species\_cross\_section}.
+
+Seven registry ions have their first inner-shell edge inside the
+transported 13.6--100~eV band (below), and the four chlorine ions, summed
+over subshells at every energy, add their $3s$ subshell at 25.3, 36.9,
+50.2 and 64.7~eV (Cl\,\textsc{i}--\textsc{iv}); until 2026-09-24 chlorine
+carried only the outer $3p$ subshell fit:
+\begin{center}\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ion & subshell & $E_{\rm inn}$ [eV] & \multicolumn{2}{c}{$\sigma$ just above the edge [Mb]} \\
+    &          &                   & outer-shell fit alone & \code{phfit2} (subshell sum) \\
+\midrule
+Ca\,\textsc{i}   & $3p$ & 34.4 & 0.090 (50 eV)  & 1.43 \\
+Ca\,\textsc{ii}  & $3p$ & 40.9 & & \\
+Mg\,\textsc{i}   & $2p$ & 54.9 & 0.087 (70 eV)  & 6.03 \\
+Mg\,\textsc{ii}  & $2p$ & 65.7 & 0.050 (85 eV)  & 6.68 \\
+Fe\,\textsc{i}   & $3p$ & 66.0 & 8.88 (100 eV)  & 5.29 \\
+Fe\,\textsc{ii}  & $3p$ & 76.2 & & \\
+Fe\,\textsc{iii} & $3p$ & 87.1 & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+Until 2026-09-24 MoCHII evaluated the outer-shell fit alone up to 100~eV
+for every ion, which is physically wrong above $E_{\rm inn}$: the
+\code{PH2} fit describes the outer subshell only, and above the edge the
+$2p$ (Mg) or $3p$ (Ca, Fe) subshell absorbs as well.  For Mg and Ca the
+omission was a factor $16$--$130$ in the cross section above the edge; for
+iron the two forms differ by up to $\pm20\%$ across the band.
+
+\emph{Photoheating.}  Each subshell releases its photoelectron with
+$E - E_{{\rm th},s}$, so the heating coefficient is
+$\sum_s \sigma_s (1 - E_{{\rm th},s}/E)$ over the absorbing subshells,
+accumulated with the cross section at each packet's own energy
+(\code{heat\_metal}, \code{species\_rate\_path\_score}).  The excitation
+$E_{{\rm th},s} - E_{\rm th}$ left in the ion by an inner-shell ionization
+is assumed to leave the gas as fluorescence (not transported), and the ion
+moves up \emph{one} stage: Auger emission, which would release a second
+electron and move the ion up a second stage, is not carried.  \textbf{That
+assumption does not hold for five of the seven ions above.}  The
+Kaastra \& Mewe (1993, A\&AS 97, 443) electron yields, as tabulated in
+\textsc{Cloudy} c25.00 \code{data/mewe\_nelectron.dat}, give two electrons
+for a vacancy in Mg\,\textsc{i} $2p$ with probability 0.997, Ca\,\textsc{i}
+$3p$ 0.995, and Fe\,\textsc{i}, Fe\,\textsc{ii} and Fe\,\textsc{iii} $3p$
+0.9999 each; only Mg\,\textsc{ii} $2p$, Ca\,\textsc{ii} $3p$ and the
+chlorine $3s$ vacancies give one electron.  The energetics agree: the
+Mg$^+$ ($2p^{-1}$) state left by a $2p$ ionization of Mg\,\textsc{i} lies
+$54.9$~eV above the Mg\,\textsc{i} ground, above the Mg$^{2+}$ ground at
+$7.646 + 15.035 = 22.68$~eV, so it autoionizes.  For those five ions an
+inner-shell absorption above $E_{\rm inn}$ should therefore raise the
+stage by two, with the Auger electron's kinetic energy going to heat
+rather than to fluorescence; the adjacent-stage chain of
+\S\ref{sec:cascade} cannot represent that, which is the stage matrix of the
+hard-spectrum plan (HS6).  The cross section and the opacity are
+unaffected; the stage bookkeeping and the heating of Mg, Ca and Fe above
+their inner edges are not yet right (flagged 2026-09-24; see
+\S\ref{sec:limits}).
+
+\emph{Gate.}  \code{tests/photo\_shells/} (\code{check\_photo\_shells.f90},
+\code{run\_check.sh}) compares $\sigma$ and the heating coefficient of every
+registry ion against \code{phfit2.f} itself on a logarithmic 5--1000~eV
+grid, 9112 points, excluding the points within 1\% of a threshold: worst
+relative difference $2.313{\times}10^{-6}$, PASS.  Measured end to end (pre-change binary against the current one, same
+input): on the 11-element smoke run in the HII20 geometry (20~kK
+blackbody) the Mg, Fe and Ca stage fractions do not move at the $10^{-4}$
+level --- the in-band inner edges sit above 34~eV, where that spectrum
+carries almost no photons; on the 40~kK PDR run of \S\ref{sec:pdr} the
+Mg$^{+}$ and Fe$^{+}$ fractions rise by $0.0013$ absolute
+($0.2369\to0.2382$, $0.2155\to0.2168$), the change folded in with the
+other items of that update.
 
 \subsection{H/He recombination}
 \label{sec:hherec}
@@ -417,16 +507,31 @@ recorded gates reproduce; they agree with the default to $<0.6\%$ for
 H\,\textsc{ii} and He\,\textsc{iii}, but give
 He\,\textsc{ii}$\to$He\,\textsc{i} $5\%$ lower ($\alpha_B = 2.62$ vs
 $2.76{\times}10^{-13}\,\cmc$).
-Recombination \emph{cooling} uses the companion fits
+Recombination \emph{cooling}, the kinetic energy the captured electrons
+remove, is evaluated from the \emph{same} $\alpha$ the balance uses, for
+either \code{recomb\_model} and either case: for a Maxwellian at $T$ and any
+capture cross section $\sigma(E)$ --- every level, radiative and
+dielectronic --- differentiating $\alpha = \langle\sigma v\rangle$ with
+respect to $T$ gives exactly
 \begin{equation}
-  \beta_B^{\rm HII} = 3.435{\times}10^{-30}\,T\,\lambda^{1.970}
-  \big/\big[1+(\lambda/2.250)^{0.376}\big]^{3.720}
+  \beta(T) = k T\left[\tfrac{3}{2}\,\alpha(T)
+             + \frac{d\alpha}{d\ln T}\right]
   \;\mathrm{erg\,cm^3\,s^{-1}},
+  \label{eq:betarec}
 \end{equation}
-(case A analog with $1.778{\times}10^{-29}$, $0.541$, $1.965$, $0.502$,
-$2.697$), He\,\textsc{iii} scaled as for $\alpha$, and He\,\textsc{ii} as
-$k_B T\,\alpha_{A,B}^{\rm HeII}$ (their recommendation; He\,\textsc{ii}
-dielectronic recombination is negligible at nebular temperatures).
+evaluated with a centered difference in $\ln T$ (step $10^{-4}$;
+\code{maxwellian\_recombination\_cooling} in \code{cooling\_mod}), for
+H\,\textsc{ii}, He\,\textsc{ii} and He\,\textsc{iii}.  This replaced
+(2026-09-24) the Hui \& Gnedin companion fits for H\,\textsc{ii} and
+He\,\textsc{iii}, which fit a different $\alpha$ and sat $2.3\%$ below
+Eq.~(\ref{eq:betarec}) on MoCHII's own case-B $\alpha$ at $10^4$~K, and
+$k_B T\,\alpha^{\rm HeII}$ for He\,\textsc{ii}, which is the mean kinetic
+energy only for $\alpha \propto T^{-1/2}$: at $10^4$~K the mean energy
+removed is $0.674\,kT$ (H\,\textsc{ii}) and $0.700\,kT$ (He\,\textsc{ii}),
+so $k_BT\alpha$ overstated the He\,\textsc{ii} term $1.43\times$.  The
+metal cascade carries the same identity on its own $\alpha_{\rm rec}$,
+together with the collisional-ionization energy loss, as the loss side of
+\code{par\%metal\_heat} (\code{metal\_ionization\_cooling}).
 
 \subsection{H/He microphysics: comparison with other codes}
 \label{sec:codecmp}
@@ -589,6 +694,17 @@ $0.09$~pc --- half the HII40 front residual against Cloudy --- but MoCHII
 itself lies within $0.3\%$ of Cloudy, so that lever is not available to
 MoCHII: it measures how much of a helium front comparison between two
 arbitrary codes can be recombination data alone.
+
+The measurements of this subsection and of the HII40 He\,\textsc{i} front
+residual predate the helium--hydrogen charge exchange added on 2026-09-24
+(\S\ref{sec:cx}), which \textsc{Cloudy} c25 carries and MoCHII did not;
+it acts where He$^+$ meets atomic hydrogen, i.e.\ at and beyond the fronts.
+With the 2026-09-24 atomic-data update (He--H charge exchange on,
+recombination cooling from Eq.~\ref{eq:betarec}) the production HII40 run
+puts $r(\mathrm{He^0}=0.5)$ at $4.12931$~pc against $4.12776$~pc before,
+so the residual to \textsc{Cloudy}'s $4.30531$~pc is $0.17600$~pc
+(was $0.17755$; \code{tests/continuous\_energy/analyze\_hii40\_residuals.py}
+on \code{results/continuous\_energy/m2\_atomic/hii40\_atomic\_rates.h5}).
 
 \subsection{Collisional ionization (Voronov 1997)}
 \begin{equation}
@@ -804,6 +920,37 @@ al.\ (1999) fit that \textsc{Cloudy} c25.00 uses to $1$--$3\%$ over
 $4\,000$--$20\,000$~K --- the same determination, since Huang's Table~4
 footnote for oxygen is Stancil et al.\ (1999).  This check is now the gate
 \code{tests/charge\_exchange/check\_detailed\_balance.f90}.
+
+\emph{Nitrogen (2026-09-24) does not use Huang's rows.}  Table~4 prints
+for $\mathrm{N} + \mathrm{H}^+$ and $\mathrm{N}^+ + \mathrm{H}$ two
+polynomials in $\ln T$ (citing Lin et al.\ 2005) under which the
+endothermic direction \emph{falls} with temperature --- $1.6{\times}10^{-15}$,
+$8.9{\times}10^{-20}$ and $3.3{\times}10^{-23}\,\cmc$ at $10^3$, $10^4$ and
+$3{\times}10^4$~K --- and the exothermic one is $70$--$86\times$ below the
+Kingdon \& Ferland (1996) value.  MoCHII carried them from the first
+transcription until 2026-09-24; the detailed-balance gate did not see it,
+because it screened out every pair whose smaller rate was below
+$10^{-15}\,\cmc$ at $10^4$~K as unable to affect the balance, and the
+defect itself had made the rate that small.  The pair is now KF96,
+read from the published scan: Table~1
+$\mathrm{N}^+ + \mathrm{H}$, $a = 1.01{\times}10^{-3}$, $b = -0.29$,
+$c = -0.92$, $d = -8.38$ ($10^2$--$5{\times}10^4$~K; Butler \& Dalgarno
+1979), and Table~3 $\mathrm{N} + \mathrm{H}^+$ with the same $b, c, d$,
+$a = 4.55{\times}10^{-3}$ and $\Delta E/k = 1.086{\times}10^4$~K.  The two
+$a$ differ by $4.505$, the ground-term weight ratio
+$g(\mathrm{N}^+)g(\mathrm{H})/[g(\mathrm{N})g(\mathrm{H}^+)] = 9\cdot2/4 =
+4.5$: one calculation and its detailed-balance reverse.  At $10^4$~K the
+pair is $1.54{\times}10^{-12}$ / $1.01{\times}10^{-12}\,\cmc$;
+\textsc{Cloudy} c25.00's transcription of Lin et al.\ (2005) gives
+$1.68{\times}10^{-12}$ / $1.26{\times}10^{-12}$.  Nitrogen is
+near-resonant with hydrogen ($\Delta E = 0.936$~eV), so like oxygen it is
+locked to hydrogen's ionization in partly neutral gas.  The gate now has
+no rate floor: every pair with data in both directions is tested from
+3\,000 to 20\,000~K, and the one exemption is by name and for a physical
+reason --- carbon, whose exothermic $\mathrm{C} + \mathrm{H}^+$ is
+dominated by radiative charge transfer (Stancil et al.\ 1998) with no
+collisional reverse, is tested one-sided: the endothermic rate may not
+exceed the detailed-balance reverse of the whole forward rate.
 Higher stages ($\mathrm{X}^{i+} + \mathrm{H}^0 \to
 \mathrm{X}^{(i-1)+}$, recombination direction) use the Kingdon \&
 Ferland (1996) fits $k = a\,T_4^{b}\,(1 + c\,e^{d\,T_4})$, transcribed
@@ -827,8 +974,8 @@ reaction & $a$ [$10^{-9}\cmc$] & $b$ & $c$ & $d$ \\
 \midrule
 C$^{2+}$ + H  & $1.67{\times}10^{-4}$ & 2.79 & 304.72 & $-4.07$ \\
 C$^{3+}$ + H  & 3.25 & 0.21 & 0.19 & $-3.29$ \\
-N$^{2+}$ + H  & 0.305 & 0.60 & 2.65 & $-0.93$ \\
-O$^{2+}$ + H  & 1.04 & 0.27 & 2.02 & $-5.92$ \\
+N$^{2+}$ + H  & \multicolumn{4}{l}{tabulated, Barragan et al.\ (2006); see below} \\
+O$^{2+}$ + H  & \multicolumn{4}{l}{tabulated, Barragan et al.\ (2006); see below} \\
 Ne$^{2+}$ + H & $10^{-5}$ & 0 & 0 & 0 \\
 S$^{2+}$ + H  & $10^{-5}$ & 0 & 0 & 0 \\
 S$^{3+}$ + H  & 2.29 & 0.0402 & 1.59 & $-6.06$ \\
@@ -843,6 +990,24 @@ Fe$^{3+}$ + H & 3.42 & 0.51 & $-2.06$ & $-8.99$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+\emph{N$^{2+}$ and O$^{2+}$ (2026-09-24).}  These two now use the
+Barragan et al.\ (2006, ApJ 636, 544) rate coefficients directly: Table~1
+$k_1$ for $\mathrm{O}^{2+}(^3P) + \mathrm{H} \to \mathrm{O}^+ + \mathrm{H}^+$
+and Table~2 $k_4$ for $\mathrm{N}^{2+}(^2P^\circ) + \mathrm{H} \to
+\mathrm{N}^+ + \mathrm{H}^+$, tabulated over $10^2$--$10^5$~K and carried
+as the 26-point \code{CXRTAB} row of the element file (\code{CXR 8}),
+interpolated log--log in $T$ and held at the end values outside the table
+(no extrapolation).  \textsc{Cloudy} c25 and CHIANTI v11 use the same
+calculation.  Against the KF96 fits they replace (the old rows
+$a = 1.04$, $b = 0.27$, $c = 2.02$, $d = -5.92$ for O$^{2+}$ and $0.305$,
+$0.60$, $2.65$, $-0.93$ for N$^{2+}$), KF96 was $1.56\times$ higher for
+O$^{2+}$ at 5000~K and $1.22\times$ at $10^4$~K, and $0.57$--$0.64\times$
+for N$^{2+}$ over the same range.  The pairwise charge conservation, the
+root-solve gate G-M1f and the detailed-balance gate of
+\code{tests/charge\_exchange/} pass with the new rows (the latter, with
+nitrogen and 3\,000~K now included, at worst $0.303$ against tolerance
+$0.35$).
+
 Mg and Fe were already correct: their Huang Table~4 reactant labels
 happen to land on \code{chex}$(Z,i)$.  Silicon's first stage uses the
 Huang A9/A10 fits ($\mathrm{Si} + \mathrm{H}^+$ and
@@ -850,7 +1015,10 @@ $\mathrm{Si}^+ + \mathrm{H}^0$, the latter
 $2.371{\times}10^{-12}\cmc$ at $10^4$~K); Cl and Ca have no KF96/Huang
 transcription.  The Mg and Fe first-stage reactions follow Huang
 Table~4: Mg + H$^+$ is the KF96 form with an added reverse barrier
-$e^{-6.91/T_4}$ (endothermic); Fe + H$^+$ is a fast constant
+$e^{-6.91/T_4}$ (endothermic; the fitted factor is clamped into its
+validity range but the barrier factor takes the actual $T$ --- until
+2026-09-24 it was clamped too, which below 5000~K froze
+$e^{-\Delta E/kT}$ at its 5000~K value); Fe + H$^+$ is a fast constant
 $4.0{\times}10^{-9}\cmc$ with reverse $a\,(T/300)^{b}\,e^{-6.61/T_4}$.
 The correction raises the HII40 doubly/triply-ionized fractions
 (Section~\ref{sec:hii}); the earlier good agreement of some metal
@@ -862,6 +1030,75 @@ $\mathrm{H}^+ \to \mathrm{H}^0$ direction (C, N, O, Mg, Si, S, Fe, all at
 the neutral stage) and 22 in the reverse --- and every one of them enters
 hydrogen's balance as well as the metal's
 (\S\ref{sec:ioneq}, \code{par\%charge\_exchange}).
+
+\paragraph{Helium--hydrogen charge exchange (\code{par\%helium\_charge\_exchange},
+default on, 2026-09-24).}  Four reactions couple the H and He balances
+(\code{ion\_balance\_mod}: \code{cx\_HeII\_H}, \code{cx\_HeI\_Hp},
+\code{cx\_HeIII\_H}, \code{cx\_HeII\_Hp}):
+\begin{itemize}
+\item $\mathrm{He}^+ + \mathrm{H} \to \mathrm{He} + \mathrm{H}^+$, the sum of
+  two channels that the underlying calculation (Zygelman, Dalgarno, Kimura
+  \& Lane 1989, PRA 40, 2340) keeps apart.  The \emph{radiative} channel,
+  through the $A\,^1\Sigma^+ \to X\,^1\Sigma^+$ transition, is
+  $1.25{\times}10^{-15}(T/300)^{0.25}\,\cmc$ (Glover \& Jappsen 2007, ApJ
+  666, 1, Table~1 R26, citing Zygelman et al.); that fit is one quarter of
+  Zygelman's Table~I ``Direct'' column ($5.36$, $4.21$, $4.41$, $4.50$,
+  $4.83$, $5.99{\times}10^{-15}$ at 1, 10, 100, 200, 400, 1000~K), the
+  quarter being the probability of approach in the singlet,
+  $(2S+1)(2-\delta_{0\Lambda})/[(2L_a+1)(2S_a+1)(2L_b+1)(2S_b+1)] = 1/4$
+  for $\mathrm{He}^+(^2S) + \mathrm{H}(^2S)$ (Courtney et al.\ 2021, ApJ 919,
+  70, Eqs.~4--6).  Zygelman tabulates only to 1000~K, so above that the
+  $T^{0.25}$ is an extrapolation.  The \emph{non-radiative} channel is the
+  Kingdon \& Ferland (1996, ApJS 106, 205) Table~1 He$^+$ row, their Eq.~7
+  with $a = 7.47{\times}10^{-6}$, $b = 2.06$, $c = 9.93$, $d = -3.89$,
+  fitted over $6\times10^3$--$10^5$~K.  Below 6000~K the fit is evaluated as
+  written: it falls as $t_4^{2.06}$, as a curve-crossing channel must at low
+  collision energy, whereas holding the 6000~K value would overstate it
+  tenfold at 1000~K; above $10^5$~K $T$ is held at $10^5$~K.  At 8000~K the
+  two channels give $2.84{\times}10^{-15}$ and $6.8{\times}10^{-15}\,\cmc$.
+\item $\mathrm{He}^{2+} + \mathrm{H} \to \mathrm{He}^+ + \mathrm{H}^+$:
+  the KF96 He$^{2+}$ row, a constant $10^{-14}\,\cmc$ ($10^3$--$10^7$~K;
+  West, Lane \& Cohen 1982).
+\item $\mathrm{He} + \mathrm{H}^+ \to \mathrm{He}^+ + \mathrm{H}$ (endothermic
+  by 10.989~eV): the detailed-balance reverse of the non-radiative channel,
+  $4\,e^{-10.989\,{\rm eV}/kT}\,k_{\rm nr}$ (statistical weights
+  $g({\rm He^+})g({\rm H})/[g({\rm He})g({\rm H^+})] = 4$; the reduced-mass
+  factor is $1 + 6{\times}10^{-4}$ and is dropped).  The radiative channel
+  has no collisional reverse.  The direct calculation of this direction by
+  Kimura, Lane, Dalgarno \& Dixson (1993, ApJ 405, 801; Glover \& Jappsen
+  2007 R27) is not used.  Read from the published paper, its Table~1 gives
+  charge-transfer cross sections from 20~eV only, above the 10.99~eV
+  threshold, and its Table~3 rates imply an apparent activation energy of
+  4.33~eV between 8000 and $10^4$~K (15.2~eV between 6000 and 8000~K),
+  below the $E_{\rm th} - \frac{3}{2}kT \approx 9.7$~eV that the Tolman
+  relation allows an endothermic rate there; the table is not reliable at
+  nebular temperatures.  (It was adopted for a few hours on 2026-09-24, at
+  $35\times$ this rate at $10^4$~K and $0.16\times$ at $3{\times}10^4$~K;
+  the Lexington benchmarks moved by 0.02~K or less either way.)
+\item $\mathrm{He}^+ + \mathrm{H}^+ \to \mathrm{He}^{2+} + \mathrm{H}$: the
+  detailed-balance reverse of the He$^{2+}$ reaction,
+  $e^{-40.819\,{\rm eV}/kT}\times 10^{-14}\,\cmc$ (weight ratio 1).
+\end{itemize}
+Each reaction enters both the hydrogen and the helium balance
+(\S\ref{sec:ioneq}), so the charge it moves is conserved in the pair.  The
+default is on because the physics is real and the reference codes carry it:
+\textsc{Cloudy} c25, MOCASSIN and EXHALE all include
+$\mathrm{He}^+ + \mathrm{H}$, and without it He$^+$ is overestimated
+wherever it meets atomic hydrogen.  \textsc{Cloudy} c25 uses $1.25\times$
+the KF96 value for the non-radiative channel: its \code{ctrecombdata.dat}
+row is KF96 scaled by 0.25, and \code{atmdat\_char\_tran.cpp}:93 adds the
+full $7.47{\times}10^{-15}$ expression on top.  \code{.false.}\ drops all
+four reactions and reproduces runs made before 2026-09-24.  Gate
+\code{tests/charge\_exchange/check\_helium\_charge\_exchange.f90} (in
+\code{run\_check.sh}): the rate forms and detailed balance to
+$5.0{\times}10^{-7}$; on four partially neutral cells the three balances
+plus charge neutrality close to $2.6{\times}10^{-11}$; and the exchange
+lowers He$^+$ and raises H$^+$ (on the cell with $x_{\rm HII} = 0.041$,
+$x_{\rm HII}$ rises $3.1\times$ and $x_{\rm HeII}$ falls to $0.968\times$).
+Not included: the heating by the energy defect of the exchange --- the
+non-radiative $\mathrm{He}^+ + \mathrm{H}$ channel leaves $11$~eV as kinetic
+energy --- and the same heating term is absent for the metal charge
+exchange as well (\S\ref{sec:limits}).
 
 \subsection{Cooling fits}
 \label{sec:cool}
@@ -974,7 +1211,7 @@ scaled space: with $e_t = kT/\Delta E$,
 \end{equation}
 descaled by type ($y\ln(e_t{+}e)$; $y$; $y/(e_t{+}1)$; $y\ln(e_t{+}C)$;
 $y/e_t$; $10^y$), with a log flag storing $\log_{10} y$ for weak peaked
-intercombination transitions.  The $n$-level export now covers the 24
+intercombination transitions.  The $n$-level export now covers the 27
 line-emitting ions of the eleven-element registry
 (Table~\ref{tab:metallines_phys}); the worst transition fit error is
 1.7\% (O\,\textsc{iii} $^1$S$_0$--$^5$S$_2$, $\Upsilon\sim10^{-4}$),
@@ -987,7 +1224,11 @@ within 1.2\% and [N\,\textsc{ii}] 6584/5755 within 0.3\% (the density
 diagnostics differ by 6--10\% at $10^4\,{\rm cm^{-3}}$ from PyNeb's
 independent collision data --- database spread); and the Fortran solver
 (Section~\ref{sec:nlevel}) matches the Python reference implementation
-to four significant digits on 26 lines.
+to four significant digits on 26 lines.  Three atoms, C\,\textsc{i},
+C\,\textsc{ii} and O\,\textsc{i}, also carry atomic-hydrogen impact rates
+for their ground-term fine structure in a sibling file
+\code{hcoll\_<el>\_<stage>.txt}, read by \code{nlevel\_load} and solved in
+the same statistical equilibrium as the electron rates (\S\ref{sec:pdr}).
 
 Table~\ref{tab:metallines_phys} lists the principal collisional
 diagnostic lines each metal block produces (the complete transition list
@@ -1014,8 +1255,10 @@ ion (block) & principal lines \\
 \endhead
 \bottomrule
 \endfoot
+\code{c\_1} [C\,\textsc{i}]    & 4623, 8729, 9827, 9853, 370\,$\mu$m, 609\,$\mu$m \\
 \code{c\_2} [C\,\textsc{ii}]   & 2325 (UV multiplet), 158\,$\mu$m \\
 \code{c\_3} C\,\textsc{iii}]   & 977, 1907, 1909, 178\,$\mu$m \\
+\code{n\_1} [N\,\textsc{i}]    & 3467/3468, 5199, 5202, 10400/10410 (multiplet) \\
 \code{n\_2} [N\,\textsc{ii}]   & 3064/3071, 5756, 6550, 6585, 122\,$\mu$m, 205\,$\mu$m \\
 \code{n\_3} [N\,\textsc{iii}]  & 1750 (UV multiplet), 57\,$\mu$m \\
 \code{o\_1} [O\,\textsc{i}]    & 5579, 6302, 6366, 63\,$\mu$m, 145\,$\mu$m \\
@@ -1025,6 +1268,7 @@ ion (block) & principal lines \\
 \code{ne\_3} [Ne\,\textsc{iii}]& 3343, 3870, 3969, 15.55\,$\mu$m, 36\,$\mu$m \\
 \code{s\_2} [S\,\textsc{ii}]   & 4070/4078, 6718, 6733, 1.03\,$\mu$m, 315\,$\mu$m \\
 \code{s\_3} [S\,\textsc{iii}]  & 3722, 6314, 8831, 9070, 9532, 12\,$\mu$m, 18.7\,$\mu$m, 33.5\,$\mu$m \\
+\code{s\_4} S\,\textsc{iv}]   & 1398--1424 (UV multiplet), 10.5\,$\mu$m \\
 \midrule
 \multicolumn{2}{@{}l}{\itshape Optional --- activate with \code{par\%abund\_<El>}}\\
 \midrule
@@ -1137,7 +1381,7 @@ line emissivities match the balance; case B (H$\alpha$/H$\beta = 2.94$) is
 the default.  The He\,\textsc{i} Porter set is case B only.  An optional
 collisional H\,\textsc{i} Balmer component (\code{par\%h\_coll\_effects},
 off by default) solves a 25-level H\,\textsc{i} atom (from CHIANTI
-\code{h\_1} through the $n$-level pipeline) with collisional excitation from
+\code{h\_1} through the $n$-level fit and solve) with collisional excitation from
 the ground level, groups the $l$-resolved emission into
 H$\alpha$/H$\beta$/H$\gamma$, weights it by $n_{\rm HI}$, and writes it as
 separate \code{hc} rows --- a first-cut estimate (optically-thin cascade)
@@ -1163,19 +1407,49 @@ Because $n_3/n_{\rm He}\sim10^{-7}$ the balance is linear in $n_3$ --- a
 closed-form quotient in each leaf, no iteration:
 \begin{equation}
 n_3 = \frac{\alpha_3\,n_e\,n_{\rm HeII} + q_{13}\,n_e\,n_{\rm HeI}}
-           {A_{31} + \Phi_3 + n_e\,(q_{31a}+q_{31b}) + n_{\rm HI}\,Q_{31}},
+           {A_{31} + \Phi_3 + n_e\,(q_{31a}+q_{31b}+q_{31g}+C_3) + n_{\rm HI}\,Q_{31}},
 \end{equation}
 with source terms recombination into the triplet system
 ($\alpha_3\,n_e\,n_{\rm HeII}$) and e-impact excitation
 1$^1$S\,$\to$\,2$^3$S ($q_{13}\,n_e\,n_{\rm HeI}$), and sinks the radiative
 decay $A_{31}$ (2$^3$S\,$\to$\,1$^1$S), photoionization $\Phi_3$,
 spin-changing e-impact transfer into the singlets
-($q_{31a} = $ 2$^3$S\,$\to$\,2$^1$S, $q_{31b} = $ 2$^3$S\,$\to$\,2$^1$P ---
-\emph{not} 2$^3$S\,$\to$\,1$^1$S), and Penning/associative ionization with
-neutral hydrogen ($n_{\rm HI}\,Q_{31}$).  Two limits anchor the gates: the
-low-density radiative limit $n_3/n_{\rm He^+} = \alpha_3 n_e/A_{31}$ and the
-high-density collisional plateau $\alpha_3/(q_{31a}+q_{31b})$, crossing at
-$n_{\rm crit} = A_{31}/(q_{31a}+q_{31b})$.
+($q_{31a} = $ 2$^3$S\,$\to$\,2$^1$S, $q_{31b} = $ 2$^3$S\,$\to$\,2$^1$P),
+e-impact de-excitation straight to the ground ($q_{31g} = $
+2$^3$S\,$\to$\,1$^1$S), e-impact ionization ($C_3$), and Penning/associative
+ionization with neutral hydrogen ($n_{\rm HI}\,Q_{31}$).
+
+$q_{31g}$ is not in the OH18 balance, and its absence there is an error:
+$q_{13}$ is carried, and a collisional rate whose forward direction is
+carried must carry its inverse, or the two levels cannot reach their
+Boltzmann ratio in equilibrium.  MoCHII takes it from the same
+\code{QEXC13} fit by detailed balance,
+$q_{31g} = q_{13}\,(g_1/g_3)\,e^{E_{13}/kT}$ with $g_1/g_3 = 1/3$,
+evaluated with the Boltzmann factor of $q_{13}$ removed rather than
+multiplied back so it does not underflow at low $T$
+(\code{hei\_qdeexc\_ground}).  Against $q_{31a}+q_{31b}$ it is $5.6\%$ at
+$10^4$~K, $7.2\%$ at 8000~K, $15\%$ at 5000~K and $57\%$ at 3000~K (added
+2026-09-24).  $C_3$, also absent from OH18, is the electron-impact
+ionization of 2$^3$S, Black (1981, MNRAS 197, 553) eq.~(12),
+$8.38{\times}10^{-10}\,T^{1/2}e^{-55338/T}\,\cmc$ from the Taylor,
+Kingston \& Bell (1979) cross sections over $10^3$--$10^5$~K (read from the
+published scan; EXHALE carries the same rate as Black's cooling
+coefficient divided by the 2$^3$S ionization potential): $1.0\%$ of
+$q_{31a}+q_{31b}$ at $10^4$~K, $6.8\%$ at $1.5{\times}10^4$~K and $20\%$ at
+$2{\times}10^4$~K.  The three excitation rates are evaluated as
+$q = \beta\,\Upsilon(T)\,e^{-E/kT}/(g_l\sqrt{T})$ with the exact
+Maxwellian constant $\beta = h^2/[(2\pi m_e)^{3/2}k^{1/2}] =
+8.629132{\times}10^{-6}$ and the observed level energies of CHIANTI
+\code{he\_1.elvlc} (19.8196, 0.7962 and 1.3984~eV); OH18's
+$2.1{\times}10^{-8}\sqrt{13.6\,{\rm eV}/kT}$ is the same constant $3.4\%$ low
+and their energies are rounded (19.81, 0.80, 1.40~eV); both corrected
+2026-09-24.  Two limits anchor the gates: the low-density radiative limit
+$n_3/n_{\rm He^+} = \alpha_3 n_e/A_{31}$ and the high-density collisional
+plateau $\alpha_3/(q_{31a}+q_{31b}+q_{31g}+C_3)$, crossing at
+$n_{\rm crit} = A_{31}/(q_{31a}+q_{31b}+q_{31g}+C_3)$ --- at $10^4$~K the
+plateau is $5.887{\times}10^{-6}$ and $n_{\rm crit} = 3566$~cm$^{-3}$ (with
+$q_{31g}$ alone and the OH18 constant they were $6.170{\times}10^{-6}$ and
+3737, with the two singlet channels alone $6.513{\times}10^{-6}$ and 3945).
 
 The rate coefficients are closed-form fits transcribed from the EXHALE
 triplet implementation (offline into the coefficient file, Fortran only
@@ -1183,16 +1457,38 @@ evaluates): $\alpha_3(T) = 2.10{\times}10^{-13}(T/10^4)^{-0.778}$ (OH18);
 $q_{13}, q_{31a}, q_{31b}$ from Bray et al.\ (2000) collision strengths via
 OH18; $A_{31} = 1.272{\times}10^{-4}$~s$^{-1}$ (the CHIANTI \code{he\_1.wgfa}
 $A(1\!-\!2) = 1.73{\times}10^{-4}$ is $\sim$36\% high and is \emph{not} used);
-$Q_{31}$ from Taylor et al.\ (2025) Table~2 (Garcia Mu\~noz 2025 recorded as
-the alternative, 1.2--2.2$\times$ lower --- the documented uncertainty of the
-neutral/PDR sink).  A consistency check: at $10^4$~K,
+$Q_{31}$ from Garc\'{\i}a Mu\~noz (2025, A\&A 698, A199, Fig.~5), the
+Maxwellian average of the Movre \& Meyer (1997) cross sections,
+\begin{equation}
+  Q_{31} = 10^{-9}\exp\!\big(c/T + d_1\ln T + d_2(\ln T)^2 + d_3(\ln T)^3\big)
+  \;\cmc,
+\end{equation}
+$c = -86.4804$, $d_1 = -0.286766$, $d_2 = 0.0868445$, $d_3 = -0.00573001$,
+which reproduces the paper's Table~A.5 ($1.02$, $1.32$, $1.35$,
+$1.27{\times}10^{-9}$ at 500, 2000, 5000, $10^4$~K).  It replaces (2026-09-24)
+the Taylor et al.\ (2025, ApJ 989, 68) Table~2 two-branch power law, which is
+physically wrong as a rate coefficient: a Maxwellian average of a cross
+section is continuous in $T$, whereas that fit jumps by $1.57\times$ at
+4000~K; it was also $1.17$--$1.84\times$ above the Garc\'{\i}a Mu\~noz
+values over $10^3$--$10^4$~K.  The alternative formula that the data-file header used to record
+for Garc\'{\i}a Mu\~noz was itself miswritten as $\exp(c + \ldots)$; the
+correct argument is $c/T$.  A consistency check: at $10^4$~K,
 $\alpha_3 = 0.998\times0.75\,\alpha_B({\rm He\,II})$, matching the
 \code{HEI\_F3S} $=0.75$ triplet branching the diffuse field already uses.
 
 \paragraph{The 2$^3$S photoionization rate.}
-$\Phi_3 = \sum_\nu 4\pi J_\nu\,\sigma_3(\nu)\,\Delta\nu/(h\nu)$ over the
-\emph{full} band (the reduced tally \code{jt\_ion}, the same integral pattern
-as $\Gamma_i$).  The threshold is 4.78~eV, but $\sigma_3 \sim
+$\Phi_3 = \int 4\pi J_\nu\,\sigma_3(\nu)\,d\nu/(h\nu)$ over the
+\emph{full} transported band, accumulated during transport as a path
+estimator, $\sum \ell_{\rm eff}\,w\,L_{\rm pkt}\,\sigma_3(E)/(h\nu)$ over
+the packet segments crossing the leaf ($\ell_{\rm eff}$ the effective path
+length of the segment, $(e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}})/\kappa$ for
+an analytic segment as in Eq.~\ref{eq:edgewalk}), at each packet's own
+energy (\code{hei\_metastable\_path\_score}, called from
+\code{ion\_score\_mod}), and normalized by the leaf volume exactly as the
+$\Gamma_i$ are.  Until 2026-09-24 it was a sum over the bin centers of the
+diagnostic spectrum \code{jt\_ion}, which contradicts the continuous-energy
+transport of \S\ref{sec:band}: $\sigma_3$ has structure inside a bin
+(the Cooper minimum below).  The threshold is 4.78~eV, but $\sigma_3 \sim
 1$--$2{\times}10^{-18}$~cm$^2$ remains significant far above 13.6~eV
 (Cooper minimum near 34.7~eV, bump near 45.6~eV), so the ionizing band alone
 gives $\Phi_3 > 0$ wherever a field exists; \code{add\_fuv} with
@@ -1420,7 +1716,7 @@ inside the tolerance the runs were converged to
 Correcting the interchanged oxygen rows of \S\ref{sec:cx} is a separate
 change and moves the temperatures the \emph{other} way: measured from the
 same converged state, $\langle T[N_{\rm p}N_{\rm e}]\rangle$ rises by
-$+2.2$~K at HII40 and $+2.1$~K at HII20 (to the headline 8170 and 6926~K),
+$+2.2$~K at HII40 and $+2.1$~K at HII20 (to 8170 and 6926~K, before the 2026-09-24 update that gives the current 8177 and 6936~K),
 $L({\rm H}\beta)$ by $+0.005\%$, and the ionization fronts by
 $\leq 4{\times}10^{-4}$~pc.
 
@@ -1452,6 +1748,50 @@ $n_e$ sequence instead --- Aitken --- was tried and made the pass count
 worse, because a jump in one component leaves the rest of the coupled state
 off the slow manifold; that is recorded with its measurements in
 \code{docs/ION\_BALANCE\_CONVERGENCE\_PLAN.md}.
+
+\emph{Helium--hydrogen charge exchange} (\code{par\%helium\_charge\_exchange},
+default on; rates in \S\ref{sec:cx}).  With $k_{21}$, $k_{12}$, $k_{32}$,
+$k_{23}$ the coefficients of $\mathrm{He}^+ + \mathrm{H} \to \mathrm{He} +
+\mathrm{H}^+$, its reverse, $\mathrm{He}^{2+} + \mathrm{H} \to \mathrm{He}^+
++ \mathrm{H}^+$ and its reverse, hydrogen's balance Eq.~(\ref{eq:hcx})
+gains, for each H,
+\begin{equation}
+  R_{\rm He}^{\rm out} = n_{\rm He}\,(x_{\rm HeII}k_{21} + x_{\rm HeIII}k_{32}),
+  \qquad
+  R_{\rm He}^{\rm in} = n_{\rm He}\,(x_{\rm HeI}k_{12} + x_{\rm HeII}k_{23}),
+\end{equation}
+added to $R_{\rm cx}^{\rm out}$ and $R_{\rm cx}^{\rm in}$, and the helium
+chain gains the same reactions from the other side,
+\begin{equation}
+  \frac{n_{\rm HeII}}{n_{\rm HeI}} =
+  \frac{\Gamma_{\rm HeI} + n_e C_{\rm HeI} + n_{\rm HII}k_{12}}
+       {\alpha_{\rm HeII} n_e + n_{\rm HI}k_{21}}, \qquad
+  \frac{n_{\rm HeIII}}{n_{\rm HeII}} =
+  \frac{\Gamma_{\rm HeII} + n_e C_{\rm HeII} + n_{\rm HII}k_{23}}
+       {\alpha_{\rm HeIII} n_e + n_{\rm HI}k_{32}},
+\end{equation}
+so each exchange is counted once in each balance and charge is conserved in
+the pair (\code{solve\_ion\_cell}, and \code{hydrogen\_balance\_residual},
+which evaluates the same terms on the written He fractions).  The He
+fractions in $R_{\rm He}$ are those of the previous iterate, and when the
+metal terms are also present they are held constant through
+\code{hydrogen\_neutral\_fraction}'s root find.  Because an exchange moves
+charge without changing $n_e$, the fixed point on $n_e$ alone could stop
+while $x_{\rm HI}$ and $x_{\rm HeII}$ are still moving, so with the switch
+on the loop also requires both to have changed by less than $10^{-10}$
+relative before it exits.  Measured on the production benchmark inputs
+(\code{results/continuous\_energy/m2\_atomic}, the same binary with the
+exchange on and off): $\langle T[N_{\rm p}N_{\rm e}]\rangle$ moves by
+$+0.011$~K at HII40 and $+0.003$~K at HII20 and $L({\rm H}\beta)$ by
+$-5\times10^{-7}$ and $-1.3\times10^{-6}$ (the Kimura
+$\mathrm{He}+\mathrm{H}^+$ rate, briefly adopted, gave $-0.005$~K and
+$+0.010$~K; \code{m3\_evening}) --- the level at which two runs differ
+anyway; in these soft-spectrum nebulae He$^{+}$ and H$^{0}$ barely
+overlap.  On the 40~kK PDR test, whose He$^{+}$ zone reaches the partly
+neutral edge, the whole 2026-09-24 update lowers the He$^{+}$ fraction by
+$1.0\%$ and the He\,\textsc{ii} recombination lines by $6\%$; that run was
+not repeated with the exchange off, so the share of the exchange in those
+two numbers is not separated.
 
 Because the written state is under-relaxed (\code{par\%ion\_relax}) while
 the metal stage fractions written alongside are evaluated at the written
@@ -1488,7 +1828,7 @@ while if heating still wins at \code{te\_max} it is pinned to
 \code{te\_max}.
 
 The cooling $\mathcal{C}(T)$ (\code{cooling\_mod}) assembles recombination
-(Hui--Gnedin $\beta$), free-free
+(Eq.~\ref{eq:betarec}), free-free
 ($1.42554{\times}10^{-27}\sqrt{T}\,Z^2\,\bar g\,n_e n_{\rm ion}$, summed
 over H\,\textsc{ii}, He\,\textsc{ii} ($Z=1$) and He\,\textsc{iii} ($Z=2$)
 with $Z$ the \emph{net} ion charge; under \code{par\%metal\_freefree} (on
@@ -1503,36 +1843,89 @@ $\sum n_e\,n_{\rm ion}\Lambda_{\rm ion}(T,n_e)$ with the cascade fractions
 coefficient $\Lambda_{\rm ion}(T,n_e)$ is the density-suppressed value of
 Eq.~(\ref{eq:coolcombine}) by default (\code{par\%cooling\_model =
 local\_ne}), the plain fit $\Lambda_{\rm ion}(T)$ under
-\code{low\_density}.  PDR runs add three
-optional terms to $\mathcal{N}$: metal photoheating
-(\code{par\%metal\_heat}); grain photoelectric heating with grain
-recombination cooling (Bakes \& Tielens 1994, \code{par\%grain\_pe},
-driven by the local FUV field $G_0$, both weighted by $x_{\rm HI}$ and
-evaluated at $\min(T, 10^4\,{\rm K})$ so the fits stay in range --- two
-guards the PDR gate needed against a 12--35~kK runaway); and the
-H-impact [C\,\textsc{ii}] 158\,$\mu$m / [O\,\textsc{i}] 63\,$\mu$m
-fine-structure cooling that balances the photoelectric heating in the
-mostly neutral gas.
+\code{low\_density}.  With \code{par\%use\_metals} the cooling also
+carries, whatever heats the gas, the atomic-hydrogen impact on the
+ground-term fine structure of C\,\textsc{i}, C\,\textsc{ii} and
+O\,\textsc{i} (\code{metal\_cooling\_H}, \S\ref{sec:pdr}): the increment of
+the radiated power when $n_{\rm HI}q^{\rm H}$ joins $n_e q^e$ in one
+statistical equilibrium, added to the electron share taken from the table.
+Two further terms enter $\mathcal{N}$: metal photoheating
+(\code{par\%metal\_heat}, on by default, with the shell-resolved heating
+coefficient of \S\ref{sec:photo}); and, for PDR runs, grain photoelectric
+heating with grain recombination cooling (Bakes \& Tielens 1994,
+\code{par\%grain\_pe}, off by default, driven by the local FUV field $G_0$,
+both weighted by $x_{\rm HI}$ and evaluated at $\min(T, 10^4\,{\rm K})$ so
+the fits stay in range --- two guards the PDR gate needed against a
+12--35~kK runaway).
 
-Under \code{par\%use\_sec\_ion} (Shull \& van Steenberg 1985) a
-photoelectron of kinetic energy $E_0 = h\nu - E_{{\rm th},s}$ from absorber
-$s$ (H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}) with $E_0 > 40$~eV
-deposits only $f_{\rm heat}(x)$ of its excess as heat (below the threshold
-it thermalizes fully), so the photoheating integrand is weighted by
-$f_{\rm heat}(x)$; the un-thermalized balance drives
-$f_{\rm ion,HI}(x)\,E_0/E_{\rm th,HI}$ secondary H\,\textsc{i} and
-$f_{\rm ion,HeI}(x)\,E_0/E_{\rm th,HeI}$ secondary He\,\textsc{i}
-ionizations that add to the corresponding photoionization rates in
-\code{solve\_ion\_cell}.  Here
-$x = (n_{\rm HII}+n_{\rm HeII}+n_{\rm HeIII})/(n_{\rm H}+n_{\rm He})$ is the
-ionized fraction of the H+He nuclei and the partitions are
-$f_{\rm heat} = 0.9971[1-(1-x^{0.2663})^{1.3163}]$,
-$f_{\rm ion,HI} = 0.3908(1-x^{0.4092})^{1.7592}$,
-$f_{\rm ion,HeI} = 0.0554(1-x^{0.4614})^{1.6660}$.  The effect vanishes in
-fully ionized gas ($f_{\rm ion}\to 0$ as $x\to 1$, so the HII-region gates
-are unchanged) and matters only in partially neutral gas under a hard
-field (fronts, PDR, X-ray/AGN); metals are neglected as absorbers (trace).
-Default is off.
+Under \code{par\%use\_sec\_ion} a
+photoelectron of kinetic energy $E_0 = h\nu - E_{{\rm th},s}$ from
+absorber $s$ (H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}) with
+$E_0 > 30$~eV is partitioned between heat, the ionization of H\,\textsc{i}
+and He\,\textsc{i}, and excitation that escapes as line radiation.  Two
+published determinations enter, each for what it provides.  Shull \& van
+Steenberg (1985, ApJ 298, 268; SvS85, Table~2, read from the published
+scan) give the energy budget of the two ionization channels,
+$\phi_{\rm HI}(x) = 0.3908(1-x^{0.4092})^{1.7592}$ and
+$\phi_{\rm HeI}(x) = 0.0554(1-x^{0.4614})^{1.6660}$, which vanish at
+$x = 1$ but, by their own footnote, are ``only accurate for
+$E_0 > 100$~eV''.  Dalgarno, Yan \& Liu (1999, ApJS 125, 237; DYL99,
+read from the published PDF) resolve $E_0$ over 30--1000~eV through the
+mean energy per ion pair of their H--He mixture,
+$W(x,E_0) = W_0(1 + C x^a)$ (eq.~13, Table~4), and the heating
+efficiency $\eta(x,E_0) = 1 + (\eta_0-1)/(1+Cx^a)$ (eq.~14, Table~7),
+both stated for $x \le 0.1$.  The ionization budget is
+\begin{equation}
+  f_{\rm HI}(x,E_0) = \phi_{\rm HI}(x)\,
+  \frac{W_{\rm H^+}(x,1\,{\rm keV})}{W_{\rm H^+}(x,E_0)},\qquad
+  f_{\rm HeI}(x,E_0) = \phi_{\rm HeI}(x)\,
+  \frac{W_{\rm He^+}(x,1\,{\rm keV})}{W_{\rm He^+}(x,E_0)},
+\end{equation}
+exactly SvS85 at 1~keV, and smaller for slower electrons ($W_{\rm He^+}$
+rises from 487~eV at 1~keV to 6740~eV at 30~eV).  The budget
+$f_{\rm ion} = f_{\rm HI} + f_{\rm HeI}$ is divided among the neutrals
+actually present on SvS85's reference $n_{\rm HeI}/n_{\rm HI} = 0.1$,
+$c_{\rm HI} = f_{\rm ion}\,0.1f_{\rm HI}/w$,
+$c_{\rm HeI} = f_{\rm ion}f_{\rm HeI}/w$ with
+$w = 0.1 f_{\rm HI}n_{\rm HI} + f_{\rm HeI}n_{\rm HeI}$, so that
+$n_{\rm HI}c_{\rm HI} + n_{\rm HeI}c_{\rm HeI} = f_{\rm ion}$ at every
+composition, and the heat share is
+$f_{\rm heat} = 1 - (1-\eta)(1-x)$, clamped to $[0, 1-f_{\rm ion}]$; the
+$(1-x)$ closure (EXHALE's, in neither paper) removes the
+$(1-\eta_0)/(1+C) = 10\%$ that eq.~(14) alone leaves unthermalized in a
+fully ionized gas at 1~keV.  Here $x = n_e/(n_{\rm H} + n_{\rm He})$, the
+free electrons that compete with the neutrals for the photoelectron's
+energy (SvS85's $n({\rm H^+})/n({\rm H_{tot}})$ under their
+equal-ionization assumption), taken from the current iterate of the cell
+solve.  In the transport the deposited energy
+$\sigma_s(1-E_{{\rm th},s}/E)$ above 30~eV is scored at each packet's
+energy onto the six DYL99 nodes with weights linear in $\log E_0$
+(clamped at 1~keV); the weights do not depend on the gas, so the
+partition is applied to those node integrals exactly inside
+\code{solve\_ion\_cell} (the secondary rates) and in the thermal sum (the
+heat withheld).  Approximations: below 30~eV the energy is all heat (no
+tabulation covers 13.6--30~eV), so the partition steps there; above
+$x = 0.1$ DYL99 is extrapolated (EXHALE measured eq.~14 with the closure
+against SvS85's own 3~keV Monte Carlo over $x > 0.1$ to within $5.6\%$);
+both calculations carry He/H $= 0.1$; metal photoelectrons are all heat.
+The previous implementation (SvS85 alone, from 40~eV, with $x$ the ionized
+fraction of the H+He nuclei, the rates evaluated on the previous
+iterate's state and no redistribution by composition) used a fit outside
+its stated range below 100~eV: at $E_0 = 100$~eV and $x = 0.1$ it counted
+$1.21$ secondary H ionizations against $0.55$ now.  Gate
+\code{tests/secondary\_ionization/} (the 1~keV limit reproduces SvS85
+Table~2 to $2\times10^{-16}$, energy is conserved at any He/H, the heat
+share is Table~7's $\eta_0$ at $x \to 0$ and exactly 1 at $x = 1$).
+Default is off.  The module is \code{photoelectron\_degradation\_mod},
+rewritten on 2026-09-24 after the EXHALE module
+\code{electron\_energy\_degradation}.  Measured on the HII20 shell grid
+under a $10^5$~K blackbody (\code{results/secondary\_ionization/}, 80
+iterations, same seed): inside the H\,\textsc{ii} region, where $x \to 1$
+and the SvS85 budget vanishes, the run with secondaries reproduces the run
+without them; the whole effect sits in the partly neutral front, where
+$T_e$ drops by up to 205~K at $x({\rm H^0}) \approx 0.9$ (the previous
+form: 120~K) and $x({\rm H^0})$ by $0.18\%$; $\langle T[N_pN_e]\rangle$
+moves by $-0.5$~K and $L({\rm H}\beta)$ by $+0.014\%$.
 
 The solved $T_e$ is written directly (only the ionization fractions carry
 the under-relaxation \code{par\%ion\_relax}), $n_e$ is rebuilt from the
@@ -1611,14 +2004,20 @@ collapse without them.  That is why the bound above does not transfer past the
 ionization front, and why both now default on: an approximation is worth
 keeping only where its cost is known, and beyond the front it is not.
 
-Concretely, \code{species\_opacity\_add} sums over \emph{all}
-active stages with their VFKY96 cross sections and the self-consistent stage
+Concretely, \code{species\_cached\_opacity} sums over \emph{all}
+active stages, with the cross sections evaluated at each packet's own energy
+by \code{species\_packet\_cross\_sections} and the self-consistent stage
 fractions, and the sum is iterated together with the opacity it changes.
 The cross sections themselves are not in question.  For the eight ions that
 carry the He-ionizing window --- C\,\textsc{i}--\textsc{iii},
 N\,\textsc{ii}, O\,\textsc{ii}, Ne\,\textsc{i}, S\,\textsc{ii},
 S\,\textsc{iii} --- MoCHII reproduces Verner's own \code{phfit2.f} to
-$10^{-6}$ relative, the single-precision round-off of \code{phfit2} itself.
+$10^{-6}$ relative, the single-precision round-off of \code{phfit2} itself;
+since 2026-09-24 the gate \code{tests/photo\_shells/} extends that check to
+every registry ion and to the inner-shell branch (worst
+$2.3{\times}10^{-6}$, \S\ref{sec:photo}).  None of these eight has an inner
+edge below 100~eV, so the inner-shell correction of \S\ref{sec:photo} does
+not reach the measurements of this subsection.
 
 What is genuinely absent is metal recombination continua as a diffuse
 \emph{source}: the diffuse field has exactly four channels
@@ -1627,9 +2026,9 @@ ground-state recombination continua whose photons lie above 24.587~eV
 (C\,\textsc{iv}, N\,\textsc{iii}, N\,\textsc{iv}, O\,\textsc{iii},
 O\,\textsc{iv}, Ne\,\textsc{iii}, Ne\,\textsc{iv}, S\,\textsc{iii},
 S\,\textsc{iv}) gives $0.29\%$ of the He\,\textsc{i} ground-continuum
-channel, about $0.001$~pc of front position.  Metals as secondary-ionization
-absorbers are absent as well, but \code{par\%use\_sec\_ion} is off in the
-benchmarks.
+channel, about $0.001$~pc of front position.  Metal photoelectrons are not
+partitioned under \code{par\%use\_sec\_ion} either (their energy is all
+heat), but that switch is off in the benchmarks.
 
 \paragraph{The measured lever.}  Scaling the summed metal cross section on
 the converged HII40 model (68 ranks, same Sobol seed, $0.01$-pc shell
@@ -1704,7 +2103,9 @@ absent from that table and were not checked.
 
 \paragraph{A justification that had to be retracted in the code.}  Two
 comments --- at the \code{ion\_metal\_abs} declaration in \code{define.f90}
-and above \code{species\_opacity\_add} --- used to justify the metal opacity
+and above the metal opacity routine in \code{species\_mod} (then
+\code{species\_opacity\_add}, now \code{species\_cached\_opacity}) --- used to
+justify the metal opacity
 as ``negligible next to H/He above 13.6~eV''.  The measurement above
 contradicts that, and both now carry the measured derivatives instead: the
 opacity is small in \emph{magnitude} but not in \emph{effect}, because it
@@ -1920,7 +2321,7 @@ out}$ from $8.89$ to $8.88{\times}10^{18}$~cm at HII20 with
 $1.44{\times}10^{19}$~cm unchanged at HII40.  A later, independent
 correction --- exchanging the oxygen charge-exchange rows of
 \S\ref{sec:cx} --- then carries these a further $+2.2$~K at HII40 and
-$+2.1$~K at HII20, to the headline 8170 and 6926~K.
+$+2.1$~K at HII20, to 8170 and 6926~K (8177 and 6936~K after the 2026-09-24 update).
 
 $L({\rm H}\beta)$ moves the \emph{wrong} way.  It falls $0.37$--$0.42\%$
 ($1.94 \to 1.93{\times}10^{37}$ and $4.70 \to 4.68{\times}10^{36}\,{\rm
@@ -3007,7 +3408,7 @@ flux crossing the horizontal face,
 so the user inputs the source strength ($F_n$ or $I$) and the geometric factor
 ($\mu$ or $\pi$) gives $F_z$.  The entering luminosity of one periodic tile is
 $L = F_z\,A_{\rm zface}$ (the packet weight is $L/N_{\rm phot}$); $A_{\rm zface}$
-cancels in every per-volume result, which therefore scales linearly with $F_z$
+cancels in every result expressed per unit volume, which therefore scales linearly with $F_z$
 and is independent of the tile area and lateral resolution.  The two faces
 compose additively (both lit $\Rightarrow L=(F_{z,{\rm top}}+F_{z,{\rm bot}})A$).
 
@@ -3024,7 +3425,8 @@ frequency, face, the two in-face coordinates, and the Lambert $\mu,\phi$).
 
 \subsection{PDR-zone physics}
 \label{sec:pdr}
-Three switches (default off) extend the FUV zone beyond ion structure:
+Three switches extend the FUV zone beyond ion structure; the first two
+default on since 2026-07-31 (\S\ref{sec:metalop}), \code{grain\_pe} off:
 \begin{itemize}
 \item \code{par\%metal\_ne}: electrons from the metal cascade join the
   $n_e$ closure of the cell solve,
@@ -3036,9 +3438,11 @@ Three switches (default off) extend the FUV zone beyond ion structure:
   zone), where they control the [C\,\textsc{ii}]/Mg\,\textsc{ii}
   excitation and the photoelectric efficiency.
 \item \code{par\%metal\_heat}: metal photoheating enters the thermal
-  balance; the heating integrals
-  $\mathcal{H}_i = \sum_b [4\pi J\Delta\nu]_b \sigma_i (1 - E_{{\rm th},i}/E_b)$
-  are accumulated together with the metal $\Gamma$'s.
+  balance; the heating integrals $\mathcal{H}_i = \int 4\pi J_\nu
+  \sum_s \sigma_s (1 - E_{{\rm th},s}/h\nu)\,d\nu$ (the subshell sum of
+  \S\ref{sec:photo}, one term below the first inner edge) are accumulated
+  as path estimators at each packet's own energy, together with the metal
+  $\Gamma$'s.
 \item \code{par\%grain\_pe}: grain photoelectric heating and grain
   recombination cooling with the Bakes \& Tielens (1994) fits,
   $\Gamma_{\rm pe} = 1.3{\times}10^{-24}\,\epsilon\,G_0\,n_{\rm H}$
@@ -3065,20 +3469,99 @@ Three switches (default off) extend the FUV zone beyond ion structure:
   (ii) both grain terms carry an $x_{\rm HI}$ weight --- the BT94
   charging parameter knows only the FUV field, so in ionized gas
   (EUV-charged grains, grain energy already routed to the IR via
-  \code{Heat\_dust}) it would overheat badly; (iii) the package
-  includes the \emph{H-impact} fine-structure cooling of
-  [C\,\textsc{ii}] 158\,$\mu$m and [O\,\textsc{i}] 63\,$\mu$m
-  (two-level, low-density limit;
-  $q_{ul}^{\rm H} = 7.6{\times}10^{-10}(T/100)^{0.14}$ and
-  $9.2{\times}10^{-11}(T/100)^{0.67}\,{\rm cm^3\,s^{-1}}$, Barinovs et
-  al.\ 2005) --- the cooling fits are electron-impact only, and with
-  $n_{\rm HI}/n_e \sim 10^3$--$10^4$ in the PDR zone the H collisions
-  ARE the coolant.  Without (iii) the zone has no coolant between the
-  fine-structure and Ly$\alpha$ regimes, and the
-  $\epsilon(x)$--$n_e$ feedback (collisional ionization raises $n_e$,
-  neutralizing the grains and raising $\epsilon$ fifty-fold) drives it
-  to a false $\sim$10$^4$~K equilibrium.
+  \code{Heat\_dust}) it would overheat badly; (iii) the zone needs a
+  neutral-gas coolant, which is the atomic-hydrogen impact term below ---
+  the first gate run without it had no coolant between the fine-structure
+  and Ly$\alpha$ regimes, and the $\epsilon(x)$--$n_e$ feedback
+  (collisional ionization raises $n_e$, neutralizing the grains and
+  raising $\epsilon$ fifty-fold) drove it to a false $\sim$10$^4$~K
+  equilibrium.
 \end{itemize}
+
+\paragraph{Atomic-hydrogen impact on the fine-structure lines.}  With
+$n_{\rm HI}/n_e \sim 10^3$--$10^4$ in neutral gas, hydrogen rather than
+electrons excites the ground-term fine structure of C\,\textsc{i},
+C\,\textsc{ii} and O\,\textsc{i}, and those lines are the coolant.  This
+channel is not a switch and is not part of \code{grain\_pe}: it is in the
+\code{par\%use\_metals} cooling whatever heats the gas, as the H-impact term
+before it was.  Since 2026-09-24 it is carried by the $n$-level atoms
+themselves.  \code{nlevel\_load} reads, beside
+\code{nlevel\_<el>\_<stage>.txt}, the file \code{hcoll\_<el>\_<stage>.txt}
+when one exists, and given $n_{\rm HI}$ the rate matrix of the statistical
+equilibrium becomes
+\begin{equation}
+  R = n_e\,q^e + n_{\rm HI}\,q^{\rm H} + A,
+\end{equation}
+one solve in which the two colliders saturate the populations together.
+The rates, written by
+\code{tools/\allowbreak fitting/\allowbreak make\_hcoll\_fine\_structure.py}, are:
+\begin{itemize}
+\item C\,\textsc{i} $^3P_{0,1,2}$ (\code{hcoll\_c\_1.txt}) and
+  O\,\textsc{i} $^3P_{2,1,0}$ (\code{hcoll\_o\_1.txt}): Abrahamsson, Krems
+  \& Dalgarno (2007, ApJ 654, 1171) Eq.~1,
+  $\ln(k_{\rm exc}/10^{-11}\,\cmc) = \sum_{i=0}^{N} a_i\,T^{-ib}$, Table~2
+  (C\,+\,H, 5--1000~K) and Table~4 (O\,+\,H, 30--1000~K), all three
+  transitions of each term.  The negative signs lost from the PDF text layer
+  were restored from the printed glyphs, and the generator checks itself
+  against the paper's Tables~1 and 3 to $\le 1.0\%$; the one larger
+  deviation, O\,\textsc{i} $k_1$ at 50~K ($+9.1\%$), is the paper's own fit
+  at the end of its range.
+\item C\,\textsc{ii} $^2P_{1/2}$--$^2P_{3/2}$ (\code{hcoll\_c\_2.txt}):
+  the de-excitation rate $7.6{\times}10^{-10}(T/100)^{0.14}\,\cmc$ of
+  Barinovs et al.\ (2005, ApJ 620, 537).
+\end{itemize}
+The file row is \code{lo hi form Tmin Tmax c\_1..c\_10}: form~1 is the
+Abrahamsson excitation fit ($c_1 = b$, $c_2, \ldots = a_i$), form~2 the
+de-excitation power law.  The de-excitation rate is evaluated at $T$ held
+inside $[T_{\min}, T_{\max}]$ --- the range of the calculation, no
+extrapolation --- and the excitation rate follows by detailed balance at the
+actual $T$ with the level energies and statistical weights of the atom
+file.
+
+Both consumers read the same atom.  The emitted lines
+(\code{lines\_mod}, \code{nlevel\_emissivities(atom, T, ne, emis, nHI)})
+now include hydrogen impact, and the thermal balance adds, for every stage
+with hydrogen rates, $n_{\rm ion}$ times
+\code{nlevel\_hcoll\_cooling} $= P(e + {\rm H}) - P(e)$ --- the radiated
+power of the atom with both colliders minus that with electrons alone ---
+to the electron share taken from the $(T, n_e)$ table
+(\code{species\_mod::metal\_cooling\_H}).  So every ground-term transition
+is included ([O\,\textsc{i}] 63/145\,$\mu$m, [C\,\textsc{i}]
+609/370\,$\mu$m, [C\,\textsc{ii}] 158\,$\mu$m), and the cooling and the
+emitted line are one physics.
+
+The term it replaces was physically wrong in four ways.  Only
+[C\,\textsc{ii}] 158 and [O\,\textsc{i}] 63\,$\mu$m had it, as a separate
+two-level formula; C\,\textsc{i} had no hydrogen impact at all.  The
+[O\,\textsc{i}] coefficient $9.2{\times}10^{-11}(T/100)^{0.67}$ carried no
+source and is $0.20$--$0.46$ of Abrahamsson's over 50--1000~K.  The line
+output was electron impact only, so the same line was cooled by one
+physics and emitted by another.  And the electron and hydrogen saturation
+denominators were separate.  Against it, in the $n_e \to 0$ limit the
+earlier O\,\textsc{i} hydrogen cooling is $0.22$--$0.35$ of the new at
+$n_{\rm HI} = 10^2$ (100--1000~K) and $0.65$--$1.02$ at saturation
+($n_{\rm HI} = 10^6$); C\,\textsc{ii} moves by only $1.001$--$1.014$, the
+difference being the $A$-value (the fixed $2.321{\times}10^{-6}$ against the
+atom file's CHIANTI $2.29{\times}10^{-6}\,{\rm s^{-1}}$).  There is no switch
+because the channel was always on; this is the same channel carried
+correctly.  Gate \code{tests/hcoll/} (\code{check\_hcoll.f90},
+\code{run\_check.sh}): at $n_e \to 0$, $n_{\rm HI} = 10^{-4}$ the line photon
+rates reproduce the paper tables (worst $3.0{\times}10^{-3}$); at
+$n_{\rm HI} = 10^{14}$ the populations are Boltzmann, including 5000~K
+above the 1000~K fit edge (worst $1.1{\times}10^{-9}$); and the thermal
+increment equals the emissivity difference ($4.4{\times}10^{-16}$).  The
+earlier gate \code{tests/two\_level/}, which checked the deleted two-level
+formula, is removed.  Measured on \code{tests/pdr/pdr\_L5.in} (pre-change binary against the
+current one, every item of the 2026-09-24 update included): the neutral
+shell ($x_{\rm HI}>0.9$) cools from a median $259$~K to $200$~K (the
+volume mean from $550$ to $485$~K), with the shell-averaged profile
+running from $\sim$270~K behind the front to $\sim$170~K at the outer
+edge (was $\sim$400 to 208~K); the line list, which now carries the
+hydrogen collisions, gives [O\,\textsc{i}] 63~$\mu$m $\times39.5$,
+145~$\mu$m $\times27.5$, [C\,\textsc{ii}] 158~$\mu$m $\times1.98$ and
+[C\,\textsc{i}] 609/370~$\mu$m $\times1.38$/$\times1.09$, while the ionized
+interior moves by $-22$~K in $\langle T[N_pN_e]\rangle$.
+
 Scope note: this is the atomic PDR skin --- no H$_2$/CO chemistry, no
 line transfer, no dust--gas collisional coupling --- so PDR
 temperatures are first-order estimates, adequate for the ion structure
@@ -3368,6 +3851,20 @@ against the 1D exact reference.}
 
 \subsection{The MOCASSIN Lexington benchmarks}
 \label{sec:hii}
+\emph{Caveat (2026-09-25): the production numbers of this section are not
+converged.}  The stopping test tracks $x(\mathrm{H^+})$ and $T_e$ only
+(\code{conv\_crit = 'vol'}, $5{\times}10^{-3}$ / $10^{-2}$), and the runs
+stop while the structure is still moving outward.  The HII40 production
+input run for a fixed 60 iterations (volume-mean $|\Delta x|$ falling from
+$4.5{\times}10^{-3}$ at iteration 37 to $1.6{\times}10^{-4}$) gives
+$\langle T[N_pN_e]\rangle = 8210.5$~K against 8175.3~K at the
+37-iteration stop and \textsc{Cloudy}'s 8210~K; the He\,\textsc{i} front
+at 4.271~pc against 4.103 (\textsc{Cloudy} 4.305), i.e.\ a residual of
+0.034~pc; $\langle\mathrm{He^+}\rangle/\langle\mathrm{H^+}\rangle = 0.760$
+against 0.700; $L(\mathrm{H}\beta) = 1.991{\times}10^{37}$ against
+$1.927{\times}10^{37}$.  The He-front residual and the low $L(\mathrm{H}\beta)$
+discussed below are therefore largely premature stopping; at 60
+iterations the hydrogen front also reaches the grid edge (4.73~pc).
 HII20/HII40: blackbody 20/40~kK, $Q_{\rm H} = 1.006/4.26 \times
 10^{49}\,{\rm s^{-1}}$, $n_{\rm H} = 100$, hollow shell
 $R_{\rm in} = 3{\times}10^{18}$~cm, abundances He 0.1, C $2.2{\times}
@@ -3393,15 +3890,17 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 6926 K & 6376 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8170 K & 7894 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 6936 K & 6285 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8177 K & 7876 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8170$~K (HII40) and 6926~K (HII20),
+local\_ne}) MoCHII gives $T_e = 8177$~K (HII40) and 6936~K (HII20),
 matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
-$0.49\%$ and $0.24\%$.  Both modern codes sit a few hundred K \emph{above} the
+$0.40\%$ and $0.38\%$ (\code{results/continuous\_energy/m2\_atomic},
+2026-09-24; the \code{low\_density} column is the same input with
+\code{cooling\_model = 'low\_density'}).  Both modern codes sit a few hundred K \emph{above} the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
 $6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
@@ -3434,8 +3933,15 @@ restoring the density suppression at the local $n_e$ (the
 subsequent corrections to the diffuse field --- the Milne ground continua,
 the He\,\textsc{i} cascade and the $\alpha_1$ correction of
 \S\ref{sec:diffuse} --- settle them at 8169 and 6925~K; the corrected
-oxygen charge exchange of Section~\ref{sec:cx} then adds a final $+2$~K,
-giving the headline 8170 and 6926~K.  The former
+oxygen charge exchange of Section~\ref{sec:cx} then adds $+2$~K (8170 and
+6926~K), and the 2026-09-24 atomic-data update (inner-shell metal cross
+sections, Barragan O$^{2+}$/N$^{2+}$ charge exchange, He--H charge
+exchange, hydrogen-impact fine structure, recombination cooling from
+Eq.~\ref{eq:betarec} and the metal ionization-energy loss) gives the
+current 8177 and 6936~K: at HII40 the first five items move it by $-9.4$~K
+and the two cooling terms by $+16.4$~K.  Measured again on the current
+code, the \code{low\_density} limit is 7876 and 6285~K (it was 7894 and
+6376~K when the fits were regenerated).  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -3719,7 +4225,13 @@ Mg\,\textsc{ii} (0.05\% max error), Fe\,\textsc{ii} (0.11\%),
 Fe\,\textsc{iii} (0.42\%); $n$-level files Mg\,\textsc{ii} (3 levels),
 Fe\,\textsc{ii} (13 levels, the IR/optical forbidden lines),
 Fe\,\textsc{iii} (14 levels); element files with VFKY96 $Z{=}12, 26$
-rows.  PyNeb cross-check: the [Fe\,\textsc{iii}] 4658/4702 ratio agrees
+rows (since 2026-09-24 also the \code{PHINNER}/\code{PHSHELL} rows of
+\S\ref{sec:photo}: Mg\,\textsc{i}/\textsc{ii} and
+Fe\,\textsc{i}--\textsc{iii} have their $2p$/$3p$ edges inside the band,
+so the smoke numbers below predate a cross-section change of up to two
+orders of magnitude above 55~eV for Mg; on the 11-element smoke run in the HII20 geometry the Mg, Fe and Ca stage
+fractions do not move at the $10^{-4}$ level, since a 20~kK blackbody puts
+almost no photons above the 34--88~eV inner edges).  PyNeb cross-check: the [Fe\,\textsc{iii}] 4658/4702 ratio agrees
 to $-6$\% to $-16$\% --- the largest gate deviation so far, and a known
 property of iron: PyNeb's default Fe\,\textsc{iii} collision strengths
 (BB14) differ from CHIANTI v11's by tens of percent
@@ -3740,8 +4252,10 @@ Mg loads 3 stages, Fe 4 stages; the line table gains the Mg\,\textsc{ii}
 \subsection{Silicon, chlorine, calcium (five stages)}
 Si, Cl, and Ca bring the registry to eleven elements, each tracked
 through five stages.  The one framework extension was chlorine's cross
-section (the VY95 path of Section~3.1 --- Cl is absent from the VFKY96
-outer-shell table); Si carries the KF96 charge exchange from the
+section (the subshell sum of \S\ref{sec:photo} at every energy ---
+\code{phfit2} sets $E_{\rm inn} = 0$ for Cl, which is absent from the
+VFKY96 outer-shell table; until 2026-09-24 only the outer $3p$ subshell
+fit was carried, and the $3s$ subshell is now added); Si carries the KF96 charge exchange from the
 MOCASSIN \code{chex} rows (recombination direction), Cl and Ca have no
 transcription available.  $n$-level files (all $\leq 0.65\%$ worst
 transition): Si\,\textsc{ii}/\textsc{iii}/\textsc{iv},
@@ -3779,19 +4293,37 @@ continua), written on a 400-point log-$\nu$ grid from 11.4\,$\mu$m to
 \subsection{He\,\textsc{i} 2$^3$S metastable and 10833~\AA\ absorption}
 The 2$^3$S diagnostic (Section~\ref{sec:heimeta}) is gated in
 \code{tests/hei\_meta/} on three runs (low/high density and an
-\code{add\_fuv} run).  \textbf{Stage 1}: the data-file analytic limits
-reproduce the low-density ratio $\alpha_3 n_e/A_{31} =
-1.6509{\times}10^{-7}$ (spec $1.65{\times}10^{-7}$ at $n_e=100$, $10^4$~K),
-the plateau $6.513{\times}10^{-6}$, and $n_{\rm crit} = 3945$~cm$^{-3}$ (the
-$n_e$-scan half-plateau crossing lands at 3926); the Fortran module $n_3$
-matches the independent Python closed form on each run's own state to worst
-relative $4{\times}10^{-15}$ (machine precision); the low-density core sits
-within median 2.8\%\,/\,max 3.9\% of the radiative limit and the
-high-density run ($n_e = 1.1{\times}10^4 > n_{\rm crit}$) at 0.676 of the
-plateau; $\Phi_3$ from the band tally matches an independent $J_\nu$
-integration to $1.5{\times}10^{-9}$ (max $9.07{\times}10^{-5}$~s$^{-1}$); and
+\code{add\_fuv} run).  The numbers below are from the current binary
+(2026-09-24, evening: $q_{31g}$, the Garc\'{\i}a Mu\~noz $Q_{31}$, the path
+estimator for $\Phi_3$, the exact collision constant and $C_3$), run on
+those three inputs in \code{results/hei\_metastable/} with the current
+\code{check\_hei\_meta.py}; the outputs stored under \code{tests/hei\_meta/}
+are dated 2026-07-24 and predate all of it.  Against the 12:40 binary of
+the same day (which had $q_{31g}$, $Q_{31}$ and the path estimator but not
+the constant or $C_3$) the total 2$^3$S column changes by $-0.136\%$
+(\code{hei\_lowd}, \code{hei\_fuv}) and $-3.37\%$ (\code{hei\_highd});
+against the balance before the morning update it had already moved by
+$-0.16\%$, $-3.85\%$ and $-0.16\%$ ($\Phi_3$ by $\le 0.2\%$).  The
+evening binary also carried, for a few hours, the Kimura
+$\mathrm{He}+\mathrm{H}^+$ rate (since withdrawn, \S\ref{sec:cx}); it moved
+only the neutral leaves ($x_{\rm HI} > 0.99$), which carry
+$<3\times10^{-7}$ of the column, so the column changes above are those of
+the constant and $C_3$.
+\textbf{Stage 1}: the data-file analytic limits reproduce the low-density
+ratio $\alpha_3 n_e/A_{31} = 1.6509{\times}10^{-7}$ (spec
+$1.65{\times}10^{-7}$ at $n_e=100$, $10^4$~K), the plateau
+$5.887{\times}10^{-6}$, and $n_{\rm crit} = 3566$~cm$^{-3}$ (the $n_e$-scan
+half-plateau crossing lands at 3601); the Fortran module $n_3$ matches the
+independent Python closed form on each run's own state to worst relative
+$3.4{\times}10^{-15}$ (machine precision); the low-density core sits within
+median 3.07\%\,/\,max 4.21\% of the radiative limit and the high-density
+run ($n_e = 1.1{\times}10^4 > n_{\rm crit}$) at 0.698 of the plateau;
+$\Phi_3$ from the path estimator matches a bin-center $J_\nu$ quadrature to
+$1.4{\times}10^{-2}$, inside twice the quadrature's own bound
+($4.5{\times}10^{-2}$; max $\Phi_3 = 9.05{\times}10^{-5}$~s$^{-1}$); and
 $\alpha_3(10^4\,{\rm K}) = 0.998\times0.75\,\alpha_B({\rm He\,II})$, the
-diffuse \code{HEI\_F3S} consistency.  \textbf{Stage 2 (10833 absorption)}:
+diffuse \code{HEI\_F3S} consistency (as recorded 2026-07-24; the current
+checker does not evaluate it, and neither input of it changed).  \textbf{Stage 2 (10833 absorption)}:
 the LINE10833 constants carry the $f$ ratio 1:3:5 and $A =
 1.0216{\times}10^7$~s$^{-1}$ each (NIST/p-winds, not the CHIANTI
 $1.15{\times}10^7$); a synthetic uniform cube reproduces the column
@@ -3801,7 +4333,7 @@ per component and for the doublet matches the hand integral
 $\kappa_0^{\rm hand}\,\ell$ to $<2{\times}10^{-16}$; the optically-thin case
 raises no warning while a $\times10^5$ scaled case pushes $\tau_0 > 1$ and
 fires it.  On the high-density run the column conserves to
-$9{\times}10^{-15}$ and the doublet/$J'{=}0$ $\tau_0$ ratio is 8.003, equal
+$8{\times}10^{-15}$ and the doublet/$J'{=}0$ $\tau_0$ ratio is 8.003, equal
 to the $(f_1{+}f_2)/f_0 = 8.002$ oscillator-strength ratio of the blended
 lines (that run's metastable column is optically thick, $\tau_0 \sim
 10^4$ --- flagged by the warning, as designed).
@@ -3815,27 +4347,30 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   recombinations) are re-emitted only when \code{par\%hei\_diffuse} is
   set --- their effect on the He\,\textsc{i}/\textsc{ii} split against
   MOCASSIN is small (the split is set by the $>$24.6-eV budget).
-  The He\,\textsc{ii} excited cascade has no such channel: its
-  Ly$\alpha$ (40.8~eV) and two-photon continuum can ionize H and
-  He\,\textsc{i} but are not transported (Section~\ref{sec:twophoton}).
-  Immaterial wherever He$^{2+}$ is absent, as in both Lexington
-  benchmarks; it belongs to the hard-spectrum track.
+  The He\,\textsc{iii} case-B cascade --- the He\,\textsc{ii} Ly$\alpha$
+  (40.8~eV), the $2^2$S two-photon continuum and the free-bound
+  continuum into $n\ge2$, all of which ionize H --- is transported only
+  when \code{par\%heii\_diffuse} is set (default off;
+  Section~\ref{sec:heiicascade}).  Immaterial wherever He$^{2+}$ is absent, as
+  in both Lexington benchmarks; a hard spectrum must have it on.
 \item With the default astrodust or DL07 SEDust optics, the EUV part of the
   leaf field lies on the 1762-point EUV Q-table grid and is not folded into a
   shorter-wavelength bin.  A custom Q/kext table that does not cover the
   transported band is rejected at setup rather than silently clamped.
 \item The thermal-loop line cooling is suppressed to the local $n_e$ by
   default (\code{cooling\_model = local\_ne}) through the $(T,n_e)$ table
-  of Section~\ref{sec:cool}, and the H-impact [C\,\textsc{ii}]
-  158\,$\mu$m / [O\,\textsc{i}] 63\,$\mu$m term (\code{metal\_cooling\_H},
-  weighted by $x_{\rm HI}$) carries its own two-level saturation.  What
-  remains is the \emph{cold} limit: the cooling fits hold over
-  $10^3$--$10^5$~K and collapse below that floor (their lowest excitation
-  temperature is 2054~K for C\,\textsc{i}, far above the 23.6~K of
-  [C\,\textsc{i}] 609.1\,$\mu$m), and no H-collider term exists for the
-  [C\,\textsc{i}] fine-structure lines --- so gas colder than
-  $\sim$$10^3$~K, where hydrogen is the collider, is outside the cooling
-  model.  Ar\,\textsc{ii} carries no cooling or lines (no CHIANTI v11
+  of Section~\ref{sec:cool}, and the atomic-hydrogen impact on the
+  C\,\textsc{i}, C\,\textsc{ii} and O\,\textsc{i} ground terms
+  (\code{metal\_cooling\_H}, \S\ref{sec:pdr}) is solved in the same
+  statistical equilibrium as the electrons, so the two colliders saturate
+  together.  What remains is the \emph{cold} limit of the electron share:
+  the cooling fits hold over $10^3$--$10^5$~K and collapse below that floor
+  (their lowest excitation temperature is 2054~K for C\,\textsc{i}, far
+  above the 23.6~K of [C\,\textsc{i}] 609.1\,$\mu$m), so in gas colder than
+  $\sim$$10^3$~K only the hydrogen increment is evaluated from the atoms
+  directly; the hydrogen rates themselves are held at their fit edges
+  outside 5--1000~K (C\,\textsc{i}), 30--1000~K (O\,\textsc{i}) and
+  20--2000~K (C\,\textsc{ii}).  Ar\,\textsc{ii} carries no cooling or lines (no CHIANTI v11
   level data).
 \item PDR zones: with the Section~\ref{sec:pdr} switches off (the
   default), the FUV extension gives the PDR-side \emph{ion structure}
@@ -3848,8 +4383,8 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8170~K, HII20 6926~K) matches a current \textsc{Cloudy}
-  c25.00 run to $0.49\%$ and $0.24\%$, the earlier excess having been traced
+  MoCHII (HII40 8177~K, HII20 6936~K) matches a current \textsc{Cloudy}
+  c25.00 run to $0.40\%$ and $0.38\%$, the earlier excess having been traced
   to two Tier-1 cooling defects (D1/D2) and the missing density suppression,
   all fixed.  The one remaining note is that both modern codes sit a few
   hundred K above the 2000-era published Lexington temperatures --- a
@@ -3873,6 +4408,21 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   Ne\,\textsc{i} recombination, or CHIANTI totals not derived from
   Badnell).  For He\,\textsc{i}, where such a determination does exist,
   MoCHII is within $0.3\%$ of it.
+\item \emph{Auger emission after inner-shell photoionization is not
+  carried} (flagged 2026-09-24).  Above their first inner edges
+  Mg\,\textsc{i} ($2p$, 54.9~eV), Ca\,\textsc{i} ($3p$, 34.4~eV) and
+  Fe\,\textsc{i}--\textsc{iii} ($3p$, 66.0--87.1~eV) absorb with the full
+  subshell cross section (\S\ref{sec:photo}), but the code moves the ion up
+  one stage and sends the hole energy out as fluorescence, whereas the
+  Kaastra \& Mewe (1993) yields give two electrons with probability
+  $\ge 0.995$ for these vacancies.  The stage fractions and the heating of
+  Mg, Ca and Fe in gas that sees 35--100~eV photons are affected; the fix
+  needs the stage matrix of HS6.
+\item \emph{Charge-exchange heating is absent.}  The energy defect of a
+  charge-exchange reaction goes to the kinetic energy of the products ---
+  11~eV for the non-radiative $\mathrm{He}^+ + \mathrm{H}$ channel --- and
+  neither the He--H reactions nor the metal--H reactions add it to the
+  thermal balance.
 \item Further metal ions as science needs them.
 \end{itemize}
 

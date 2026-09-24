@@ -2,7 +2,10 @@
 # Closed-form rate fits + VFKY96 photoionization cross section for the
 # 2^3S balance (Oklopcic & Hirata 2018, ApJ 855 L11 = OH18):
 #   n_3 = [alpha_3 ne n_HeII + q_13 ne n_HeI]
-#       / [A_31 + Phi_3 + ne (q_31a + q_31b) + n_HI Q_31]
+#       / [A_31 + Phi_3 + ne (q_31a + q_31b + q_31g + C_3) + n_HI Q_31]
+#   q_31g = q_13 (g_1/g_3) exp(E_13/kT), from the QEXC13 row, and C_3
+#   the electron-impact ionization of 2^3S (CION3 row); neither is in
+#   OH18 (added 2026-09-24)
 # Transcribed from the EXHALE triplet implementation
 #   (EXHALE/src/modules/radiation/Cool_coeff.f90, util_ion_eq.f90;
 #    functions/cross_sec.f90::sigma_HeI23S).  Fortran evaluates the
@@ -12,18 +15,22 @@
 # Provenance:
 #  alpha_3, alpha_1 : OH18 recombination into 2^3S / 1^1S systems.
 #  q_13, q_31a, q_31b : Bray et al. (2000) collision strengths via
-#     OH18 / Lampon et al. (2020); q_31a = 2^3S->2^1S, q_31b = 2^3S->2^1P
-#     (spin-changing e-impact into the singlets, NOT 2^3S->1^1S).
+#     OH18 / Lampon et al. (2020); q_31a = 2^3S->2^1S, q_31b = 2^3S->2^1P.
+#     q = beta Upsilon exp(-E/kT)/(g_l sqrt T), beta = h^2/[(2 pi m_e)^1.5
+#     k^0.5] = 8.629132e-6 exactly (OH18's 2.1e-8 sqrt(13.6/kT) is 3.3%%
+#     low); E from the observed CHIANTI he_1.elvlc levels.
+#  C_3 : e-impact ionization of 2^3S, Black (1981, MNRAS 197, 553) eq. 12,
+#     8.38e-10 T^0.5 exp(-55338/T), Taylor, Kingston & Bell (1979) cross
+#     sections, 1e3-1e5 K.
 #  A_31 = 1.272e-4 s^-1 (2^3S->1^1S, lifetime ~7870 s).  PITFALL: the
 #     CHIANTI he_1.wgfa A(1-2)=1.73e-4 is ~36%% high; do NOT use it.
-#  Q_31 : Penning + associative ionization He(2^3S)+H0, Taylor et al.
-#     (2025, ApJ 989 68) Table 2 (MB-averaged Morgner & Niehaus 1979 +
-#     Cohen & Lane 1971).  Two-branch power law, DISCONTINUOUS at 4000 K
-#     (jump ~1.6e-9 -> 2.5e-9).  ALTERNATIVE (recorded, not used):
-#     Garcia Munoz (2025, A&A 698 A199) k = 1e-9 exp(c + d1 lnT +
-#     d2 lnT^2 + d3 lnT^3), c=-8.64804e1 d1=-2.86766e-1 d2=8.68445e-2
-#     d3=-5.73001e-3; Taylor is 1.2-2.2x above GM25 over 300-1e4 K -
-#     the documented systematic uncertainty of the n_HI Q_31 sink.
+#  Q_31 : Penning + associative ionization He(2^3S)+H0, Garcia Munoz
+#     (2025, A&A 698 A199) Fig. 5: Maxwellian average of the Movre &
+#     Meyer (1997) cross sections, k = 1e-9 exp(c/T + d1 lnT + d2 lnT^2
+#     + d3 lnT^3), <2%% over 200-1e4 K; reproduces the paper's Table A.5.
+#     c is DIVIDED BY T (the paper's network file prints exp(c)).
+#     Replaces Taylor et al. (2025) Table 2, a two-branch power law that
+#     jumps 1.57x at 4000 K and is 1.2-1.8x above this over 3e3-1e4 K.
 #  sigma_3(E) : He 2^3S photoionization, two VFKY96 wings + a log-linear
 #     bridge; ~4%% fit to Norcross (1971) + TOPbase (EXHALE sigma_HeI23S);
 #     threshold 4.78 eV.  Cross-checked vs p-winds (same Norcross data).
@@ -43,10 +50,11 @@
 #  TRANGE  Tmin Tmax          - clamp range for rate evaluation
 #  A31     value              - s^-1
 #  ALPHA3/ALPHA1  C p         - alpha = C (T/1e4)^p
-#  QEXC13/QEXC31A/QEXC31B  prefac sconst Eexc div a b c d
-#     q = prefac sqrt(sconst/kT) exp(-Eexc/kT) (a exp(bT)+c exp(dT))/div
-#  PENNING Tsplit A_lo p_lo A_hi p_hi
-#     Q = A_lo (300/T)^p_lo (T<=Tsplit) else A_hi (300/T)^p_hi
+#  QEXC13/QEXC31A/QEXC31B  beta Eexc g_l a b c d
+#     q = beta (a exp(bT)+c exp(dT)) exp(-Eexc/kT) / (g_l sqrt T)
+#  CION3   A p T0             - C_3 = A T^p exp(-T0/T)
+#  PENNING A c d1 d2 d3
+#     Q = A exp(c/T + d1 lnT + d2 (lnT)^2 + d3 (lnT)^3)
 #  SIGMA3A/SIGMA3B  E_th E_0 s_0 y_a P y_w y_0 y_1   (VFKY96; s_0 in Mb)
 #  SIGBRIDGE  E3 E4          - bridge boundaries [eV] (log-linear join)
 #  Q10833  A E0              - q = A sqrt(T) exp(-E0/T)  (Stage 2)
@@ -58,10 +66,11 @@ TRANGE      1.000000e+02   3.000000e+04
 A31         1.272000e-04
 ALPHA3      2.100000e-13  -7.780000e-01
 ALPHA1      1.540000e-13  -4.860000e-01
-QEXC13      2.100000e-08   1.360000e+01   1.981000e+01   1.000000e+00   6.703000e-02  -2.673000e-06  -3.584000e-02  -3.880000e-04
-QEXC31A     2.100000e-08   1.360000e+01   8.000000e-01   3.000000e+00   2.847000e+00  -1.252000e-05  -1.953000e+00  -3.558000e-04
-QEXC31B     2.100000e-08   1.360000e+01   1.400000e+00   3.000000e+00   1.185000e+00  -4.749000e-06  -9.131000e-01  -1.669000e-04
-PENNING     4.000000e+03   1.900000e-09   7.000000e-02   9.100000e-09   5.000000e-01
+QEXC13      8.629132e-06   1.981963e+01   1.000000e+00   6.703000e-02  -2.673000e-06  -3.584000e-02  -3.880000e-04
+QEXC31A     8.629132e-06   7.961601e-01   3.000000e+00   2.847000e+00  -1.252000e-05  -1.953000e+00  -3.558000e-04
+QEXC31B     8.629132e-06   1.398408e+00   3.000000e+00   1.185000e+00  -4.749000e-06  -9.131000e-01  -1.669000e-04
+CION3       8.380000e-10   5.000000e-01   5.533800e+04
+PENNING     1.000000e-09  -8.648040e+01  -2.867660e-01   8.684450e-02  -5.730010e-03
 SIGMA3A     4.780000e+00   2.645000e+00   2.080000e+01   1.000000e+12   3.420000e+00   2.681000e+00   1.956000e+00   2.603000e+00
 SIGMA3B     4.559000e+01   4.968000e+01   1.052000e+03   4.393000e-02   2.941000e+00   1.717000e+00   5.488000e-05   1.118000e+00
 SIGBRIDGE   3.469642e+01   4.559248e+01

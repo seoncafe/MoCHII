@@ -6,7 +6,7 @@ Reads the three runs' <base>_heimeta.h5 (n_2s3, Phi_3, n_e, T_e) and
 
   hei_profiles.png  radial n_3/n_HeII: low-density run in the radiative limit
                     alpha_3 n_e/A_31, high-density run pushed below it toward the
-                    collisional plateau alpha_3/(q_31a+q_31b).
+                    collisional plateau alpha_3/(sum of the electron-impact sinks of 2^3S).
   hei_maps.png      high-density run: the 2^3S column density and the 10833 A
                     doublet line-center optical depth (tau_0 >> 1 in the core --
                     the optically-thin warning is physically correct).
@@ -58,17 +58,23 @@ def alpha3(T):
 
 
 def qexc(T, key):
-    pref, sc, Ee, div, a, b, cc, d = C[key]
+    """q = beta (a exp(bT) + c exp(dT)) exp(-Eexc/kT) / (g_l sqrt T)."""
+    beta, Ee, gl, a, b, cc, d = C[key]
     kT = KB_EV * T
     ups = a * np.exp(b * T) + cc * np.exp(d * T)
-    return pref * np.sqrt(sc / kT) * np.exp(-Ee / kT) * ups / div
+    return beta * ups * np.exp(-Ee / kT) / (gl * np.sqrt(T))
 
 
 T0 = 1.0e4                                    # par%te_fixed in all runs
 ALPHA3_0 = alpha3(T0)                         # 2.10e-13 cm^3/s
-Q31_0 = qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B")   # 3.224e-8 cm^3/s
-PLATEAU = ALPHA3_0 / Q31_0                    # alpha_3/(q_31a+q_31b) ~ 6.51e-6
-NCRIT = A31 / Q31_0                           # A_31/(q_31a+q_31b) ~ 3945
+# every electron-impact sink of 2^3S: q_31a + q_31b + q_31g (the q_13 inverse)
+# + C_3 (ionization, Black 1981), as in hei_metastable_mod
+_b, _E, _g, _a, _bb, _c, _d = C["QEXC13"]
+Q31_0 = (qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B")
+         + _b * (_a * np.exp(_bb * T0) + _c * np.exp(_d * T0)) / (3.0 * np.sqrt(T0))
+         + C["CION3"][0] * T0 ** C["CION3"][1] * np.exp(-C["CION3"][2] / T0))
+PLATEAU = ALPHA3_0 / Q31_0                    # 5.887e-6 at 1e4 K
+NCRIT = A31 / Q31_0                           # 3566 cm^-3 at 1e4 K
 
 
 # --- helpers -----------------------------------------------------------------
@@ -136,7 +142,7 @@ def fig_profiles(dl, dh):
     axes[0].set_ylabel(r"$n_3/n_{\rm He^+}$")
     # the high-density panel also shows the density-independent plateau
     axes[1].axhline(PLATEAU, color="C2", lw=1.5, ls=":",
-                    label=r"plateau $\alpha_3/(q_{31a}+q_{31b})$")
+                    label=r"plateau $\alpha_3/(q_{31a}+q_{31b}+q_{31g}+C_3)$")
     axes[0].legend(fontsize=8, loc="lower left")
     axes[1].legend(fontsize=8, loc="lower left")
     fig.suptitle(r"He I 2$^3$S metastable population "
@@ -232,9 +238,9 @@ def main():
     print("\n=== He I 2^3S metastable example summary ===")
     print("coefficients @ 1e4 K (data/atomic/hei_metastable.txt):")
     print("  alpha_3 = %.3e cm^3/s,  A_31 = %.3e s^-1" % (ALPHA3_0, A31))
-    print("  q_31a+q_31b = %.3e cm^3/s,  plateau alpha_3/(q31a+q31b) = %.3e"
+    print("  electron-impact sinks = %.3e cm^3/s,  plateau alpha_3/(sum) = %.3e"
           % (Q31_0, PLATEAU))
-    print("  n_crit = A_31/(q31a+q31b) = %.0f cm^-3" % NCRIT)
+    print("  n_crit = A_31/(sum of e-impact sinks) = %.0f cm^-3" % NCRIT)
 
     # low-density: collisional suppression vs the radiative limit in the core
     mc = (dl["r"] < RCUT["hei_low_density"]) & (dl["nHeII"] > 0.0) \
@@ -260,7 +266,7 @@ def main():
           % (dh["ne"][mh].mean(), dh["ne"][mh].mean() / NCRIT))
     print("  core n_3/n_HeII = %.3f of the radiative limit alpha_3 n_e/A_31 "
           "(factor %.1f suppression)" % (below_rad, 1.0 / below_rad))
-    print("  core n_3/n_HeII = %.3f of the plateau alpha_3/(q31a+q31b)" % frac)
+    print("  core n_3/n_HeII = %.3f of the plateau alpha_3/(sum of e-impact sinks)" % frac)
     print("  max 10833 doublet tau_0 through the core = %.2e (optically THICK)"
           % tau_max)
 

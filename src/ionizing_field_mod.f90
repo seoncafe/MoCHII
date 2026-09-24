@@ -26,7 +26,7 @@ module ionizing_field_mod
                                ion_score_report_energy_closure, &
                                ion_score_report_metal_rates
   use raytrace_amr_mod, only : transport_ion_packet
-  use gas_rates_mod,    only : gas_rates_compute, secion_apply
+  use gas_rates_mod,    only : gas_rates_compute
   use species_mod,      only : species_gamma_compute
   use diffuse_mod,      only : diffuse_build, gen_diffuse_photon, &
                                gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum
@@ -166,7 +166,6 @@ contains
     call ion_score_report_energy_closure()
     if (par%use_metals) call species_gamma_compute()
     call ion_score_report_metal_rates()
-    if (par%use_sec_ion) call secion_apply()
   end subroutine ionizing_field_and_rates
 
 end module ionizing_field_mod

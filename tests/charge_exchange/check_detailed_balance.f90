@@ -18,9 +18,7 @@ program check_detailed_balance
 ! — but only helium carries an explicit Boltzmann factor exp(-dE_IP/T) in its
 ! printed rate, so helium is the control: the table puts exp(-12.75/T4) on the
 ! "He + H+" row, matching |IP(He)-IP(H)|/k = 12.752 in T4 units exactly.
-! Nitrogen's two rows are numerical polynomial fits with no separated factor to
-! misplace, and rates too small to matter, so they are screened out below.  For
-! oxygen, the near-resonant case, it puts exp(-227/T) on the "O+ + H" row
+! For oxygen, the near-resonant case, it puts exp(-227/T) on the "O+ + H" row
 ! instead: the right magnitude — the printed 227 matches the 227.7 K defect to
 ! 0.3% — on the wrong side of the reaction.
 ! Read as written the oxygen pair failed this test by 1.47x; with the two
@@ -28,9 +26,22 @@ program check_detailed_balance
 ! independent fits to 1-3% over 4000-20000 K.  Reinstating the transcription as
 ! printed makes this gate fail again.
 !
-! Pairs where the smaller of the two coefficients is below K_FLOOR cannot
-! affect the ionization balance at nebular densities, and are reported but not
-! failed: their fits are not constrained by anything this test could see.
+! It caught a second one on 2026-09-24.  Nitrogen's two Huang rows are lnT
+! polynomials under which the endothermic N + H+ falls with T (8.9e-20 at
+! 1e4 K) and N+ + H sits 70-86x below Kingdon & Ferland (1996).  This gate
+! used to screen out every pair whose smaller rate was below 1e-15 at 1e4 K as
+! "too small to affect the balance" -- which let exactly that pair through:
+! a rate made small by a defect was taken as evidence that it did not matter.
+! There is no such screen now.  Every pair with data in both directions is
+! tested, and the only exemption is by name, for a physical reason:
+!
+!  ONE-SIDED pairs, whose exothermic direction carries a radiative channel
+!  that has no collisional reverse.  Detailed balance then bounds the
+!  endothermic rate from above -- it is the reverse of part of the forward
+!  rate -- so the test is k_exo / k_endo >= its detailed-balance value, i.e.
+!  ratio >= 1 - TOL on the exothermic-over-endothermic side.  Carbon is one:
+!  C + H+ -> C+ + H is dominated by radiative charge transfer (Stancil et al.
+!  1998), and C+ + H -> C + H+ is the non-radiative channel alone.
 !---------------------------------------------------------------------------
   use define
   use species_mod, only : species_setup, species_cx_coefficients, &
@@ -48,22 +59,23 @@ program check_detailed_balance
   integer, parameter :: GW1(NEL) = [6, 9, 4, 6, 2, 6, 4, 6, 30, 9, 2]
 
   real(kind=wp), parameter :: IP_H    = 13.5984_wp   ! eV
-  real(kind=wp), parameter :: K_FLOOR = 1.0e-15_wp   ! cm^3 s^-1
   real(kind=wp), parameter :: TOL     = 0.35_wp      ! |ratio-1| allowed
-  !--- Tested from 5000 K up.  Below that the Kingdon & Ferland forms 6 and 7
-  !--- are evaluated with t4 CLAMPED into [0.5, 5] by cx_rate, which is the
-  !--- documented handling of their ~5e3-5e4 K validity range but necessarily
-  !--- breaks detailed balance: the clamp freezes the Boltzmann factor of one
-  !--- direction while the other keeps running.  Testing below 5000 K would
-  !--- test the clamp, not the data.
-  integer,       parameter :: NT = 4
-  real(kind=wp), parameter :: TT(NT) = [5.0e3_wp, 8.0e3_wp, 1.0e4_wp, 2.0e4_wp]
-  real(kind=wp), parameter :: T_SCREEN = 1.0e4_wp
+  !--- pairs whose exothermic direction carries radiative charge transfer,
+  !--- tested one-sided (see the header), by name
+  integer, parameter :: NRADIATIVE_EXO = 1
+  character(len=2), parameter :: RADIATIVE_EXO(NRADIATIVE_EXO) = ['c ']
+  !--- Tested from 3000 K.  The Kingdon & Ferland forms 6 and 7 clamp only
+  !--- their fitted factor into t4 = [0.5, 5]; the Boltzmann factor of form 7
+  !--- takes the actual T, so a KF96 pair that shares b, c, d keeps detailed
+  !--- balance below 5000 K too.
+  integer,       parameter :: NT = 5
+  real(kind=wp), parameter :: TT(NT) = [3.0e3_wp, 5.0e3_wp, 8.0e3_wp, &
+                                        1.0e4_wp, 2.0e4_wp]
 
-  real(kind=wp) :: k_i, k_r, dE, req, dev, worst
+  real(kind=wp) :: k_i, k_r, dE, req, dev, worst, dside
   character(len=2) :: nm
-  integer :: ie, j, k, ierr, ntest, nskip
-  logical :: ok, screened
+  integer :: ie, j, k, ierr, ntest, nnodata
+  logical :: ok, one_sided, fail
 
   call MPI_INIT(ierr);  mpar%p_rank = 0
   par%atomic_dir = 'data/atomic'
@@ -76,7 +88,7 @@ program check_detailed_balance
   par%abund_Ca = 2.0e-8_wp
   call species_setup(1)
 
-  ok = .true.;  worst = 0.0_wp;  ntest = 0;  nskip = 0
+  ok = .true.;  worst = 0.0_wp;  ntest = 0;  nnodata = 0
   write(*,'(/,a)') '=== detailed balance of the transition-1 charge-exchange pairs ==='
   write(*,'(a4,a10,a12,a12,a12,a12,a10)') 'el', 'T [K]', 'k_cxi', 'k_cxr', &
      'measured', 'required', 'ratio'
@@ -92,34 +104,37 @@ program check_detailed_balance
      !--- dE from the registry's own threshold, so the gate cannot drift from
      !--- the data it is checking
      dE = (elem_eth(ie, 1) - IP_H) * ev2erg / kboltz_cgs
+     one_sided = any(RADIATIVE_EXO == nm)
 
-     !--- screen once per element, at a representative nebular temperature:
-     !--- either the pair can affect the ionization balance or it cannot.
-     call species_cx_coefficients(ie, 1, T_SCREEN, k_i, k_r)
-     if (k_i <= 0.0_wp .or. k_r <= 0.0_wp) cycle
-     screened = min(k_i, k_r) < K_FLOOR
-     if (screened) then
-        nskip = nskip + 1
-        call species_cx_coefficients(ie, 1, T_SCREEN, k_i, k_r)
-        req = (real(GW1(k), wp)*2.0_wp)/(real(GW0(k), wp)) * exp(-dE/T_SCREEN)
-        write(*,'(a4,a10,es12.3,es12.3,es12.3,es12.3,f10.3,a)') nm, 'screened', &
-           k_i, k_r, k_i/k_r, req, k_i/k_r/req, '   min k < floor'
+     !--- no data in one direction (form 0): nothing to test
+     call species_cx_coefficients(ie, 1, TT(1), k_i, k_r)
+     if (k_i <= 0.0_wp .or. k_r <= 0.0_wp) then
+        nnodata = nnodata + 1
+        write(*,'(a4,a)') nm, '   no charge-exchange data in one direction'
         cycle
      end if
 
      do j = 1, NT
         call species_cx_coefficients(ie, 1, TT(j), k_i, k_r)
-        if (k_i <= 0.0_wp .or. k_r <= 0.0_wp) cycle
         req = (real(GW1(k), wp)*2.0_wp) / (real(GW0(k), wp)*1.0_wp) &
               * exp(-dE/TT(j))
         dev = k_i/k_r/req
         ntest = ntest + 1
-        worst = max(worst, abs(dev - 1.0_wp))
-        if (j == 1 .or. abs(dev-1.0_wp) > TOL) &
-           write(*,'(a4,f10.0,es12.3,es12.3,es12.3,es12.3,f10.3)') &
-              nm, TT(j), k_i, k_r, k_i/k_r, req, dev
-        if (abs(dev - 1.0_wp) > TOL) then
-           write(*,'(a,a,a,f8.0,a,f6.3)') '  FAIL: ', trim(nm), ' at T = ', &
+        if (one_sided) then
+           !--- exothermic over endothermic must be at least detailed balance
+           dside = dev
+           if (dE > 0.0_wp) dside = 1.0_wp/dev
+           fail = dside < 1.0_wp - TOL
+        else
+           worst = max(worst, abs(dev - 1.0_wp))
+           fail = abs(dev - 1.0_wp) > TOL
+        end if
+        if (j == 1 .or. fail .or. one_sided) &
+           write(*,'(a4,f10.0,es12.3,es12.3,es12.3,es12.3,es10.3,a)') &
+              nm, TT(j), k_i, k_r, k_i/k_r, req, dev, &
+              merge('  one-sided', '           ', one_sided)
+        if (fail) then
+           write(*,'(a,a,a,f8.0,a,es10.3)') '  FAIL: ', trim(nm), ' at T = ', &
               TT(j), ' K, ratio to detailed balance = ', dev
            ok = .false.
         end if
@@ -127,9 +142,9 @@ program check_detailed_balance
   end do
 
   write(*,'(/,a,i0,a,i0,a)') ' tested ', ntest, ' (element, T) points; ', &
-     nskip, ' screened below the rate floor'
-  write(*,'(a,f6.3,a,f4.2)') ' worst |ratio - 1| = ', worst, &
-     '   tolerance ', TOL
+     nnodata, ' elements without data in both directions'
+  write(*,'(a,f6.3,a,f4.2)') ' worst |ratio - 1| of the two-sided pairs = ', &
+     worst, '   tolerance ', TOL
   if (ok) then
      write(*,'(a)') ' GATE (charge-exchange detailed balance): PASS'
   else

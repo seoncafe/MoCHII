@@ -11,14 +11,17 @@ module diffuse_mod
 !     He III+ e -> He II(1s) : E >= 54.416 eV      (channel 3)
 ! and two EXCITED-level cascades, which the ground continua leave out and
 ! which are ionizing because the decay energies exceed 13.598 eV:
-!     He II  n=2 terms       : channel 4, par%hei_diffuse  (hei_cascade_mod)
+!     He I  n=2 terms        : channel 4, par%hei_diffuse  (hei_cascade_mod)
 !     He III case-B cascade  : channel 5, par%heii_diffuse (heii_cascade_mod)
-! with rates alpha_1 = alpha_A - alpha_B per channel and photon energies
-! sampled as E = E_th + kT_e * x, x ~ Exp(1) (the near-threshold Milne
-! shape to the accuracy of the band bins).
+! with rates alpha_1 = alpha_A - alpha_B per ground channel.  The ground
+! photon energies follow par%diffuse_energy_model: 'milne' (default) samples
+! the Milne free-bound spectrum E^2 sigma_pi(E) exp[-(E-E_th)/kT] on the
+! transport cross sections (milne_recomb_spectrum_mod); 'exponential' draws
+! E = E_th + kT_e x, x ~ Exp(1); 'threshold' puts every photon at E_th.
 !
 ! Each iteration the emission table is rebuilt from the current state:
-! L_ch(leaf) = n_e n_recomb alpha_1(T) <E_ch> V_cm3, <E_ch> = E_th + kT.
+! L_ch(leaf) = n_e n_recomb alpha_1(T) <E_ch> V_cm3, with <E_ch> the mean
+! of the same energy distribution (ground_mean_energy).
 ! Packets carry the same Lpacket as stellar packets, so the diffuse packet
 ! count is n_diff = L_diffuse / Lpacket (rounded); sampling: leaf CDF over
 ! total leaf luminosity, then a channel CDF within the leaf.
@@ -47,14 +50,11 @@ module diffuse_mod
   real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
   integer(kind=int64) :: diffuse_nphot = 0
 
-  !--- He I excited-channel branching (AGN3 low-density limit; channel 4,
-  !--- par%hei_diffuse): 2^3S single 19.82-eV photon; 2^1P 584 A; 2^1S
-  !--- two-photon with probability 0.56 of an H-ionizing photon.
-  real(kind=wp), parameter :: HEI_F3S = 0.75_wp,  HEI_E3S = 19.82_wp
-  real(kind=wp), parameter :: HEI_F1P = 0.25_wp*(2.0_wp/3.0_wp), &
-                              HEI_E1P = 21.22_wp
-  real(kind=wp), parameter :: HEI_F1S = 0.25_wp*(1.0_wp/3.0_wp), &
-                              HEI_E2PH = 20.62_wp
+  !--- He I excited channel (channel 4, par%hei_diffuse): the 2^3S decay is a
+  !--- single 19.82 eV photon and the 2^1P decay the 21.22 eV (584 A) line;
+  !--- the branch fractions come from hei_cascade_mod (Benjamin, Skillman &
+  !--- Smits 1999 with J. S. Mathis).
+  real(kind=wp), parameter :: HEI_E3S = 19.82_wp, HEI_E1P = 21.22_wp
   !--- The in-band energy radiated per 2^1S decay now comes from the Drake
   !--- et al. (1969) shape (hei_twophoton_mod), not from a fixed 0.56 photons
   !--- times the mean of a flat spectrum.  The photon count was right to
@@ -103,8 +103,8 @@ contains
        dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(3, eth_HeII, kT_eV, T)*ev2erg*vol
        !--- channel 4: He I EXCITED-level recombination radiation
        !--- (par%hei_diffuse): all case-B He II recombinations cascade to
-       !--- n = 2 and decay with the AGN3 branching; only the H-ionizing
-       !--- part carries band luminosity.
+       !--- n = 2 and decay with the hei_cascade_mod branch fractions; only
+       !--- the H-ionizing part carries band luminosity.
        dif_ch(4,il) = 0.0_wp
        if (par%hei_diffuse) then
           a1 = alphaB_HeII(T)
@@ -173,8 +173,8 @@ contains
     photon%ky = sint*sin(phi)
     photon%kz = cost
 
-    !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1); the two
-    !--- excited channels sample their path by energy luminosity and then the
+    !--- channel; ground continua sample par%diffuse_energy_model
+    !--- (ground_photon_energy); the two excited channels sample their path by energy luminosity and then the
     !--- energy within it -- channel 4 the He I decay branch (fixed line
     !--- energies, or the Drake et al. 1969 two-photon shape), channel 5 the
     !--- He III cascade path (free-bound CDF, the 40.813 eV line, or the
@@ -231,12 +231,13 @@ contains
 
   !=========================================================================
   ! Quasi-random diffuse launch.  Nine launch uniforms with FIXED dimension
-  ! semantics (docs/QUASI_RANDOM_LAUNCH.md), from the diffuse scramble stream:
+  ! semantics (md/QUASI_RANDOM_LAUNCH.md), from the diffuse scramble stream:
   !   u(1)   emitting leaf (dif_cdf inverse);
   !   u(2-4) uniform position within the leaf;
   !   u(5)   mu = 2u-1;                 u(6) phi = 2 pi u;
   !   u(7)   emission channel (dif_ch inverse over the NCH channels);
-  !   u(8)   first energy variate: channels 1-3 the Exp(1) via -log(u);
+  !   u(8)   first energy variate: channels 1-3 the ground-continuum energy
+  !          (ground_photon_energy: the Milne CDF inverse by default);
   !          channel 4 the He I decay-branch pick; channel 5 the He II
   !          cascade-path pick (free-bound / Ly-alpha / two-photon);
   !   u(9)   second energy variate: the He I two-photon energy from the
@@ -282,8 +283,8 @@ contains
     photon%ky = sint*sin(phi)
     photon%kz = cost
 
-    !--- channel; ground continua sample E = E_th + kT x, x ~ Exp(1);
-    !--- the He I excited channel (4) samples its decay branch by energy
+    !--- channel; ground continua sample par%diffuse_energy_model
+    !--- (ground_photon_energy); the He I excited channel (4) samples its decay branch by energy
     !--- luminosity (fixed line energies; the two-photon branch from the
     !--- tabulated Drake shape).
     w  = dif_ch(:,il)

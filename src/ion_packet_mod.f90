@@ -32,11 +32,13 @@ contains
     photon%ionphys%sigma_HeII = sigma_HeII(energy)
     photon%ionphys%n_metal = 0
     photon%ionphys%sigma_metal = 0.0_wp
+    photon%ionphys%heat_metal = 0.0_wp
     if (par%use_metals) then
        block
          use species_mod, only : species_packet_cross_sections
          call species_packet_cross_sections(energy, &
-              photon%ionphys%sigma_metal, photon%ionphys%n_metal)
+              photon%ionphys%sigma_metal, photon%ionphys%n_metal, &
+              photon%ionphys%heat_metal)
        end block
     end if
     photon%ionphys%dust_abs = 0.0_wp

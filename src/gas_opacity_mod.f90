@@ -18,38 +18,30 @@ module gas_opacity_mod
   use define
   use octree_mod,    only : amr_grid
   use gas_state_mod, only : gas_nH, gas_xHI, gas_nleaf
-  use ion_band_mod,  only : nnu_band
   implicit none
   private
 
   public :: gas_opacity_setup, gas_opacity_fill, dust_reference_extinction
-  public :: ion_dust_sabs, ion_dust_ssca, ion_dust_g
   public :: ion_dust_sabs_at, ion_dust_ssca_at, ion_dust_g_at
 
-  !--- ionizing-band dust ABSORPTION relative to the reference extinction:
-  !--- ion_dust_sabs(b) = (1 - albedo(E_b)) C_ext(E_b) / C_ext(lambda_ref).
+  !--- Ionizing-band dust optics relative to the reference extinction, at a
+  !--- packet's exact energy E:
+  !---   ion_dust_sabs_at(E) = (1 - albedo(E)) C_ext(E) / C_ext(lambda_ref),
+  !---   ion_dust_ssca_at(E) = albedo(E) C_ext(E) / C_ext(lambda_ref),
+  !---   ion_dust_g_at(E)    = <cos>(E), the Henyey-Greenstein asymmetry.
   !--- The (lambda[um], albedo, <cos>, C_ext/H) optics come from one of two
   !--- sources: par%ion_dust_kext (a kext file: MoCafe table format, D03 and
   !--- astrodust layouts share these first four columns) when it is set, which
   !--- OVERRIDES the model; otherwise the SEDust grain model itself
   !--- (grain_model_mod), so extinction/absorption and the reemitted IR refer
   !--- to the same grains.  The leaf grey rhokap (reference extinction per
-  !--- code length) times this ratio gives the band absorption.  EUV dust
-  !--- SCATTERING (albedo ~ 0.2-0.45) is deferred: the analytic edge walk
-  !--- has no interaction sampling yet, so the scattered fraction is
-  !--- treated as unabsorbed (dropped from the dust budget, not
-  !--- redistributed) UNLESS par%ion_dust_scatter, in which case
-  !--- ion_dust_ssca(b) = albedo C_ext/C_ext(ref) joins the extinction
-  !--- and interactions are sampled (HG asymmetry ion_dust_g(b) from the
-  !--- table <cos> column).
-  real(kind=wp), allocatable :: ion_dust_sabs(:)
-  real(kind=wp), allocatable :: ion_dust_ssca(:)
-  real(kind=wp), allocatable :: ion_dust_g(:)
-
-  !--- The sorted extinction table is retained (read once) so the dust cross
-  !--- sections can be evaluated at a photon's exact energy, not only at the bin
-  !--- centers (ion_dust_*_at below).  The bin arrays above are unchanged: they
-  !--- are still filled by the inline loop in ion_dust_read.
+  !--- code length) times these ratios gives the band opacity.  With
+  !--- par%ion_dust_scatter the scattering joins the extinction and
+  !--- interactions are sampled; without it the scattered fraction passes
+  !--- (absorption-only treatment: dropped from the dust budget, not
+  !--- redistributed).
+  !--- The sorted extinction table is retained (read once) and evaluated at
+  !--- each photon's energy.
   real(kind=wp), allocatable :: dust_tab_lam(:), dust_tab_alb(:)
   real(kind=wp), allocatable :: dust_tab_gcos(:), dust_tab_cext(:)
   integer       :: dust_tab_n    = 0
@@ -239,61 +231,32 @@ contains
   end subroutine dust_reference_extinction
 
   !=========================================================================
-  !--- The ionizing-band ratios, tabulated on the band the run transports from
-  !--- the table dust_reference_extinction retained.
+  !--- Load the extinction table the band optics are evaluated from, and
+  !--- report them at the two edges of the transported band.
   subroutine ion_dust_read()
+    use ion_band_mod, only : ion_eedge
     implicit none
-    real(kind=wp) :: lb
-    integer :: b
+    logical, save :: done = .false.
+    real(kind=wp) :: elo, ehi
 
-    if (allocated(ion_dust_sabs)) return
+    if (done) return
+    done = .true.
     call dust_reference_extinction()
-    allocate(ion_dust_sabs(nnu_band), ion_dust_ssca(nnu_band), &
-             ion_dust_g(nnu_band))
-
-    do b = 1, nnu_band
-       lb = 1.23984_wp/ion_e_of(b)          ! um
-       ion_dust_sabs(b) = (1.0_wp - interp_lin(dust_tab_lam, dust_tab_alb, &
-                                               dust_tab_n, lb)) &
-                          * interp_log(dust_tab_lam, dust_tab_cext, &
-                                       dust_tab_n, lb) / dust_tab_cref
-       ion_dust_ssca(b) = interp_lin(dust_tab_lam, dust_tab_alb, dust_tab_n, lb) &
-                          * interp_log(dust_tab_lam, dust_tab_cext, &
-                                       dust_tab_n, lb) / dust_tab_cref
-       ion_dust_g(b)    = interp_lin(dust_tab_lam, dust_tab_gcos, dust_tab_n, lb)
-    end do
-    !--- S0 invariant: the bin arrays are exactly the *_at evaluators at the bin
-    !--- centers (same retained table, same expression).  Silent on success, so
-    !--- the run output is unchanged; guards against future drift of either side.
-    do b = 1, nnu_band
-       if (abs(ion_dust_sabs(b) - ion_dust_sabs_at(ion_e_of(b))) > &
-              1.0e-12_wp*max(abs(ion_dust_sabs(b)), tiny(1.0_wp)) .or. &
-           abs(ion_dust_ssca(b) - ion_dust_ssca_at(ion_e_of(b))) > &
-              1.0e-12_wp*max(abs(ion_dust_ssca(b)), tiny(1.0_wp)) .or. &
-           abs(ion_dust_g(b)    - ion_dust_g_at(ion_e_of(b)))    > &
-              1.0e-12_wp*max(abs(ion_dust_g(b)),    tiny(1.0_wp))) &
-          error stop 'ion_dust_*_at disagrees with the bin array'
-    end do
+    elo = ion_eedge(1);  ehi = ion_eedge(size(ion_eedge))
     if (mpar%p_rank == 0) then
        write(*,'(a,2f8.3)')  ' ION: sabs at band edges        = ', &
-          ion_dust_sabs(1), ion_dust_sabs(nnu_band)
+          ion_dust_sabs_at(elo), ion_dust_sabs_at(ehi)
        if (par%ion_dust_scatter) write(*,'(a,2f8.3,a,2f7.3)') &
           ' ION: ssca at band edges        = ', &
-          ion_dust_ssca(1), ion_dust_ssca(nnu_band), &
-          ',  g = ', ion_dust_g(1), ion_dust_g(nnu_band)
+          ion_dust_ssca_at(elo), ion_dust_ssca_at(ehi), &
+          ',  g = ', ion_dust_g_at(elo), ion_dust_g_at(ehi)
     end if
   end subroutine ion_dust_read
 
-  real(kind=wp) function ion_e_of(b) result(e)
-    use ion_band_mod, only : ion_e
-    integer, intent(in) :: b
-    e = ion_e(b)
-  end function ion_e_of
-
   !--- Dust cross sections at a photon's exact energy E [eV] from the retained
-  !--- extinction table, mirroring the inline bin-loop expressions in
-  !--- ion_dust_read: ion_dust_*(b) equals ion_dust_*_at(ion_e(b)) by
-  !--- construction.  Not yet wired into transport (isolated S0 addition).
+  !--- extinction table: log-log in C_ext, linear in albedo and <cos>, over
+  !--- wavelength.  Called for every packet (ion_packet_mod) and for the
+  !--- infrared emission bands (dust_emis_transport_mod).
   real(kind=wp) function ion_dust_sabs_at(E) result(s)
     real(kind=wp), intent(in) :: E
     real(kind=wp) :: lb

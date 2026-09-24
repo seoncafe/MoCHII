@@ -194,7 +194,7 @@ contains
   if (trim(par%cooling_model) /= 'low_density' .and. &
       trim(par%cooling_model) /= 'local_ne') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%cooling_model must be ''low_density'' (default) or ''local_ne''.'
+        'ERROR: par%cooling_model must be ''local_ne'' (default) or ''low_density''.'
      call MPI_FINALIZE(ierr);  stop
   endif
 

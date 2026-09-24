@@ -1857,7 +1857,7 @@ contains
   !=========================================================================
   ! Quasi-random ionizing launch.  The launch uniforms carry FIXED dimension
   ! semantics so every packet consumes the same coordinate meaning
-  ! (docs/QUASI_RANDOM_LAUNCH.md).  Two layouts:
+  ! (md/QUASI_RANDOM_LAUNCH.md).  Two layouts:
   !
   !  * SINGLE internal point source (stage-1, 3 dims) - preserved bit-for-bit:
   !      u(1) -> photon energy (the component's spectral CDF inverse);

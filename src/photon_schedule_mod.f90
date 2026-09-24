@@ -30,7 +30,7 @@ module photon_schedule_mod
 ! count by construction and the same path-segment count to 0.17%, yet the ranks
 ! take 17.1-35.8 s to do it (hyperthread contention on a 36-core node).  The
 ! static schedule pays the maximum of those times; served on demand the same
-! pass costs close to their harmonic mean (docs/MPI_LOAD_BALANCE_2026-08-02.md).
+! pass costs close to their harmonic mean (md/MPI_LOAD_BALANCE_2026-08-02.md).
 ! Measured here on the same case, the transport pass drops from a median 52.1 s
 ! to 43.4 s at 70 ranks, and its run-to-run spread from 28% to 1.5%.
 !

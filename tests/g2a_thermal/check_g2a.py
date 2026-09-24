@@ -14,7 +14,7 @@ the SAME thermal balance as thermal_mod/cooling_mod:
   - H I line cooling from the SAME Tier-1 file data/atomic/cooling_h_1.txt.
 
 Expected physics: without metal cooling Te ~ 13-20 kK (the known pure-H/He
-overshoot, docs/PLAN.md section 8).  Gate: median |Te_MC/Te_1D - 1| < 1%
+overshoot, md/PLAN.md section 8).  Gate: median |Te_MC/Te_1D - 1| < 1%
 over the ionized interior (0.3 < r < 2.8 pc).
 
 Rate coefficients come from tools/python/mochii_rates.py, so that the reference

@@ -273,30 +273,39 @@ def gbar_ff(T, Z=1):
 # and `src/recomb_mod.f90` evaluate them.  Exported from the Fortran for this
 # purpose; see the `public` note above `betaA_HII` in cooling_mod.
 #===========================================================================
+DLNT_BETA = 1.0e-4
+
+
+def maxwellian_recombination_cooling(alpha, T):
+    """beta = k T [(3/2) alpha + d alpha / d ln T]: the kinetic energy the
+    recombining electrons remove, exact for a Maxwellian and any capture cross
+    section, from the same alpha the balance uses (centered difference in
+    ln T, step DLNT_BETA), as `maxwellian_recombination_cooling` in
+    cooling_mod."""
+    T = np.asarray(T, dtype=float)
+    am = alpha(T * np.exp(-DLNT_BETA))
+    ap = alpha(T * np.exp(DLNT_BETA))
+    return KB_CGS * T * (1.5 * alpha(T) + (ap - am) / (2.0 * DLNT_BETA))
+
+
 def betaA_HII(T):
-    """`betaA_HII` in cooling_mod: Hui & Gnedin case-A recombination cooling."""
-    lam = 2.0 * T_TR_HI / np.asarray(T, dtype=float)
-    return 1.778e-29 * T * lam ** 1.965 / (1.0 + (lam / 0.541) ** 0.502) ** 2.697
+    """`betaA_HII` in cooling_mod: case-A recombination cooling of H II."""
+    return maxwellian_recombination_cooling(alphaA_HII, T)
 
 
 def betaB_HII(T):
     """`betaB_HII` in cooling_mod: the case-B counterpart."""
-    lam = 2.0 * T_TR_HI / np.asarray(T, dtype=float)
-    return 3.435e-30 * T * lam ** 1.970 / (1.0 + (lam / 2.250) ** 0.376) ** 3.720
+    return maxwellian_recombination_cooling(alphaB_HII, T)
 
 
 def beta_HeII(T, caseA=False):
-    """`beta_HeII` in cooling_mod: k_B T alpha, Hui & Gnedin's recommendation."""
-    a = alphaA_HeII(T) if caseA else alphaB_HeII(T)
-    return KB_CGS * np.asarray(T, dtype=float) * a
+    """`beta_HeII` in cooling_mod."""
+    return maxwellian_recombination_cooling(alphaA_HeII if caseA else alphaB_HeII, T)
 
 
 def beta_HeIII(T, caseA=False):
-    """`beta_HeIII` in cooling_mod: the hydrogenic Z = 2 form, 2 x the H fit."""
-    lam = 2.0 * T_TR_HEII / np.asarray(T, dtype=float)
-    if caseA:
-        return 2.0 * 1.778e-29 * T * lam ** 1.965 / (1.0 + (lam / 0.541) ** 0.502) ** 2.697
-    return 2.0 * 3.435e-30 * T * lam ** 1.970 / (1.0 + (lam / 2.250) ** 0.376) ** 3.720
+    """`beta_HeIII` in cooling_mod."""
+    return maxwellian_recombination_cooling(alphaA_HeIII if caseA else alphaB_HeIII, T)
 
 
 #--- collisional ionization: Voronov (1997) with the optional Dere hybrid

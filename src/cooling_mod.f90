@@ -4,9 +4,9 @@ module cooling_mod
 !
 ! Components (all per unit volume, erg cm^-3 s^-1, assembled in
 ! cooling_total):
-!   - recombination cooling: Hui & Gnedin (1997) case A/B fits for H II
-!     and He III (hydrogenic scaling); He II as k_B T alpha (their
-!     recommendation; DR negligible at HII-region temperatures);
+!   - recombination cooling: beta = k T [(3/2) alpha + d alpha/d ln T]
+!     from the case-A/B alpha of recomb_mod for H II, He II and He III
+!     (maxwellian_recombination_cooling; exact for a Maxwellian);
 !   - free-free: Lambda_ff = 1.42554e-27 sqrt(T) Z^2 n_ion n_e gbar(T,Z),
 !     with the thermally averaged Gaunt factor gbar(T,Z) obtained at setup
 !     by integrating the MOCASSIN getGauntFF (Hummer 1988) over
@@ -50,6 +50,9 @@ module cooling_mod
   end type cooling_fit_type
 
   type(cooling_fit_type) :: cool_HI_fit
+
+  !--- ln T step of the centered derivative in the recombination cooling
+  real(kind=wp), parameter :: DLNT_BETA = 1.0e-4_wp
 
   !--- index into the nlevel_cooling_mod (T, n_e) table for H I line cooling
   !--- (par%cooling_model = 'local_ne'); 0 = no table, keep the fit.
@@ -134,43 +137,61 @@ implicit none
   end function cooling_eval
 
   !=========================================================================
-  ! Hui & Gnedin (1997) recombination cooling [erg cm^3 s^-1].
+  ! Recombination cooling [erg cm^3 s^-1]: the kinetic energy the recombining
+  ! electrons remove, beta = < E sigma_rec v >.  For a Maxwellian at T and any
+  ! capture cross section sigma(E) -- every level, radiative and
+  ! dielectronic alike -- differentiating alpha = < sigma v > with respect to
+  ! T gives exactly
+  !     beta(T) = k T [ (3/2) alpha(T) + d alpha / d ln T ],
+  ! so beta is evaluated from the SAME alpha the ionization balance uses
+  ! (recomb_mod), case A or B, and the two cannot disagree.  The derivative
+  ! is a centered difference in ln T (step 1e-4: truncation ~1e-8 relative).
+  ! This replaced (2026-09-24) the Hui & Gnedin (1997) fits for H II and
+  ! He III, which fit a different alpha (Ferland et al. 1992; 2.3% below the
+  ! identity on MoCHII's case-B alpha at 1e4 K), and k T alpha for He II, which
+  ! is the mean kinetic energy only for alpha ~ T^-1/2 and overstated the
+  ! He II recombination cooling 1.43x at 1e4 K (the mean energy removed is
+  ! 0.70 kT there).
   !=========================================================================
+  elemental real(kind=wp) function maxwellian_recombination_cooling(T, am, a0, ap) &
+                                                                    result(b)
+    real(kind=wp), intent(in) :: T, am, a0, ap     ! alpha at T e^-h, T, T e^+h
+    b = kboltz_cgs*T*(1.5_wp*a0 + (ap - am)/(2.0_wp*DLNT_BETA))
+  end function maxwellian_recombination_cooling
+
   elemental real(kind=wp) function betaA_HII(T) result(b)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*157807.0_wp/T
-    b = 1.778e-29_wp*T*lam**1.965_wp/(1.0_wp + (lam/0.541_wp)**0.502_wp)**2.697_wp
+    b = maxwellian_recombination_cooling(T, alphaA_HII(T*exp(-DLNT_BETA)), &
+           alphaA_HII(T), alphaA_HII(T*exp(DLNT_BETA)))
   end function betaA_HII
 
   elemental real(kind=wp) function betaB_HII(T) result(b)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lam
-    lam = 2.0_wp*157807.0_wp/T
-    b = 3.435e-30_wp*T*lam**1.970_wp/(1.0_wp + (lam/2.250_wp)**0.376_wp)**3.720_wp
+    b = maxwellian_recombination_cooling(T, alphaB_HII(T*exp(-DLNT_BETA)), &
+           alphaB_HII(T), alphaB_HII(T*exp(DLNT_BETA)))
   end function betaB_HII
 
   elemental real(kind=wp) function beta_HeII(T, caseA) result(b)
     real(kind=wp), intent(in) :: T
     logical,       intent(in) :: caseA
-    !--- power-law alpha: cooling ~ k_B T alpha (Hui & Gnedin).
     if (caseA) then
-       b = kboltz_cgs*T*alphaA_HeII(T)
+       b = maxwellian_recombination_cooling(T, alphaA_HeII(T*exp(-DLNT_BETA)), &
+              alphaA_HeII(T), alphaA_HeII(T*exp(DLNT_BETA)))
     else
-       b = kboltz_cgs*T*alphaB_HeII(T)
+       b = maxwellian_recombination_cooling(T, alphaB_HeII(T*exp(-DLNT_BETA)), &
+              alphaB_HeII(T), alphaB_HeII(T*exp(DLNT_BETA)))
     end if
   end function beta_HeII
 
   elemental real(kind=wp) function beta_HeIII(T, caseA) result(b)
     real(kind=wp), intent(in) :: T
     logical,       intent(in) :: caseA
-    real(kind=wp) :: lam
-    !--- hydrogenic Z=2: the H fit on lambda(T_TR = 631515 K), x Z.
-    lam = 2.0_wp*631515.0_wp/T
     if (caseA) then
-       b = 2.0_wp*1.778e-29_wp*T*lam**1.965_wp/(1.0_wp + (lam/0.541_wp)**0.502_wp)**2.697_wp
+       b = maxwellian_recombination_cooling(T, alphaA_HeIII(T*exp(-DLNT_BETA)), &
+              alphaA_HeIII(T), alphaA_HeIII(T*exp(DLNT_BETA)))
     else
-       b = 2.0_wp*3.435e-30_wp*T*lam**1.970_wp/(1.0_wp + (lam/2.250_wp)**0.376_wp)**3.720_wp
+       b = maxwellian_recombination_cooling(T, alphaB_HeIII(T*exp(-DLNT_BETA)), &
+              alphaB_HeIII(T), alphaB_HeIII(T*exp(DLNT_BETA)))
     end if
   end function beta_HeIII
 
