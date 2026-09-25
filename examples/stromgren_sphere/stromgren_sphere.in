@@ -32,4 +32,5 @@
 
  par%source_geometry = 'point'
  par%out_file        = 'stromgren_sphere.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

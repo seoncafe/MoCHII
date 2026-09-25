@@ -55,4 +55,5 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'smoke_mgfe.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

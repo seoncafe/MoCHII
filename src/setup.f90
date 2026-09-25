@@ -16,8 +16,8 @@ contains
   use mpi
   implicit none
 
-  character(len=128) :: model_infile, arg
-  character(len=256) :: exepath
+  character(len=PATH_LEN) :: model_infile, arg
+  character(len=PATH_LEN) :: exepath
   integer :: unit, ierr, islash
 
   namelist /parameters/ par
@@ -461,7 +461,7 @@ contains
     if (trim(par%launch_sequence) /= 'random' .and. &
         trim(par%launch_sequence) /= 'sobol') then
        if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%launch_sequence must be ''random'' (default) or ''sobol''.'
+          'ERROR: par%launch_sequence must be ''sobol'' (default) or ''random''.'
        call MPI_FINALIZE(ierr);  stop
     endif
   end block

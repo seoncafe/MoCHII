@@ -37,4 +37,5 @@
  par%slab_top_source=1.0e-5
  par%file_format='hdf5'
  par%out_file='ga60_n1_sh.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

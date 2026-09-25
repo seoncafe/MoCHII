@@ -60,4 +60,5 @@
  !--- SEDust stochastic dust SED (output time)
  par%dust_sed       = .true.
  par%dust_model     = 'astrodust'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

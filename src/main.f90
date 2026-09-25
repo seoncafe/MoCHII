@@ -29,6 +29,9 @@ program main
   use ion_balance_mod, only : gas_equilibrium_update, &
                               hydrogen_balance_residual_grid
   use thermal_mod,     only : gas_thermal_update
+  use fixed_point_distance_mod, only : iteration_history, history_push, &
+                                       history_reset, fixed_point_distance, &
+                                       fixed_point_converged
   use cooling_mod,     only : cooling_setup
   use nlevel_cooling_mod, only : nlevel_cooling_report
   use species_mod,     only : species_setup, &
@@ -39,7 +42,8 @@ program main
   implicit none
 
   type(grid_type)     :: grid
-  real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol
+  real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
+  type(iteration_history) :: hist_dx, hist_dhe1, hist_dhe3
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
   logical             :: converged, use_vol
@@ -88,6 +92,13 @@ program main
   end if
   call ion_setup(metal_eth, nmetal)
   deallocate(metal_eth)
+  !--- a previous run's state, before the first opacity fill reads it
+  if (len_trim(par%restart_file) > 0) then
+     block
+       use previous_state_mod, only : load_previous_state
+       call load_previous_state(trim(par%restart_file))
+     end block
+  end if
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
   call ion_score_setup(amr_grid%nleaf)
@@ -132,7 +143,10 @@ program main
   if (trim(par%cooling_model) == 'local_ne') call nlevel_cooling_report()
 
   !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
-  !--- until max |delta x_HII| < par%gas_tol.  gas_niter = 0 = single
+  !--- until the stopping test of par%conv_crit passes ('vol': the drift
+  !--- still to come in x_HII and helium below par%gas_tol, see
+  !--- composition_converged; 'cell': the largest leaf step below
+  !--- par%gas_tol).  gas_niter = 0 = single
   !--- pass (no equilibrium solve, fixed state).  The stellar tally is
   !--- recomputed from zero each iteration (opacity changed).
   niter = max(par%gas_niter, 1)
@@ -146,10 +160,11 @@ program main
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
         thermal_t0 = MPI_WTIME()
-        call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
+        call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol)
         thermal_dt = MPI_WTIME() - thermal_t0
+        call record_change_history()
         if (use_vol) then
-           converged = dx_vol < par%gas_tol .and. dte_vol < par%gas_tol_te
+           converged = composition_converged() .and. dte_vol < par%gas_tol_te
         else
            converged = max_dx < par%gas_tol .and. max_dte < par%gas_tol_te
         end if
@@ -165,15 +180,25 @@ program main
               ' s (', mpar%h_size, ' node-local MPI ranks)'
         end if
      else
-        call gas_equilibrium_update(max_dx, dx_vol)
+        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol)
+        call record_change_history()
         if (use_vol) then
-           converged = dx_vol < par%gas_tol
+           converged = composition_converged()
         else
            converged = max_dx < par%gas_tol
         end if
         if (mpar%p_rank == 0) write(6,'(a,i4,2(a,es12.4))') &
            '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
            ',  vol = ', dx_vol
+     end if
+     !--- distance from the fixed point, H and He (fixed_point_distance_mod):
+     !--- the step d, the median decay ratio rho of the last three steps,
+     !--- and the drift still to come e = d rho/(1 - rho).
+     if (mpar%p_rank == 0 .and. par%gas_niter >= 1) then
+        call report_fixed_point_distance(' x_HII ', hist_dx)
+        call report_fixed_point_distance(' He0-He+', hist_dhe1)
+        if (dhe_vol(2) >= 0.0_wp) &
+           call report_fixed_point_distance(' He+-He2+', hist_dhe3)
      end if
      !--- residual of hydrogen's ionization balance on the written state,
      !--- including both charge-exchange terms: a reported diagnostic, it
@@ -190,6 +215,9 @@ program main
           call amr_refine_front()
         end block
         converged = .false.        ! keep iterating on the new grid
+        call history_reset(hist_dx)      ! the old grid's steps say nothing
+        call history_reset(hist_dhe1)    ! about the new one
+        call history_reset(hist_dhe3)
      end if
      if (converged) then
         if (mpar%p_rank == 0) write(6,'(a,i4,a)') &
@@ -340,5 +368,49 @@ program main
   call destroy_shared_mem_all()
   call MPI_FINALIZE(ierr)
   stop
+
+contains
+
+  subroutine record_change_history()
+    call history_push(hist_dx, dx_vol)
+    call history_push(hist_dhe1, dhe_vol(1))
+    if (dhe_vol(2) >= 0.0_wp) then
+       call history_push(hist_dhe3, dhe_vol(2))
+    else
+       call history_reset(hist_dhe3)
+    end if
+  end subroutine record_change_history
+
+  !--- par%conv_crit = 'vol': the ionization state has converged when the
+  !--- drift still to come is below par%gas_tol for x_HII, for He0 <-> He+,
+  !--- and for He+ <-> He2+ where He2+ is at least 1% of the ionized helium
+  !--- (fixed_point_distance_mod; the test on the step alone stopped the
+  !--- HII40 benchmark with its He I front 0.17 pc short).
+  logical function composition_converged() result(done)
+    done = fixed_point_converged(hist_dx, par%gas_tol) .and. &
+           fixed_point_converged(hist_dhe1, par%gas_tol)
+    if (dhe_vol(2) >= 0.0_wp) &
+       done = done .and. fixed_point_converged(hist_dhe3, par%gas_tol)
+  end function composition_converged
+
+  !--- one log line: the latest step d, the decay ratio rho, and the drift
+  !--- still to come e (or why e is not available)
+  subroutine report_fixed_point_distance(label, h)
+    character(len=*),        intent(in) :: label
+    type(iteration_history), intent(in) :: h
+    real(kind=wp) :: rho, dist
+    logical :: available
+    call fixed_point_distance(h, rho, dist, available)
+    if (available) then
+       write(6,'(a,a9,3(a,es11.3))') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  rho = ', rho, ',  e = ', dist
+    else if (h%n < 4) then
+       write(6,'(a,a9,a,es11.3,a)') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  (rho needs 4 iterations)'
+    else
+       write(6,'(a,a9,2(a,es11.3),a)') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  rho = ', rho, ',  (not decaying)'
+    end if
+  end subroutine report_fixed_point_distance
 
 end program main

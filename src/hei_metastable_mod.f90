@@ -280,7 +280,8 @@ contains
   subroutine hei_metastable_load()
     use mpi
     implicit none
-    character(len=256) :: fname, line
+    character(len=PATH_LEN) :: fname
+    character(len=256) :: line
     character(len=16)  :: key
     integer :: unit, ios, ierr
 
@@ -341,7 +342,7 @@ contains
     integer,       intent(in) :: nleaf
     real(kind=wp), intent(in) :: n2s3(nleaf), phi3(nleaf)
     type(io_file_type) :: file
-    character(len=192) :: filename
+    character(len=PATH_LEN) :: filename
     real(kind=wp), allocatable :: lxyz(:,:), tmp(:)
     integer :: status, il
 

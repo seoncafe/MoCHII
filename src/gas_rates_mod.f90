@@ -158,7 +158,7 @@ contains
     use utility, only : get_base_name, fatal_error
     implicit none
     type(io_file_type) :: file
-    character(len=192) :: filename
+    character(len=PATH_LEN) :: filename
     real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
     real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped
     integer :: status, il, inu, ic, nleaf

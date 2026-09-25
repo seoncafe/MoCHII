@@ -367,7 +367,7 @@ contains
     use utility, only : get_base_name, fatal_error
     implicit none
     type(io_file_type) :: file
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     character(len=64)  :: extname, suffix
     real(kind=wp) :: fac
     integer :: k, ch, ierr, status

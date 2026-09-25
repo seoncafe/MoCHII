@@ -47,4 +47,5 @@
  par%te_max        = 5.0e4
  par%gas_tol_te    = 2.0e-3
  par%atomic_dir    = '../../data/atomic'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

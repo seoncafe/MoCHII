@@ -47,4 +47,5 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'tests/qmc/v1/v1d_diff_aligned.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

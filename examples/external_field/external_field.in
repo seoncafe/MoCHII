@@ -69,4 +69,5 @@
 
  par%file_format   = 'hdf5'
  par%out_file      = 'external_field.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

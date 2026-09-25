@@ -558,7 +558,7 @@ contains
     implicit none
     real(kind=wp), allocatable :: lam(:), Llam(:), dlam(:)
     real(kind=wp) :: emitted, extinct, escaped, esum
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     integer :: k, unit
 
     if (mpar%p_rank /= 0) return

@@ -132,17 +132,25 @@ OBJS	= \
 	thermal_mod.o \
 	ionizing_field_mod.o \
 	setup.o \
+	fixed_point_distance_mod.o \
+	previous_state_mod.o \
 	main.o
 
 OBJECTS = $(patsubst %.o, $(SRCDIR)/%.o, $(OBJS))
 
-# MoCafe policy: no inter-module dependency lists — always a full rebuild
-# (module .mod staleness otherwise bites after editing define.f90 etc.).
-# Source-order compilation is therefore required: Fortran USE dependencies are
-# not represented as Make prerequisites.  This makes `make -j` safe by
-# serialising the object prerequisites of the executable while retaining the
-# conventional command-line interface.
-.NOTPARALLEL: MoCHII.x
+# Module dependencies.  src/Makefile.dep lists, for every object, the objects
+# that define the modules it USEs (tools/fortran_module_dependencies.py), and
+# is regenerated whenever a source changes.  So `make MoCHII.x` recompiles
+# exactly what an edit reaches -- a new component of params_type in
+# define.f90 rebuilds every object that sees par, which the earlier
+# dependency-free incremental build did not (it linked objects compiled
+# against the old layout) -- and `make -j` orders itself.  `make` alone
+# still cleans and rebuilds everything, the MoCafe default.
+SRCS = $(OBJECTS:.o=.f90)
+
+$(SRCDIR)/Makefile.dep: $(SRCS) tools/fortran_module_dependencies.py
+	python3 tools/fortran_module_dependencies.py $(SRCDIR) > $@
+
 
 default: clean
 	$(MAKE) MoCHII.x
@@ -156,3 +164,7 @@ clean:
 	rm -f $(SRCDIR)/*.o $(SRCDIR)/*.mod *.mod MoCHII.x
 
 .PHONY: default clean
+
+# Last, so that no rule of the generated file becomes the default goal.
+.DEFAULT_GOAL := default
+include $(SRCDIR)/Makefile.dep

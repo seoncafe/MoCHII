@@ -34,11 +34,12 @@ quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8177$~K at HII40 and 6936~K at
-HII20 with the density-suppressed cooling default, matching a current
-\textsc{Cloudy} c25.00 run to $0.40\%$ and $0.38\%$; the zero-density limit
-gives 7894 and 6376~K, and both modern codes sit above the 2000-era
-published ranges); and the line-flux comparison (H$\beta$ within a few
+the MOCASSIN Lexington benchmarks ($T_e = 8207$~K at HII40 and 6946~K at
+HII20 with the density-suppressed cooling default, run to the drift stopping
+test, matching a current \textsc{Cloudy} c25.00 run to $0.04\%$ and $0.52\%$,
+with the HII40 He\,\textsc{i} front $0.034$~pc inside \textsc{Cloudy}'s; the
+zero-density limit gives 7907 and 6295~K, and both modern codes sit above
+the 2000-era published ranges); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
 the published spread).
 Also documented: the solution-driven I-front re-refinement
@@ -589,6 +590,12 @@ takes it apart.
 
 \subsection{The helium ionization network, code by code}
 \label{sec:henetwork}
+\emph{Record (2026-09-25).}  The front shifts and bounds in this part were
+measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
+which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
+front; they document the search for a residual that was mostly that early
+stop, and are not current bounds.  The converged residual is $0.034$~pc.
+
 Neutral helium is the one species in the H/He inventory on which the
 photoionization codes disagree at more than the percent level.  Reading
 each code's own data rather than its published description gives, for
@@ -690,7 +697,8 @@ ${\sim}0.6\%$.
 Taken together with the front sensitivity measured in
 \S\ref{sec:diffuse} ($0.80$~pc per unit fractional change in the
 He\,\textsc{i} recombination rate), the $11$--$13\%$ code spread is worth
-$0.09$~pc --- half the HII40 front residual against Cloudy --- but MoCHII
+$0.09$~pc --- more than the converged HII40 front residual against Cloudy,
+$0.034$~pc --- but MoCHII
 itself lies within $0.3\%$ of Cloudy, so that lever is not available to
 MoCHII: it measures how much of a helium front comparison between two
 arbitrary codes can be recombination data alone.
@@ -705,6 +713,10 @@ puts $r(\mathrm{He^0}=0.5)$ at $4.12931$~pc against $4.12776$~pc before,
 so the residual to \textsc{Cloudy}'s $4.30531$~pc is $0.17600$~pc
 (was $0.17755$; \code{tests/continuous\_energy/analyze\_hii40\_residuals.py}
 on \code{results/continuous\_energy/m2\_atomic/hii40\_atomic\_rates.h5}).
+\emph{Those residuals were measured on runs stopped by the earlier
+convergence rule} (\S\ref{sec:hii}); run to the drift test, the front is at
+$4.27107$~pc and the residual is $0.034$~pc
+(\code{results/continuous\_energy/m5\_converged}).
 
 \subsection{Collisional ionization (Voronov 1997)}
 \begin{equation}
@@ -1583,7 +1595,7 @@ weight is not divided by the probability density: equal packet luminosity
 combined with inverse-CDF sampling is the importance sampling rule that
 recovers the source luminosity spectrum in expectation.
 
-\paragraph{Convergence measures.}  Two pairs are computed every
+\paragraph{Convergence measures.}\label{sec:conv}  Two pairs are computed every
 iteration and \code{par\%conv\_crit} selects which gates the loop:
 the cell-max tests ($\max|\Delta x_{\rm HII}| <$ \code{gas\_tol},
 $\max|\Delta T_e|/T_e <$ \code{gas\_tol\_te}) and the
@@ -1603,6 +1615,22 @@ no-heating cells whose \code{te\_min}-pinned oscillation dominates
 $\max|\Delta T_e|$ in FUV/PDR configurations.  \code{'vol'} is the
 recommended production setting; \code{'cell'} (the historical
 behavior) remains the default so the recorded gates reproduce.
+\emph{The drift test (2026-09-25).}  Under \code{'vol'} the ionization
+measures are no longer tested on their last step: with $d_n$ the step and
+$\rho$ the median of its last three decay ratios, a measure passes when the
+drift still to come, $d_n\rho/(1-\rho)$, is below \code{gas\_tol}, or ---
+once the steps no longer fall monotonically (the Monte Carlo floor,
+$\rho \ge 0.95$ with at least one ratio $\ge 1$) --- when $d_n$ is.  Helium
+is tested alongside hydrogen, through
+$\sum V|\Delta x_{\rm HeI}|/\sum V(1-x_{\rm HeI})$ and, where He$^{2+}$ is at
+least 1\% of the ionized helium, the He$^{2+}$ counterpart
+(\code{fixed\_point\_distance\_mod}, gate \code{tests/convergence/}).  The
+step test stopped the HII40 benchmark at iteration 37: $x_{\rm HII}$ was
+decaying with $\rho \approx 0.86$, so six times the last step was still to
+come, and the helium measure was five times larger again.  Run for a fixed
+80 iterations the same input settles by iteration 60 --- He\,\textsc{i}
+front 4.271~pc against 4.103 at the early stop, $\langle T[N_pN_e]\rangle$
+8210.5 against 8175.3~K --- and the drift test stops at 58, at that answer.
 Measured on the FUV dusty Str\"omgren case at $8{\times}10^6$ packets
 (where the cell-max tests sat at 0.1 and 6.4 indefinitely): the volume
 measures decay smoothly to well-defined Monte Carlo floors of
@@ -1958,6 +1986,12 @@ plus its cooling and $n$-level files.
 
 \subsection{Metal opacity in the He-ionizing window}
 \label{sec:metalop}
+\emph{Record (2026-09-25).}  The front shifts and bounds in this part were
+measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
+which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
+front; they document the search for a residual that was mostly that early
+stop, and are not current bounds.  The converged residual is $0.034$~pc.
+
 ``Trace'' names the \emph{data} treatment, not a switched-off feedback.  The
 founding plan lists metals feeding back on $n_e$ and on the opacity as a
 non-goal, but the production inputs run with \code{par\%metal\_ne},
@@ -2379,6 +2413,12 @@ $-0.00306$~pc, i.e.\ $1.7\%$ of the $0.18$~pc residual and \emph{away} from
 Cloudy rather than toward it.  Switching the whole fourth channel off moves
 it $-0.103$~pc, so the channel's presence matters and its internal detail
 does not.
+
+\emph{Record (2026-09-25).}  The front shifts and bounds in this part were
+measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
+which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
+front; they document the search for a residual that was mostly that early
+stop, and are not current bounds.  The converged residual is $0.034$~pc.
 
 \paragraph{Where the Cloudy front residual is not.}  Each of those four
 corrections is independently correct --- three of them reproduce an external
@@ -3851,31 +3891,20 @@ against the 1D exact reference.}
 
 \subsection{The MOCASSIN Lexington benchmarks}
 \label{sec:hii}
-\emph{Caveat (2026-09-25): the production numbers of this section are not
-converged.}  The stopping test tracks $x(\mathrm{H^+})$ and $T_e$ only
-(\code{conv\_crit = 'vol'}, $5{\times}10^{-3}$ / $10^{-2}$), and the runs
-stop while the structure is still moving outward.  The HII40 production
-input run for a fixed 60 iterations (volume-mean $|\Delta x|$ falling from
-$4.5{\times}10^{-3}$ at iteration 37 to $1.6{\times}10^{-4}$) gives
-$\langle T[N_pN_e]\rangle = 8210.5$~K against 8175.3~K at the
-37-iteration stop and \textsc{Cloudy}'s 8210~K; the He\,\textsc{i} front
-at 4.271~pc against 4.103 (\textsc{Cloudy} 4.305), i.e.\ a residual of
-0.034~pc; $\langle\mathrm{He^+}\rangle/\langle\mathrm{H^+}\rangle = 0.760$
-against 0.700; $L(\mathrm{H}\beta) = 1.991{\times}10^{37}$ against
-$1.927{\times}10^{37}$.  The He-front residual and the low $L(\mathrm{H}\beta)$
-discussed below are therefore largely premature stopping; at 60
-iterations the hydrogen front also reaches the grid edge (4.73~pc).
-HII20/HII40: blackbody 20/40~kK, $Q_{\rm H} = 1.006/4.26 \times
-10^{49}\,{\rm s^{-1}}$, $n_{\rm H} = 100$, hollow shell
-$R_{\rm in} = 3{\times}10^{18}$~cm, abundances He 0.1, C $2.2{\times}
-10^{-4}$, N $4{\times}10^{-5}$, O $3.3{\times}10^{-4}$, Ne
-$5{\times}10^{-5}$, S $9{\times}10^{-6}$.  The stored MOCASSIN 2.02.73.2 baselines are
-\emph{reduced} runs ($10^5$ photons, 3 iterations) --- at iteration 3
-only 27\% of cells have converged.  To close the comparison MOCASSIN
-itself was re-run converged ($2{\times}10^6$ photons, 40 iterations,
-72\% cells; a finer $\mathrm{nx}{=}25$ grid confirms resolution), and
-MoCHII with the \emph{corrected} charge exchange of
-Section~\ref{sec:cx}.
+\emph{Converged runs (2026-09-25).}  The numbers of this section are from
+\code{results/continuous\_energy/m5\_converged}: the production inputs run to
+the drift stopping test (\S\ref{sec:conv}; 64 iterations at HII40, 55 at
+HII20), with the HII40 gas extended to 5.2~pc because the converged
+hydrogen front sits on the $1.46\times10^{19}$~cm outer radius of the
+MOCASSIN benchmark input.  The earlier stopping test, on the $x_{\rm HII}$
+step alone, ended the runs while the structure was still moving outward:
+the same HII40 input stopped at iteration 37 with
+$\langle T[N_pN_e]\rangle = 8175.3$~K, the He\,\textsc{i} front at 4.103~pc
+(\textsc{Cloudy} 4.305), $\langle\mathrm{He^+}\rangle/\langle\mathrm{H^+}\rangle
+= 0.700$ and $L(\mathrm{H}\beta) = 1.927{\times}10^{37}$; converged these are
+8206.7~K, 4.271~pc (a residual of 0.034~pc), 0.758 and
+$2.000{\times}10^{37}$.  Numbers quoted below as ``early-stopped'' come from
+the earlier rule.
 
 \textbf{Temperatures.}  $T_e$ weighted by $n_{\rm HII} n_e$, MoCHII with
 its current defaults (threshold-aligned grid, corrected charge exchange
@@ -3890,16 +3919,16 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 6936 K & 6285 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8177 K & 7876 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 6946 K & 6295 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8207 K & 7907 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8177$~K (HII40) and 6936~K (HII20),
+local\_ne}) MoCHII gives $T_e = 8207$~K (HII40) and 6946~K (HII20),
 matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
-$0.40\%$ and $0.38\%$ (\code{results/continuous\_energy/m2\_atomic},
-2026-09-24; the \code{low\_density} column is the same input with
+$0.04\%$ and $0.52\%$ (\code{results/continuous\_energy/m5\_converged},
+2026-09-25; the \code{low\_density} column is the same input with
 \code{cooling\_model = 'low\_density'}).  Both modern codes sit a few hundred K \emph{above} the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
@@ -3937,11 +3966,13 @@ oxygen charge exchange of Section~\ref{sec:cx} then adds $+2$~K (8170 and
 6926~K), and the 2026-09-24 atomic-data update (inner-shell metal cross
 sections, Barragan O$^{2+}$/N$^{2+}$ charge exchange, He--H charge
 exchange, hydrogen-impact fine structure, recombination cooling from
-Eq.~\ref{eq:betarec} and the metal ionization-energy loss) gives the
-current 8177 and 6936~K: at HII40 the first five items move it by $-9.4$~K
-and the two cooling terms by $+16.4$~K.  Measured again on the current
-code, the \code{low\_density} limit is 7876 and 6285~K (it was 7894 and
-6376~K when the fits were regenerated).  The former
+Eq.~\ref{eq:betarec} and the metal ionization-energy loss) gave 8177 and
+6936~K: at HII40 the first five items moved it by $-9.4$~K and the two
+cooling terms by $+16.4$~K.  All of these steps were measured on
+early-stopped runs, and step differences of a few K are within that rule's
+resolution; run to the drift test the current code gives 8207 and 6946~K,
+and the \code{low\_density} limit 7907 and 6295~K (it was 7894 and 6376~K
+when the fits were regenerated).  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -3992,12 +4023,11 @@ $T_e$ ran $\sim$9\% hot --- now fall inside the published spread:
 published 1.64--3.27, and the [N\,\textsc{ii}], [S\,\textsc{ii}] and
 [Ne\,\textsc{iii}] ratios move into range.  Absolute
 $L({\rm H}\beta) \approx 1.9 \times 10^{37}$ (HII40) and
-$4.7 \times 10^{36}\,{\rm erg\,s^{-1}}$ (HII20) sit $\sim$3\% below the
-published $2.01$--$2.10 \times 10^{37}$ and $4.83$--$5.04 \times 10^{36}$,
-consistent with helium absorption of the $>$24.6-eV photons and the weak
-temperature dependence of $\alpha_{\rm B}$; with the corrected cooling the
-HII40 front is captured within the prescribed sphere (outermost-shell
-$x_{\rm HII} = 0.11$, recombinations 95\% of $Q_{\rm H}$).  The emissivity
+$4.7 \times 10^{36}\,{\rm erg\,s^{-1}}$ (HII20) sat $\sim$3\% below the
+published $2.01$--$2.10 \times 10^{37}$ and $4.83$--$5.04 \times 10^{36}$
+in the early-stopped runs; converged they are $2.00 \times 10^{37}$ and
+$4.79 \times 10^{36}$, $0.5\%$ and $0.8\%$ below the lowest published
+values, with the case-B recombinations at $0.98$ and $1.00\,Q_{\rm H}$.  The emissivity
 chain itself is exact (Section~\ref{sec:nlevel}).
 
 \subsection{Re-refinement gate and the TNG demonstration}
@@ -4383,21 +4413,20 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8177~K, HII20 6936~K) matches a current \textsc{Cloudy}
-  c25.00 run to $0.40\%$ and $0.38\%$, the earlier excess having been traced
+  MoCHII (HII40 8207~K, HII20 6946~K, run to the drift stopping test)
+  matches a current \textsc{Cloudy} c25.00 run to $0.04\%$ and $0.52\%$, the
+  earlier excess having been traced
   to two Tier-1 cooling defects (D1/D2) and the missing density suppression,
   all fixed.  The one remaining note is that both modern codes sit a few
   hundred K above the 2000-era published Lexington temperatures --- a
   data-vintage difference, not a code defect.
-\item The HII40 He\,\textsc{i} front sits $0.178$~pc inside the
-  \textsc{Cloudy} c25.00 one and that difference is unexplained
-  (Section~\ref{sec:diffuse}).  Every single-parameter candidate is now
-  excluded by measurement, including the two that were still open --- the
-  helium ionization network (Section~\ref{sec:henetwork}) and the metal
-  opacity (Section~\ref{sec:metalop}).  The untested hypothesis is a
-  combination of several few-percent differences compounding through the
-  He$^0$ optical depth, which needs a joint rather than a one-at-a-time
-  experiment.
+\item The HII40 He\,\textsc{i} front sits $0.034$~pc ($0.8\%$ in radius)
+  inside the \textsc{Cloudy} c25.00 one.  The $0.18$~pc once reported here
+  as unexplained was, to $0.14$~pc, premature stopping of the gas iteration
+  (\S\ref{sec:hii}); the single-parameter exclusions of
+  Sections~\ref{sec:diffuse}, \ref{sec:henetwork} and \ref{sec:metalop}
+  were measured on early-stopped runs and are records of that search, not
+  current bounds.
 \item The registry-wide recombination audit (Section~\ref{sec:recaudit})
   found no defect --- no transcription error, and no form a better source
   could replace --- but it leaves one question open: the rates that form

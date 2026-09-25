@@ -199,7 +199,7 @@ contains
     real(kind=wp), allocatable :: Ltot(:), pdf(:)
     real(kind=wp) :: band_wl(8), vol, Labs, esum
     real(kind=wp), allocatable :: em_band(:,:)
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     integer :: il, ic, k, unit, ierr, ndone, nmine, nband, ib
 
     allocate(Ltot(nl_sed), pdf(nl_sed))
@@ -307,7 +307,7 @@ contains
     real(kind=wp), intent(in) :: em_band(:,:), band_wl(:)
     integer,       intent(in) :: nband
     type(io_file_type) :: file
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     real(kind=wp), allocatable :: lxyz(:,:), tmp(:)
     real(kind=wp) :: wl_A(nband)
     integer :: il, ic, status

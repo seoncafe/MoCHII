@@ -106,7 +106,7 @@ contains
     character(len=*), intent(in) :: name
     integer,          intent(in) :: stage
     type(nlevel_atom_type) :: atom
-    character(len=256) :: fname
+    character(len=PATH_LEN) :: fname
     character(len=8)   :: nlsuf
     logical :: ok
     real(kind=wp) :: Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV)

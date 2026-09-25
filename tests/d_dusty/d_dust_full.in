@@ -46,4 +46,5 @@
  par%ion_dust_kext = '../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003'
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

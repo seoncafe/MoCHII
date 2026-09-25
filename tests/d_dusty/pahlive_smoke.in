@@ -66,4 +66,5 @@
  par%dust_emis_bands(3) = 70.0
  par%dust_emis_bands(4) = 160.0
  par%sed_pah_live = .true.
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

@@ -48,4 +48,5 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'sec_on_old.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

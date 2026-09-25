@@ -56,4 +56,5 @@
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0
  par%conv_crit     = 'vol'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

@@ -35,4 +35,5 @@
 
  par%source_geometry = 'point'
  par%out_file        = 'stellar_spectrum.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

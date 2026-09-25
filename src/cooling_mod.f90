@@ -70,7 +70,7 @@ contains
   subroutine cooling_setup()
     use mpi
     implicit none
-    character(len=256) :: fname
+    character(len=PATH_LEN) :: fname
     integer :: i, iz
 
     !--- H I line cooling (Ly-alpha dominated).

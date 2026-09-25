@@ -16,6 +16,11 @@ public
   integer, parameter :: qp  = real128
   integer, parameter :: i4b = int32
   integer, parameter :: i8b = int64
+  !--- length of every file-path string: the path inputs of params_type and
+  !--- the buffers that hold or build paths.  The inherited 128 characters
+  !--- truncated longer paths silently (a restart gate looked for '.../co');
+  !--- cfitsio opens names up to FLEN_FILENAME = 1025, HDF5 has no limit.
+  integer, parameter :: PATH_LEN = 512
 
 ! working precision
 ! Note that (1) iwp (integer working precision) applies only to seed of KISS random number generator.
@@ -195,12 +200,17 @@ public
      real(kind=wp)       :: no_photons = 1e5
      real(kind=wp)       :: no_print   = 1e7
      integer       :: iseed        = 0
-     !--- photon launch sequence: 'random' (default, Mersenne Twister) or
-     !--- 'sobol' (Owen-scrambled Sobol quasi-random launch of a single
-     !--- internal point source; frequency/cos theta/phi only, transport and
-     !--- diffuse/scattering draws stay on the Mersenne Twister).  qmc_seed
-     !--- selects the scramble; a different seed is an independent replicate.
-     character(len=16) :: launch_sequence = 'random'
+     !--- photon launch sequence: 'sobol' (default since 2026-09-25; the
+     !--- inputs written before then pin 'random') or 'random' (Mersenne
+     !--- Twister).  'sobol' is an Owen-scrambled Sobol launch: it draws
+     !--- the launch of every source packet -- energy, source and position,
+     !--- direction; point, multiple, slab and external sources alike -- on
+     !--- one stream, and the launch of the diffuse (recombination) packets
+     !--- on a second, decorrelated stream (ionizing_field_mod); the draws
+     !--- made during transport (dust scattering) stay on the Mersenne
+     !--- Twister.  qmc_seed selects the scramble; a different seed is an
+     !--- independent replicate.
+     character(len=16) :: launch_sequence = 'sobol'
      integer           :: qmc_seed        = 12345
      !--- Relative integration tolerance for the continuous Planck source CDF
      !--- (tabulated linear spectra are integrated/inverted analytically).
@@ -257,8 +267,8 @@ public
      real(kind=wp) :: distance2cm          = kpc2cm
      character(len=128) :: distance_unit   = 'kpc'
      character(len=128) :: source_geometry = 'point'
-     character(len=128) :: base_name       = ''
-     character(len=128) :: out_file        = ''
+     character(len=PATH_LEN) :: base_name       = ''
+     character(len=PATH_LEN) :: out_file        = ''
      integer            :: out_bitpix      = -32
      logical            :: out_bitpix_force = .false.   ! .true. = keep out_bitpix, skip the float32->float64 auto-promote
      character(len=8)   :: file_format     = 'hdf5'
@@ -278,7 +288,7 @@ public
      !--- else a Planck function at ext_tstar (K) if > 0, else the global
      !--- source spectrum (par%ion_spectrum / par%tstar).
      real(kind=wp)      :: ext_tstar     = -999.0_wp
-     character(len=128) :: ext_spectrum  = ''
+     character(len=PATH_LEN) :: ext_spectrum  = ''
      !--- par%spectrum_type sets the COLUMN UNITS of every spectrum file slot
      !--- (par%ion_spectrum, par%src_spectrum_file, par%ext_spectrum):
      !---   'shape_ev' col1 E [eV] ascending, col2.. arbitrary (renormalized);
@@ -334,11 +344,12 @@ public
      !--- hii40_bench at 70 ranks that takes the transport pass from a median
      !--- 52.1 s to 43.4 s (+20%), against the +29% upper bound the harmonic
      !--- mean predicts in md/MPI_LOAD_BALANCE_2026-08-02.md.
-     !--- MoCafe defaults it .true.; MoCHII keeps .false. because with the
-     !--- default launch_sequence = 'random' the schedule also selects which
-     !--- rank draws which packet, i.e. the realization, so every recorded
-     !--- gate would move.  With launch_sequence = 'sobol' the two schedules
-     !--- transport the same packet set and differ only by summation order.
+     !--- MoCafe defaults it .true.; MoCHII keeps .false. because under
+     !--- launch_sequence = 'random' (which the recorded gates pin) the
+     !--- schedule also selects which rank draws which packet, i.e. the
+     !--- realization, so those gates would move.  Under 'sobol' (the default)
+     !--- the two schedules transport the same packet set and differ only by
+     !--- summation order.
      integer       :: num_send_at_once   = 10000
      logical       :: use_master_slave   = .false.
      logical       :: use_reduced_wgt    = .true.
@@ -359,7 +370,7 @@ public
      !--- negative value to 0.
      real(kind=wp) :: cext_dust     = -1.0_wp
      logical       :: use_stokes    = .true.
-     character(len=128) :: scatt_mat_file = ''
+     character(len=PATH_LEN) :: scatt_mat_file = ''
      !--- SED (multi-wavelength) mode.  When
      !--- use_sed = .true., a single run transports photons over a log-spaced
      !--- wavelength grid [lambda_min, lambda_max] (um) with nlambda bins.
@@ -374,8 +385,8 @@ public
      real(kind=wp)      :: lambda_min      = 0.0912_wp
      real(kind=wp)      :: lambda_max      = 2000.0_wp
      real(kind=wp)      :: lambda_ref      = 0.55_wp
-     character(len=128) :: kext_file       = ''
-     character(len=128) :: source_spectrum = ''
+     character(len=PATH_LEN) :: kext_file       = ''
+     character(len=PATH_LEN) :: source_spectrum = ''
      real(kind=wp)      :: tstar           = -999.0_wp
      !--- mean-intensity tally J_lambda(x,y,z) in each cell (Lucy 1999
      !--- pathlength estimator); writes '<base>_jlam.<ext>'.  Requires
@@ -425,7 +436,7 @@ public
      !--- time (see read_input), so a fresh checkout works from any working
      !--- directory.  A path set here is taken as given: absolute, or relative
      !--- to the directory the run is launched from.
-     character(len=256) :: sed_data_dir     = ''
+     character(len=PATH_LEN) :: sed_data_dir     = ''
      integer            :: sed_NT           = 200
      real(kind=wp)      :: sed_Tlo          = 2.7_wp
      real(kind=wp)      :: sed_Thi          = 5.0e3_wp
@@ -450,7 +461,7 @@ public
      !--- absolute, or relative to the directory the run is launched from.
      !--- Not to be confused with ion_dust_kext, which REPLACES the served curve
      !--- with a file of its own and so leaves the emission on other grains.
-     character(len=256) :: sed_kext         = ''
+     character(len=PATH_LEN) :: sed_kext         = ''
      !--- Lucy iteration for dust self-absorption (dust_emis_transport).
      !--- dust_niter = max transport passes (1 = one pass, no self-consistency
      !--- check); dust_no_photons = dust-emission packets per pass; dust_tol =
@@ -490,14 +501,14 @@ public
      integer            :: nsource                 = 1
      character(len=16)  :: src_geometry(MAX_SRC)   = 'point'
      real(kind=wp)      :: src_tstar(MAX_SRC)      = -999.0_wp
-     character(len=128) :: src_spectrum(MAX_SRC)   = ''
+     character(len=PATH_LEN) :: src_spectrum(MAX_SRC)   = ''
      !--- one multi-column ionizing-band spectrum file for ALL internal point
      !--- sources: first column E [eV] (ascending), then one L_E column per
      !--- source (arbitrary units; source i's ionizing segment is independently
      !--- normalized to src_lum(i)).  When nonblank it takes priority over
      !--- src_tstar / the global spectrum.  More data columns than nsource: the
      !--- first nsource are used (rank-0 note).  Fewer: the run aborts.
-     character(len=128) :: src_spectrum_file       = ''
+     character(len=PATH_LEN) :: src_spectrum_file       = ''
      real(kind=wp)      :: src_lum(MAX_SRC)        = -999.0_wp
      real(kind=wp)      :: src_x(MAX_SRC)          = 0.0_wp
      real(kind=wp)      :: src_y(MAX_SRC)          = 0.0_wp
@@ -539,7 +550,7 @@ public
      !--- (nH*cext_dust*DGR), 'from_file' (ndust column), or 'laursen09'
      !--- ((Z/Z_ref)*(nHI+f_ion*nHII), requires an xHI column).
      character(len=32)  :: amr_type   = 'generic'
-     character(len=128) :: amr_file   = ''
+     character(len=PATH_LEN) :: amr_file   = ''
      character(len=32)  :: dust_density_law = 'global_dgr'
      real(kind=wp)      :: DGR        = 1.0e-2_wp
      real(kind=wp)      :: Z_global   = 0.0134_wp
@@ -550,12 +561,12 @@ public
      logical       :: save_direc0   = .false.
      character(len=10)  :: output_normalization = 'luminosity'
      !--- distribution function for external illumination
-     character(len=128) :: radiation_angular_PDF_file = ''
+     character(len=PATH_LEN) :: radiation_angular_PDF_file = ''
      !--- MoCHII: a uniform 3D density cube (FITS/HDF5, NAXIS1/2/3 = nx/ny/nz,
      !--- values = nH [cm^-3]) read onto the 'car' grid; nx/ny/nz come from the
      !--- file, the box is par%xmax/ymax/zmax.  reduce_factor downsamples by an
      !--- integer factor; centering selects the reduction anchor.
-     character(len=128) :: density_file  = ''
+     character(len=PATH_LEN) :: density_file  = ''
      integer            :: reduce_factor = 1
      integer            :: centering     = 0
      !--- parameters for PEELING-OFF
@@ -587,7 +598,7 @@ public
      real(kind=wp)      :: eion_max     = 100.0_wp    ! band upper edge [eV]
      !--- source spectrum in the band: 2-column file (E[eV], L_E[arb]) or,
      !--- when empty, a Planck function with par%tstar [K].
-     character(len=128) :: ion_spectrum = ''
+     character(len=PATH_LEN) :: ion_spectrum = ''
      !--- FUV extension of the band: nnu_fuv extra log bins on
      !--- [efuv_min, eion_min] BELOW the nnu_ion ionizing bins, so the
      !--- ionizing bin resolution is unchanged.  par%luminosity keeps its
@@ -724,11 +735,15 @@ public
      !--- convergence criterion: 'cell' = cell-max tests (max|dx_HII| <
      !--- gas_tol, max|dTe|/Te < gas_tol_te — stall at the front-cell MC
      !--- noise floor and at no-heating cells); 'vol' = volume-integrated
-     !--- tests against the SAME tolerances:
-     !---   sum V|dx_HII| / sum V x_HII         < gas_tol
-     !---   sum V ne|dTe| / sum V ne Te         < gas_tol_te
-     !--- (n_e weight removes vacuum / no-heating cells).  Both measures
-     !--- are printed each iteration.
+     !--- measures, d = sum V|dx_HII| / sum V x_HII and the same for
+     !--- He0-He+ (and He+-He2+ where He2+ is >= 1% of ionized He), each
+     !--- required to have its DRIFT STILL TO COME d rho/(1-rho) below
+     !--- gas_tol, rho the decay ratio of the last steps, or to sit on its
+     !--- Monte Carlo floor below gas_tol (fixed_point_distance_mod), plus
+     !---   sum V ne|dTe| / sum V ne Te         < gas_tol_te  (a step test).
+     !--- Until 2026-09-25 'vol' tested the x_HII step alone, which stopped
+     !--- the HII40 benchmark 21 iterations early with its He I front
+     !--- 0.17 pc short.  All measures are printed each iteration.
      character(len=8)   :: conv_crit    = 'cell'
      !--- abort (nonzero exit) if the gas iteration hits gas_niter without
      !--- converging; default off -> warn but still write the output.
@@ -754,6 +769,12 @@ public
      !--- No feedback into the ionization/thermal balance (n_3 is a ~1e-7
      !--- trace of He).  Off by default.
      logical            :: hei_metastable = .false.
+     !--- start the gas iteration from a previous run's <base>_rates file
+     !--- (HDF5 or FITS): x_HI, x_HeI, x_HeII, T_e, n_e and the metal
+     !--- photoionization rates, leaf by leaf, matched by position so the
+     !--- grid may differ; leaves with no previous counterpart keep the
+     !--- *_init values below (previous_state_mod).  Blank = a fresh start.
+     character(len=PATH_LEN) :: restart_file = ''
      !--- gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
      real(kind=wp)      :: xHI_init     = 1.0_wp
@@ -767,7 +788,7 @@ public
      !--- (it must then cover the EUV, e.g. kext_albedo_WD_MW_3.1_60_D03).
      !--- Scattering in the band is ion_dust_scatter.
      logical            :: ion_add_dust = .false.
-     character(len=256) :: ion_dust_kext = ''
+     character(len=PATH_LEN) :: ion_dust_kext = ''
      !--- sample dust scattering in the band (forced first interaction
      !--- after the analytic direct walk; HG phase with g(E) from the
      !--- kext table; albedo weight + Russian roulette).  When off, the
@@ -877,13 +898,13 @@ public
      real(kind=wp)      :: te_min       = 1.0e3_wp
      real(kind=wp)      :: te_max       = 5.0e4_wp
      real(kind=wp)      :: gas_tol_te   = 1.0e-3_wp
-     character(len=256) :: atomic_dir   = ''
+     character(len=PATH_LEN) :: atomic_dir   = ''
      !--- Root of the shipped data tables (atomic tables, free-free Gaunt
      !--- factors, nebular continuum coefficients).  Left blank it is
      !--- resolved at setup to <directory of MoCHII.x>/data, so a run works
      !--- from any working directory; set it explicitly to point elsewhere.
      !--- atomic_dir defaults to <data_dir>/atomic when left blank.
-     character(len=256) :: data_dir     = ''
+     character(len=PATH_LEN) :: data_dir     = ''
      !--- solution-driven I-front re-refinement.  At iteration
      !--- refine_iter the octree is rebuilt: level refine_lmax where
      !--- refine_eps < x_HI < 1-refine_eps or a face-neighbor x_HI jump

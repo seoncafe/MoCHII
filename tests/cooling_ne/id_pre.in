@@ -59,4 +59,5 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/cooling_ne/scratch/id_pre.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

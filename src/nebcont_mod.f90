@@ -158,7 +158,7 @@ contains
     real(kind=wp) :: Lfb(NNU_OUT), Lff(NNU_OUT), L2q(NNU_OUT)
     real(kind=wp) :: T, ne, nH, vol, nHII, nHeII_n, nHeIII, xHeIII
     real(kind=wp) :: nu, e_eV, gH, gHe1, gHe2, ff1, ff2
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     integer :: il, i, unit
 
     if (mpar%p_rank /= 0) return

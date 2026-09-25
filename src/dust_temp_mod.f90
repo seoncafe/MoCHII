@@ -183,7 +183,7 @@ contains
     implicit none
     real(kind=wp), intent(in) :: heat_dust(:)
     real(kind=wp) :: Lnu(NLAM_IR), vol, kd, nu, Lir, Labs, dnu
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: outname
     integer :: il, k, unit, ic
 
     if (mpar%p_rank /= 0) return

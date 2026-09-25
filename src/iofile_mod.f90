@@ -10,6 +10,7 @@ module iofile_mod
 ! The HDF5 section layout is described in the hdf5io_mod header.
 !
   use, intrinsic :: iso_fortran_env, only: real32, real64, int32, int64
+  use define, only : PATH_LEN
   use fitsio_mod
   use hdf5io_mod
   implicit none
@@ -25,7 +26,7 @@ module iofile_mod
      integer            :: format    = IO_FMT_FITS
      integer            :: unit      = -1
      integer            :: cur_hdu   = 1
-     character(len=256) :: filename  = ''
+     character(len=PATH_LEN) :: filename  = ''
      logical            :: writable  = .false.
      type(hdf5_state_type), allocatable :: hdf5
   end type io_file_type

@@ -48,4 +48,5 @@
  par%slab_top_source=3.0
  par%file_format='hdf5'
  par%out_file='emis_slab.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

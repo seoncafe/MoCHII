@@ -22,7 +22,8 @@ module thermal_mod
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             heat_HI, heat_HeI, heat_HeII, secondary_ionization
   use photoelectron_degradation_mod, only : ionized_fraction_svs
-  use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne
+  use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne, &
+                              helium_change_measures
   use cooling_mod,     only : cooling_total
   implicit none
   private
@@ -131,17 +132,22 @@ contains
   !   dte_vol = sum V n_e |delta T_e| / sum V n_e T_e
   ! The n_e weight removes the cells with vanishing heating (deep PDR /
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
-  subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol)
+  ! dhe_vol(2), the same measure for helium (reported, not gating):
+  !   dhe_vol(1) = sum V |delta x_HeI| / sum V (1 - x_HeI)    He0 <-> He+
+  !   dhe_vol(2) = sum V |delta x_HeIII| / sum V x_HeIII      He+ <-> He2+
+  ! (ion_balance_mod::helium_change_measures; dhe_vol(2) = -1 where He2+
+  ! fills a negligible share of the volume).
+  subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol)
     use mpi
     use octree_mod, only : leaf_half
     implicit none
-    real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol
+    real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
 
     real(kind=wp), allocatable :: xHI_new(:), xHeI_new(:), xHeII_new(:), &
                                   ne_new(:), te_new(:)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol
     real(kind=wp) :: max_local(2), max_host(2)
-    real(kind=wp) :: sum_local(4), sum_host(4), metrics(4)
+    real(kind=wp) :: sum_local(8), sum_host(8), metrics(6)
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     logical :: caseA
     integer :: il, it, ierr
@@ -222,16 +228,22 @@ contains
        sum_local(3) = sum_local(3) &
                     + vol*ne_new(il)*abs(te_new(il) - gas_Te(il))
        sum_local(4) = sum_local(4) + vol*ne_new(il)*te_new(il)
+       sum_local(5) = sum_local(5) + vol*abs(xHeI_new(il) - gas_xHeI(il))
+       sum_local(6) = sum_local(6) + vol*(1.0_wp - xHeI_new(il))
+       sum_local(7) = sum_local(7) + vol*abs(xHeIII &
+                    - max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il)))
+       sum_local(8) = sum_local(8) + vol*xHeIII
     end do
 
     call MPI_ALLREDUCE(max_local, max_host, 2, MPI_DOUBLE_PRECISION, MPI_MAX, &
                        mpar%hostcomm, ierr)
-    call MPI_ALLREDUCE(sum_local, sum_host, 4, MPI_DOUBLE_PRECISION, MPI_SUM, &
+    call MPI_ALLREDUCE(sum_local, sum_host, 8, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        mpar%hostcomm, ierr)
     max_dx  = max_host(1)
     max_dte = max_host(2)
     dx_vol  = sum_host(1) / max(sum_host(2), tinest)
     dte_vol = sum_host(3) / max(sum_host(4), tinest)
+    dhe_vol = helium_change_measures(sum_host(5:8))
 
     !--- Each rank writes only the shared leaves for which it performed the
     !--- solve; no uninitialized entries of its private work arrays are read.
@@ -250,12 +262,13 @@ contains
     !--- Different nodes can have different host sizes and therefore a
     !--- different floating-point summation order.  Use global rank 0's
     !--- metrics everywhere so every rank makes the same loop-exit decision.
-    metrics = [max_dx, max_dte, dx_vol, dte_vol]
-    call MPI_BCAST(metrics, 4, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    metrics = [max_dx, max_dte, dx_vol, dte_vol, dhe_vol(1), dhe_vol(2)]
+    call MPI_BCAST(metrics, 6, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     max_dx  = metrics(1)
     max_dte = metrics(2)
     dx_vol  = metrics(3)
     dte_vol = metrics(4)
+    dhe_vol = metrics(5:6)
   end subroutine gas_thermal_update
 
 end module thermal_mod

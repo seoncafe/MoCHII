@@ -39,4 +39,5 @@
  par%slab_top_source=0.5
  par%file_format='hdf5'
  par%out_file='ge_half.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

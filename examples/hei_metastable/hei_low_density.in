@@ -51,4 +51,5 @@
 
  par%source_geometry = 'point'
  par%out_file        = 'hei_low_density.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

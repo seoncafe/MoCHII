@@ -60,4 +60,5 @@
  par%metal_heat    = .true.
  par%grain_pe      = .true.
  par%gaunt_vh14    = .true.
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

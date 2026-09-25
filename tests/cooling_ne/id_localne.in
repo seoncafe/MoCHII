@@ -60,4 +60,5 @@
  par%file_format     = 'hdf5'
  par%cooling_model   = 'local_ne'
  par%out_file        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/cooling_ne/scratch/id_ln.h5'
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

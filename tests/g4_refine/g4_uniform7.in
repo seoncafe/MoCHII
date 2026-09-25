@@ -47,4 +47,5 @@
  par%refine_lmax   = 7
  par%refine_eps    = 1.0e-2
  par%refine_dx     = 0.2
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

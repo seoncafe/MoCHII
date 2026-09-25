@@ -7,6 +7,16 @@ This directory holds generated HII20/HII40 output and is intentionally ignored b
   (`pdr_L5_atomic`, `hei_high_density_atomic`, `g2a_thermal_atomic`) and the
   sensitivity runs (`*_nohecx`, `*_lowden`, `*_ots`); `run_lart3*.sh` are the
   drivers.
+- `m5_converged/`: the paper set run to the drift stopping test
+  (`conv_crit = 'vol'`, `fixed_point_distance_mod`) after the energy-ledger
+  fix, with the HII40 inputs on `tests/g2_hii/hii40_L6_rout5p2.fits` (gas to
+  5.2 pc); `pdr_L5_converged` uses the Sobol launch (the Mersenne-Twister run
+  sat at a He noise floor above gas_tol and is kept as
+  `pdr_L5_converged_random.*`); `g2a_thermal` uses the cell test and is not
+  rerun here (`m4_nitrogen/`).  This is the set the paper reads.
+- `convergence/`: the HII40 production input run for a fixed 80 iterations,
+  whose logged history (`tests/convergence/hii40_changes.txt`) calibrated the
+  drift stopping test.
 - `m4_nitrogen/`: the whole paper set (the two Lexington production runs,
   their `lowden`/`ots`/`nohecx` variants, and the `pdr_L5`, `g2a_thermal`
   and `hei_high_density` figure runs) rerun after the charge-exchange

@@ -50,7 +50,7 @@ module species_mod
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
   public :: species_rate_path_setup, species_rate_path_reset
   public :: species_rate_path_score, species_rate_path_reduce
-  public :: species_stage_cache_refresh
+  public :: species_stage_cache_refresh, species_set_photoionization_rates
   public :: species_packet_cross_sections, species_cached_opacity
   public :: species_cross_section
 
@@ -173,7 +173,7 @@ contains
     integer, intent(in) :: nleaf
     character(len=8)   :: names(11)
     real(kind=wp)      :: abunds(11)
-    character(len=256) :: fname
+    character(len=PATH_LEN) :: fname
     logical :: exists
     integer :: k, ie, i, ierr, j, ie_tmp, it_tmp
     real(kind=wp) :: eth_tmp
@@ -285,6 +285,26 @@ contains
     end do
   end subroutine species_resize
 
+  !--- Metal photoionization rates of element ie on every leaf, g(transition,
+  !--- leaf) [s^-1], as a previous run wrote them (previous_state_mod); the
+  !--- next stage-cache refresh builds the fractions the opacity uses from
+  !--- them.  Overwritten by the first transport pass.
+  subroutine species_set_photoionization_rates(ie, g)
+    integer,       intent(in) :: ie
+    real(kind=wp), intent(in) :: g(:,:)
+    egam(ie)%g(:,:) = g
+  end subroutine species_set_photoionization_rates
+
+  !--- Stage fractions read by the packet opacity.  A vacuum leaf (n_H = 0)
+  !--- carries the same convention as the written state (all in the first
+  !--- stage): there species_fractions has no recombination (n_e = 0) against
+  !--- a nonzero photoionization rate, its ratio chain overflows to Inf and
+  !--- the normalized fractions come out NaN.  Until 2026-09-25 this cache
+  !--- took them anyway; the opacity n_H(...+ metals) was then 0 x NaN in
+  !--- every vacuum leaf, which the ray walk passed as unattenuated -- right
+  !--- for vacuum, so the tallies were unaffected -- but which turned the
+  !--- accumulated optical depth NaN and made the energy ledger book every
+  !--- packet through a hollow as escaped (97% at HII20).
   subroutine species_stage_cache_refresh()
     use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
     implicit none
@@ -292,10 +312,14 @@ contains
     integer :: ie, il
     do ie = 1, n_elements
        do il = 1, size(stage_frac(ie)%g,2)
-          nHI = gas_nH(il)*gas_xHI(il)
-          nHII = gas_nH(il)*(1.0_wp-gas_xHI(il))
-          call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
-                                 nHI, nHII, frac)
+          if (gas_nH(il) > 0.0_wp) then
+             nHI = gas_nH(il)*gas_xHI(il)
+             nHII = gas_nH(il)*(1.0_wp-gas_xHI(il))
+             call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
+                                    nHI, nHII, frac)
+          else
+             frac = 0.0_wp;  frac(1) = 1.0_wp
+          end if
           stage_frac(ie)%g(:,il) = frac(1:elems(ie)%nstage)
        end do
     end do

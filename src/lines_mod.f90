@@ -42,8 +42,8 @@ contains
     implicit none
     type(nlevel_atom_type) :: atom
     type(io_file_type) :: efile
-    character(len=256) :: fname
-    character(len=192) :: outname
+    character(len=PATH_LEN) :: fname
+    character(len=PATH_LEN) :: outname
     character(len=64)  :: extname
     character(len=8)   :: nlsuf
     real(kind=wp) :: Lline(600), emis(600), frac(6), wl(600)

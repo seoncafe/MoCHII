@@ -250,7 +250,7 @@ contains
   implicit none
   type(grid_type), intent(in) :: grid
   type(io_file_type) :: file
-  character(len=192) :: filename
+  character(len=PATH_LEN) :: filename
   real(kind=wp), allocatable :: jbol(:), jcube(:,:,:,:), jbolc(:,:,:), leafxyz(:,:)
   real(kind=wp) :: fac, eabs_A, eabs_B, rhk, cx, cy, cz
   integer :: status, il, ic, i, j, k

@@ -32,6 +32,7 @@ module ion_balance_mod
   private
 
   public :: gas_equilibrium_update, solve_ion_cell, charge_neutrality_ne
+  public :: helium_change_measures
   public :: hydrogen_balance_residual, hydrogen_balance_residual_grid
   public :: cx_HeII_H, cx_HeI_Hp, cx_HeIII_H, cx_HeII_Hp
 
@@ -508,15 +509,16 @@ contains
   ! Monte Carlo noise floor); dx_vol = sum V |delta x_HII| / sum V x_HII,
   ! the volume-weighted L1 change of the ionized volume — front jitter
   ! occupies little volume, so this measure converges when the global
-  ! solution has.
-  subroutine gas_equilibrium_update(max_dx, dx_vol)
+  ! solution has.  dhe_vol(2): the same measure for helium, reported and
+  ! not gating (helium_change_measures).
+  subroutine gas_equilibrium_update(max_dx, dx_vol, dhe_vol)
     use mpi
     use octree_mod, only : amr_grid, leaf_half
     implicit none
-    real(kind=wp), intent(out) :: max_dx, dx_vol
+    real(kind=wp), intent(out) :: max_dx, dx_vol, dhe_vol(2)
 
     real(kind=wp), allocatable :: xHI_new(:), xHeI_new(:), xHeII_new(:), ne_new(:)
-    real(kind=wp) :: T, yHe, w, vol, sum_dxv, sum_xv
+    real(kind=wp) :: T, yHe, w, vol, sum_dxv, sum_xv, sum_he(4)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII
     logical :: caseA
     integer :: il, ierr
@@ -538,6 +540,7 @@ contains
     max_dx  = 0.0_wp
     sum_dxv = 0.0_wp
     sum_xv  = 0.0_wp
+    sum_he  = 0.0_wp
     do il = 1, gas_nleaf
        nH = gas_nH(il)
        if (nH <= 0.0_wp) then
@@ -572,8 +575,14 @@ contains
        vol = (2.0_wp*leaf_half(il))**3
        sum_dxv = sum_dxv + vol*abs(xHI_new(il) - gas_xHI(il))
        sum_xv  = sum_xv  + vol*(1.0_wp - xHI_new(il))
+       sum_he(1) = sum_he(1) + vol*abs(xHeI_new(il) - gas_xHeI(il))
+       sum_he(2) = sum_he(2) + vol*(1.0_wp - xHeI_new(il))
+       sum_he(3) = sum_he(3) + vol*abs(xHeIII &
+                 - max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il)))
+       sum_he(4) = sum_he(4) + vol*xHeIII
     end do
     dx_vol = sum_dxv / max(sum_xv, tinest)
+    dhe_vol = helium_change_measures(sum_he)
 
     !--- write the solved state straight into the node-shared arrays.
     do il = 1, gas_nleaf
@@ -589,7 +598,36 @@ contains
     !--- shared-memory writes are visible before this returns.
     call MPI_BCAST(max_dx, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
     call MPI_BCAST(dx_vol, 1, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
+    call MPI_BCAST(dhe_vol, 2, MPI_DOUBLE_PRECISION, 0, mpar%hostcomm, ierr)
     call MPI_BARRIER(mpar%hostcomm, ierr)
   end subroutine gas_equilibrium_update
+
+  !=========================================================================
+  ! Volume-integrated change of the helium state over one iteration, the
+  ! helium counterpart of dx_vol, from the sums
+  !   s = [sum V |d x_HeI|, sum V (1 - x_HeI), sum V |d x_HeIII|,
+  !        sum V x_HeIII]
+  ! (x at the new state):
+  !   d(1) = s1/s2, the He0 <-> He+ front, normalized on ionized helium so
+  !          that He+ <-> He2+ exchange does not enter it;
+  !   d(2) = s3/s4, the He+ <-> He2+ front, set to -1 (not measured) where
+  !          He2+ is less than HE3_SHARE of the ionized helium.  Below that
+  !          its relative change is Monte Carlo noise on a trace species:
+  !          in the HII40 benchmark He2+ fills 1.2e-4 of the volume and this
+  !          ratio sits at 5-9e-2 per iteration for 80 iterations, so it
+  !          would never pass a stopping test while carrying nothing the
+  !          model depends on.
+  !=========================================================================
+  pure function helium_change_measures(s) result(d)
+    real(kind=wp), intent(in) :: s(4)
+    real(kind=wp) :: d(2)
+    real(kind=wp), parameter :: HE3_SHARE = 1.0e-2_wp
+    d(1) = s(1)/max(s(2), tinest)
+    if (s(4) > HE3_SHARE*s(2)) then
+       d(2) = s(3)/s(4)
+    else
+       d(2) = -1.0_wp
+    end if
+  end function helium_change_measures
 
 end module ion_balance_mod

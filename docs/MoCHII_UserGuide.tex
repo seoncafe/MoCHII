@@ -49,15 +49,22 @@ Build:
 \begin{verbatim}
    cd MoCHII
    (cd SEDust/sed && ./build_lib.sh)   # on a fresh checkout
-   make            # -> MoCHII.x   (always a full clean rebuild)
+   make -j16       # -> MoCHII.x   (clean + full rebuild, in parallel)
+   make -j16 MoCHII.x   # rebuild only what an edit reaches
    make DEBUG=1    # bounds/traceback build
 \end{verbatim}
 The SEDust library only needs the one-time \code{build\_lib.sh} step;
 afterward \code{make} links the in-tree SEDust library.
-The Makefile intentionally performs a full rebuild every time (the
-MoCafe policy): there is no inter-module dependency tracking, and stale
-\code{.mod} files after editing \code{define.f90} otherwise cause
-runtime namelist errors.
+\code{make} alone cleans and rebuilds everything (the MoCafe default).
+Module dependencies are tracked: \code{src/Makefile.dep}, written by
+\code{tools/fortran\_module\_dependencies.py} from the \code{module} and
+\code{use} statements and regenerated whenever a source changes, makes every
+object depend on the objects defining the modules it uses.  So
+\code{make MoCHII.x} recompiles exactly what an edit reaches --- a new
+component of \code{params\_type} in \code{define.f90} rebuilds every object
+that sees \code{par} --- and \code{-j} orders itself.  (Before 2026-09-25 there
+was no dependency tracking; an incremental build after such an edit linked
+objects compiled against the old layout.)
 
 Run:
 \begin{verbatim}
@@ -93,7 +100,7 @@ parameter & default & meaning \\
 \code{no\_photons} & 1e5 & source packets in each iteration \\
 \code{no\_print}   & 1e7 & progress-print stride \\
 \code{iseed}       & 0   & RNG seed (0 = from clock/pid) \\
-\code{launch\_sequence} & 'random' & quasi-random launch: \code{'sobol'} = Owen-scrambled Sobol coordinates for the stellar (and diffuse) packet launch, indexed by the global photon number (MPI-count-independent launch set); transport/scattering stay pseudo-random; prefer \code{nphotons}${}=2^m$.  \code{'random'} is the Mersenne Twister default \\
+\code{launch\_sequence} & 'sobol' & packet launch: \code{'sobol'} (the default since 2026-09-25) = Owen-scrambled Sobol coordinates for the launch of every source packet (energy, source and position, direction; point, multiple, slab and external sources) and, on a second decorrelated stream, of the diffuse packets, indexed by the global photon number (an MPI-count-independent launch set); draws made during transport (dust scattering) stay pseudo-random; prefer \code{nphotons}${}=2^m$.  \code{'random'} = Mersenne Twister, the default before; every input written before the change pins it \\
 \code{qmc\_seed}   & 12345 & scramble key (\code{launch\_sequence='sobol'}); fixed across the gas iterations; change it for independent replicates (their scatter is the RQMC error estimate) \\
 \code{use\_master\_slave} & F & how the photons of one transport pass are split over the MPI ranks.  F = static cyclic: rank $r$ takes indices $r{+}1,\,r{+}1{+}n_{\rm proc},\,\ldots$; T = rank 0 becomes the master, serving batches of \code{num\_send\_at\_once} consecutive indices to whichever rank asks next; \textbf{the master transports no photons}, so $n_{\rm proc}-1$ ranks do the work.  Applies to the stellar loop, the diffuse LyC loop and (through the same routine) the peel-off imaging pass; the dust-emission infrared transport and the SEDust solve distribute leaves rather than photons and are unaffected.  Worth $\sim$20\% of the ionizing-band pass at 70 ranks, and it cuts the run-to-run spread of that pass from 28\% to 1.5\%.  Under \code{launch\_sequence='random'} each rank draws from its own stream, so T also selects the realization --- statistically equivalent, not numerically comparable; with \code{'sobol'} the two settings transport the same packet set and differ only by summation order \\
 \code{num\_send\_at\_once} & 10000 & photon indices in one served batch (\code{use\_master\_slave=T} only) \\
@@ -362,9 +369,10 @@ parameter & default & meaning \\
 \endlastfoot
 \code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
 \code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
+\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $T_e$, $n_e$ and the metal photoionization rates, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its centre), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values.  The convergence history restarts, so the \code{'vol'} test needs four iterations.  Gate \code{tests/restart/} \\
 \code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
 \code{gas\_niter} & 0 & iterations (0 = a single rates-only pass) \\
-\code{gas\_tol} & 1e-3 & convergence tolerance on $x_{\rm HII}$ (measure set by \code{conv\_crit}) \\
+\code{gas\_tol} & 1e-3 & convergence tolerance on the ionization state (measure set by \code{conv\_crit}; with 'vol' it bounds the drift still to come in $x_{\rm HII}$ and helium) \\
 \code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended).  See \S\ref{sec:convergence} \\
 \code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
 \code{case\_ab} & 'B' & case A/B recombination in the ionization balance, i.e.\ how the ionizing \emph{continuum} is treated ('A' is forced by \code{diffuse\_field}, which transports the ground-state recombination photons) \\
@@ -397,11 +405,24 @@ measure} against a tolerance:
   the historical default (kept so the recorded gates reproduce).
 \item[\code{'vol'}] the volume-integrated $L_1$ changes
   \[
-    \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HII}|}{\sum_{\rm leaf} V\,x_{\rm HII}}
-    < \code{gas\_tol}, \qquad
+    d_x = \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HII}|}{\sum_{\rm leaf} V\,x_{\rm HII}},
+    \quad
+    d_{\rm He} = \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HeI}|}{\sum_{\rm leaf} V\,(1-x_{\rm HeI})},
+    \quad
     \frac{\sum_{\rm leaf} V\,n_e\,|\Delta T_e|}{\sum_{\rm leaf} V\,n_e\,T_e}
-    < \code{gas\_tol\_te}.
+    < \code{gas\_tol\_te},
   \]
+  with the He$^+\to$He$^{2+}$ measure added where He$^{2+}$ is at least 1\%
+  of the ionized helium.  The ionization measures are tested on the
+  \emph{drift still to come}, not on the last step: with $\rho$ the decay
+  ratio of the last three steps, a measure passes when
+  $d\,\rho/(1-\rho) <$ \code{gas\_tol}, or, once it has stopped decaying
+  (the Monte Carlo floor), when $d <$ \code{gas\_tol}.  A test on the step
+  alone stops too early when $\rho$ is close to 1: on the HII40 benchmark
+  ($\rho \approx 0.86$) it stopped at iteration 37 with the He\,\textsc{i}
+  front 0.17~pc short of where it settles; the drift test stops at 58, at
+  the 80-iteration answer.  Each iteration prints $d$, $\rho$ and the
+  drift for $x_{\rm HII}$ and helium (\code{fixed point} lines).
   Front jitter occupies little volume (a few thousand front cells against
   $\sim$$10^5$ ionized ones), so it enters the norm suppressed by that ratio;
   the $n_e$ weight drops the vacuum and \code{te\_min}-pinned no-heating cells

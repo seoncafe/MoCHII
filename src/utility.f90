@@ -1,6 +1,7 @@
 ! MoCHII: copied from MoCafe_v2.00/src/utility.f90 (2026-07-11)
 module utility
    use, intrinsic :: iso_fortran_env, only: real32, real64, real128, int32, int64
+   use define, only : PATH_LEN
    implicit none
    private
    public :: strupcase, strlowcase
@@ -251,7 +252,7 @@ contains
    !------------------------------------------------
    function get_base_input_name(filename) result(base_name)
    character(len=*), intent(in) :: filename
-   character(len=128) :: base_name
+   character(len=PATH_LEN) :: base_name
    integer :: i1,i2
    i1        = index(filename,'/', back=.true.)+1
    i2        = index(filename,'.in')-1
@@ -266,7 +267,7 @@ contains
    !--- existing file of either extension.
    implicit none
    character(len=*), intent(in) :: fname
-   character(len=128)           :: filename, fname_next
+   character(len=PATH_LEN)      :: filename, fname_next
    logical :: exists_fits, exists_h5
    integer :: i
 

@@ -56,4 +56,5 @@
  par%file_format     = 'hdf5'
  par%out_file        = 'smoke_emis.h5'
  par%emis_output = .true.
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

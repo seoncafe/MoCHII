@@ -41,4 +41,5 @@
  par%file_format   = 'hdf5'
  par%out_file      = 'st_draine.h5'
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
 /

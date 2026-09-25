@@ -24,7 +24,7 @@ contains
   real(kind=wp) :: dens
   real(kind=wp) :: xx,yy,zz,rr,pp,tanp
   real(kind=wp) :: rmin_positive
-  character(len=128) :: dens_out
+  character(len=PATH_LEN) :: dens_out
 
   integer :: ierr
 
