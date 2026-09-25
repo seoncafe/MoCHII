@@ -927,23 +927,29 @@ public
      !--- approximation retained to reproduce earlier runs; 'threshold'
      !--- emits at Eth and is a sensitivity diagnostic, not a model.
      character(len=16)  :: diffuse_energy_model = 'milne'
-     !--- trace-metal registry.  use_metals is the master switch: when
+     !--- trace-metal registry.  Every abundance defaults to 0 (since
+     !--- 2026-09-25; the inputs written before then pin the MOCASSIN
+     !--- HII20/HII40 values C 2.2e-4, N 4.0e-5, O 3.3e-4, Ne 5.0e-5,
+     !--- S 9.0e-6 they relied on), so an input names the metals it wants.
+     !--- Left out of the input, use_metals is .true. if any abund_<El> is
+     !--- > 0 and .false. otherwise, and metal_ne and metal_heat follow it
+     !--- (setup.f90::read_parameters_with_metal_defaults); a value the
+     !--- input does set is kept.  use_metals is the master switch: when
      !--- .false. species_setup is never called, so the abund_<El> values
      !--- below are not read at all -- no metal ionization, opacity,
      !--- electrons, heating, cooling or lines, whatever they hold.  When
-     !--- .true., an element is active if its abundance n(X)/n(H) > 0;
-     !--- the defaults are the MOCASSIN HII20/HII40 benchmark abundances.
+     !--- .true., an element is active if its abundance n(X)/n(H) > 0.
      !--- metal_ne, metal_heat and ion_metal_abs then switch the metal
      !--- electrons, photoheating and opacity individually.
      logical            :: use_metals   = .false.
      !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
      !--- 16/34 levels) instead of the compact 13/14-level defaults.
      logical            :: fe_levels_full = .false.
-     real(kind=wp)      :: abund_C      = 2.2e-4_wp
-     real(kind=wp)      :: abund_N      = 4.0e-5_wp
-     real(kind=wp)      :: abund_O      = 3.3e-4_wp
-     real(kind=wp)      :: abund_Ne     = 5.0e-5_wp
-     real(kind=wp)      :: abund_S      = 9.0e-6_wp
+     real(kind=wp)      :: abund_C      = 0.0_wp
+     real(kind=wp)      :: abund_N      = 0.0_wp
+     real(kind=wp)      :: abund_O      = 0.0_wp
+     real(kind=wp)      :: abund_Ne     = 0.0_wp
+     real(kind=wp)      :: abund_S      = 0.0_wp
      !--- argon, magnesium, iron (not in the MOCASSIN benchmark set;
      !--- default off; Mg/Fe are strongly depleted onto grains — use
      !--- gas-phase values, e.g. Mg ~ 3e-6, Fe ~ 3e-7 in HII regions).

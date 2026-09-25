@@ -32,5 +32,5 @@
 
  par%source_geometry = 'point'
  par%out_file        = 'stromgren_sphere.h5'
- par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%launch_sequence = 'sobol'   ! better with no_photons = 2^m, e.g. 2^20 = 1048576 (a Sobol set of 2^m points fills most evenly)
 /

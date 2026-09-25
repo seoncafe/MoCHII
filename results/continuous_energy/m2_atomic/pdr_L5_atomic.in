@@ -61,4 +61,9 @@
  par%metal_heat    = .true.
  par%grain_pe      = .true.
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%abund_C  = 2.2e-4   ! pinned: this input predates zero default abundances
+ par%abund_N  = 4.0e-5   ! pinned: this input predates zero default abundances
+ par%abund_O  = 3.3e-4   ! pinned: this input predates zero default abundances
+ par%abund_Ne = 5.0e-5   ! pinned: this input predates zero default abundances
+ par%abund_S  = 9.0e-6   ! pinned: this input predates zero default abundances
 /

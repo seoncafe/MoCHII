@@ -31,9 +31,7 @@ contains
   endif
 
   par%require_convergence = .false.   ! definite baseline; namelist may override
-  open(newunit=unit,file=trim(model_infile),status='old')
-  read(unit,parameters)
-  close(unit)
+  call read_parameters_with_metal_defaults(trim(model_infile))
 
   !--- Resolve the SEDust data directory relative to the executable when the
   !--- user leaves par%sed_data_dir blank, so a fresh checkout runs dust
@@ -624,6 +622,103 @@ contains
         write(*,'(a,i14)') 'QMC scramble seed         : ', par%qmc_seed
   endif
   end subroutine read_input
+
+  !=========================================================================
+  ! Read the namelist, then set the metal switches the input left out from
+  ! the metal abundances the input gave.
+  !   use_metals            not in the input: .true. if any abund_<X> the
+  !                         input sets is > 0, else .false. (every abundance
+  !                         defaults to 0, so an input that names no
+  !                         abundance stays H/He only);
+  !   metal_ne, metal_heat  not in the input: follow use_metals.
+  ! A value the input does set is kept as given.  Fortran namelist input does
+  ! not report which items it contained, so the file is read twice, from two
+  ! states that differ only in these items (the switches .true. then
+  ! .false., the abundances -1 then -2): an item the input sets comes out
+  ! equal in both reads, an item it leaves out does not.
+  !=========================================================================
+  subroutine read_parameters_with_metal_defaults(fname)
+    use define
+    use mpi
+    implicit none
+    character(len=*), intent(in) :: fname
+    integer, parameter :: NAB = 11
+    character(len=2), parameter :: ABNAME(NAB) = &
+       ['C ', 'N ', 'O ', 'Ne', 'S ', 'Ar', 'Mg', 'Fe', 'Si', 'Cl', 'Ca']
+    type(params_type) :: par0, par_hi
+    real(kind=wp) :: ab_hi(NAB), ab_lo(NAB), ab_default(NAB)
+    logical :: given_um, given_ne, given_heat, given_ab(NAB), any_positive
+    character(len=64) :: names
+    integer :: unit, k, world_rank, ierr
+    namelist /parameters/ par
+
+    par0 = par
+    ab_default = abundances()
+
+    call set_metal_items(.true., -1.0_wp)
+    open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
+    par_hi = par
+    ab_hi  = abundances()
+
+    par = par0
+    call set_metal_items(.false., -2.0_wp)
+    open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
+    ab_lo = abundances()
+
+    given_um   = par_hi%use_metals .eqv. par%use_metals
+    given_ne   = par_hi%metal_ne   .eqv. par%metal_ne
+    given_heat = par_hi%metal_heat .eqv. par%metal_heat
+    given_ab   = ab_hi == ab_lo
+
+    !--- every other item is identical in the two reads: keep the first, and
+    !--- restore the defaults of the abundances the input left out
+    par = par_hi
+    call set_abundances(merge(ab_hi, ab_default, given_ab))
+
+    any_positive = any(given_ab .and. ab_hi > 0.0_wp)
+    if (.not. given_um)   par%use_metals = any_positive
+    if (.not. given_ne)   par%metal_ne   = par%use_metals
+    if (.not. given_heat) par%metal_heat = par%use_metals
+
+    !--- the rank communicators are built after this read; ask MPI directly
+    call MPI_COMM_RANK(MPI_COMM_WORLD, world_rank, ierr)
+    if (world_rank == 0 .and. .not. (given_um .and. given_ne .and. given_heat)) then
+       names = ''
+       do k = 1, NAB
+          if (given_ab(k) .and. ab_hi(k) > 0.0_wp) names = trim(names)//' '//trim(ABNAME(k))
+       end do
+       write(*,'(a,3(a,l1))') ' METALS: set from the input (items it leaves out):', &
+          ' use_metals = ', par%use_metals, ', metal_ne = ', par%metal_ne, &
+          ', metal_heat = ', par%metal_heat
+       if (len_trim(names) > 0) write(*,'(2a)') &
+          ' METALS: abundances the input gives > 0:', trim(names)
+    end if
+
+  contains
+
+    subroutine set_metal_items(flag, ab)
+      logical,       intent(in) :: flag
+      real(kind=wp), intent(in) :: ab
+      par%use_metals = flag;  par%metal_ne = flag;  par%metal_heat = flag
+      call set_abundances([(ab, k = 1, NAB)])
+    end subroutine set_metal_items
+
+    subroutine set_abundances(a)
+      real(kind=wp), intent(in) :: a(NAB)
+      par%abund_C  = a(1);  par%abund_N  = a(2);  par%abund_O  = a(3)
+      par%abund_Ne = a(4);  par%abund_S  = a(5);  par%abund_Ar = a(6)
+      par%abund_Mg = a(7);  par%abund_Fe = a(8);  par%abund_Si = a(9)
+      par%abund_Cl = a(10); par%abund_Ca = a(11)
+    end subroutine set_abundances
+
+    function abundances() result(a)
+      real(kind=wp) :: a(NAB)
+      a = [par%abund_C, par%abund_N, par%abund_O, par%abund_Ne, par%abund_S, &
+           par%abund_Ar, par%abund_Mg, par%abund_Fe, par%abund_Si, &
+           par%abund_Cl, par%abund_Ca]
+    end function abundances
+
+  end subroutine read_parameters_with_metal_defaults
 
   !---------------------------------------
   subroutine setup_procedure

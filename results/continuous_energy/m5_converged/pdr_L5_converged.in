@@ -62,4 +62,9 @@
  par%grain_pe      = .true.
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 20260728
+ par%abund_C  = 2.2e-4   ! pinned: this input predates zero default abundances
+ par%abund_N  = 4.0e-5   ! pinned: this input predates zero default abundances
+ par%abund_O  = 3.3e-4   ! pinned: this input predates zero default abundances
+ par%abund_Ne = 5.0e-5   ! pinned: this input predates zero default abundances
+ par%abund_S  = 9.0e-6   ! pinned: this input predates zero default abundances
 /
