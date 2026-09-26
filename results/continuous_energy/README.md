@@ -7,8 +7,8 @@ comparison scripts and their text and PDF summaries are tracked.
 - `m2_atomic/`: the 2^25-packet Sobol production outputs of 2026-09-24
   (after the atomic-data update), superseded by `m4_nitrogen/`,
   `m5_converged/`, `m8_defaults/` and `m10_drift_test/`; the paper
-  reads `m8_defaults/` (not yet moved to `m10_drift_test/`) and
-  `m9_hydrogenic_alpha/` for `g2a_thermal`.  With them are the figure runs of
+  reads `m10_drift_test/` (since 2026-09-26) and `m9_hydrogenic_alpha/` for
+  `g2a_thermal` and the G1 figure.  With them are the figure runs of
   that date
   (`pdr_L5_atomic`, `hei_high_density_atomic`, `g2a_thermal_atomic`) and the
   sensitivity runs (`*_nohecx`, `*_lowden`, `*_ots`); `run_lart3*.sh` are the
@@ -39,6 +39,11 @@ comparison scripts and their text and PDF summaries are tracked.
   sum V n_e +1.0%, `pdr_L5` <T> +5 K; HII20 +0.02% (m9 had converged).
   Paper-table values: <T[NpNe]> 8179.7 / 6940.1 K, L(Hbeta) 2.0226e37 /
   4.8456e36, <He+>/<H+> 0.7524 / 0.0472, R_out 1.4638e19 / 8.9875e18 cm.
+  `g1_g4/` (`run_g1_g4.sh`): the level-7 G1 run and the two G4 runs
+  (`tests/g4_refine/` inputs, with `helium_charge_exchange = .false.`
+  pinned as in G1) with the same binary: R_eff 3.0578 (G1 level 7),
+  3.0579 (re-refined, 467272 leaves) and 3.0577 pc (native level 7),
+  against the 1D reference 3.0355 pc.
 - `m9_hydrogenic_alpha/` (2026-09-26): the m8 set restarted with alpha_B of
   H II and He III from the Storey & Hummer (1991) cascade
   (`hydrogenic_recombination_mod`, -1.13% for H II at 1e4 K), the joint

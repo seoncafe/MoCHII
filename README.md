@@ -131,8 +131,8 @@ code [MoCafe](https://github.com/seoncafe/MoCafe) and is validated against
 analytic Strömgren solutions, the Lexington H II-region benchmarks (against
 the published multi-code results and against current Cloudy and MOCASSIN
 runs), and PyNeb emissivities.  On the Lexington HII40 and HII20 cases the
-mean electron temperature `<T[NpNe]>` is 8169 K and 6925 K, within 0.5% and
-0.3% of Cloudy c25.00.
+mean electron temperature `<T[NpNe]>` is 8180 K and 6940 K, within 0.37% and
+0.44% of Cloudy c25.00 (8210 K and 6910 K).
 
 ## Build and run
 
@@ -177,4 +177,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-09-26 17:18 KST
+Last updated: 2026-09-26 19:18 KST

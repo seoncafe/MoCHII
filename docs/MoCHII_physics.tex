@@ -32,8 +32,8 @@ field), the $n$-level emissivity solver, the ported nebular
 continuum and Storey \& Hummer recombination lines, and the
 quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
-sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
-$\equiv$ uniform); the thermal H/He nebula (median $0.61\%$ in $T_e$);
+sphere vs.\ an exact 1D reference ($+1.05\%$ in the ionized-volume radius at level 6, $+0.73\%$ at level 7; AMR
+$\equiv$ uniform); the thermal H/He nebula (median $0.12\%$ in $T_e$);
 the MOCASSIN Lexington benchmarks ($T_e = 8180$~K at HII40 and 6940~K at
 HII20 with the density-suppressed cooling default, run to the drift stopping
 test, matching a current \textsc{Cloudy} c25.00 run to $-0.37\%$ and $+0.44\%$,
@@ -42,8 +42,8 @@ zero-density limit gives 7877 and 6282~K); and the line-flux comparison (H$\beta
 percent of the published values, the optical collisional lines within
 the published spread).
 Also documented: the solution-driven I-front re-refinement
-(re-refined vs.\ native high-resolution octree $+0.008\%$ in ionized
-volume with $4.5\times$ fewer cells) and an Illustris-TNG
+(re-refined vs.\ native high-resolution octree $+0.006\%$ in the
+ionized-volume radius with $4.5\times$ fewer cells) and an Illustris-TNG
 post-processing demonstration; the completed dust coupling
 (ionizing-band dust absorption with the dusty Str\"omgren reduction
 0.724 reproduced to $+0.34\%$; EUV/FUV dust \emph{scattering} with
@@ -4710,8 +4710,8 @@ reference is an exact 1D radial marching with identical bins and rates
 --- necessarily \emph{Gauss--Seidel} (each shell solved with the
 already-updated interior opacity): a Jacobi sweep advances the front
 only one absorption length per pass and never converges.  Sharp-edge
-analytic $R_S = 3.153$~pc; the 1D reference gives
-$R_{\rm eff} = (3V_{\rm ion}/4\pi)^{1/3} = 3.0365$~pc (the $\sim$4\%
+analytic $R_S = 3.157$~pc; the 1D reference gives
+$R_{\rm eff} = (3V_{\rm ion}/4\pi)^{1/3} = 3.0355$~pc (the $\sim$4\%
 gap is physical: He consumes photons and the model re-emits none).
 
 \begin{center}
@@ -4719,9 +4719,9 @@ gap is physical: He consumes photons and the model re-emits none).
 \toprule
 run & leaves & $R_{\rm eff}$ [pc] & vs.\ 1D \\
 \midrule
-uniform level 6            & 262\,144 & 3.0534 & $+0.56\%$ \\
-front-refined levels 4--6  & 74\,320  & 3.0534 & $+0.56\%$ \\
-center-refined levels 4--6 & 7\,568   & 3.1078 & $+2.35\%$ \\
+uniform level 6            & 262\,144 & 3.0675 & $+1.05\%$ \\
+front-refined levels 4--6  & 74\,320  & 3.0676 & $+1.06\%$ \\
+center-refined levels 4--6 & 7\,568   & 3.1205 & $+2.80\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -4742,11 +4742,18 @@ front-refined (green, overlying blue).}
 \subsection{Thermal H/He nebula}
 Same configuration with the thermal balance on
 (Figure~\ref{fig:g2a}): $T_e(r)$ matches the 1D thermal reference to
-median $0.61\%$, mean bias $+0.61\%$, max $1.6\%$ over
-$0.3 < r < 2.8$~pc (\code{results/continuous\_energy/m4\_nitrogen/g2a\_thermal\_nitrogen},
-the reference from \code{tools/python/mochii\_rates.py}; the 0.14\% recorded
-before was a July run against a reference with its own rate fits) --- including the central He\,\textsc{iii}-zone
-temperature structure and the front drop.  Without metals the nebula
+median $0.12\%$, mean bias $-0.006\%$, max $3.4\%$ over
+$0.3 < r < 2.8$~pc (\code{results/continuous\_energy/m9\_hydrogenic\_alpha/g2a\_thermal\_m9},
+the current defaults and the hydrogenic $\alpha_B$, against the reference of
+\code{MoCHII\_paper/python/make\_g2a\_thermal.py}, which takes its rates from
+\code{tools/python/mochii\_rates.py} and carries the hydrogen share of the
+He\,\textsc{i} and He\,\textsc{ii} on-the-spot photons, the $2^3$S coupling and
+the band from 4.78~eV on 256 stellar-band bins; the $0.61\%$ recorded before
+was the m4 run against a 32-bin reference without those terms, whose bin
+quadrature alone put $T_e$ low by $0.42\%$) --- including the front drop.
+Inside $r = 0.24$~pc run and reference both sit at \code{te\_max}: the
+He\,\textsc{ii} cascade absorbed on the spot heats gas optically thin to it
+(\S\ref{sec:ots-heii}).  Without metals the nebula
 runs at 19--24~kK, the known pure-H/He overshoot that motivates the
 metal frame.
 
@@ -4920,21 +4927,23 @@ chain itself is exact (Section~\ref{sec:nlevel}).
 \subsection{Re-refinement gate and the TNG demonstration}
 The re-refinement of Section~\ref{sec:refine} on the Str\"omgren
 configuration (level-5 start, rebuild to level 7 at iteration 15,
-32\,768 $\rightarrow$ 464\,248 leaves):
+32\,768 $\rightarrow$ 467\,272 leaves; runs of 2026-09-26 with the
+hydrogenic $\alpha_B$, \code{results/continuous\_energy/m10\_drift\_test/g1\_g4/}):
 
 \begin{center}
 \begin{tabular}{lrrr}
 \toprule
 run & leaves & $R_{\rm eff}$ [pc] & vs.\ 1D \\
 \midrule
-re-refined 5$\rightarrow$7 & 464\,248   & 3.0432 & $+0.22\%$ \\
-native uniform level 7     & 2\,097\,152 & 3.0430 & $+0.21\%$ \\
+re-refined 5$\rightarrow$7 & 467\,272   & 3.0579 & $+0.74\%$ \\
+native uniform level 7     & 2\,097\,152 & 3.0577 & $+0.73\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The two agree to $+0.008\%$ with $4.5\times$ fewer leaves, and both
-improve on level 6 ($+0.56\%$) --- resolution-convergent, as the
-resolution-convergence requirement expects.  The front profiles overlie
+The two agree to $+0.006\%$ with $4.5\times$ fewer leaves, and both
+improve on level 6 ($+1.05\%$) --- resolution-convergent, as the
+resolution-convergence requirement expects.  The G1 input on the same
+uniform level-7 grid gives 3.0578~pc ($+0.73\%$).  The front profiles overlie
 exactly.
 
 The post-processing demonstration runs MoCHII on an Illustris-TNG
@@ -4970,28 +4979,37 @@ dust absorption in every bin:
 \toprule
 case & $R_{\rm eff}$(1D) [pc] & $R_{\rm eff}$(MC) [pc] & dev \\
 \midrule
-dust-free            & 3.0365 & 3.0534 & $+0.56\%$ \\
-full MW dust        & 2.1983 & 2.2058 & $+0.34\%$ \\
-\code{laursen09\_live} & 3.0218 & 3.0425 & $+0.68\%$ \\
+dust-free            & 3.0355 & 3.0675 & $+1.05\%$ \\
+full MW dust        & 2.1966 & 2.2120 & $+0.70\%$ \\
+\code{laursen09\_live} & 3.0206 & 3.0518 & $+1.03\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The classic dusty reduction ($R/R_0 = 0.724$ in 1D, 0.722 between the two
-MC runs) is reproduced within the gate tolerance; the live
+(All runs of 2026-09-26, level 6.)  The gate is on what the dust adds: each
+dusty deviation less the dust-free one on the same grid, $-0.35\%$ and
+$-0.02\%$, against a tolerance of 1\%; the dust-free $+1.05\%$ is the
+finite width of the front on the 0.125~pc cells, which the level-7 grid
+reduces to $+0.73\%$.  The gate used to test the deviation alone, which
+measured that resolution bias along with the dust and failed the nearly
+dust-free \code{laursen09\_live} run at $+1.03\%$ once the hydrogenic
+$\alpha_B$ moved the fronts out.
+The classic dusty reduction ($R/R_0 = 0.724$ in 1D, 0.721 between the
+MC runs) is reproduced; the live
 ionization-dependent dust drives itself to near dust-free
-($R/R_0 = 0.996$: interior dust vanishes with the computed
+($R/R_0 = 0.995$: interior dust vanishes with the computed
 $x_{\rm HII}$), confirming the dust--ionization feedback loop converges
 self-consistently.  Energy budget: dust absorbs 61\% of the band
 luminosity in the full-dust case
-($L_{\rm abs} = 1.933\times10^{38}$ of $3.178\times10^{38}$ erg\,s$^{-1}$).
+($L_{\rm abs} = 1.935\times10^{38}$ of $3.178\times10^{38}$ erg\,s$^{-1}$).
 
 \textbf{Scattering bracket.}  Turning the scattering on must land the
 sphere between two analytically defined bounds: treating the dust
 extinction entirely as absorption (scattered photons destroyed; 1D
-$R_{\rm eff} = 2.059$~pc) and the absorption-only treatment (scattered
-photons never interact; 2.198~pc, MC counterpart 2.206~pc).  The
-full-scattering run gives $R_{\rm eff} = 2.197$~pc --- inside the
-bracket and close to the absorption-only bound, exactly as the strong
+$R_{\rm eff} = 2.057$~pc) and the absorption-only treatment (scattered
+photons never interact; 2.197~pc, MC counterpart 2.212~pc).  The
+full-scattering run gives $R_{\rm eff} = 2.203$~pc --- inside the
+bracket (a criterion of \code{tests/d\_dusty/check\_dusty.py} since
+2026-09-26) and close to the absorption-only bound, exactly as the strong
 forward scattering ($g = 0.67$--$0.99$) predicts: forward-scattered
 photons continue nearly radially, and only the small diffused fraction
 is lost from the radial budget.  The dust-absorbed luminosity rises by

@@ -10,9 +10,21 @@ classic sharp-edge reduction (photon balance
 y^3 = 1 - int_0^y 3 y'^2 tau_d e^{-...}) is quoted for context via the
 implicit solution of Petrosian-type photon accounting.
 
-Cases: full dust (global_dgr) — gate |R_eff(MC)/R_eff(1D) - 1| < 1%;
-laursen09_live (dust ~ n_HI + 0.01 n_HII) — must land near the
-dust-free radius (interior dust vanishes with the computed x_HII).
+Cases: full dust (global_dgr) and laursen09_live (dust ~ n_HI + 0.01 n_HII,
+which must land near the dust-free radius as the interior dust vanishes
+with the computed x_HII).  The gate is on what the dust adds: the deviation
+dev = R_eff(MC)/R_eff(1D) - 1 of each dusty run, less the same deviation of
+the dust-free run on the same level-6 grid
+(tests/g1_stromgren/g1_stromgren_rates.h5), must be below 1% in magnitude.
+The dust-free deviation is the finite front width on a 0.125 pc cell,
++1.05% at level 6 and +0.73% at level 7 (2026-09-26); a gate on dev alone
+(as until 2026-09-26) measured that resolution bias along with the dust,
+and failed the nearly dust-free laursen09_live run at +1.03%.  Scattering (d_dust_scat, par%ion_dust_scatter): the full-dust run
+with the scattering on must fall between two bounds, the 1D reference with
+the whole extinction treated as absorption (a scattered photon destroyed)
+and the absorption-only MC run (a scattered photon never interacting).
+The dust-free reference is solved here with the same marching, so it
+follows the rates without a constant to refresh.
 
 Rate coefficients and cross sections come from tools/python/mochii_rates.py, so
 that the reference absorbs and recombines as the run did; otherwise the
@@ -55,10 +67,6 @@ NH, YHE, TE     = 100.0, 0.1, 1.0e4
 RSPH_PC         = 4.0
 CEXT_REF        = 4.868e-22       # D03 C_ext/H at 0.55 um (par%cext_dust)
 KEXT = "../../data/kext_albedo_WD_MW_3.1_60_D03.all_2003"
-#--- G1 1D reference with no dust, from tests/g1_stromgren/check_g1_stromgren.py.
-#--- It moved from 3.0365 pc when that check took its recombination from
-#--- mochii_rates instead of Hui & Gnedin, so refresh it whenever G1 moves.
-R_EFF_FREE_1D = 3.0243
 
 
 def voronov(T, dE, P, A, X, K):
@@ -82,9 +90,10 @@ def band_bins():
     return ec, lum
 
 
-def dust_sabs(ec):
+def dust_sabs(ec, absorbing_fraction=True):
     """(1-albedo) C_ext(E)/C_ext(0.55um) from the same D03 table, same
-    interpolation as gas_opacity_mod (log-log C_ext, linear albedo)."""
+    interpolation as gas_opacity_mod (log-log C_ext, linear albedo);
+    C_ext(E)/C_ext(0.55um) with absorbing_fraction = False."""
     rows = []
     for ln in open(KEXT):
         t = ln.split()
@@ -102,7 +111,7 @@ def dust_sabs(ec):
         w = (np.log(l) - np.log(lam[i-1]))/(np.log(lam[i]) - np.log(lam[i-1]))
         ce = np.exp(np.log(cext[i-1])*(1-w) + np.log(cext[i])*w)
         ab = alb[i-1]*(1-w) + alb[i]*w
-        return (1.0 - ab)*ce
+        return (1.0 - ab)*ce if absorbing_fraction else ce
     cref_i = np.searchsorted(lam, 0.55)
     w = (np.log(0.55)-np.log(lam[cref_i-1]))/(np.log(lam[cref_i])-np.log(lam[cref_i-1]))
     cref = np.exp(np.log(cext[cref_i-1])*(1-w) + np.log(cext[cref_i])*w)
@@ -133,7 +142,8 @@ def solve_ion(gH, gHe1, gHe2, xs):
 def reference_1d(dust="full", nr=8000, nsweep=3):
     ec, lum = band_bins()
     sH, sHe1, sHe2 = sigma_HI(ec), sigma_HeI(ec), sigma_HeII(ec)
-    sd = dust_sabs(ec)*CEXT_REF          # C_abs,dust(E)/H [cm^2]
+    #--- C_abs,dust(E)/H [cm^2]; 'extinction' treats C_ext as absorption
+    sd = dust_sabs(ec, absorbing_fraction=(dust != "extinction"))*CEXT_REF
     hnu = ec*EV2ERG
     dr_cm = (RSPH_PC/nr)*PC2CM
     r = (np.arange(nr) + 0.5)*(RSPH_PC/nr)
@@ -145,7 +155,7 @@ def reference_1d(dust="full", nr=8000, nsweep=3):
         for i in range(nr):
             xs = (xHI[i], xHeI[i], xHeII[i])
             for _ in range(2):
-                if dust == "full":
+                if dust in ("full", "extinction"):
                     fd = 1.0
                 elif dust == "l09":
                     fd = xs[0] + 0.01*(1.0 - xs[0])
@@ -159,7 +169,7 @@ def reference_1d(dust="full", nr=8000, nsweep=3):
                 gHe2 = float((flux*sHe2/hnu).sum())
                 xs = solve_ion(gH, gHe1, gHe2, xs)
             xHI[i], xHeI[i], xHeII[i] = xs
-            if dust == "full":
+            if dust in ("full", "extinction"):
                 fd = 1.0
             elif dust == "l09":
                 fd = xs[0] + 0.01*(1.0 - xs[0])
@@ -184,26 +194,53 @@ def r_eff_mc(fname):
 
 
 print("=== 1D references (same bins, rates, and D03 dust absorption) ===")
+r0, x0, Re_free = reference_1d("none")
 r1, x1, Re_full = reference_1d("full")
 r2, x2, Re_l09 = reference_1d("l09")
-print(f"dust-free : R_eff = {R_EFF_FREE_1D:.4f} pc (G1)")
-print(f"full dust : R_eff = {Re_full:.4f} pc  (reduction {Re_full/R_EFF_FREE_1D:.3f})")
-print(f"l09-live  : R_eff = {Re_l09:.4f} pc  (reduction {Re_l09/R_EFF_FREE_1D:.3f})")
+r3, x3, Re_ext = reference_1d("extinction")
+print(f"dust-free : R_eff = {Re_free:.4f} pc")
+print(f"full dust : R_eff = {Re_full:.4f} pc  (reduction {Re_full/Re_free:.3f})")
+print(f"l09-live  : R_eff = {Re_l09:.4f} pc  (reduction {Re_l09/Re_free:.3f})")
+print(f"extinction as absorption: R_eff = {Re_ext:.4f} pc")
 
 gate_ok = True
 print("\n=== MoCHII runs ===")
+FREE = os.path.join("..", "g1_stromgren", "g1_stromgren_rates.h5")
+if os.path.exists(FREE):
+    dev_free = r_eff_mc(FREE)/Re_free - 1.0
+    print(f"[dust-free ] R_eff = {r_eff_mc(FREE):.4f} pc   vs 1D {dev_free:+.2%}"
+          "   (the level-6 front-width bias)")
+else:
+    #--- a gate that could not run is not a gate that passed.
+    print(f"[dust-free ] {FREE} NOT FOUND")
+    dev_free = None
+    gate_ok = False
 for tag, fn, ref in (("full dust", "d_dust_full_rates.h5", Re_full),
                      ("l09-live", "d_dust_l09_rates.h5", Re_l09)):
-    if not os.path.exists(fn):
-        #--- a gate that could not run is not a gate that passed.
-        print(f"[{tag}] {fn} NOT FOUND")
+    if not os.path.exists(fn) or dev_free is None:
+        print(f"[{tag}] {fn} NOT FOUND" if not os.path.exists(fn)
+              else f"[{tag}] no dust-free run to compare with")
         gate_ok = False
         continue
     Re = r_eff_mc(fn)
-    case_ok = abs(Re/ref-1) < 0.01
+    dev = Re/ref - 1.0
+    case_ok = abs(dev - dev_free) < 0.01
     gate_ok = gate_ok and case_ok
-    print(f"[{tag:10s}] R_eff = {Re:.4f} pc   vs 1D {Re/ref-1:+.2%}   "
-          f"{'PASS' if case_ok else 'FAIL'}")
+    print(f"[{tag:10s}] R_eff = {Re:.4f} pc   vs 1D {dev:+.2%}, less the dust-free "
+          f"{dev - dev_free:+.2%}   {'PASS' if case_ok else 'FAIL'}")
+
+#--- scattering bracket: 1D extinction-as-absorption < scattering run <=
+#--- absorption-only run
+fs, fa = "d_dust_scat_rates.h5", "d_dust_full_rates.h5"
+if os.path.exists(fs) and os.path.exists(fa):
+    Rs, Ra = r_eff_mc(fs), r_eff_mc(fa)
+    case_ok = Re_ext < Rs <= Ra
+    gate_ok = gate_ok and case_ok
+    print(f"[scattering] R_eff = {Rs:.4f} pc   bounds {Re_ext:.4f} (1D, extinction "
+          f"absorbed) - {Ra:.4f} (MC, absorption only)   {'PASS' if case_ok else 'FAIL'}")
+else:
+    print(f"[scattering] {fs} or {fa} NOT FOUND")
+    gate_ok = False
 
 #--- The gate must fail the PROCESS, not just print: a CI runner (and a
 #--- human skimming a log) otherwise reads a FAIL as a successful run.

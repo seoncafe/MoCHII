@@ -11,6 +11,8 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_sphere_L6_nH100.fits'
+ par%data_dir      = '../../data'
+ par%atomic_dir    = '../../data/atomic'
  par%dust_density_law = 'global_dgr'
  par%distance_unit = 'pc'
 
@@ -52,4 +54,5 @@
  par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
  par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
  par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%helium_charge_exchange = .false.   ! pinned: this input predates the default .true. (2026-09-24)
 /

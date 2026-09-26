@@ -5,7 +5,9 @@ Same Stromgren configuration as the G1 gate (nH = 100, Q_H = 1e49,
 case B, Te = 1e4 K): the re-refined run starts uniform level 5 and
 rebuilds to level 7 on the I-front at iteration 15; the reference is a
 native uniform level-7 run.  The exact 1D Gauss-Seidel reference gives
-R_eff = 3.0365 pc (computed in tests/g1_stromgren).
+R_eff = 3.0355 pc (computed in tests/g1_stromgren; 3.0365 before the G1
+reference took mochii_rates, 3.0243 before the hydrogenic alpha_B of
+2026-09-26).
 
 Criteria: |R_eff(refined) - R_eff(uniform7)| < 0.5%, both within ~1% of
 the 1D reference, with the refined run using far fewer leaves.
@@ -15,7 +17,7 @@ import numpy as np
 import h5py
 
 PC2CM = 3.0856776e18
-R_EFF_1D = 3.0365          # from the G1 1D reference (identical physics)
+R_EFF_1D = 3.0355          # from the G1 1D reference (identical physics)
 
 
 def load(fname):

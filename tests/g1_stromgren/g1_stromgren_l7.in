@@ -11,6 +11,8 @@
 
  par%grid_type     = 'amr'
  par%amr_file      = 'amr_L7.fits'
+ par%data_dir      = '../../data'
+ par%atomic_dir    = '../../data/atomic'
  par%dust_density_law = 'none'
  par%distance_unit = 'pc'
 

@@ -12,9 +12,9 @@ Gate criteria:
   (1) R_eff = (3 V_ion / 4 pi)^(1/3) from the MC leaves (V_ion = sum of
       x_HII * V_cell) within 1% of the 1D reference R_eff, evaluated on the
       uniform level-7 grid.  Level 6 is reported alongside it and is not the
-      criterion: its cell is 0.147 pc against a front at 3.02 pc, and the
-      finite front width biases R_eff outward by +1.00%, which level 7 halves
-      to +0.68%.  The criterion sat on level 6 while the 1D reference used a
+      criterion: its cell is 0.125 pc against a front at 3.04 pc, and the
+      finite front width biases R_eff outward by +1.05%, which level 7 reduces
+      to +0.73% (2026-09-26; +1.00% and +0.68% with the alpha_B before).  The criterion sat on level 6 while the 1D reference used a
       different recombination set, and the two errors canceled to +0.60%;
       with the reference aligned the level-6 bias stands alone and exceeds 1%,
       so the criterion moved to the grid that resolves the front;
@@ -271,7 +271,7 @@ else:
     print("  criterion (1) FAIL: g1_stromgren_l7_rates.h5 is missing")
 if "uniform L6" in devs:
     print(f"  (level 6, informational: {devs['uniform L6']*100:+.4f}% -- the "
-          f"finite front width on a 0.147 pc cell)")
+          f"finite front width on a 0.125 pc cell)")
 #--- Criterion (3): the refined grid must reproduce the uniform run it refines.
 if "front 4-6" in devs and "uniform L6" in devs:
     d = abs(devs["front 4-6"] - devs["uniform L6"])

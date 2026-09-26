@@ -23,7 +23,7 @@ mismatch at the 1e-14 level is therefore not by itself a regression.
 | directory | gate |
 |---|---|
 | `g0_gamma` | rate integrals vs analytic attenuation |
-| `g1_stromgren` | Stromgren sphere vs the 1D Gauss-Seidel reference; AMR = uniform |
+| `g1_stromgren` | Stromgren sphere vs the 1D Gauss-Seidel reference (R_eff 3.0355 pc); AMR = uniform.  Runs of 2026-09-26: level 7 +0.73% (the criterion, < 1%), level 6 +1.05% (front width on 0.125 pc cells), front-refined = level 6 to 0.003%, center-refined +2.80% |
 | `g2a_thermal` | H/He thermal balance vs the 1D reference (`check_g2a.py`, runs from any directory): the recorded run of 2026-07-30 with every later default pinned off, against a reference with the same physics on 256 stellar-band bins (the 32 used until 2026-09-26 carried a 0.42% quadrature error); median \|dev\| 0.151%, mean -0.097%, max 0.98% over 0.3-2.8 pc (2026-09-26, current rates, so the stored run's older alpha_B is inside these numbers).  The current-defaults reference is `MoCHII_paper/python/make_g2a_thermal.py` |
 | `g2_hii` | MOCASSIN Lexington HII20/HII40 + line fluxes; element smokes (`smoke_*.in`), emissivity output (`smoke_emis.in`), He I excited channel (`hii40_hei.in`) |
 | `g4_refine` | I-front re-refinement vs native level 7 (+ window recycling) |
@@ -32,7 +32,7 @@ mismatch at the 1e-14 level is therefore not by itself a regression.
 | `thermal_parallel` | Exact `x_HI`, `x_HeI`, `x_HeII`, `n_e`, and `T_e` comparison between serial-thermal and node-local MPI-thermal rate files |
 | `continuous_energy` | Continuous-energy gates: C II/He I thresholds; exact-energy H/He Planck/table transport and solver rates; exact metal ionization/heating, opacity, electron, and thermal coupling; threshold-sorted metal scoring benchmark; random/Sobol, 1/3-rank, iterative, and 8/32-bin independence |
 | `energy_sampler` | Isolated continuous source samplers: analytic tabulated inverse CDF, adaptive band-limited Planck CDF, full-Planck Barnett--Canfield reference, random/Sobol statistics, source-coordinate mappings, and 1/2/3/5/8-rank QMC identity |
-| `d_dusty` | dusty Stromgren, scattering bracket, T_dust/IR, SEDust smokes (`sedust_smoke.in`, `dustemis_smoke.in`, `pahlive_smoke.in`), FUV option (`d_fuv_*.in`, `check_fuv.py`) |
+| `d_dusty` | dusty Stromgren (`check_dusty.py`: each dusty deviation from its 1D reference less the dust-free level-6 deviation of `g1_stromgren`, < 1%: full dust -0.35%, `laursen09_live` -0.02%; and the scattering run between the 1D extinction-as-absorption radius and the absorption-only run, 2.057 < 2.203 <= 2.212 pc; runs of 2026-09-26), T_dust/IR, SEDust smokes (`sedust_smoke.in`, `dustemis_smoke.in`, `pahlive_smoke.in`), FUV option (`d_fuv_*.in`, `check_fuv.py`) |
 | `peel` | peel-off imaging: optically-thin analytic direct gate (`peel_thin.in`, `check_peel.py`), scattered morphology (`peel_scat.in`), bin cubes (`peel_cube.in`) |
 | `uni_dda` | Cartesian (car) grid vs single-level octree: `car_walk='amr'` walk bit-identical; incremental DDA walk (`car_walk='dda'`) to rounding + timing (`check_uni.py`); namelist-built car grid (`car_namelist.in`) + `nH_const`/`rmax` density model reproduce the file-built sphere (`amr` override `car_amr_ovr.in`) |
 | `pdr` | PDR physics: metal electrons, photoelectric heating, atomic-hydrogen impact cooling (`pdr_L5.in`, `check_pdr.py`) |
