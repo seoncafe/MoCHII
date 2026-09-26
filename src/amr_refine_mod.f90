@@ -134,7 +134,7 @@ contains
     !--- old_*/s_* copies), so free them BEFORE the rebuild — collective,
     !--- every rank runs this routine.  Without the recycling every
     !--- re-refinement leaks a full grid's shared memory until finalize.
-    !--- jt_ion is a per-rank array, not a window — jtally_ion_resize
+    !--- jt_ion is an array on each rank, not a window — jtally_ion_resize
     !--- deallocates it properly.
     call destroy_shared_mem(amr_grid%parent)
     call destroy_shared_mem(amr_grid%children)

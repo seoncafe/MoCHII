@@ -10,10 +10,12 @@ module gas_rates_mod
 ! rather than reconstructed from a binned tally.  This module normalizes those
 ! reduced path sums by the leaf volume and hands them to the solver.  The
 ! ionizing-band tally jt_ion(inu, il) remains a diagnostic spectrum, written out
-! as J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2) [erg/s/cm^2/Hz/sr].
+! with par%jnu_output as J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2)
+! [erg/s/cm^2/Hz/sr]; without it (and without the SEDust emission, which also
+! reads it) the tally is not kept at all.
 !
 ! gas_rates_write writes '<base>_rates.<ext>': Gamma / heating arrays,
-! J_ion(nnu, nleaf), the energy grid, and leaf centers.
+! J_nu(nnu, nleaf) with par%jnu_output, the energy grid, and leaf centers.
 !---------------------------------------------------------------------------
   use define
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
@@ -180,6 +182,14 @@ contains
     call io_put_keyword(file,'TOT_LUM', par%luminosity,'band luminosity [erg/s]',status)
     call io_put_keyword(file,'DIST_CM', par%distance2cm,'distance unit (cm)',   status)
     call io_put_keyword(file,'nphotons',par%no_photons, 'number of photons',    status)
+    if (par%add_fuv) then
+       call io_put_keyword(file,'EFUV_MIN',par%efuv_min,'FUV extension lower edge [eV]', status)
+       call io_put_keyword(file,'FUVSAMP', trim(par%fuv_sampling), &
+          'FUV packets: separate stratum or one CDF', status)
+       if (trim(par%fuv_sampling) == 'separate') &
+          call io_put_keyword(file,'NPHOTFUV',par%no_photons_fuv, &
+             'FUV-stratum packets per pass', status)
+    end if
     call io_put_keyword(file,'CONVERGD',run_converged,'gas iteration converged',status)
     call io_put_keyword(file,'NITERDON',run_iters,   'gas iterations run',      status)
     call io_put_keyword(file,'FINALDX', run_final_dx, 'final max|delta x_HII|',  status)
@@ -234,17 +244,20 @@ contains
        end block
     end if
 
-    !--- J_nu(nnu, nleaf) [erg/s/cm^2/Hz/sr]
-    allocate(jnu(nnu_band, nleaf))
-    do il = 1, nleaf
-       do inu = 1, nnu_band
-          jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
-                        * ion_dnu(inu) * par%distance2cm**2)
+    !--- J_nu(nnu, nleaf) [erg/s/cm^2/Hz/sr], with par%jnu_output only
+    !--- (the tally is not kept otherwise; jtally_mod::jtally_ion_needed)
+    if (par%jnu_output) then
+       allocate(jnu(nnu_band, nleaf))
+       do il = 1, nleaf
+          do inu = 1, nnu_band
+             jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
+                           * ion_dnu(inu) * par%distance2cm**2)
+          end do
        end do
-    end do
-    call io_append_image(file, jnu, status, bitpix=-64)
-    call io_put_keyword(file,'EXTNAME','J_nu','J(nu,leaf) [erg/s/cm^2/Hz/sr]',status)
-    deallocate(jnu)
+       call io_append_image(file, jnu, status, bitpix=-64)
+       call io_put_keyword(file,'EXTNAME','J_nu','J(nu,leaf) [erg/s/cm^2/Hz/sr]',status)
+       deallocate(jnu)
+    end if
 
     !--- ionization structure (fixed initialization when gas_niter = 0).
     block

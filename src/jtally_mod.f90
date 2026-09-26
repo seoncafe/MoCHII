@@ -194,6 +194,12 @@ contains
   !---------------------------------------------------------------
   !--- MoCHII: ionizing-band tally setup/reduce.  The conversion to J_nu and
   !--- the rate integrals live in gas_rates_mod (they need the gas state).
+  !--- whether anything reads the per-bin tally: the J_nu output
+  !--- (par%jnu_output) or the SEDust leaf spectrum (par%dust_sed with dust)
+  logical function jtally_ion_needed() result(need)
+  need = par%jnu_output .or. (par%ion_add_dust .and. par%dust_sed)
+  end function jtally_ion_needed
+
   subroutine jtally_ion_setup(nleaf)
   use memory_mod,   only : create_mem
   use ion_band_mod, only : nnu_band
@@ -202,6 +208,13 @@ contains
   real(kind=wp) :: mem_gb
   jt_ion_nleaf = nleaf
   mem_gb = real(nnu_band,wp)*nleaf*8.0_wp/1024.0_wp**3
+  if (.not. jtally_ion_needed()) then
+     jt_ion_on = .false.
+     if (mpar%p_rank == 0) write(*,'(a,f8.3,a)') &
+        ' ION: J tally off (neither jnu_output nor the SEDust emission'// &
+        ' reads it; ', mem_gb, ' GB per MPI rank saved)'
+     return
+  end if
   if (mpar%p_rank == 0) write(*,'(a,i0,a,f8.3,a)') &
      ' ION: J tally: ', nleaf, ' leaves, ', mem_gb, ' GB per MPI rank'
   call create_mem(jt_ion, [nnu_band, nleaf])
@@ -216,6 +229,7 @@ contains
   integer, intent(in) :: nleaf
   if (associated(jt_ion)) deallocate(jt_ion)
   jt_ion => null()
+  jt_ion_on = .false.
   call jtally_ion_setup(nleaf)
   end subroutine jtally_ion_resize
 

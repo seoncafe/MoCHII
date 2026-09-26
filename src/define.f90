@@ -70,6 +70,13 @@ public
   real(kind=wp), parameter :: eth_HI       = 13.598_wp           ! eV, H I ionization threshold
   real(kind=wp), parameter :: eth_HeI      = 24.587_wp           ! eV, He I
   real(kind=wp), parameter :: eth_HeII     = 54.416_wp           ! eV, He II
+  !--- He I 2^3S photoionization edge as sigma_3 is evaluated: the first
+  !--- SIGMA3A coefficient of data/atomic/hei_metastable.txt (Norcross 1971
+  !--- fit threshold; hei_metastable_mod checks that the file agrees).  The
+  !--- NIST value, IP(He) - E(2^3S) = 24.587 - 19.820 = 4.7677 eV, is the one
+  !--- the Phi_3 heating uses; the fit's edge sits 0.012 eV above it.  Sets the
+  !--- default FUV floor par%efuv_min when the 2^3S population is used.
+  real(kind=wp), parameter :: E_HEI_23S_SIGMA_EDGE = 4.78_wp       ! eV
 
 ! dust mass per hydrogen nuclei (g/H)
   real(kind=wp), parameter :: h2dust = 1.87e-26_wp
@@ -159,9 +166,11 @@ public
      !--- MoCHII: the packet's own label, set at emission in main.f90.
      !--- id is the GLOBAL launch index (counting from 1) within its stream,
      !--- and istream says which loop emitted it, using the same numbering as
-     !--- qmc_mod (QMC_STREAM_STELLAR = 1, QMC_STREAM_DIFFUSE = 2), so the
-     !--- pair (id, istream) is a unique packet label: the stellar and diffuse
-     !--- loops each run their own counter and would otherwise collide.
+     !--- qmc_mod (QMC_STREAM_STELLAR = 1, QMC_STREAM_DIFFUSE = 2, and
+     !--- QMC_STREAM_FUV = 3 for the FUV packets of par%fuv_sampling =
+     !--- 'separate'), so the pair (id, istream) is a unique packet label: the
+     !--- stellar, FUV and diffuse loops each run their own counter and would
+     !--- otherwise collide.
      !--- Nothing in the transport reads them yet.  They exist so that a
      !--- routine deep in a packet history can identify its own photon without
      !--- threading the loop index through every call signature -- the
@@ -198,6 +207,21 @@ public
      integer(kind=int64) :: nphotons   = 1e5
      integer             :: nprint     = 1e7
      real(kind=wp)       :: no_photons = 1e5
+     !--- FUV packets launched per transport pass when par%add_fuv and
+     !--- par%fuv_sampling = 'separate' (below); nphotons_fuv is its 64-bit
+     !--- copy, as nphotons is of no_photons.  Default when the input leaves
+     !--- it out: no_photons/4, so the FUV extension costs a quarter of the
+     !--- ionizing launch whatever the source's FUV share is -- or no_photons
+     !--- when no source has ionizing luminosity (an FUV-only field), where
+     !--- the FUV packets are all the run has (resolved in ion_band_mod once
+     !--- the band luminosities are known).  With launch_sequence =
+     !--- 'sobol' a power of 2 is preferable, as for no_photons: the FUV
+     !--- packets are a Sobol prefix of their own stream, balanced at every
+     !--- power of 2.
+     !--- (2.5e4 is the default no_photons/4; setup replaces it by that rule
+     !--- whenever the input leaves the item out.)
+     real(kind=wp)       :: no_photons_fuv = 2.5e4_wp
+     integer(kind=int64) :: nphotons_fuv   = 25000_int64
      real(kind=wp)       :: no_print   = 1e7
      integer       :: iseed        = 0
      !--- photon launch sequence: 'sobol' (default since 2026-09-25; the
@@ -301,7 +325,7 @@ public
      !--- luminosities come from the file integral directly (rescaled only when
      !--- the scale par%luminosity / src_lum(i) / ext_intensity is set), while
      !--- 'shape_ev' keeps the legacy renormalize-to-scale behavior.
-     !--- 'shape_ev' = an arbitrary-scaled per-eV density on an E [eV] grid; for a
+     !--- 'shape_ev' = an arbitrary-scaled density per eV on an E [eV] grid; for a
      !--- shape tabulated in wavelength or frequency, use the matching per_* type
      !--- and set the scale parameter (the file is then rescaled to it), so the
      !--- E^2 Jacobian is applied by the type conversion.  The eV in the name
@@ -320,7 +344,7 @@ public
      !--- (Lambert) field, with its own source strength.  The horizontal-face
      !--- flux F_z (= mu*F_n for a beam, mu=cos theta; = pi*I for isotropic) is
      !--- the sole normalization: L = F_z * A_zface sets the packet weight and
-     !--- every per-volume result is independent of the tile area.  The spectrum
+     !--- every result per unit volume is independent of the tile area.  The spectrum
      !--- is the global one (par%tstar / par%ion_spectrum).
      character(len=8)   :: slab_faces    = 'top'    ! 'top' | 'bottom' | 'both'
      character(len=16)  :: slab_top_mode = 'beam'   ! 'beam' | 'isotropic'
@@ -469,7 +493,7 @@ public
      !--- luminosity.  An H II region is optically thin to its own infrared
      !--- (tau_IR ~ 1e-3), so successive passes change the total by the
      !--- reabsorbed fraction f, then f^2: two passes reach ~1e-6 there.
-     !--- Optically thick models need more, which the reported per-pass change
+     !--- Optically thick models need more, which the change reported for each pass
      !--- measures.
      integer            :: dust_niter       = 2
      real(kind=wp)      :: dust_no_photons  = 1.0e6_wp
@@ -605,10 +629,50 @@ public
      !--- meaning as the [eion_min, eion_max] luminosity; the FUV part is
      !--- added on top from the same source spectrum.  H/He cross sections
      !--- vanish below threshold, so the FUV bins are absorbed by dust and
-     !--- (with ion_metal_abs) low-threshold metal stages only.
+     !--- (with ion_metal_abs) low-threshold metal stages only; the He I 2^3S
+     !--- photoionization rate Phi_3 (threshold 4.78 eV) is scored from them
+     !--- too.
+     !--- Defaults that depend on other items (setup.f90::
+     !--- read_parameters_with_implicit_defaults), applied only to an item the
+     !--- input leaves out:
+     !---   add_fuv   .true. when the 2^3S population is used
+     !---             (hei_metastable or hei_metastable_coupling), else .false.
+     !---             Without it Phi_3 misses 4.78-13.6 eV, which for a 40 kK
+     !---             star is ~10x the part above 13.6 eV that it counts;
+     !---   efuv_min  4.78 eV when the 2^3S population is used -- the
+     !---             threshold of sigma_3 as the code evaluates it (SIGMA3A in
+     !---             data/atomic/hei_metastable.txt; the NIST ionization
+     !---             energy of 2^3S, IP(He) - E(2^3S), is 4.7677 eV) -- else
+     !---             6.0 eV.
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
+     !--- How the source packets are shared between the two parts of the band
+     !--- when add_fuv is on:
+     !---   'separate'      (default) two strata with their own packet counts:
+     !---                   no_photons packets drawn from each source spectrum
+     !---                   restricted to [eion_min, eion_max] (the conditional
+     !---                   CDF) and no_photons_fuv drawn from [efuv_min,
+     !---                   eion_min).  A packet of either stratum carries
+     !---                   L_stratum / N_stratum, so each part of the band gets
+     !---                   exactly its luminosity.  The source components are
+     !---                   selected within a stratum by their luminosity IN
+     !---                   THAT stratum: a component with none there (a
+     !---                   spectrum that starts above eion_min, in the FUV
+     !---                   stratum) launches no packet in it, and a stratum
+     !---                   with no luminosity at all launches nothing.  (An
+     !---                   ISRF preset stops at the H I edge, PRESET_EMAX =
+     !---                   eth_HI in ion_band_mod, so a preset-only run has
+     !---                   no ionizing luminosity and launches only FUV
+     !---                   packets, no_photons of them by default.)
+     !---   'proportional'  one CDF over [efuv_min, eion_max] and no_photons
+     !---                   packets in all: each part gets packets in proportion
+     !---                   to its luminosity.  The ionizing share is 45% for a
+     !---                   40 kK blackbody from 4.78 eV and 6% for 20 kK, so the
+     !---                   ionizing solution runs on a fraction of no_photons.
+     !---                   Kept so runs made with it reproduce bit for bit.
+     !--- Without add_fuv the item has no effect.
+     character(len=16)  :: fuv_sampling = 'separate'
      !--- Align diagnostic ionizing-energy bin edges to thresholds, so no bin
      !--- straddles an ionization edge.  This affects the jt_ion/J_nu tally
      !--- resolution only; the transported energies are continuous.  Default ON.
@@ -671,24 +735,42 @@ public
      logical            :: grain_pe     = .false.
      real(kind=wp)      :: pe_scale     = 1.0_wp
      !--- He I EXCITED-level recombination radiation as a fourth diffuse
-     !--- channel (needs diffuse_field): every case-B He II recombination
-     !--- reaches 1^1S through one n = 2 term whose decay photon can ionize
-     !--- H.  Branch fractions from one consistent set of alpha_eff(T)
+     !--- channel (needs recombination_continuum = 'transported'): every
+     !--- case-B He II recombination reaches 1^1S through one n = 2 term
+     !--- whose decay photon can ionize H.  Branch fractions from one consistent set of alpha_eff(T)
      !--- (hei_cascade_mod: 2^3S 19.82 eV, 2^1P 584 A = 21.22 eV, 2^1S
      !--- two-photon), the 2^1S energies from the Drake et al. (1969) shape
      !--- (hei_twophoton_mod), and the trapped 584 A photon split between
-     !--- photoionizing H and collisional conversion to 2^1S.
+     !--- photoionizing H and conversion to 2^1S (the 2.06 micron decay of
+     !--- 2^1P that ends the trapped photon's walk).
+     !--- Left out of the input it is on when the continuum is
+     !--- 'transported' (since 2026-09-25;
+     !--- setup.f90::read_parameters_with_implicit_defaults): nothing is
+     !--- absorbed on the spot then, so without this channel the
+     !--- excited-cascade photons would simply be lost.
      logical            :: hei_diffuse  = .false.
      !--- He II EXCITED-level recombination radiation as a fifth diffuse
-     !--- channel (needs diffuse_field): what a He III case-B recombination
-     !--- radiates on its way down through He II.  Unlike the He I cascade
+     !--- channel: what a He III recombination radiates on its way down
+     !--- through He II, in the case of the Lyman lines.  With
+     !--- recombination_continuum = 'transported' it joins the other four
+     !--- channels; with 'on_the_spot' it is transported alone and the
+     !--- on-the-spot He II photons keep only the ground captures, for a
+     !--- He III zone optically thin at 40.8 eV (heii_cascade_mod::
+     !--- heii_cascade_transported); with 'escaping' it has no effect.
+     !--- Unlike the He I cascade
      !--- this is not a small correction -- the He II n = 2 threshold at
      !--- 13.604 eV sits just above the hydrogen edge, so the whole Balmer
      !--- continuum ionizes H, and the 2^2S pair spans 40.813 eV.  Three
      !--- paths (heii_cascade_mod): free-bound into n >= 2 (7.5-10% of the
      !--- channel), 2^2P Ly-alpha at 40.813 eV (64-70%), and the 2^2S
-     !--- two-photon continuum (22-26%).  Matters only where He III exists,
-     !--- so it is the hard-spectrum (PN/AGN) case that turns it on.
+     !--- two-photon continuum (22-26%).  Matters only where He III exists.
+     !--- Left out of the input it is on when the continuum is
+     !--- 'transported', as hei_diffuse is, and off otherwise (so the
+     !--- on-the-spot mode absorbs the cascade in place unless the input
+     !--- sets it), provided the band reaches the
+     !--- 40.813 eV He II Ly-alpha
+     !--- (par%eion_max; a band that stops below it cannot make He III, and
+     !--- the channel is then left off with a note).
      logical            :: heii_diffuse = .false.
      !--- free-free Gaunt factors from the van Hoof et al. (2014) table
      !--- (data/gauntff_vh14.dat) instead of the ported Hummer (1988)
@@ -725,7 +807,7 @@ public
      !--- the cube).
      logical            :: peel_bins    = .false.
      !--- car-grid walk: 'dda' (default) = dedicated incremental
-     !--- Amanatides-Woo walks (per-ray tMax/tDelta, no cell-geometry
+     !--- Amanatides-Woo walks (tMax/tDelta for each ray, no cell-geometry
      !--- reads in the inner loop — the natural, fastest car traversal);
      !--- 'amr' = the octree walks with integer index arithmetic
      !--- replacing the neighbor table, a verification mode that is
@@ -738,8 +820,10 @@ public
      !--- measures, d = sum V|dx_HII| / sum V x_HII and the same for
      !--- He0-He+ (and He+-He2+ where He2+ is >= 1% of ionized He), each
      !--- required to have its DRIFT STILL TO COME d rho/(1-rho) below
-     !--- gas_tol, rho the decay ratio of the last steps, or to sit on its
-     !--- Monte Carlo floor below gas_tol (fixed_point_distance_mod), plus
+     !--- gas_tol, rho the decay ratio fitted over the last 8 steps, or to
+     !--- sit on its Monte Carlo floor below gas_tol with no net change of
+     !--- the ionized volume the window can resolve
+     !--- (fixed_point_distance_mod), plus
      !---   sum V ne|dTe| / sum V ne Te         < gas_tol_te  (a step test).
      !--- Until 2026-09-25 'vol' tested the x_HII step alone, which stopped
      !--- the HII40 benchmark 21 iterations early with its He I front
@@ -754,6 +838,15 @@ public
      !--- with wl_* wavelength arrays, plus the state needed for maps
      !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HeI/HeII, x_<el>_stages).
      logical            :: emis_output  = .false.
+     !--- write the ionizing-band mean intensity J_nu(nu, leaf) into
+     !--- '<base>_rates' (dataset J_nu).  The per-bin tally behind it,
+     !--- jt_ion (nnu_band x nleaf values on EVERY rank), is kept only when
+     !--- something needs it: this output, or the SEDust emission
+     !--- (ion_add_dust with dust_sed), whose leaf spectrum reads it.  The
+     !--- photoionization and heating rates never use it (they come from the
+     !--- energy-integrated path estimators of ion_score_mod).  Off by
+     !--- default since 2026-09-26; before, the tally was always kept.
+     logical            :: jnu_output   = .false.
      !--- optional collisional H I Balmer component (Halpha/Hbeta/Hgamma):
      !--- solve a 25-level H I atom with collisional excitation from the
      !--- ground level and write the non-recombination line luminosities as
@@ -761,14 +854,28 @@ public
      !--- hot-cell bias where n_HI and free electrons coexist).  Off by
      !--- default -> no change to the SH95 recombination H lines.
      logical            :: h_coll_effects = .false.
-     !--- He I 2^3S (triplet metastable) diagnostic: on the converged state,
-     !--- solve the OH18 (Oklopcic & Hirata 2018) closed-form 2^3S balance
-     !--- leaf by leaf and write '<base>_heimeta' (n_2s3, Phi_3, n_e, T_e).
-     !--- Phi_3 (2^3S photoionization, threshold 4.78 eV) uses the full band
-     !--- tally; set add_fuv with efuv_min=4.78 to capture the soft-UV part.
-     !--- No feedback into the ionization/thermal balance (n_3 is a ~1e-7
-     !--- trace of He).  Off by default.
+     !--- He I 2^3S (triplet metastable) output: on the converged state,
+     !--- write the 2^3S population of hei_metastable_mod leaf by leaf to
+     !--- '<base>_heimeta' (n_2s3, Phi_3, alpha_3, Gamma_3, n_e, T_e).  Phi_3 (2^3S
+     !--- photoionization, threshold 4.78 eV) uses the transported band;
+     !--- setting either this or hei_metastable_coupling turns add_fuv on
+     !--- from efuv_min = 4.78 eV unless the input sets those two itself.  Off
+     !--- by default.
      logical            :: hei_metastable = .false.
+     !--- He I 2^3S population coupled into the ionization balance, the
+     !--- thermal balance and the He I diffuse channel (hei_metastable_mod).
+     !--- The 2^3S state holds ~1e-7 of the helium but is where every
+     !--- triplet recombination ends: photoionization (Phi_3) and electron-
+     !--- impact ionization (C_3, Black 1981) of it return He to He+, undoing
+     !--- that share of the recombinations; Penning + associative ionization
+     !--- by H0 (Garcia Munoz 2025) ionizes hydrogen; the electron-impact
+     !--- transfers (Bray et al. 2000 collision strengths) cool or heat the
+     !--- gas with a closed energy ledger; and in the diffuse field the 19.82
+     !--- eV photons are n_3 A_31, with the collisional transfers to 2^1S /
+     !--- 2^1P feeding the two-photon and 584 A branches.  .false. drops all
+     !--- of it and reproduces the earlier solve bit for bit (the output
+     !--- diagnostic par%hei_metastable uses the same population either way).
+     logical            :: hei_metastable_coupling = .true.
      !--- start the gas iteration from a previous run's <base>_rates file
      !--- (HDF5 or FITS): x_HI, x_HeI, x_HeII, T_e, n_e and the metal
      !--- photoionization rates, leaf by leaf, matched by position so the
@@ -833,26 +940,51 @@ public
      real(kind=wp)      :: gas_tol      = 1.0e-3_wp
      real(kind=wp)      :: te_fixed     = 1.0e4_wp
      real(kind=wp)      :: ion_relax    = 1.0_wp
-     character(len=1)   :: case_ab      = 'B'
-     !--- case for the H I / He II recombination-LINE emissivities.  This is
-     !--- set by the optical depth of the Lyman LINES, which is a different
-     !--- physical question from par%case_ab: that one selects how the
-     !--- ionizing CONTINUUM is treated (on-the-spot, or an explicit diffuse
-     !--- field with alpha_A).  A nebula whose diffuse Lyman continuum is
-     !--- transported still has optically thick Lyman lines, so its Balmer
-     !--- emissivities are case B; only a genuinely Lyman-line-thin medium is
-     !--- case A.  Default 'B'; 'A' selects the case-A SH95 tables; 'follow'
-     !--- ties the line case to par%case_ab (the historical behavior).
-     character(len=8)   :: line_case    = 'B'
+     !--- what becomes of the ground-state recombination photons (the H I,
+     !--- He I and He II ground continua, which can ionize):
+     !---   'on_the_spot'  absorbed where they are made, the
+     !---       Baker & Menzel case B for the continuum: the balance uses
+     !---       alpha_B and no packets are emitted (the He I and He II
+     !---       photons that can ionize H are given to it by
+     !---       par%hei_on_the_spot and par%heii_on_the_spot);
+     !---   'transported' (default since 2026-09-26)  emitted as
+     !---       diffuse-field packets from every leaf and followed through the
+     !---       grid (diffuse_mod); the balance uses alpha_A, the capture to
+     !---       the ground state being balanced by wherever its photon is
+     !---       absorbed; the He I and He III excited-cascade channels
+     !---       (hei_diffuse, heii_diffuse) follow it when the input leaves
+     !---       them out;
+     !---   'escaping'  lost from the nebula (optically thin continuum, case
+     !---       A without transport); alpha_A and no packets.
+     !--- (Replaces par%case_ab and par%diffuse_field, 2026-09-25: B/F was
+     !--- 'on_the_spot', A/T 'transported', A/F 'escaping', and B/T was
+     !--- the contradiction the code used to overrule.)
+     !--- The default was 'on_the_spot' until 2026-09-26; the tests/ and
+     !--- results/ inputs that relied on it pin it.
+     character(len=16)  :: recombination_continuum = 'transported'
+     !--- what becomes of the Lyman-LINE photons (n >= 3 -> 1) of H I and
+     !--- He II, which sets the recombination-line emissivities (SH95
+     !--- tables): 'on_the_spot' (default) = absorbed by the ground state
+     !--- where they are made and re-emitted as Balmer lines and Ly-alpha,
+     !--- Baker & Menzel case B -- the photon is converted, not turned into
+     !--- heat; 'escaping' = optically thin Lyman lines, case A.  A separate
+     !--- question from the continuum: a nebula whose diffuse continuum is
+     !--- transported still has optically thick Lyman lines.  (Replaces
+     !--- par%line_case, 2026-09-25: 'B' / 'A'; 'follow' is gone.)
+     character(len=16)  :: lyman_lines  = 'on_the_spot'
      !--- collisional ionization: 'voronov' (default, Voronov 1997) or
      !--- 'dere_hybrid' (Voronov scaled by the constant Dere 2007/Voronov
      !--- ratio per stage, Cloudy c23.01 DereRatio).
      character(len=16)  :: ci_model     = 'voronov'
-     !--- H/He recombination: 'badnell_milne' (default) = Badnell 2023 RR
-     !--- (+DR for He II) total alpha_A, n=1 ground-level alpha_1 from the Milne
-     !--- relation on the transport photoionization cross sections, case B =
-     !--- alpha_A - alpha_1; 'hui_gnedin' = Hui & Gnedin 1997 case-A/B fits.
-     character(len=16)  :: recomb_model = 'badnell_milne'
+     !--- H/He recombination: 'detailed_balance' (default) = the n=1
+     !--- ground-level alpha_1 from the Milne relation (detailed balance) on
+     !--- the transport photoionization cross sections for all three ions;
+     !--- He I case B = Badnell 2023 RR+DR alpha_A - alpha_1, H I and He II
+     !--- case B from the nl-resolved Storey & Hummer cascade
+     !--- (hydrogenic_recombination_mod), case A = alpha_B + alpha_1;
+     !--- 'hui_gnedin' = Hui & Gnedin 1997 case-A/B fits.  Renamed from
+     !--- 'badnell_milne' on 2026-09-26; the old name is refused.
+     character(len=16)  :: recomb_model = 'detailed_balance'
      !--- line cooling: 'local_ne' (default) = the Tier-1 line-cooling fits
      !--- suppressed by the level populations at the leaf electron density via a
      !--- precomputed (T, n_e) table built at setup from the n-level atom files
@@ -861,6 +993,17 @@ public
      !--- Tier-1 fits used directly (the n_e -> 0 statistical-equilibrium limit,
      !--- retained to reproduce the earlier gates).  As n_e -> 0 the two coincide.
      character(len=16)  :: cooling_model = 'local_ne'
+     !--- quenching of the H I two-photon continuum by collisional 2s -> 2p
+     !--- transfer, which turns the decay into Ly-alpha.  'colliders' (default)
+     !--- = A_2s/(A_2s + n_e q_e + n_p q_p + n(He+) q_He+ + n(He2+) q_He2+), each
+     !--- partner with its own Pengelly & Seaton (1964) rate normalized to
+     !--- Osterbrock & Ferland (2006) Table 4.10 (data/atomic/h_2s_2p_mixing.txt)
+     !--- and A_2s = 8.2246 s^-1 (Drake 1986); protons do 8.3 times what
+     !--- electrons do at 1e4 K.  'lumped_ne' = the MOCASSIN form, one
+     !--- coefficient (the proton + electron sum) times n_e with A = 8.23,
+     !--- which over-suppresses where the electrons do not come from hydrogen
+     !--- (retained to reproduce the earlier gates).
+     character(len=16)  :: twophoton_quenching = 'colliders'
      !--- charge exchange with hydrogen, X^i + H^+ <-> X^(i+1) + H^0.  Each
      !--- reaction moves one unit of charge between a metal and hydrogen, so
      !--- both partners must see it.  'two_way' (default) puts hydrogen's
@@ -887,6 +1030,28 @@ public
      !--- overestimated wherever it meets atomic hydrogen.  .false. drops it
      !--- (reproduction of runs made before 2026-09-24 only).
      logical            :: helium_charge_exchange = .true.
+     !--- charge-exchange heating.  A charge-exchange reaction moves the
+     !--- electron between two binding energies; what the gas gains is the
+     !--- ionization-potential difference less the excitation of the product
+     !--- state that leaves as radiation (for radiative charge transfer
+     !--- the photon; see ion_balance_mod on the Coulomb energy that
+     !--- approximation leaves out), and an endothermic reaction
+     !--- takes its defect from the gas:
+     !---   dE = [IP(acceptor's product stage) - IP(donor)] - E_rad.
+     !--- .true. (default) adds, in the thermal balance (thermal_mod::net_rate),
+     !--- the sum over the carried reactions of rate x dE: the metal-H
+     !--- reactions under use_metals (species_mod::
+     !--- metal_charge_exchange_heating; the defects, product states and
+     !--- sources are the CXHEAT rows of data/atomic/element_*.txt, written by
+     !--- tools/fitting/make_element_data.py: Kingdon & Ferland 1996 and the
+     !--- electronic version of their tables distributed with Cloudy c25.00,
+     !--- Barragan et al. 2006, Zhao et al. 2005, Rutherford & Vroom 1972)
+     !--- and the He-H reactions under helium_charge_exchange
+     !--- (ion_balance_mod::helium_charge_exchange_heating; Zygelman et al.
+     !--- 1989).  A pair formed as one channel and its detailed-balance reverse
+     !--- carries opposite defects and deposits nothing when the two balance.
+     !--- .false. leaves the thermal balance exactly as before 2026-09-25.
+     logical            :: charge_exchange_heating = .true.
      !--- thermal balance.  solve_te (default .true.) solves heating =
      !--- cooling by bisection on log T in [te_min, te_max] in every leaf,
      !--- with the ionization re-solved at each trial T; convergence
@@ -916,10 +1081,40 @@ public
      integer            :: refine_lmax  = 7
      real(kind=wp)      :: refine_eps   = 1.0e-2_wp
      real(kind=wp)      :: refine_dx    = 0.2_wp
-     !--- explicit diffuse ionizing field.  Ground-recombination
-     !--- packets are emitted from every leaf and transported; forces
-     !--- case A rates (case B double-counts the on-the-spot absorption).
-     logical            :: diffuse_field = .false.
+     !--- on-the-spot disposal of the He+ -> He0 recombination photons that
+     !--- can ionize hydrogen (hei_recombination_photons_mod).  With
+     !--- par%recombination_continuum = 'on_the_spot' the excited cascade --
+     !--- 19.82 eV, 584 A with the p_584 split, the 2^1S two-photon
+     !--- continuum -- is absorbed by H0 where it is made, and of the ground
+     !--- captures the share y that H0 absorbs (by opacity, over the Milne
+     !--- spectrum) ionizes H instead of He0; each excited photon heats by
+     !--- E - 13.598 eV, each ground capture by IP(He) - IP(H) = 10.989 eV
+     !--- (the capture's kinetic energy returns with the photon).
+     !--- .true. (default since 2026-09-25); .false. keeps
+     !--- the earlier case B, in which every He recombination photon was
+     !--- given back to helium and none ionized hydrogen.  No effect with
+     !--- the continuum 'transported' or 'escaping'.
+     logical            :: hei_on_the_spot = .true.
+     !--- on-the-spot disposal of the He2+ -> He+ recombination photons
+     !--- (heii_recombination_photons_mod; Osterbrock & Ferland 2006,
+     !--- sec. 2.5).  With par%recombination_continuum = 'on_the_spot':
+     !--- the ground captures (E >= 54.416 eV, alpha_1 of He III) are shared
+     !--- by opacity among He+, He0 and H0 over the Milne spectrum; He+'s
+     !--- share re-ionizes it (case B), the shares y_H and y_He of H0 and He0
+     !--- ionize them, so He III recombines at alpha_B + (y_H + y_He) alpha_1.
+     !--- The excited cascade through He II -- free-bound into n >= 2,
+     !--- 40.813 eV Ly-alpha, the 2^2S pair, the three paths
+     !--- par%heii_diffuse transports, counted from the same branch
+     !--- luminosities (heii_cascade_mod) -- ionizes H0 below 24.587 eV and is
+     !--- shared by H0 and He0 by opacity above it.  Each absorption heats by
+     !--- E - IP(absorber) (IP(He+) - IP(absorber) for a ground capture).
+     !--- Where He2+ exists this is the largest diffuse source of hydrogen
+     !--- ionization (Osterbrock & Ferland Table 2.6: ~1.2 photons per H
+     !--- recombination at n(He2+)/n(H+) = 0.15).  .true. (default);
+     !--- .false. keeps the earlier case B, in which He2+ recombined at
+     !--- alpha_B and its photons ionized nothing.  No effect with the
+     !--- continuum 'transported' or 'escaping'.
+     logical            :: heii_on_the_spot = .true.
      !--- ground-recombination continuum spectrum.  'milne' samples the
      !--- detailed-balance free-bound spectrum with the transport cross
      !--- section (milne_recomb_spectrum_mod) and is the physical model;
@@ -933,7 +1128,7 @@ public
      !--- S 9.0e-6 they relied on), so an input names the metals it wants.
      !--- Left out of the input, use_metals is .true. if any abund_<El> is
      !--- > 0 and .false. otherwise, and metal_ne and metal_heat follow it
-     !--- (setup.f90::read_parameters_with_metal_defaults); a value the
+     !--- (setup.f90::read_parameters_with_implicit_defaults); a value the
      !--- input does set is kept.  use_metals is the master switch: when
      !--- .false. species_setup is never called, so the abund_<El> values
      !--- below are not read at all -- no metal ionization, opacity,

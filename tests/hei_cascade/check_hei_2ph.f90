@@ -72,7 +72,7 @@ program check_hei_2ph
   mean_n = qe/qn                 ! number-weighted mean energy
   mean_e = q2/qe                 ! energy-weighted mean energy
 
-  !--- 5. reported per-decay quantities
+  !--- 5. reported quantities of one decay
   write(*,'(/,a)') ' per 2^1S decay:'
   write(*,'(a,f10.6,a,f10.6)') '   photons  module ', &
      hei_2ph_photons_per_decay(), '   quadrature ', 2.0_wp*qn/tot

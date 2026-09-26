@@ -2,7 +2,7 @@
 #--- Gate: par%restart_file (previous_state_mod).  A short HII20 run writes a
 #--- state; a restart on the same grid with gas_niter = 0 must return it bit
 #--- for bit, and a restart on a 32^3 grid must give every gas leaf the values
-#--- of the previous leaf containing its centre (check_restart.py).
+#--- of the previous leaf containing its center (check_restart.py).
 #--- Usage: tests/restart/run_check.sh [nranks]   (default 8)
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"

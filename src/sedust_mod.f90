@@ -46,7 +46,7 @@ module sedust_mod
   integer                    :: ipah_chan = 0
   !--- scratch of one leaf's solve, allocated once: the band-bin wavelengths
   !--- and J_lambda, the same field mapped onto the SEDust grid, the emitted
-  !--- lambda I_lambda and its per-channel split.
+  !--- lambda I_lambda and its split into channels.
   real(kind=wp), allocatable :: lam_b(:), Jlam_b(:), Jsed(:), lamI(:)
   real(kind=wp), allocatable :: lamI_ch(:,:)
   real(kind=wp)              :: dlam1 = 0.0_wp

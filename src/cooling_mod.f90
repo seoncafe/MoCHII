@@ -264,7 +264,7 @@ implicit none
     real(kind=wp) :: nHI, nHII, nHeI, nHeII_n, nHeIII, xHeIII
     logical :: caseA
 
-    caseA  = trim(par%case_ab) == 'A'
+    caseA  = trim(par%recombination_continuum) /= 'on_the_spot'
     xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
     nHI    = nH*xHI
     nHII   = nH*(1.0_wp - xHI)

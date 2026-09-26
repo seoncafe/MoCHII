@@ -48,7 +48,7 @@ program check_kext_table
 !   (c) The two integrals the transport actually uses.  s_abs(E) = C_abs/C_ext
 !       (lambda_ref) is the band absorption MoCHII carries per unit reference
 !       extinction, and C_ext(lambda_ref = 0.55 um) is the normalization every
-!       leaf's grey rhokap is built on.  TOL_SABS_BAND, and TOL_KEXT_NODE for
+!       leaf's gray rhokap is built on.  TOL_SABS_BAND, and TOL_KEXT_NODE for
 !       C_ext(lambda_ref).
 !
 ! The cases are the four models MoCHII can build, each with the arguments

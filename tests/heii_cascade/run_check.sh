@@ -13,5 +13,6 @@ $FC -cpp -DMPI -ipo -O2 -module src -Isrc \
     tests/heii_cascade/check_heii_cascade.f90 \
     src/define.o src/utility.o src/photo_xsec.o src/recomb_mod.o \
     src/gaunt.o src/gaunt_vh14_mod.o src/recomb_continuum_mod.o \
-    src/hydrogenic_twophoton_mod.o src/heii_cascade_mod.o
+    src/hydrogenic_twophoton_mod.o src/hydrogenic_recombination_mod.o \
+    src/heii_cascade_mod.o
 cd tests/heii_cascade && ./check_heii_cascade.x

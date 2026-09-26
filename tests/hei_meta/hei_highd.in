@@ -1,10 +1,12 @@
 &parameters
  ! MoCHII He I 2^3S metastable gate -- HIGH density (collisional plateau direction).
- ! Uniform nH=100 sphere, R=4 pc, Q_H=1e49 (tstar 4e4 K), case B, Te=1e4 K
- ! fixed.  hei_metastable writes hei_lowd_heimeta.h5 (n_2s3, Phi_3, n_e, T_e);
+ ! Uniform nH=1e4 sphere, R=0.6 pc, Q_H=1.06e50 (tstar 4e4 K, L = 3.18e39 erg/s), case B, Te=1e4 K
+ ! fixed.  hei_metastable writes hei_highd_heimeta.h5 (n_2s3, Phi_3, n_e, T_e);
  ! the H/He ionization structure comes from the standard band solve.  In the
- ! ionized core n_e ~ n_H(1 + 2 y_He), n_HeII > 0, so n_e >> n_crit(~3900) so n_3/n_HeII moves toward the
- ! collisional plateau alpha_3/(q_31a+q_31b).  No add_fuv -> Phi_3 = 0.
+ ! ionized core n_e ~ n_H(1 + y_He) is above n_crit = 3502 cm^-3 (1e4 K), so
+ ! n_3/n_HeII moves toward the collisional plateau
+ ! alpha_3/(q_31g+q_31a+q_31b+q_31s+C_3).  No add_fuv: Phi_3 comes from the
+ ! band above 13.6 eV only.
 
  par%no_photons    = 4.0e6
  par%no_print      = 4.0e6
@@ -40,7 +42,7 @@
  par%te_fixed      = 1.0e4
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0
- par%case_ab       = 'B'
+ par%recombination_continuum = 'on_the_spot'
 
  par%atomic_dir      = '../../data/atomic'
  par%hei_metastable  = .true.
@@ -49,4 +51,11 @@
  par%file_format     = 'hdf5'
  par%out_file        = 'hei_highd.h5'
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%add_fuv = .false.   ! pinned: this input predates add_fuv following the 2^3S population
+ par%jnu_output = .true.   ! pinned: the check reads J_nu, written only on request since 2026-09-26
 /

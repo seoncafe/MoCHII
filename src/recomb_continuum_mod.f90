@@ -7,7 +7,9 @@ module recomb_continuum_mod
 !  - BELOW each species' first ionization edge: the tabulated coefficients
 !    data/gamma{HI,HeI,HeII}.dat (21 T x paired-edge nu points; log-log T
 !    interpolation, linear-in-nu interpolation of log gamma between edge
-!    pairs, exactly as MOCASSIN fb_ff).
+!    pairs, as MOCASSIN fb_ff), plus the ranges the tables leave out (the
+!    gaps around each edge, the stretch up to the ground edge, and below the
+!    first node), which returned 0 until 2026-09-26; see gamma_tab.
 !    VERIFIED (2026-07-12, tools check vs a hydrogenic Kramers Milne sum):
 !    the tables are free-bound PLUS free-free combined — do not add ff again
 !    inside the table range.  The Ercolano & Storey (2006) machine-readable
@@ -27,7 +29,7 @@ module recomb_continuum_mod
   private
 
   public :: recomb_continuum_setup, recomb_continuum_is_ready
-  public :: gamma_tab, gamma_milne, gamma_ff
+  public :: gamma_tab, gamma_milne, gamma_ff, gamma_tab_nodes
   public :: RYD_ERG, HCRYD_K, MILNE_C, NU_HI, NU_HEI, NU_HEII
 
   interface
@@ -92,29 +94,93 @@ contains
   end subroutine recomb_continuum_setup
 
   !=========================================================================
-  ! Tabulated fb+ff coefficient for species k at (nu, T); 0 outside the
-  ! table nu range.  Linear log-gamma interpolation between edge pairs,
-  ! log-log linear in T (clamped) — the fb_ff scheme.
+  ! fb+ff coefficient of recombining species k (1 = H+, 2 = He+, 3 = He2+)
+  ! at (nu, T) BELOW its ground edge (0 at and above it, where the caller
+  ! takes the Milne ground continuum plus free-free).  Inside the table:
+  ! linear log-gamma interpolation within an edge pair, log-log linear in T
+  ! (clamped) -- the fb_ff scheme.  Three ranges the table does not cover,
+  ! all of which used to return 0, i.e. no emission at all:
+  !  - the gaps between pairs.  Each pair runs from just above one edge to
+  !    just below the next, so the nodes (rounded to 1e-4 Ryd) leave a gap of
+  !    about 2e-4 Ryd with the edge inside it: 10 in the H+ table, 7 in He+,
+  !    1 in He2+, and five of the written-continuum frequencies fell in one.
+  !    The edge is placed at the gap's midpoint, within 1e-4 Ryd of the true
+  !    edge (the precision of the nodes themselves; for H at 1/121 Ryd it is
+  !    3.5e-5 Ryd off), and each side extends its own pair.
+  !  - from the last node to the ground edge: the last pair is extended
+  !    (H+ 0.9994-0.99947, He+ 1.7999-1.8080, He2+ 3.9996-4.0011 Ryd).
+  !  - below the first node.  He+ (table from 0.0911 Ryd, 1.0 micron): the
+  !    levels whose edges lie there (n >= 4) are nearly hydrogenic, and a
+  !    He+ capture into them weighs g_n/g_ion = 4n^2/2, the same 2n^2 as for
+  !    H+, so the coefficient per ion is the H+ one; at the join the two
+  !    tables agree to 0.4% (1e4 K) and 2.2% (5000 K).  Below the H+ table
+  !    (0.0069 Ryd) and for He2+ below its table (0.0278 Ryd), free-free plus
+  !    the captures into every level whose edge lies below h nu, summed in
+  !    the Kramers approximation (bound-free Gaunt factor 1, the sum over n
+  !    as an integral): with n1 the lowest such level and chi_n1 its binding
+  !    energy, sum_{n >= n1} fb = [exp(chi_n1/kT) - 1] ff / g_ff
+  !    (high_level_capture).  Just below the table's first node, 1e4 K, it
+  !    is -0.3% (H+, 0.00689 against 0.0069 Ryd) and +3.6% (He2+, 0.02779
+  !    against 0.0278 Ryd) off the table; free-free alone would be -6.6% and
+  !    -30%.
   !=========================================================================
-  real(kind=wp) function gamma_tab(k, nu, T) result(g)
+  recursive real(kind=wp) function gamma_tab(k, nu, T) result(g)
     implicit none
     integer,       intent(in) :: k
     real(kind=wp), intent(in) :: nu, T
-    integer :: iT, i, ilo
-    real(kind=wp) :: w, lg1, lg2, lg
+    real(kind=wp), parameter :: NU_GROUND(3) = [NU_HI, NU_HEI, NU_HEII]
+    integer :: i, ilo, n
 
     g = 0.0_wp
-    if (nu < gtab(k)%nu(1) .or. nu >= gtab(k)%nu(gtab(k)%nnu)) return
-    !--- nu segment: pairs (2i-1, 2i) span the inter-edge intervals
-    ilo = 0
-    do i = 1, gtab(k)%nnu/2
-       if (nu >= gtab(k)%nu(2*i-1) .and. nu < gtab(k)%nu(2*i)) then
+    n = gtab(k)%nnu
+    if (nu >= NU_GROUND(k)) return
+    if (nu < gtab(k)%nu(1)) then
+       select case (k)
+       case (1)
+          g = high_level_capture(nu, T, 1)
+       case (2)
+          g = gamma_tab(1, nu, T)
+       case (3)
+          g = high_level_capture(nu, T, 2)
+       end select
+       return
+    end if
+    !--- the pair whose span, extended halfway across the gaps on either
+    !--- side (and to the ground edge above the last node), contains nu
+    ilo = n - 1
+    do i = 1, n/2 - 1
+       if (nu < 0.5_wp*(gtab(k)%nu(2*i) + gtab(k)%nu(2*i+1))) then
           ilo = 2*i - 1
           exit
        end if
     end do
-    if (ilo == 0) return
-    !--- T bracket (clamped)
+    g = pair_value(k, ilo, nu, T)
+  end function gamma_tab
+
+  !--- Free-free plus Kramers free-bound into all levels n >= n1 of a
+  !--- hydrogenic ion of charge Z, n1 the lowest level with Z^2/n^2 <= nu
+  !--- [Ryd]: sum_n (2 chi_n/(n kT)) exp(chi_n/kT) taken as an integral over
+  !--- u = chi_n/kT gives exp(chi_n1/kT) - 1 times the Kramers free-free,
+  !--- i.e. that factor over the free-free Gaunt factor times gamma_ff.
+  real(kind=wp) function high_level_capture(nu, T, Z) result(g)
+    real(kind=wp), intent(in) :: nu, T
+    integer,       intent(in) :: Z
+    real(kind=wp) :: ff, gff, chi1
+    integer :: n1
+    ff  = gamma_ff(nu, T, Z)
+    gff = ff/(6.8391e-38_wp*real(Z*Z,wp)*exp(-nu*HCRYD_K/T)/sqrt(T)*1.0e40_wp)
+    n1  = ceiling(real(Z,wp)/sqrt(nu) - 1.0e-9_wp)
+    chi1 = real(Z*Z,wp)/real(n1*n1,wp)
+    g = ff*(1.0_wp + (exp(chi1*HCRYD_K/T) - 1.0_wp)/gff)
+  end function high_level_capture
+
+  !--- log gamma linear in nu through the pair (ilo, ilo+1), log-log in T
+  !--- (clamped); used inside the pair and, extended, across a gap.
+  real(kind=wp) function pair_value(k, ilo, nu, T) result(g)
+    integer,       intent(in) :: k, ilo
+    real(kind=wp), intent(in) :: nu, T
+    integer :: iT
+    real(kind=wp) :: w, lg1, lg2, lg
     if (T <= gtab(k)%tk(1)) then
        iT = 1;  w = 0.0_wp
     else if (T >= gtab(k)%tk(gtab(k)%nT)) then
@@ -130,7 +196,22 @@ contains
     lg  = lg2 + (lg1 - lg2)*(gtab(k)%nu(ilo+1) - nu) &
           / (gtab(k)%nu(ilo+1) - gtab(k)%nu(ilo))
     g = 10.0_wp**lg
-  end function gamma_tab
+  end function pair_value
+
+  !--- The frequencies [Ryd] where gamma_tab of table k is not smooth: the
+  !--- table nodes and the edges gamma_tab places at the gap midpoints.  A
+  !--- quadrature of it must break there.
+  function gamma_tab_nodes(k) result(nu)
+    integer, intent(in) :: k
+    real(kind=wp), allocatable :: nu(:)
+    integer :: i, n
+    n = gtab(k)%nnu
+    allocate(nu(n + n/2 - 1))
+    nu(1:n) = gtab(k)%nu
+    do i = 1, n/2 - 1
+       nu(n+i) = 0.5_wp*(gtab(k)%nu(2*i) + gtab(k)%nu(2*i+1))
+    end do
+  end function gamma_tab_nodes
 
   !=========================================================================
   ! Milne free-bound to the ground level above the edge (fb_ff expression):

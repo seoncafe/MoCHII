@@ -32,7 +32,8 @@ infrared dust/PAH spectrum.
   continuum from the Drake, Victor & Dalgarno (1969) distribution that the
   nebular continuum already used.  The trapped He I 584 A resonance photon is
   not assumed to ionize hydrogen: it is split locally between hydrogen
-  absorption and collisional conversion `2^1P -> 2^1S`, which then decays as
+  absorption and conversion to `2^1S` (the 2.06 micron decay of `2^1P`),
+  which then decays as
   the two-photon continuum, with the escape-probability closure of Wood, Mathis
   & Ercolano (2004), and the nebular continuum uses the same split, so the
   transported packets and the written continuum describe one nebula.
@@ -152,7 +153,7 @@ mpirun -np 8 ./MoCHII.x input.in
 `par%sed_data_dir` is resolved automatically relative to the executable at run
 time, so dust emission works from any working directory without setting a
 path. Everything the dust model is made of resolves inside that one directory.
-`par%cext_dust`, the reference extinction every leaf's grey opacity is built
+`par%cext_dust`, the reference extinction every leaf's gray opacity is built
 on, is likewise resolved from the grains the run carries unless a run states
 one outright, so naming `par%dust_model` is the whole dust physics.
 
@@ -165,7 +166,7 @@ the ionizing band MoCHII transports.
 See `docs/MoCHII_UserGuide.pdf` for the input-parameter reference, output
 formats, and worked examples; `docs/MoCHII_physics.pdf` for the atomic
 data, algorithms, and validation results; `docs/MoCHII_fitting.pdf` for
-the CHIANTI fitting pipeline; `docs/MoCHII_cooling_analysis.pdf` for the
+the CHIANTI fitting procedure; `docs/MoCHII_cooling_analysis.pdf` for the
 line-cooling verification against other photoionization codes; and
 `docs/MoCHII_code_comparison.pdf` for the algorithmic and physical comparison
 with M^3, MAPPINGS V, ionize, CMacIonize, Torus, and MOCASSIN.
@@ -176,4 +177,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-09-25 16:46 KST
+Last updated: 2026-09-26 17:18 KST

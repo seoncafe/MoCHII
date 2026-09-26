@@ -12,7 +12,11 @@ module diffuse_mod
 ! and two EXCITED-level cascades, which the ground continua leave out and
 ! which are ionizing because the decay energies exceed 13.598 eV:
 !     He I  n=2 terms        : channel 4, par%hei_diffuse  (hei_cascade_mod)
-!     He III case-B cascade  : channel 5, par%heii_diffuse (heii_cascade_mod)
+!     He III cascade         : channel 5, par%heii_diffuse (heii_cascade_mod)
+! Channels 1-4 run with par%recombination_continuum = 'transported'.
+! Channel 5 runs with it too, and also alone with 'on_the_spot' when
+! par%heii_diffuse is set (heii_cascade_transported): the He III cascade
+! transported, every other recombination photon absorbed on the spot.
 ! with rates alpha_1 = alpha_A - alpha_B per ground channel.  The ground
 ! photon energies follow par%diffuse_energy_model: 'milne' (default) samples
 ! the Milne free-bound spectrum E^2 sigma_pi(E) exp[-(E-E_th)/kT] on the
@@ -22,8 +26,9 @@ module diffuse_mod
 ! Each iteration the emission table is rebuilt from the current state:
 ! L_ch(leaf) = n_e n_recomb alpha_1(T) <E_ch> V_cm3, with <E_ch> the mean
 ! of the same energy distribution (ground_mean_energy).
-! Packets carry the same Lpacket as stellar packets, so the diffuse packet
-! count is n_diff = L_diffuse / Lpacket (rounded); sampling: leaf CDF over
+! Packets carry the Lpacket of one ionizing source packet (the argument of
+! diffuse_build: ion_band_mod::ionizing_packet_luminosity), so the diffuse
+! packet count is n_diff = L_diffuse / Lpacket (rounded); sampling: leaf CDF over
 ! total leaf luminosity, then a channel CDF within the leaf.
 !---------------------------------------------------------------------------
   use define
@@ -35,26 +40,43 @@ module diffuse_mod
                                         milne_energy_per_recomb, milne_is_ready
   use hei_twophoton_mod, only : hei_2ph_sample_energy, &
                                hei_2ph_energy_per_decay
-  use hei_cascade_mod,   only : hei_branch_fractions, hei_584_ionizes_H
+  use hei_recombination_photons_mod, only : hei_excited_decays, &
+                                           hei_excited_decays_coupled, &
+                                           HEI_E3S, HEI_E1P
   use heii_cascade_mod,  only : heii_branch_luminosity, heii_fb_sample_energy, &
-                                heii_2q_sample_energy, E_HEII_LYA
+                                heii_2q_sample_energy, heii_lyman_sample_energy, &
+                                heii_cascade_transported
   implicit none
   private
 
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
+  public :: hei_branch_energies, hei_branch_energies_coupled
 
   integer, parameter :: NCH = 5                 ! diffuse emission channels
   real(kind=wp), allocatable :: dif_cdf(:)      ! leaf CDF (total energy)
   real(kind=wp), allocatable :: dif_ch(:,:)     ! (NCH, nleaf) channel luminosities
+  !--- channel-4 branch weights (2^3S, 2^1P, 2^1S) of each leaf when the
+  !--- 2^3S population is coupled (par%hei_metastable_coupling): they depend
+  !--- on n_3 and Phi_3, so the launchers read what diffuse_build computed
+  !--- instead of recomputing them.
+  real(kind=wp), allocatable :: dif_hei(:,:)    ! (3, nleaf) [eV cm^-3 s^-1]
   real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
+  !--- luminosity carried by one diffuse packet [erg/s]: the diffuse
+  !--- luminosity over the packet count diffuse_build set from the lpacket it
+  !--- was given, so the packets carry exactly diffuse_lum (before
+  !--- 2026-09-25 each carried lpacket itself, and the rounded count left the
+  !--- transported total off by up to lpacket/2, or dropped a field worth
+  !--- less than half a packet).
+  real(kind=wp) :: diffuse_packet_lum = 0.0_wp
   integer(kind=int64) :: diffuse_nphot = 0
 
   !--- He I excited channel (channel 4, par%hei_diffuse): the 2^3S decay is a
-  !--- single 19.82 eV photon and the 2^1P decay the 21.22 eV (584 A) line;
-  !--- the branch fractions come from hei_cascade_mod (Benjamin, Skillman &
-  !--- Smits 1999 with J. S. Mathis).
-  real(kind=wp), parameter :: HEI_E3S = 19.82_wp, HEI_E1P = 21.22_wp
+  !--- single 19.82 eV photon and the 2^1P decay the 21.22 eV (584 A) line
+  !--- (HEI_E3S, HEI_E1P); the exits of each recombination come from
+  !--- hei_recombination_photons_mod, which the case-B on-the-spot sources
+  !--- use too, with the branch fractions of hei_cascade_mod (Benjamin,
+  !--- Skillman & Smits 1999 with J. S. Mathis).
   !--- The in-band energy radiated per 2^1S decay now comes from the Drake
   !--- et al. (1969) shape (hei_twophoton_mod), not from a fixed 0.56 photons
   !--- times the mean of a flat spectrum.  The photon count was right to
@@ -69,9 +91,10 @@ contains
     real(kind=wp), intent(in) :: lpacket
     real(kind=wp) :: T, ne, nH, vol, kT_eV, a1
     real(kind=wp) :: be3s, be1p, be1s
-    real(kind=wp) :: lfb, llya, l2q
+    real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
     integer :: il, ic
+    logical :: all_channels
 
     if (allocated(dif_cdf)) then
        if (size(dif_cdf) /= gas_nleaf) deallocate(dif_cdf, dif_ch)
@@ -79,13 +102,22 @@ contains
     if (.not. allocated(dif_cdf)) then
        allocate(dif_cdf(gas_nleaf), dif_ch(NCH, gas_nleaf))
     end if
+    if (par%hei_diffuse .and. par%hei_metastable_coupling) then
+       if (allocated(dif_hei)) then
+          if (size(dif_hei, 2) /= gas_nleaf) deallocate(dif_hei)
+       end if
+       if (.not. allocated(dif_hei)) allocate(dif_hei(3, gas_nleaf))
+    end if
 
+    !--- the ground continua and the He I cascade are transported only with
+    !--- the transported continuum; with the on-the-spot one channel 5 may be
+    !--- transported alone (heii_cascade_transported)
+    all_channels = trim(par%recombination_continuum) == 'transported'
     do il = 1, gas_nleaf
        nH = gas_nH(il)
-       if (nH <= 0.0_wp) then
-          dif_ch(:,il) = 0.0_wp
-          cycle
-       end if
+       dif_ch(:,il) = 0.0_wp
+       if (allocated(dif_hei)) dif_hei(:,il) = 0.0_wp
+       if (nH <= 0.0_wp) cycle
        T  = gas_Te(il)
        ne = gas_ne(il)
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
@@ -95,31 +127,39 @@ contains
        nHeII_n = nH*par%abund_He*gas_xHeII(il)
        nHeIII  = nH*par%abund_He*xHeIII
        !--- channel energy luminosities [erg/s]
-       a1 = alphaA_HII(T)   - alphaB_HII(T)
-       dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(1, eth_HI, kT_eV, T)*ev2erg*vol
-       a1 = alphaA_HeII(T)  - alphaB_HeII(T)
-       dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(2, eth_HeI, kT_eV, T)*ev2erg*vol
-       a1 = alphaA_HeIII(T) - alphaB_HeIII(T)
-       dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(3, eth_HeII, kT_eV, T)*ev2erg*vol
-       !--- channel 4: He I EXCITED-level recombination radiation
-       !--- (par%hei_diffuse): all case-B He II recombinations cascade to
-       !--- n = 2 and decay with the hei_cascade_mod branch fractions; only
-       !--- the H-ionizing part carries band luminosity.
-       dif_ch(4,il) = 0.0_wp
-       if (par%hei_diffuse) then
-          a1 = alphaB_HeII(T)
-          call hei_branch_energies(T, gas_xHI(il), gas_xHeI(il), &
-                                   be3s, be1p, be1s)
-          dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
+       if (all_channels) then
+          a1 = alphaA_HII(T)   - alphaB_HII(T)
+          dif_ch(1,il) = ne*nHII   *a1*ground_mean_energy(1, eth_HI, kT_eV, T)*ev2erg*vol
+          a1 = alphaA_HeII(T)  - alphaB_HeII(T)
+          dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(2, eth_HeI, kT_eV, T)*ev2erg*vol
+          a1 = alphaA_HeIII(T) - alphaB_HeIII(T)
+          dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(3, eth_HeII, kT_eV, T)*ev2erg*vol
+          !--- channel 4: He I EXCITED-level recombination radiation
+          !--- (par%hei_diffuse): all case-B He II recombinations cascade to
+          !--- n = 2 and decay with the hei_cascade_mod branch fractions; only
+          !--- the H-ionizing part carries band luminosity.
+          if (par%hei_diffuse .and. par%hei_metastable_coupling) then
+             !--- with the 2^3S population coupled, the branch energies are
+             !--- per unit volume (hei_branch_energies_coupled)
+             call hei_branch_energies_coupled(il, T, ne, nH*gas_xHI(il), &
+                  nH*par%abund_He*gas_xHeI(il), nHeII_n, gas_xHI(il), &
+                  gas_xHeI(il), be3s, be1p, be1s)
+             dif_hei(:,il) = [be3s, be1p, be1s]
+             dif_ch(4,il) = vol*ev2erg*(be3s + be1p + be1s)
+          else if (par%hei_diffuse) then
+             a1 = alphaB_HeII(T)
+             call hei_branch_energies(T, gas_xHI(il), gas_xHeI(il), &
+                                      be3s, be1p, be1s)
+             dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
+          end if
        end if
-       !--- channel 5: He III case-B cascade through He II
-       !--- (par%heii_diffuse).  The free-bound term already carries its own
-       !--- coefficient [erg cm^3/s]; the two n = 2 exits are branches of
-       !--- alphaB_HeIII, which heii_branch_luminosity applies.
-       dif_ch(5,il) = 0.0_wp
-       if (par%heii_diffuse) then
-          call heii_branch_luminosity(T, lfb, llya, l2q)
-          dif_ch(5,il) = ne*nHeIII*vol*(lfb + llya + l2q)
+       !--- channel 5: He III cascade through He II (par%heii_diffuse), in
+       !--- the case of the Lyman lines.  The free-bound term already carries
+       !--- its own coefficient [erg cm^3/s]; the Lyman-line and 2^2S exits
+       !--- are branches of alphaB_HeIII, which heii_branch_luminosity applies.
+       if (heii_cascade_transported()) then
+          call heii_branch_luminosity(T, lfb, llyman, l2q)
+          dif_ch(5,il) = ne*nHeIII*vol*(lfb + llyman + l2q)
        end if
     end do
 
@@ -131,16 +171,18 @@ contains
     end do
     if (diffuse_lum > 0.0_wp) then
        dif_cdf = dif_cdf/diffuse_lum
-       diffuse_nphot = nint(diffuse_lum/lpacket, int64)
+       diffuse_nphot = max(1_int64, nint(diffuse_lum/lpacket, int64))
+       diffuse_packet_lum = diffuse_lum/real(diffuse_nphot, wp)
     else
        diffuse_nphot = 0
+       diffuse_packet_lum = lpacket
     end if
   end subroutine diffuse_build
 
   !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
-    use ion_band_mod, only : ion_Ltot, ion_bin_of
+    use ion_band_mod, only : ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(NCH), ub
@@ -192,8 +234,12 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), rand_number())
     else if (ch == 4) then
-       call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
-                                be3s, be1p, be1s)
+       if (par%hei_metastable_coupling) then
+          be3s = dif_hei(1,il);  be1p = dif_hei(2,il);  be1s = dif_hei(3,il)
+       else
+          call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
+                                   be3s, be1p, be1s)
+       end if
        ub = rand_number()*(be3s + be1p + be1s)
        if (ub <= be3s) then
           eph = HEI_E3S
@@ -219,7 +265,7 @@ contains
     photon%inu = ion_bin_of(eph)
 
     photon%wgt     = 1.0_wp
-    photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
+    photon%Lpacket = diffuse_packet_lum
     !--- the packet carries the energy the emission channel actually sampled;
     !--- inu is only the diagnostic bin it lands in.
     photon%energy_eV = eph
@@ -249,7 +295,7 @@ contains
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
-    use ion_band_mod, only : ion_Ltot, ion_bin_of
+    use ion_band_mod, only : ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
@@ -300,8 +346,12 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), u(8))
     else if (ch == 4) then
-       call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
-                                be3s, be1p, be1s)
+       if (par%hei_metastable_coupling) then
+          be3s = dif_hei(1,il);  be1p = dif_hei(2,il);  be1s = dif_hei(3,il)
+       else
+          call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
+                                   be3s, be1p, be1s)
+       end if
        ub = u(8)*(be3s + be1p + be1s)
        if (ub <= be3s) then
           eph = HEI_E3S
@@ -317,7 +367,7 @@ contains
     photon%inu = ion_bin_of(eph)
 
     photon%wgt     = 1.0_wp
-    photon%Lpacket = ion_Ltot/real(par%nphotons, wp)
+    photon%Lpacket = diffuse_packet_lum
     photon%energy_eV = eph
     photon%nscatt  = 0
     photon%inside  = .true.
@@ -338,21 +388,32 @@ contains
   subroutine hei_branch_energies(T_K, xHI, xHeI, e3s, e1p, e1s)
     real(kind=wp), intent(in)  :: T_K, xHI, xHeI
     real(kind=wp), intent(out) :: e3s, e1p, e1s
-    real(kind=wp) :: f3s, f1s, f1p, p584
-    call hei_branch_fractions(T_K, f3s, f1s, f1p)
-    !--- The trapped 584 A photon either photoionizes hydrogen or is
-    !--- collisionally transferred 2^1P -> 2^1S and leaves as the two-photon
-    !--- continuum instead.  Both outcomes are local, so the split folds into
-    !--- the branch weights here and needs no extra random variate; the Sobol
-    !--- dimension assignment is unchanged.
-    p584 = hei_584_ionizes_H(T_K, xHI, xHeI)
-    e3s = f3s*HEI_E3S
-    e1p = f1p*p584*HEI_E1P
+    real(kind=wp) :: r3s, r1p, r2q
+    call hei_excited_decays(T_K, xHI, xHeI, r3s, r1p, r2q)
+    e3s = r3s*HEI_E3S
+    e1p = r1p*HEI_E1P
     !--- A converted decay radiates the 2^1S pair, 20.62 eV, not 21.22 eV;
     !--- the remaining 0.60 eV leaves as 2^1P -> 2^1S at 2.06 micron, which is
     !--- non-ionizing and so correctly absent from the band.
-    e1s = (f1s + f1p*(1.0_wp - p584))*hei_2ph_energy_per_decay()
+    e1s = r2q*hei_2ph_energy_per_decay()
   end subroutine hei_branch_energies
+
+  !--- The same three branch energies with the 2^3S population coupled
+  !--- (par%hei_metastable_coupling), per unit volume [eV cm^-3 s^-1]; the
+  !--- exits are hei_excited_decays_coupled's (hei_recombination_photons_mod,
+  !--- where the physics is written).
+  subroutine hei_branch_energies_coupled(il, T_K, ne, nHI, nHeI, nHeII, &
+                                         xHI, xHeI, e3s, e1p, e1s)
+    integer,       intent(in)  :: il
+    real(kind=wp), intent(in)  :: T_K, ne, nHI, nHeI, nHeII, xHI, xHeI
+    real(kind=wp), intent(out) :: e3s, e1p, e1s
+    real(kind=wp) :: r3s, r1p, r2q
+    call hei_excited_decays_coupled(il, T_K, ne, nHI, nHeI, nHeII, xHI, xHeI, &
+                                    r3s, r1p, r2q)
+    e3s = r3s*HEI_E3S
+    e1p = r1p*HEI_E1P
+    e1s = r2q*hei_2ph_energy_per_decay()
+  end subroutine hei_branch_energies_coupled
 
   !--- Emission channel from the uniform u: the first channel whose cumulative
   !--- energy luminosity passes u, over the channels that carry any.  A
@@ -382,13 +443,13 @@ contains
   !--- launchers, for the same reason.
   real(kind=wp) function heii_cascade_energy(T_K, u_path, u_energy) result(eph)
     real(kind=wp), intent(in) :: T_K, u_path, u_energy
-    real(kind=wp) :: lfb, llya, l2q, ub
-    call heii_branch_luminosity(T_K, lfb, llya, l2q)
-    ub = u_path*(lfb + llya + l2q)
+    real(kind=wp) :: lfb, llyman, l2q, ub
+    call heii_branch_luminosity(T_K, lfb, llyman, l2q)
+    ub = u_path*(lfb + llyman + l2q)
     if (ub <= lfb) then
        eph = heii_fb_sample_energy(T_K, u_energy)
-    else if (ub <= lfb + llya) then
-       eph = E_HEII_LYA
+    else if (ub <= lfb + llyman) then
+       eph = heii_lyman_sample_energy(T_K, u_energy)
     else
        eph = heii_2q_sample_energy(u_energy)
     end if

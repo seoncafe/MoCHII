@@ -54,3 +54,16 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
     -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
 ./tests/charge_exchange/check_helium_charge_exchange.x
+
+#--- charge-exchange heating: every carried reaction has its energy defect,
+#--- the defects are the ionization-potential differences less the stated
+#--- product excitations, and a one-channel pair deposits nothing where its
+#--- two directions balance.
+$FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
+    -I"$HDF5_PREFIX/include" \
+    -o tests/charge_exchange/check_charge_exchange_heating.x \
+    tests/charge_exchange/check_charge_exchange_heating.f90 $OBJS \
+    -lcfitsio -L/usr/local/lib \
+    "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+./tests/charge_exchange/check_charge_exchange_heating.x

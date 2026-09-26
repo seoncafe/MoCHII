@@ -15,7 +15,7 @@ Gate criteria:
       criterion: its cell is 0.147 pc against a front at 3.02 pc, and the
       finite front width biases R_eff outward by +1.00%, which level 7 halves
       to +0.68%.  The criterion sat on level 6 while the 1D reference used a
-      different recombination set, and the two errors cancelled to +0.60%;
+      different recombination set, and the two errors canceled to +0.60%;
       with the reference aligned the level-6 bias stands alone and exceeds 1%,
       so the criterion moved to the grid that resolves the front;
   (2) x_HI(r) profile tracks the 1D reference (shell medians);
@@ -28,10 +28,14 @@ deviation it reports is partly a difference between two atomic datasets rather
 than a property of the transport.  Two such differences were removed:
 
   - recombination, which mirrors src/recomb_mod.f90 for the default
-    par%recomb_model = 'badnell_milne' (Badnell total minus the Milne
-    ground-level rate); the runs here are case B (par%case_ab = 'B').  This check used
-    to carry its own Hui & Gnedin (1997) case-B coefficients, which differ by
-    0.86% in alpha_B(H I) at 10^4 K;
+    par%recomb_model = 'detailed_balance' (for He I the Badnell total minus the
+    Milne ground-level rate; for H I and He II the alpha_B of a zero-density
+    Storey & Hummer cascade since 2026-09-26, 1.1% below the earlier value
+    for H at 1e4 K, so runs made before that date carry the old alpha_B);
+    the runs here are case B (par%recombination_continuum = 'on_the_spot').
+    This check used to carry its own Hui & Gnedin (1997) case-B
+    coefficients, which differed by 0.86% in alpha_B(H I) at 10^4 K from the
+    Badnell-minus-Milne rate then in use (0.33% from the cascade value);
   - the H I and He II photoionization cross sections, which photo_xsec takes
     from the exact hydrogenic expression where this check used the VFKY96 fit.
     The fit is 0.775% high at the H I threshold, and a hot star's rate integral

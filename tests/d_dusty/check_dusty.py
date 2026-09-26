@@ -5,7 +5,7 @@ Same G1 configuration (nH = 100, Q_H = 1e49, case B, Te = 1e4 K) plus MW
 dust (WD01/D03 R_V=3.1 EUV extinction, absorption only,
 C_abs(13.6 eV)/H = 1.83e-21): dust competes for Lyman-continuum photons
 and shrinks the Stromgren sphere.  The exact reference is the 1D
-Gauss-Seidel marching with the identical per-bin dust absorption; the
+Gauss-Seidel marching with the identical dust absorption in each bin; the
 classic sharp-edge reduction (photon balance
 y^3 = 1 - int_0^y 3 y'^2 tau_d e^{-...}) is quoted for context via the
 implicit solution of Petrosian-type photon accounting.
@@ -20,10 +20,14 @@ deviation it reports is partly a difference between two atomic datasets rather
 than a property of the transport.  Two such differences were removed:
 
   - recombination, which mirrors src/recomb_mod.f90 for the default
-    par%recomb_model = 'badnell_milne' (Badnell total minus the Milne
-    ground-level rate); the two runs here are case B (par%case_ab = 'B').
-    This check used to carry its own Hui & Gnedin (1997) case-B coefficients,
-    which differ by 0.86% in alpha_B(H I) at 10^4 K;
+    par%recomb_model = 'detailed_balance' (for He I the Badnell total minus the
+    Milne ground-level rate; for H I and He II the alpha_B of a zero-density
+    Storey & Hummer cascade since 2026-09-26, 1.1% below the earlier value
+    for H at 1e4 K, so runs made before that date carry the old alpha_B);
+    the two runs here are case B (par%recombination_continuum =
+    'on_the_spot'). This check used to carry its own Hui & Gnedin (1997)
+    case-B coefficients, which differed by 0.86% in alpha_B(H I) at 10^4 K from the
+    Badnell-minus-Milne rate then in use (0.33% from the cascade value);
   - the H I and He II photoionization cross sections, which photo_xsec takes
     from the exact hydrogenic expression where this check used the VFKY96 fit.
     The fit is 0.775% high at the H I threshold, and a hot star's rate integral

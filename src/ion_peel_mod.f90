@@ -21,7 +21,7 @@ module ion_peel_mod
 ! Output: '<base>_image' (HDF5/FITS) — direct_ion/scatt_ion (+ _fuv)
 ! blocks for each observer (suffix _obs<k> when par%nobs > 1).
 !
-! Images are plain per-rank arrays reduced onto rank 0 at output time
+! Images are plain arrays on each rank, reduced onto rank 0 at output time
 ! (small next to the leaf arrays).
 !---------------------------------------------------------------------------
   use define

@@ -118,12 +118,19 @@ integer $k$ maps to the open unit interval as
 so every coordinate is strictly interior, removing a failure class for any later
 mapping that takes a logarithm.
 
-Two decorrelated scramble streams share the one Sobol net: the stellar launch
-(\code{QMC\_STREAM\_STELLAR}) and the diffuse launch
-(\code{QMC\_STREAM\_DIFFUSE}).  A distinct 32-bit key for each dimension and
-stream is derived deterministically from \code{par\%qmc\_seed} by an integer
-avalanche hash, so the two streams behave as independent replicates while both
-remain balanced scrambles of the same net.
+Three decorrelated scramble streams share the one Sobol net: the stellar launch
+(\code{QMC\_STREAM\_STELLAR}), the diffuse launch
+(\code{QMC\_STREAM\_DIFFUSE}), and the FUV stratum of the stellar launch
+(\code{QMC\_STREAM\_FUV}), used when \code{par\%add\_fuv} runs with
+\code{par\%fuv\_sampling = 'separate'}: the ionizing packets then keep the
+stellar-stream indices $0\ldots N-1$ they have without the FUV extension, and
+the FUV packets are a prefix of their own stream, indexed from 0 and balanced
+at every power of 2 of \code{no\_photons\_fuv}.  A distinct 32-bit key for
+each dimension and stream is derived deterministically from
+\code{par\%qmc\_seed} by an integer avalanche hash, so the streams behave as
+independent replicates while all remain balanced scrambles of the same net; the
+stellar and diffuse keys are the ones they had before the third stream was
+added.
 
 \subsection{Fixed dimension layouts}
 The meaning of every dimension is fixed and never reassigned conditionally: a
@@ -177,7 +184,7 @@ dim & variable & mapping \\
 \begin{table}[htbp]
 \centering
 \small
-\caption{Diffuse recombination packets (\code{par\%diffuse\_field}), on the
+\caption{Diffuse recombination packets (\code{par\%recombination\_continuum = 'transported'}), on the
 diffuse stream.}
 \label{tab:dim9}
 \begin{tabular}{cll}
@@ -271,7 +278,7 @@ checks: on the legacy log grid the binary search reproduces the closed form over
 a two-million-point energy scan except at a single exact-edge floating-point
 tie; on the aligned grid the H\,\textsc{i}/He\,\textsc{i}/He\,\textsc{ii}
 thresholds are bin edges and threshold${}+\delta$ lands in the bin above.  Runs
-with \code{diffuse\_field} off are arithmetically untouched, and the recorded
+without the transported continuum are arithmetically untouched, and the recorded
 diffuse validations in the project log predate the aligned-edge default, so the
 bug had contaminated no recorded gate.
 

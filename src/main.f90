@@ -31,8 +31,9 @@ program main
   use thermal_mod,     only : gas_thermal_update
   use fixed_point_distance_mod, only : iteration_history, history_push, &
                                        history_reset, fixed_point_distance, &
-                                       fixed_point_converged
+                                       fixed_point_converged, net_drift, NWIN
   use cooling_mod,     only : cooling_setup
+  use heii_cascade_mod, only : heii_cascade_transported
   use nlevel_cooling_mod, only : nlevel_cooling_report
   use species_mod,     only : species_setup, &
                               n_elements, elem_nstage, elem_abund, elem_eth
@@ -43,6 +44,7 @@ program main
 
   type(grid_type)     :: grid
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
+  real(kind=wp)       :: drift_vol(3)
   type(iteration_history) :: hist_dx, hist_dhe1, hist_dhe3
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
@@ -113,7 +115,8 @@ program main
   !--- Milne ground-continuum tables: built once, after ion_setup has fixed
   !--- par%eion_max (the tables are truncated at the band edge) and after the
   !--- atomic data are loaded.  Read-only during transport.
-  if (par%diffuse_field .and. trim(par%diffuse_energy_model) == 'milne') then
+  if (trim(par%recombination_continuum) == 'transported' .and. &
+      trim(par%diffuse_energy_model) == 'milne') then
      block
        use milne_recomb_spectrum_mod, only : milne_setup
        call milne_setup()
@@ -121,7 +124,10 @@ program main
   end if
   !--- He I 2^1S two-photon shape: needed whenever the excited-cascade
   !--- channel emits, independently of the ground-continuum model.
-  if (par%diffuse_field .and. par%hei_diffuse) then
+  !--- The same two tables serve the on-the-spot He I photons
+  !--- (par%hei_on_the_spot).
+  if ((trim(par%recombination_continuum) == 'transported' .and. par%hei_diffuse) .or. &
+      (trim(par%recombination_continuum) == 'on_the_spot' .and. par%hei_on_the_spot)) then
      block
        use hei_twophoton_mod, only : hei_2ph_setup
        use hei_cascade_mod,   only : hei_cascade_setup
@@ -129,9 +135,14 @@ program main
        call hei_cascade_setup()
      end block
   end if
-  !--- He III case-B cascade through He II: the free-bound integral is built
-  !--- over the transported band, so it needs par%eion_max fixed too.
-  if (par%diffuse_field .and. par%heii_diffuse) then
+  !--- He III cascade through He II: the free-bound integral is built over
+  !--- the transported band when channel 5 carries it
+  !--- (heii_cascade_transported), so it needs par%eion_max fixed too.  The
+  !--- on-the-spot He II photons (par%heii_on_the_spot) count the cascade
+  !--- from the same tables, built then over the whole spectrum the gas
+  !--- emits, whatever the band (heii_cascade_setup).
+  if (heii_cascade_transported() .or. &
+      (trim(par%recombination_continuum) == 'on_the_spot' .and. par%heii_on_the_spot)) then
      block
        use heii_cascade_mod, only : heii_cascade_setup
        call heii_cascade_setup()
@@ -160,7 +171,8 @@ program main
      use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
         thermal_t0 = MPI_WTIME()
-        call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol)
+        call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
+                                drift_vol)
         thermal_dt = MPI_WTIME() - thermal_t0
         call record_change_history()
         if (use_vol) then
@@ -175,30 +187,41 @@ program main
            write(6,'(a,2(a,es12.4))') &
               '                 ', ' vol |delta x_HII| = ', dx_vol, &
               ',  vol |delta Te|/Te = ', dte_vol
+           write(6,'(a,3es12.4)') &
+              '                  signed vol delta (x_HII, He0-He+, He+-He2+) =', &
+              drift_vol
            write(6,'(a,f10.3,a,i0,a)') &
               '                  thermal solve = ', thermal_dt, &
-              ' s (', mpar%h_size, ' node-local MPI ranks)'
+              ' s (', mpar%nproc, ' MPI ranks, all nodes)'
         end if
      else
-        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol)
+        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol)
         call record_change_history()
         if (use_vol) then
            converged = composition_converged()
         else
            converged = max_dx < par%gas_tol
         end if
-        if (mpar%p_rank == 0) write(6,'(a,i4,2(a,es12.4))') &
-           '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
-           ',  vol = ', dx_vol
+        if (mpar%p_rank == 0) then
+           write(6,'(a,i4,2(a,es12.4))') &
+              '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
+              ',  vol = ', dx_vol
+           write(6,'(a,3es12.4)') &
+              '                  signed vol delta (x_HII, He0-He+, He+-He2+) =', &
+              drift_vol
+        end if
      end if
      !--- distance from the fixed point, H and He (fixed_point_distance_mod):
-     !--- the step d, the median decay ratio rho of the last three steps,
-     !--- and the drift still to come e = d rho/(1 - rho).
+     !--- the step d, the decay ratio rho fitted over the last NWIN steps,
+     !--- the drift still to come e = d rho/(1 - rho), and the mean signed
+     !--- step s with its Student statistic t (the floor needs t < 2.365).
      if (mpar%p_rank == 0 .and. par%gas_niter >= 1) then
         call report_fixed_point_distance(' x_HII ', hist_dx)
         call report_fixed_point_distance(' He0-He+', hist_dhe1)
         if (dhe_vol(2) >= 0.0_wp) &
            call report_fixed_point_distance(' He+-He2+', hist_dhe3)
+        if (use_vol .and. hist_dx%n < NWIN) write(6,'(a,i0,a)') &
+           '                  (the stopping test needs ', NWIN, ' iterations)'
      end if
      !--- residual of hydrogen's ionization balance on the written state,
      !--- including both charge-exchange terms: a reported diagnostic, it
@@ -372,10 +395,10 @@ program main
 contains
 
   subroutine record_change_history()
-    call history_push(hist_dx, dx_vol)
-    call history_push(hist_dhe1, dhe_vol(1))
+    call history_push(hist_dx, dx_vol, drift_vol(1))
+    call history_push(hist_dhe1, dhe_vol(1), drift_vol(2))
     if (dhe_vol(2) >= 0.0_wp) then
-       call history_push(hist_dhe3, dhe_vol(2))
+       call history_push(hist_dhe3, dhe_vol(2), drift_vol(3))
     else
        call history_reset(hist_dhe3)
     end if
@@ -383,9 +406,12 @@ contains
 
   !--- par%conv_crit = 'vol': the ionization state has converged when the
   !--- drift still to come is below par%gas_tol for x_HII, for He0 <-> He+,
-  !--- and for He+ <-> He2+ where He2+ is at least 1% of the ionized helium
-  !--- (fixed_point_distance_mod; the test on the step alone stopped the
-  !--- HII40 benchmark with its He I front 0.17 pc short).
+  !--- and for He+ <-> He2+ where He2+ is at least 1% of the ionized helium,
+  !--- or each sits on its Monte Carlo floor with no net drift of the
+  !--- ionized volume (fixed_point_distance_mod; the test on the step alone
+  !--- stopped the HII40 benchmark with its He I front 0.17 pc short, and
+  !--- a floor read from the step ratios alone stopped a restart after 4
+  !--- iterations with its H front still moving).
   logical function composition_converged() result(done)
     done = fixed_point_converged(hist_dx, par%gas_tol) .and. &
            fixed_point_converged(hist_dhe1, par%gas_tol)
@@ -393,23 +419,27 @@ contains
        done = done .and. fixed_point_converged(hist_dhe3, par%gas_tol)
   end function composition_converged
 
-  !--- one log line: the latest step d, the decay ratio rho, and the drift
-  !--- still to come e (or why e is not available)
+  !--- one log line: the latest step d, the decay ratio rho, the drift still
+  !--- to come e (or why e is not available), and the mean signed step s
+  !--- over the window with its Student statistic t
   subroutine report_fixed_point_distance(label, h)
     character(len=*),        intent(in) :: label
     type(iteration_history), intent(in) :: h
-    real(kind=wp) :: rho, dist
+    real(kind=wp) :: rho, dist, smean, tstat
     logical :: available
+    character(len=40) :: tail
     call fixed_point_distance(h, rho, dist, available)
+    call net_drift(h, smean, tstat)
+    write(tail,'(a,es10.2,a,f7.2)') ' s = ', smean, ' t = ', min(tstat, 9999.0_wp)
     if (available) then
-       write(6,'(a,a9,3(a,es11.3))') '                  fixed point', label, &
-          ': d = ', h%d(h%n), ',  rho = ', rho, ',  e = ', dist
+       write(6,'(a,a9,3(a,es11.3),a,a)') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  rho = ', rho, ',  e = ', dist, ', ', trim(tail)
     else if (h%n < 4) then
-       write(6,'(a,a9,a,es11.3,a)') '                  fixed point', label, &
-          ': d = ', h%d(h%n), ',  (rho needs 4 iterations)'
+       write(6,'(a,a9,a,es11.3,a,a)') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  (rho needs 4 iterations), ', trim(tail)
     else
-       write(6,'(a,a9,2(a,es11.3),a)') '                  fixed point', label, &
-          ': d = ', h%d(h%n), ',  rho = ', rho, ',  (not decaying)'
+       write(6,'(a,a9,2(a,es11.3),a,a)') '                  fixed point', label, &
+          ': d = ', h%d(h%n), ',  rho = ', rho, ',  (not decaying), ', trim(tail)
     end if
   end subroutine report_fixed_point_distance
 

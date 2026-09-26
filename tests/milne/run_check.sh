@@ -11,10 +11,10 @@ FC=${FC:-mpiifort}
 #--- compiled and linked with the same interprocedural setting.
 $FC -cpp -DMPI -ipo -O2 -module src -Isrc -o tests/milne/check_milne.x \
     tests/milne/check_milne.f90 \
-    src/define.o src/photo_xsec.o src/recomb_mod.o \
+    src/define.o src/photo_xsec.o src/hydrogenic_recombination_mod.o src/recomb_mod.o \
     src/milne_recomb_spectrum_mod.o
 $FC -cpp -DMPI -ipo -O2 -module src -Isrc -o tests/milne/check_alpha1.x \
     tests/milne/check_alpha1.f90 \
-    src/define.o src/photo_xsec.o src/recomb_mod.o
+    src/define.o src/photo_xsec.o src/hydrogenic_recombination_mod.o src/recomb_mod.o
 ./tests/milne/check_milne.x
 ./tests/milne/check_alpha1.x

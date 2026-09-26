@@ -12,9 +12,11 @@ Reads the three runs' <base>_heimeta.h5 (n_2s3, Phi_3, n_e, T_e) and
                     the optically-thin warning is physically correct).
   hei_phi3.png      soft-UV depletion: n_3^fuv/n_3^noFUV and Phi_3/A_31 vs radius.
 
-The metastable balance and the coefficients are from OH18 (Oklopcic & Hirata
-2018) as transcribed in data/atomic/hei_metastable.txt (see the file header for
-provenance); this script reads the rate coefficients from that same file.
+The metastable balance is hei_metastable_mod's: Bray et al. (2000) electron-
+impact rates from data/atomic/hei_metastable.txt (see the file header for
+provenance), which this script reads, and alpha_3 = f_3S alpha_B(He II), which
+it takes from the runs' 'alpha_3' output (runs made before 2026-09-25 lack it
+and have to be remade).
 """
 import os
 import sys
@@ -35,46 +37,21 @@ RCUT = {"hei_low_density": 1.0, "hei_high_density": 0.038}   # core radius [pc]
 
 
 # --- rate coefficients from the data file (single source of truth) -----------
-def parse_coeffs():
-    c = {}
-    with open(os.path.join(ATOM, "hei_metastable.txt")) as fh:
-        for ln in fh:
-            ln = ln.strip()
-            if not ln or ln.startswith("#"):
-                continue
-            t = ln.split()
-            c[t[0]] = [float(x) for x in t[1:]]
-    return c
+# evaluated by make_hei_metastable.triplet_rates, which reads the FILE with the
+# formulas of hei_metastable_mod; alpha_3 = f_3S alpha_B(He II) is not in the
+# file and is taken from the runs' own 'alpha_3' output (per leaf).
+sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "fitting"))
+import make_hei_metastable as M                           # noqa: E402
 
-
-C = parse_coeffs()
+C = M.read_coefficients(os.path.join(ATOM, "hei_metastable.txt"))
 A31 = C["A31"][0]
-KB_EV = 1.380649e-16 / 1.602176634e-12
-
-
-def alpha3(T):
-    Cc, p = C["ALPHA3"]
-    return Cc * (T / 1e4) ** p
-
-
-def qexc(T, key):
-    """q = beta (a exp(bT) + c exp(dT)) exp(-Eexc/kT) / (g_l sqrt T)."""
-    beta, Ee, gl, a, b, cc, d = C[key]
-    kT = KB_EV * T
-    ups = a * np.exp(b * T) + cc * np.exp(d * T)
-    return beta * ups * np.exp(-Ee / kT) / (gl * np.sqrt(T))
-
-
 T0 = 1.0e4                                    # par%te_fixed in all runs
-ALPHA3_0 = alpha3(T0)                         # 2.10e-13 cm^3/s
-# every electron-impact sink of 2^3S: q_31a + q_31b + q_31g (the q_13 inverse)
-# + C_3 (ionization, Black 1981), as in hei_metastable_mod
-_b, _E, _g, _a, _bb, _c, _d = C["QEXC13"]
-Q31_0 = (qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B")
-         + _b * (_a * np.exp(_bb * T0) + _c * np.exp(_d * T0)) / (3.0 * np.sqrt(T0))
-         + C["CION3"][0] * T0 ** C["CION3"][1] * np.exp(-C["CION3"][2] / T0))
-PLATEAU = ALPHA3_0 / Q31_0                    # 5.887e-6 at 1e4 K
-NCRIT = A31 / Q31_0                           # 3566 cm^-3 at 1e4 K
+_R0 = M.triplet_rates(T0, C)
+# every electron-impact sink of 2^3S, as in hei_metastable_mod
+Q31_0 = _R0["q31g"] + _R0["q31a"] + _R0["q31b"] + _R0["q31s"] + _R0["c3"]
+NCRIT = A31 / Q31_0                           # ~3500 cm^-3 at 1e4 K
+ALPHA3_0 = None                               # set from the runs in main()
+PLATEAU = None
 
 
 # --- helpers -----------------------------------------------------------------
@@ -92,7 +69,8 @@ def load(base):
     xHeII = rt.fields["x_HeII"]
     nHeII = nH * YHE * xHeII
     return dict(hm=hm, r=r, n3=hm.fields["n_2s3"], Phi3=hm.fields["Phi_3"],
-                ne=ne, Te=hm.fields["T_e"], nHeII=nHeII, nH=nH, xHeII=xHeII)
+                a3=hm.fields["alpha_3"], ne=ne, Te=hm.fields["T_e"],
+                nHeII=nHeII, nH=nH, xHeII=xHeII)
 
 
 def radial_median(r, y, mask, nbin=24, rmax=None):
@@ -124,7 +102,7 @@ def fig_profiles(dl, dh):
         m = (d["nHeII"] > 0.0) & (d["ne"] > 0.0) & (d["xHeII"] > 0.5)
         ratio = np.full(d["n3"].shape, np.nan)
         ratio[m] = d["n3"][m] / d["nHeII"][m]
-        radlim = alpha3(T0) * d["ne"] / A31        # alpha_3 n_e / A_31 per leaf
+        radlim = d["a3"] * d["ne"] / A31           # alpha_3 n_e / A_31 per leaf
 
         ax.scatter(d["r"][m], ratio[m], s=2, alpha=0.15, color="0.6",
                    rasterized=True, label="leaves")
@@ -142,7 +120,7 @@ def fig_profiles(dl, dh):
     axes[0].set_ylabel(r"$n_3/n_{\rm He^+}$")
     # the high-density panel also shows the density-independent plateau
     axes[1].axhline(PLATEAU, color="C2", lw=1.5, ls=":",
-                    label=r"plateau $\alpha_3/(q_{31a}+q_{31b}+q_{31g}+C_3)$")
+                    label=r"plateau $\alpha_3/(q_{31g}+q_{31a}+q_{31b}+q_{31s}+C_3)$")
     axes[0].legend(fontsize=8, loc="lower left")
     axes[1].legend(fontsize=8, loc="lower left")
     fig.suptitle(r"He I 2$^3$S metastable population "
@@ -226,9 +204,12 @@ def fig_phi3(dl, df):
 
 # --- main --------------------------------------------------------------------
 def main():
+    global ALPHA3_0, PLATEAU
     dl = load("hei_low_density")
     dh = load("hei_high_density")
     df = load("hei_low_density_fuv")
+    ALPHA3_0 = float(dl["a3"][dl["ne"] > 0.0][0])     # every leaf is at T0
+    PLATEAU = ALPHA3_0 / Q31_0
 
     p1 = fig_profiles(dl, dh)
     p2, tau_max = fig_maps(dh)
@@ -246,7 +227,7 @@ def main():
     mc = (dl["r"] < RCUT["hei_low_density"]) & (dl["nHeII"] > 0.0) \
         & (dl["ne"] > 0.0)
     ratio_c = dl["n3"][mc] / dl["nHeII"][mc]
-    radlim_c = alpha3(T0) * dl["ne"][mc] / A31
+    radlim_c = dl["a3"][mc] * dl["ne"][mc] / A31
     suppr = 1.0 - ratio_c / radlim_c
     print("\nlow density (radiative limit):")
     print("  core <n_e> = %.1f cm^-3 (<< n_crit)" % dl["ne"][mc].mean())
@@ -259,7 +240,7 @@ def main():
         & (dh["ne"] > 0.0)
     ratio_h = dh["n3"][mh] / dh["nHeII"][mh]
     frac = np.median(ratio_h) / PLATEAU
-    radlim_h = alpha3(T0) * dh["ne"][mh] / A31
+    radlim_h = dh["a3"][mh] * dh["ne"][mh] / A31
     below_rad = np.median(ratio_h / radlim_h)          # ~ 1/(1+n_e/n_crit)
     print("\nhigh density (collisional plateau):")
     print("  core <n_e> = %.2e cm^-3 (~%.1f n_crit)"

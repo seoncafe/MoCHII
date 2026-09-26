@@ -108,7 +108,7 @@ print("\n  informational: raw Sobol 2-D (0,m,2)-net status")
 for (a1, a2) in [(0, 1), (0, 2), (1, 2)]:
     onep = all(np.all(box_hist(u_raw, a1, a2, j1, M - j1) == 1)
                for j1 in range(0, M + 1))
-    print(f"    dims({a1},{a2}): one-point-per-elementary-box = {onep}")
+    print(f"    dims({a1},{a2}): one point in each elementary box = {onep}")
 
 gate_ok = a_ok and b_ok and c_ok
 print("\nQ0 GATE:", "PASS" if gate_ok else "FAIL")

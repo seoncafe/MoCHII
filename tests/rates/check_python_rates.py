@@ -10,7 +10,7 @@ Three groups are compared, each against the production objects through a small
 driver:
 
   recombination   recomb_mod's alpha_A, alpha_B, alpha_1 for H II, He II and
-                  He III at par%recomb_model = 'badnell_milne'.  Both sides
+                  He III at par%recomb_model = 'detailed_balance'.  Both sides
                   evaluate the same closed form, so they must agree to
                   roundoff;
   free-free       cooling_mod's gbar_ff(T, Z) for Z = 1..4.  The Python side
@@ -47,7 +47,8 @@ SNAMES = ["sigma_HI", "sigma_HeI", "sigma_HeII"]
 CNAMES = ["betaA_HII", "betaB_HII", "beta_HeII", "beta_HeIII",
           "ci_HI", "ci_HeI", "ci_HeII"]
 
-OBJS = ("define.o", "utility.o", "photo_xsec.o", "recomb_mod.o", "gaunt.o",
+OBJS = ("define.o", "utility.o", "photo_xsec.o", "hydrogenic_recombination_mod.o",
+        "recomb_mod.o", "gaunt.o",
         "gaunt_vh14_mod.o", "nlevel_mod.o", "nlevel_cooling_mod.o",
         "cooling_mod.o")
 
@@ -67,7 +68,7 @@ program rates_dump
   real(kind=wp) :: T, E
   integer :: i, ich, iz, ierr
   call MPI_INIT(ierr)
-  par%recomb_model = 'badnell_milne'
+  par%recomb_model = 'detailed_balance'
   par%atomic_dir = '@ATOMIC@'
   par%data_dir   = '@DATA@'
   call cooling_setup()

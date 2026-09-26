@@ -1,49 +1,88 @@
 module hei_metastable_mod
 !---------------------------------------------------------------------------
-! MoCHII: He I 2^3S (triplet metastable) diagnostic.
+! MoCHII: the He I 2^3S (triplet metastable) population.
 !
-! On the converged state this evaluates the local 2^3S population n_3 from the
-! Oklopcic & Hirata (2018, ApJ 855 L11 = OH18) balance, which is LINEAR in n_3
-! (a closed-form quotient per leaf, no iteration):
+! n_3 is a ~1e-7 trace of He, so its balance is LINEAR in n_3 and closes in
+! each leaf as a quotient (hei_triplet_population):
 !
-!   n_3 = [ alpha_3 n_e n_HeII + q_13 n_e n_HeI ]
-!         / [ A_31 + Phi_3 + n_e (q_31a + q_31b + q_31g + C_3) + n_HI Q_31 ]
+!   n_3 = n_e [ alpha_3 n_HeII + (q_13 + q_feed) n_HeI ] / D
+!   D   = A_31 + Phi_3 + n_e (q_31g + q_31a + q_31b + q_31s + C_3) + n_HI Q_31
 !
-!   alpha_3     He II -> 2^3S recombination (triplet channel)
-!   q_13        e-impact 1^1S -> 2^3S
-!   A_31        2^3S -> 1^1S radiative (1.272e-4 s^-1)
-!   Phi_3       2^3S photoionization rate (threshold 4.78 eV)
-!   q_31a,q_31b e-impact 2^3S -> 2^1S and 2^3S -> 2^1P
-!   q_31g       e-impact 2^3S -> 1^1S, the inverse of q_13 by detailed
-!               balance, q_31g = q_13 (g_1/g_3) exp(E_13/kT), g_1/g_3 = 1/3
-!   C_3         e-impact ionization of 2^3S, Black (1981, MNRAS 197, 553)
-!               eq. (12), 8.38e-10 T^(1/2) exp(-55338/T), 1e3-1e5 K
-!   Q_31        Penning + associative ionization He(2^3S) + H0
+!   alpha_3  recombination into the triplets, f_3S(T) alpha_B(He II): the
+!            triplet share of the case-B cascade (hei_cascade_mod) times the
+!            balance's own case-B coefficient (recomb_mod).  Every triplet
+!            recombination ends in 2^3S; ground captures feed no triplet, so
+!            it is alpha_B whatever par%recombination_continuum is.
+!   q_13     e-impact 1^1S -> 2^3S
+!   q_feed   e-impact 1^1S -> n^3L (every other triplet term n <= 5), each
+!            atom cascading within the triplets to 2^3S
+!   A_31     2^3S -> 1^1S radiative (1.272e-4 s^-1, 19.82 eV photon)
+!   Phi_3    2^3S photoionization (threshold 4.768 eV; the cross-section fit
+!            starts at 4.78 eV), a path estimator
+!   q_31g    e-impact 2^3S -> 1^1S, the detailed-balance inverse of q_13
+!   q_31a    e-impact 2^3S -> 2^1S;  q_31b  2^3S -> 2^1P
+!   q_31s    e-impact 2^3S -> n^1L, n >= 3 (into the singlets)
+!   C_3      e-impact ionization of 2^3S, Black (1981, MNRAS 197, 553) eq. 12
+!   Q_31     Penning + associative ionization He(2^3S) + H0 (Garcia Munoz
+!            2025, A&A 698, A199, Fig. 5)
+! and q_33, e-impact 2^3S -> n^3L (2^3P and above), which returns to 2^3S
+! by radiative cascade (10830 A for 2^3P): no population change, an energy
+! loss.
 !
-! The three excitation rates are q = beta Upsilon(T) exp(-E/kT)/(g_l sqrt T)
-! with the exact Maxwellian constant beta = h^2/[(2 pi m_e)^(3/2) k^(1/2)] =
-! 8.629132e-6 and the observed level energies (CHIANTI he_1.elvlc); OH18's
-! 2.1e-8 sqrt(13.6 eV/kT) is the same constant 3.3% low.
+! The electron-impact rates are q = beta Upsilon exp(-dE/kT)/(g_l sqrt T)
+! with the Bray, Burgess, Fursa & Tully (2000, A&AS 146, 481) effective
+! collision strengths (Tables 2 and 3, n <= 5), beta = 8.629132e-6 exactly,
+! observed term energies; data/atomic/hei_metastable.txt carries them
+! (tools/fitting/make_hei_metastable.py, which also documents the treatment
+! below 10^3.75 K) and this module evaluates them.
 !
-! q_31g is not in the OH18 balance, but a rate whose forward direction is
-! carried must carry its inverse, or the two levels cannot reach the
-! Boltzmann ratio in equilibrium.  Measured against q_31a + q_31b it is 5.6%
-! at 1e4 K, 7.2% at 8000 K, 15% at 5000 K and 57% at 3000 K (added
-! 2026-09-24).  C_3, also absent from OH18, is 1.0% of q_31a + q_31b at
-! 1e4 K, 6.8% at 1.5e4 K and 20% at 2e4 K.
+! One population, four users.  hei_triplet_population is the one n_3 of
+!  (1) the output diagnostic (par%hei_metastable, hei_metastable_run),
+!  and, with par%hei_metastable_coupling (default on),
+!  (2) the ionization balance (ion_balance_mod::solve_ion_cell): C_3 and
+!      Phi_3 return He to He+ -- a share u = (n_e C_3 + Phi_3)/D of every
+!      triplet recombination and collisional triplet excitation is undone --
+!      and Q_31 ionizes H;
+!  (3) the thermal balance (thermal_mod::net_rate), through
+!      hei_triplet_net_heating, whose energy ledger is derived below;
+!  (4) the He I diffuse channel (diffuse_mod): n_3 A_31 photons at 19.82 eV,
+!      and the collisional transfers into 2^1S / 2^1P.
 !
-! Coefficients are read from data/atomic/hei_metastable.txt (closed-form fits
-! transcribed from the EXHALE triplet implementation; the Fortran here only
-! evaluates the fits).  Phi_3 is a path estimator accumulated during
-! transport at each packet's own energy, Sum path_lum sigma_3(E)/(h nu)
-! (hei_metastable_path_score, called from ion_score_mod), the same form as
-! gas_rates_mod's Gamma_i; it covers whatever band is transported (add the
-! FUV extension down to 4.78 eV for the full integral).
+! ENERGY LEDGER (hei_triplet_net_heating), energies above 1^1S:
+!   E_3 = E(2^3S) = 19.8196 eV, IP_3 = IP(He) - E_3 = 4.7678 eV.
+!   excitation 1^1S -> 2^3S, n^3L (rate n_e n_HeI q)    gas loses E(n^3L)
+!       [the E(n^3L) - E_3 of a feed excitation leaves as triplet lines]
+!   2^3S -> 1^1S by electrons (n_e n_3 q_31g)          gas gains E_3
+!   2^3S -> 2^1S, 2^1P, n^1L, n^3L (n_e n_3 q)          gas loses dE
+!       [the atom then radiates E(upper): two-photon, 584 A, cascades]
+!   C_3 (n_e n_3 C_3)                                  gas loses IP_3
+!   Phi_3 (n_3 Phi_3)                                  gas gains h nu - IP_3
+!       [heating estimator Sum path_lum sigma_3 (1 - IP_3/E)]
+!   Penning / associative (n_HI n_3 Q_31)              gas gains E_3 - IP(H)
+!   A_31 (n_3 A_31)                                     no gas change
+! so, per unit volume,
+!   H_3 = n_3 [ n_e (q_31g E_3 - sum_{31a,31b,31s,33} q dE - C_3 IP_3)
+!               + Gamma_3 + n_HI Q_31 (E_3 - IP(H)) ]
+!         - n_e n_HeI sum_{13, feed} q E(n^3L) .
+! It closes: with n_3 steady, recombination E_3 + absorbed photon energy
+! = H_3 + emitted photon energy + ionization energy stored (IP(He) for C_3
+! and Phi_3, IP(H) for Q_31), to rounding (gate tests/hei_metastable_coupling).
+! What is NOT in it: excitation of the singlets from 1^1S (the open He I
+! collisional-excitation cooling item), and the recombination kinetic
+! energy, already in cooling_mod's beta on the balance's own alpha.
 !
-! Runs once at output time (par%hei_metastable): a leaf loop that reads the
-! converged gas state, no feedback into the ionization / thermal balance (n_3
-! is a ~1e-7 trace of He, its energy budget negligible).  Output section file
-! '<base>_heimeta' carries n_2s3, Phi_3, n_H, n_e, T_e + leaf geometry.
+! Phi_3 is a path estimator accumulated during transport at each packet's
+! own energy, Sum path_lum sigma_3(E)/(h nu), with its heating companion
+! Sum path_lum sigma_3(E) (1 - IP_3/E) (hei_metastable_path_score, called
+! from ion_score_mod), turned into rates per leaf at the reduction.  It
+! covers whatever band is transported: without par%add_fuv the band starts
+! at 13.6 eV and the [4.78, 13.6) eV part of the integral is missing, which
+! for a 40 kK star is ~10x the part it counts.  So when this population is
+! used, an input that leaves add_fuv and efuv_min out transports the FUV
+! extension from 4.78 eV (setup.f90), launched as its own stratum
+! (par%fuv_sampling = 'separate') so the ionizing band keeps its packets.  The 2^3S opacity is not
+! carried in the transport (n_3 sigma_3 against n_HI sigma_H is ~1e-5 in the
+! ionized gas), so the photons Phi_3 absorbs are not removed from the field.
 !
 ! CAVEATS (see md/HEI_10833_PLAN.md sec. 8):
 !  (i)   local equilibrium: the advection term (v df_3/dr) is absent - valid
@@ -52,8 +91,14 @@ module hei_metastable_mod
 !  (ii)  10833 can be optically thick in dense metastable regions (a line-
 !        transfer treatment of the absorption is out of scope here - this
 !        module gives n_3, not tau);
-!  (iii) the n_HI Q_31 sink is the neutral/PDR channel (Penning ionization
-!        with H0), included from the start.
+!  (iii) the associative 10% of Q_31 (Garcia Munoz 2025) forms HeH+, which
+!        MoCHII does not carry; it is counted as H0 -> H+ like the Penning
+!        90% (the ion carries the hydrogen's charge) and deposits E_3 - IP(H),
+!        omitting the HeH+ binding.
+!  (iv)  the 2^1S / 2^1P populations are not solved: a collisional transfer
+!        into them is taken to decay radiatively (A_2q = 51 s^-1 against
+!        n_e q(2^1S -> 2^3S) ~ 2e-7 n_e s^-1), so no singlet atom returns
+!        to 2^3S.
 !---------------------------------------------------------------------------
   use define
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
@@ -61,16 +106,51 @@ module hei_metastable_mod
   implicit none
   private
 
-  public :: hei_metastable_run
+  public :: hei_metastable_run, hei_metastable_load
   public :: hei_metastable_path_setup, hei_metastable_path_reset
   public :: hei_metastable_path_score, hei_metastable_path_reduce
+  public :: hei_triplet_rates_type, hei_triplet_rates
+  public :: hei_triplet_destruction, hei_triplet_population
+  public :: hei_triplet_net_heating
+  public :: hei_phi3_rate, hei_phi3_heating, hei_phi3_assign
+  public :: hei_upsilon
+
+  !--- ionization potentials [eV] (NIST ASD), as in ion_balance_mod
+  real(kind=wp), parameter, public :: IP_HE_EV = 24.587387_wp
+  real(kind=wp), parameter, public :: IP_H_EV  = 13.598434_wp
+  !--- roles of the electron-impact rows
+  integer, parameter, public :: ROLE_Q13 = 1, ROLE_FEED = 2, ROLE_Q31A = 3, &
+                                ROLE_Q31B = 4, ROLE_SINGLET = 5, ROLE_TRIPLET = 6
+
+  !--- the rate coefficients at one temperature [cm^3 s^-1]; cool13 and
+  !--- cool31 the energy-weighted sums [erg cm^3 s^-1] of the excitations
+  !--- from 1^1S (Q13 + FEED rows, sum q E(upper)) and from 2^3S
+  !--- (Q31A, Q31B, SINGLET, TRIPLET rows, sum q dE).
+  type :: hei_triplet_rates_type
+     real(kind=wp) :: T      = 0.0_wp
+     real(kind=wp) :: alpha3 = 0.0_wp
+     real(kind=wp) :: q13    = 0.0_wp, qfeed = 0.0_wp, cool13 = 0.0_wp
+     real(kind=wp) :: q31g   = 0.0_wp, q31a  = 0.0_wp, q31b   = 0.0_wp
+     real(kind=wp) :: q31s   = 0.0_wp, q33   = 0.0_wp, cool31 = 0.0_wp
+     real(kind=wp) :: c3     = 0.0_wp, pen   = 0.0_wp
+     real(kind=wp) :: f1s    = 0.0_wp, f1p   = 0.0_wp   ! singlet recomb. branches
+  end type hei_triplet_rates_type
 
   !--- coefficients read from data/atomic/hei_metastable.txt.
-  real(kind=wp) :: hm_Tmin = 1.0e2_wp, hm_Tmax = 3.0e4_wp
-  real(kind=wp) :: hm_A31  = 1.272e-4_wp
-  real(kind=wp) :: hm_alpha3(2) = [2.10e-13_wp, -0.778_wp]   ! C, p
-  !--- QEXC: beta, Eexc [eV], g_lower, a, b, c, d
-  real(kind=wp) :: hm_q13(7), hm_q31a(7), hm_q31b(7)
+  !--- the validity ranges of the C_3 and Q_31 closed forms (C3TRANGE,
+  !--- Q31TRANGE); zero until read, which the loader requires
+  real(kind=wp) :: hm_c3_T(2) = 0.0_wp, hm_q31_T(2) = 0.0_wp
+  real(kind=wp), public, protected :: hm_A31 = 1.272e-4_wp   ! [s^-1]
+  real(kind=wp), public, protected :: hm_beta = 0.0_wp   ! [cm^3 s^-1 K^0.5]
+  real(kind=wp), public, protected :: hm_E23S = 0.0_wp   ! E(2^3S) [eV]
+  !--- electron-impact rows: node grid log10 T, log10 Upsilon at the nodes
+  integer, parameter :: MAXROW = 64, MAXNODE = 32
+  integer, public, protected :: hm_nrow = 0, hm_nnode = 0
+  real(kind=wp), public, protected :: hm_logT(MAXNODE)
+  real(kind=wp), public, protected :: hm_lups(MAXNODE, MAXROW)
+  real(kind=wp), public, protected :: hm_dE(MAXROW), hm_gl(MAXROW)
+  integer,       public, protected :: hm_role(MAXROW), hm_lower(MAXROW), &
+                                      hm_upper(3, MAXROW)   ! n, 2S+1, l
   !--- CION3: A, p, T0 of C_3 = A T^p exp(-T0/T)
   real(kind=wp) :: hm_cion3(3) = 0.0_wp
   !--- PENNING: A, c, d1, d2, d3 (Garcia Munoz 2025)
@@ -78,90 +158,206 @@ module hei_metastable_mod
   !--- sigma_3 VFKY96 wings [E_th,E_0,s_0,y_a,P,y_w,y_0,y_1] + bridge edges
   real(kind=wp) :: hm_sigA(8), hm_sigB(8), hm_E3, hm_E4
   logical :: hm_loaded = .false.
-  !--- Phi_3 path estimator Sum(path_lum sigma_3(E)/(h nu)), rank local then
-  !--- reduced, over the leaves.
-  real(kind=wp), allocatable :: phi3_path(:)
+  !--- Phi_3 path estimators Sum(path_lum sigma_3(E)/(h nu)) and
+  !--- Sum(path_lum sigma_3(E) (1 - IP_3/E)), rank local then reduced, and
+  !--- the rates [s^-1] and heating [erg s^-1 per 2^3S atom] they give.
+  real(kind=wp), allocatable :: phi3_path(:), heat3_path(:)
+  real(kind=wp), allocatable :: phi3_leaf(:), heat3_leaf(:)
 
   real(kind=wp), parameter :: kb_eV = kboltz_cgs / ev2erg    ! [eV/K]
 
 contains
 
   !=========================================================================
-  ! Public entry: read coefficients (once), turn the Phi_3 path estimator of
-  ! the last transport pass into a rate, evaluate n_3 leaf by leaf, and write
+  ! Public entry: evaluate n_3 leaf by leaf on the converged state and write
   ! '<base>_heimeta'.
   !=========================================================================
   subroutine hei_metastable_run()
     use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, &
                               gas_ne, gas_Te
     implicit none
-    real(kind=wp), allocatable :: phi3(:), n2s3(:)
-    real(kind=wp) :: efloor, nH, yHe, ne, Te, Tc
-    real(kind=wp) :: nHI, nHeI, nHeII, a3, q13, q31a, q31b, q31g, c3, Q31
-    real(kind=wp) :: src, snk
+    real(kind=wp), allocatable :: phi3(:), n2s3(:), a3(:), heat3(:)
+    real(kind=wp) :: efloor, nH, yHe
+    type(hei_triplet_rates_type) :: r
     integer :: il, nleaf
 
     call hei_metastable_load()
 
-    !--- band-floor note: Phi_3 threshold is 4.78 eV; if the band starts above
-    !--- it the soft-UV part of the integral is missed (Phi_3 underestimated).
+    !--- band-floor note: sigma_3 starts at hm_sigA(1) = 4.78 eV; if the band
+    !--- starts above it the soft-UV part of the integral is missed (Phi_3
+    !--- underestimated).  The default band starts there (setup.f90).
     efloor = par%eion_min
     if (par%add_fuv) efloor = par%efuv_min
-    if (mpar%p_rank == 0 .and. efloor > 4.78_wp) &
-       write(*,'(a,f7.3,a)') ' HEIMETA: NOTE: band floor ', efloor, &
-       ' eV > 4.78 eV -> Phi_3 misses [4.78, floor); set add_fuv with '// &
-       'efuv_min=4.78 for the full 2^3S photoionization integral.'
+    if (mpar%p_rank == 0 .and. efloor > hm_sigA(1)) &
+       write(*,'(a,f7.3,a,f4.2,a)') ' HEIMETA: NOTE: band floor ', efloor, &
+       ' eV > the 2^3S edge ', hm_sigA(1), ' eV -> Phi_3 misses the part '// &
+       'below the floor; leave add_fuv and efuv_min out of the input (or set '// &
+       'add_fuv with efuv_min at the edge) for the full 2^3S photoionization integral.'
 
     nleaf = amr_grid%nleaf
-    allocate(phi3(nleaf), n2s3(nleaf))
-
-    !--- Phi_3(il) = Int 4 pi J_nu sigma_3 dnu / (h nu), from the reduced
-    !--- path estimator of the last transport pass.
-    call hei_phi3(phi3, nleaf)
+    allocate(phi3(nleaf), n2s3(nleaf), a3(nleaf), heat3(nleaf))
 
     yHe = par%abund_He
     do il = 1, nleaf
-       nH  = gas_nH(il);   ne = gas_ne(il);   Te = gas_Te(il)
-       Tc  = min(max(Te, hm_Tmin), hm_Tmax)            ! clamp to the fit range
-       nHI   = nH * gas_xHI(il)
-       nHeI  = nH * yHe * gas_xHeI(il)
-       nHeII = nH * yHe * gas_xHeII(il)
-       a3    = hei_alpha_power(Tc, hm_alpha3)
-       q13   = hei_qexc(Tc, hm_q13)
-       q31a  = hei_qexc(Tc, hm_q31a)
-       q31b  = hei_qexc(Tc, hm_q31b)
-       q31g  = hei_qdeexc_ground(Tc)
-       c3    = hm_cion3(1)*Tc**hm_cion3(2)*exp(-hm_cion3(3)/Tc)
-       Q31   = hei_penning(Tc)
-       src   = a3*ne*nHeII + q13*ne*nHeI
-       snk   = hm_A31 + phi3(il) + ne*(q31a + q31b + q31g + c3) + nHI*Q31
-       n2s3(il) = src / snk                            ! snk >= A31 > 0 always
+       phi3(il) = hei_phi3_rate(il)
+       heat3(il) = hei_phi3_heating(il)
+       nH = gas_nH(il)
+       r  = hei_triplet_rates(gas_Te(il))
+       a3(il) = r%alpha3
+       n2s3(il) = hei_triplet_population(r, gas_ne(il), nH*gas_xHI(il), &
+                     nH*yHe*gas_xHeI(il), nH*yHe*gas_xHeII(il), phi3(il))
     end do
 
-    call hei_metastable_write(n2s3, phi3, nleaf)
-    deallocate(phi3, n2s3)
+    call hei_metastable_write(n2s3, phi3, a3, heat3, nleaf)
+    deallocate(phi3, n2s3, a3, heat3)
   end subroutine hei_metastable_run
 
   !=========================================================================
-  ! Phi_3 [s^-1] per leaf from the reduced path estimator: the factor turns
-  ! Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu, as for Gamma_i.
+  ! The rate set at T.  Electron-impact rows: log10 Upsilon linear in log10 T
+  ! between the nodes, end values held outside them, Boltzmann factor at the
+  ! actual T.  C_3 and Q_31 are each evaluated at T clamped to the range its
+  ! closed form is stated for (C3TRANGE: Black 1981, 1e3-1e5 K; Q31TRANGE:
+  ! Garcia Munoz 2025, <2% over 200-1e4 K), the end value held outside.
+  ! alpha_3 = f_3S alpha_B(He II).
   !=========================================================================
-  subroutine hei_phi3(phi3, nleaf)
-    implicit none
-    integer,       intent(in)  :: nleaf
-    real(kind=wp), intent(out) :: phi3(nleaf)
-    integer :: il
+  function hei_triplet_rates(T) result(r)
+    use recomb_mod,      only : alphaB_HeII
+    use hei_cascade_mod, only : hei_branch_fractions
+    real(kind=wp), intent(in) :: T
+    type(hei_triplet_rates_type) :: r
+    real(kind=wp) :: x, w, ups, q, sqT, kT, Tc, lnT, f3s
+    integer :: j, i
 
-    if (.not. allocated(phi3_path)) &
-       error stop 'Phi_3 path estimator is not allocated'
-    do il = 1, nleaf
-       phi3(il) = phi3_path(il) &
-                  / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
+    if (.not. hm_loaded) call hei_metastable_load()
+    r%T = T
+    call hei_branch_fractions(T, f3s, r%f1s, r%f1p)
+    r%alpha3 = f3s*alphaB_HeII(T)
+
+    !--- node interval, shared by every row
+    x = min(max(log10(T), hm_logT(1)), hm_logT(hm_nnode))
+    j = 1
+    do while (j < hm_nnode - 1 .and. x > hm_logT(j+1))
+       j = j + 1
     end do
-  end subroutine hei_phi3
+    w = (x - hm_logT(j))/(hm_logT(j+1) - hm_logT(j))
+    sqT = sqrt(T)
+    kT  = kb_eV*T
+    do i = 1, hm_nrow
+       ups = 10.0_wp**((1.0_wp - w)*hm_lups(j,i) + w*hm_lups(j+1,i))
+       if (hm_role(i) == ROLE_Q13) &
+          r%q31g = hm_beta*ups/(3.0_wp*sqT)   ! g_1/g_3 exp(+E_13/kT) q_13
+       if (hm_dE(i)/kT < 700.0_wp) then
+          q = hm_beta*ups*exp(-hm_dE(i)/kT)/(hm_gl(i)*sqT)
+       else
+          q = 0.0_wp                           ! Boltzmann underflow
+       end if
+       select case (hm_role(i))
+       case (ROLE_Q13)
+          r%q13 = r%q13 + q;      r%cool13 = r%cool13 + q*hm_dE(i)*ev2erg
+       case (ROLE_FEED)
+          r%qfeed = r%qfeed + q;  r%cool13 = r%cool13 + q*hm_dE(i)*ev2erg
+       case (ROLE_Q31A)
+          r%q31a = r%q31a + q;    r%cool31 = r%cool31 + q*hm_dE(i)*ev2erg
+       case (ROLE_Q31B)
+          r%q31b = r%q31b + q;    r%cool31 = r%cool31 + q*hm_dE(i)*ev2erg
+       case (ROLE_SINGLET)
+          r%q31s = r%q31s + q;    r%cool31 = r%cool31 + q*hm_dE(i)*ev2erg
+       case (ROLE_TRIPLET)
+          r%q33 = r%q33 + q;      r%cool31 = r%cool31 + q*hm_dE(i)*ev2erg
+       end select
+    end do
+
+    Tc   = min(max(T, hm_c3_T(1)), hm_c3_T(2))
+    r%c3 = hm_cion3(1)*Tc**hm_cion3(2)*exp(-hm_cion3(3)/Tc)
+    Tc   = min(max(T, hm_q31_T(1)), hm_q31_T(2))
+    lnT  = log(Tc)
+    r%pen = hm_pen(1)*exp(hm_pen(2)/Tc + lnT*(hm_pen(3) + lnT*(hm_pen(4) &
+            + lnT*hm_pen(5))))
+  end function hei_triplet_rates
 
   !=========================================================================
-  ! Phi_3 path estimator: allocated with the other transport estimators
+  ! Effective collision strength of row i at T (the interpolation the rate
+  ! set uses), for the gates.
+  !=========================================================================
+  real(kind=wp) function hei_upsilon(i, T) result(ups)
+    integer,       intent(in) :: i
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: x, w
+    integer :: j
+    x = min(max(log10(T), hm_logT(1)), hm_logT(hm_nnode))
+    j = 1
+    do while (j < hm_nnode - 1 .and. x > hm_logT(j+1))
+       j = j + 1
+    end do
+    w = (x - hm_logT(j))/(hm_logT(j+1) - hm_logT(j))
+    ups = 10.0_wp**((1.0_wp - w)*hm_lups(j,i) + w*hm_lups(j+1,i))
+  end function hei_upsilon
+
+  !=========================================================================
+  ! D [s^-1]: the total destruction rate of one 2^3S atom.
+  !=========================================================================
+  pure real(kind=wp) function hei_triplet_destruction(r, ne, nHI, phi3) result(D)
+    type(hei_triplet_rates_type), intent(in) :: r
+    real(kind=wp), intent(in) :: ne, nHI, phi3
+    D = hm_A31 + phi3 + ne*(r%q31g + r%q31a + r%q31b + r%q31s + r%c3) &
+        + nHI*r%pen
+  end function hei_triplet_destruction
+
+  !=========================================================================
+  ! n_3 [cm^-3], the steady 2^3S density (D >= A_31 > 0 always).
+  !=========================================================================
+  pure real(kind=wp) function hei_triplet_population(r, ne, nHI, nHeI, nHeII, &
+                                                    phi3) result(n3)
+    type(hei_triplet_rates_type), intent(in) :: r
+    real(kind=wp), intent(in) :: ne, nHI, nHeI, nHeII, phi3
+    n3 = ne*(r%alpha3*nHeII + (r%q13 + r%qfeed)*nHeI) &
+         / hei_triplet_destruction(r, ne, nHI, phi3)
+  end function hei_triplet_population
+
+  !=========================================================================
+  ! Net gas heating by the 2^3S processes [erg cm^-3 s^-1] (the ledger in
+  ! the module header); heat3 = Gamma_3, the photoionization heating of one
+  ! 2^3S atom [erg s^-1].
+  !=========================================================================
+  pure real(kind=wp) function hei_triplet_net_heating(r, ne, nHI, nHeI, n3, &
+                                                     heat3) result(h)
+    type(hei_triplet_rates_type), intent(in) :: r
+    real(kind=wp), intent(in) :: ne, nHI, nHeI, n3, heat3
+    real(kind=wp) :: e3, ip3, eh
+    e3  = hm_E23S*ev2erg
+    ip3 = (IP_HE_EV - hm_E23S)*ev2erg
+    eh  = (hm_E23S - IP_H_EV)*ev2erg
+    h = n3*(ne*(r%q31g*e3 - r%cool31 - r%c3*ip3) + heat3 + nHI*r%pen*eh) &
+        - ne*nHeI*r%cool13
+  end function hei_triplet_net_heating
+
+  !=========================================================================
+  ! Phi_3 [s^-1] and its heating [erg s^-1 per 2^3S atom] of leaf il, from
+  ! the reduced path estimators of the last transport pass (0 before any).
+  !=========================================================================
+  real(kind=wp) function hei_phi3_rate(il) result(p)
+    integer, intent(in) :: il
+    p = 0.0_wp
+    if (allocated(phi3_leaf)) p = phi3_leaf(il)
+  end function hei_phi3_rate
+
+  real(kind=wp) function hei_phi3_heating(il) result(h)
+    integer, intent(in) :: il
+    h = 0.0_wp
+    if (allocated(heat3_leaf)) h = heat3_leaf(il)
+  end function hei_phi3_heating
+
+  !--- set the leaf rates directly (gate programs, which run no transport)
+  subroutine hei_phi3_assign(phi3, heat3)
+    real(kind=wp), intent(in) :: phi3(:), heat3(:)
+    if (allocated(phi3_leaf)) deallocate(phi3_leaf, heat3_leaf)
+    allocate(phi3_leaf(size(phi3)), heat3_leaf(size(phi3)))
+    phi3_leaf  = phi3
+    heat3_leaf = heat3
+  end subroutine hei_phi3_assign
+
+  !=========================================================================
+  ! Phi_3 path estimators: allocated with the other transport estimators
   ! (ion_score_setup, also on re-refinement), zeroed at the start of each
   ! transport pass, scored for every ionizing- or FUV-band segment at the
   ! packet's own energy, and reduced with the rates.
@@ -169,81 +365,52 @@ contains
   subroutine hei_metastable_path_setup(nleaf)
     integer, intent(in) :: nleaf
     call hei_metastable_load()
-    if (allocated(phi3_path)) deallocate(phi3_path)
-    allocate(phi3_path(nleaf))
-    phi3_path = 0.0_wp
+    if (allocated(phi3_path)) deallocate(phi3_path, heat3_path)
+    if (allocated(phi3_leaf)) deallocate(phi3_leaf, heat3_leaf)
+    allocate(phi3_path(nleaf), heat3_path(nleaf))
+    phi3_path  = 0.0_wp
+    heat3_path = 0.0_wp
   end subroutine hei_metastable_path_setup
 
   subroutine hei_metastable_path_reset()
-    if (allocated(phi3_path)) phi3_path = 0.0_wp
+    if (allocated(phi3_path)) then
+       phi3_path  = 0.0_wp
+       heat3_path = 0.0_wp
+    end if
   end subroutine hei_metastable_path_reset
 
   subroutine hei_metastable_path_score(il, E, path_lum)
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: E, path_lum
+    real(kind=wp) :: s
     if (E <= hm_sigA(1)) return                       ! below 4.78 eV
-    phi3_path(il) = phi3_path(il) + path_lum*hei_sigma3(E)/(E*ev2erg)
+    s = path_lum*hei_sigma3(E)
+    phi3_path(il)  = phi3_path(il)  + s/(E*ev2erg)
+    heat3_path(il) = heat3_path(il) + s*max(1.0_wp - (IP_HE_EV - hm_E23S)/E, 0.0_wp)
   end subroutine hei_metastable_path_score
 
+  !--- reduce, then turn Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu
+  !--- per leaf, as for Gamma_i.
   subroutine hei_metastable_path_reduce()
     use mpi
-    integer :: ierr
-    if (allocated(phi3_path)) &
-       call MPI_ALLREDUCE(MPI_IN_PLACE, phi3_path, size(phi3_path), &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-  end subroutine hei_metastable_path_reduce
-
-  !=========================================================================
-  ! alpha(T) = C (T/1e4)^p  [cm^3 s^-1].
-  !=========================================================================
-  real(kind=wp) function hei_alpha_power(T, cp) result(a)
-    real(kind=wp), intent(in) :: T, cp(2)
-    a = cp(1) * (T/1.0e4_wp)**cp(2)
-  end function hei_alpha_power
-
-  !=========================================================================
-  ! q(T) = beta Upsilon(T) exp(-Eexc/kT) / (g_l sqrt T) [cm^3 s^-1],
-  ! Upsilon = a exp(bT) + c exp(dT).  p(1:7) = beta, Eexc, g_l, a, b, c, d.
-  !=========================================================================
-  real(kind=wp) function hei_qexc(T, p) result(q)
-    real(kind=wp), intent(in) :: T, p(7)
-    real(kind=wp) :: ups, arg
-    ups = p(4)*exp(p(5)*T) + p(6)*exp(p(7)*T)
-    arg = -p(2)/(kb_eV*T)
-    if (arg > -700.0_wp) then
-       q = p(1)*ups*exp(arg)/(p(3)*sqrt(T))
-    else
-       q = 0.0_wp                                       ! Boltzmann underflow
+    integer :: ierr, il, n
+    real(kind=wp) :: fac
+    if (.not. allocated(phi3_path)) return
+    n = size(phi3_path)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, phi3_path, n, MPI_DOUBLE_PRECISION, &
+                       MPI_SUM, MPI_COMM_WORLD, ierr)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, heat3_path, n, MPI_DOUBLE_PRECISION, &
+                       MPI_SUM, MPI_COMM_WORLD, ierr)
+    if (allocated(phi3_leaf)) then
+       if (size(phi3_leaf) /= n) deallocate(phi3_leaf, heat3_leaf)
     end if
-  end function hei_qexc
-
-  !=========================================================================
-  ! q_31g(T) [cm^3 s^-1]: e-impact 2^3S -> 1^1S, the inverse of q_13 by
-  ! detailed balance, q_31g = q_13 (g_1/g_3) exp(E_13/kT) with g_1 = 1,
-  ! g_3 = 3.  Written with the Boltzmann factor of q_13 removed rather than
-  ! multiplied back, so it does not underflow at low T.
-  !=========================================================================
-  real(kind=wp) function hei_qdeexc_ground(T) result(q)
-    real(kind=wp), intent(in) :: T
-    real(kind=wp) :: ups
-    ups = hm_q13(4)*exp(hm_q13(5)*T) + hm_q13(6)*exp(hm_q13(7)*T)
-    q   = hm_q13(1)*ups/(3.0_wp*sqrt(T))
-  end function hei_qdeexc_ground
-
-  !=========================================================================
-  ! Q_31(T) [cm^3 s^-1]: Penning + associative ionization He(2^3S) + H0,
-  ! Garcia Munoz (2025, A&A 698 A199, Fig. 5), the Maxwellian average of the
-  ! Movre & Meyer (1997) cross sections:
-  !   Q = A exp(c/T + d1 lnT + d2 (lnT)^2 + d3 (lnT)^3),
-  ! hm_pen = A, c, d1, d2, d3.  <2% from 200 to 1e4 K; smooth and positive
-  ! beyond, and T is clamped to TRANGE by the caller.
-  !=========================================================================
-  real(kind=wp) function hei_penning(T) result(Q)
-    real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lnT
-    lnT = log(T)
-    Q = hm_pen(1)*exp(hm_pen(2)/T + lnT*(hm_pen(3) + lnT*(hm_pen(4) + lnT*hm_pen(5))))
-  end function hei_penning
+    if (.not. allocated(phi3_leaf)) allocate(phi3_leaf(n), heat3_leaf(n))
+    do il = 1, n
+       fac = 1.0_wp/((2.0_wp*leaf_half(il))**3*par%distance2cm**2)
+       phi3_leaf(il)  = phi3_path(il)*fac
+       heat3_leaf(il) = heat3_path(il)*fac
+    end do
+  end subroutine hei_metastable_path_reduce
 
   !=========================================================================
   ! sigma_3(E) [cm^2]: two VFKY96 wings joined by a log-linear bridge between
@@ -281,9 +448,11 @@ contains
     use mpi
     implicit none
     character(len=PATH_LEN) :: fname
-    character(len=256) :: line
-    character(len=16)  :: key
-    integer :: unit, ios, ierr
+    character(len=512) :: line
+    character(len=16)  :: key, rolename
+    real(kind=wp) :: ups(MAXNODE), gl, dE
+    integer :: unit, ios, ierr, lower, n, mult, l
+    logical :: old_layout
 
     if (hm_loaded) return
     fname = trim(par%atomic_dir)//'/hei_metastable.txt'
@@ -293,6 +462,8 @@ contains
           trim(fname), ' (par%atomic_dir)'
        call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
     end if
+    old_layout = .false.
+    hm_nrow = 0;  hm_nnode = 0
     do
        read(unit,'(a)',iostat=ios) line
        if (ios /= 0) exit
@@ -300,47 +471,90 @@ contains
        if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
        read(line,*) key
        select case (trim(key))
-       case ('TRANGE');    read(line,*) key, hm_Tmin, hm_Tmax
+       case ('C3TRANGE');  read(line,*) key, hm_c3_T
+       case ('Q31TRANGE'); read(line,*) key, hm_q31_T
+       case ('TRANGE');    old_layout = .true.   ! one range for both forms
        case ('A31');       read(line,*) key, hm_A31
-       case ('ALPHA3');    read(line,*) key, hm_alpha3
-       case ('ALPHA1');    ! singlet recombination; not part of the n_3 balance
-       case ('QEXC13');    read(line,*) key, hm_q13
-       case ('QEXC31A');   read(line,*) key, hm_q31a
-       case ('QEXC31B');   read(line,*) key, hm_q31b
+       case ('BETA');      read(line,*) key, hm_beta
+       case ('E23S');      read(line,*) key, hm_E23S
+       case ('UPSGRID')
+          read(line,*) key, hm_nnode
+          if (hm_nnode < 2 .or. hm_nnode > MAXNODE) then
+             old_layout = .true.;  cycle
+          end if
+          read(line,*) key, hm_nnode, hm_logT(1:hm_nnode)
+       case ('UPSILON')
+          if (hm_nnode < 2 .or. hm_nrow >= MAXROW) then
+             old_layout = .true.;  cycle
+          end if
+          read(line,*) key, rolename, lower, n, mult, l, gl, dE, ups(1:hm_nnode)
+          hm_nrow = hm_nrow + 1
+          select case (trim(rolename))
+          case ('Q13');     hm_role(hm_nrow) = ROLE_Q13
+          case ('FEED');    hm_role(hm_nrow) = ROLE_FEED
+          case ('Q31A');    hm_role(hm_nrow) = ROLE_Q31A
+          case ('Q31B');    hm_role(hm_nrow) = ROLE_Q31B
+          case ('SINGLET'); hm_role(hm_nrow) = ROLE_SINGLET
+          case ('TRIPLET'); hm_role(hm_nrow) = ROLE_TRIPLET
+          case default;     old_layout = .true.
+          end select
+          hm_lower(hm_nrow) = lower
+          hm_upper(:,hm_nrow) = [n, mult, l]
+          hm_gl(hm_nrow) = gl
+          hm_dE(hm_nrow) = dE
+          hm_lups(1:hm_nnode,hm_nrow) = log10(ups(1:hm_nnode))
        case ('CION3');     read(line,*) key, hm_cion3
        case ('PENNING');   read(line,*) key, hm_pen
        case ('SIGMA3A');   read(line,*) key, hm_sigA
        case ('SIGMA3B');   read(line,*) key, hm_sigB
        case ('SIGBRIDGE'); read(line,*) key, hm_E3, hm_E4
-       case ('Q10833');    ! Stage 2 emission source; recorded, not used here
+       case ('LINE10833'); ! Stage 2 line constants, read by the Python tools
+       case ('ALPHA3', 'ALPHA1', 'QEXC13', 'QEXC31A', 'QEXC31B', 'Q10833')
+          old_layout = .true.          ! the pre-2026-09-25 file
        end select
     end do
     close(unit)
-    !--- the QEXC rows carry (beta, Eexc, g_l, ...) since 2026-09-24; a file in
-    !--- the earlier (prefac, sconst, Eexc, div, ...) layout would be read
-    !--- silently wrong, and a missing CION3 would drop the ionization sink.
-    if (hm_q13(3) /= 1.0_wp .or. hm_q31a(3) /= 3.0_wp .or. &
-        hm_q31b(3) /= 3.0_wp .or. hm_cion3(1) <= 0.0_wp) then
+    !--- the recombination source is alpha_B(He II) f_3S since 2026-09-25 and
+    !--- the electron-impact rates are the Bray et al. (2000) rows; a file
+    !--- still carrying ALPHA3 / QEXC rows, or missing a row set, would be
+    !--- read silently wrong.
+    if (old_layout .or. hm_nrow == 0 .or. hm_beta <= 0.0_wp .or. &
+        hm_E23S <= 0.0_wp .or. hm_cion3(1) <= 0.0_wp .or. &
+        hm_c3_T(1) <= 0.0_wp .or. hm_q31_T(1) <= 0.0_wp .or. &
+        count(hm_role(1:hm_nrow) == ROLE_Q13) /= 1) then
        if (mpar%p_rank == 0) write(*,'(3a)') 'ERROR: ', trim(fname), &
-          ' is not in the current QEXC/CION3 layout; regenerate it with'// &
-          ' tools/fitting/make_hei_metastable.py'
+          ' is not in the current UPSILON/BETA/E23S layout; regenerate it'// &
+          ' with tools/fitting/make_hei_metastable.py'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
+    !--- the default FUV floor (par%efuv_min when the input leaves it out) is
+    !--- define.f90's E_HEI_23S_SIGMA_EDGE, set before this file is read; it
+    !--- has to be the edge sigma_3 is evaluated with, or the default band
+    !--- would start above (or below) the photoionization it exists to cover.
+    if (abs(hm_sigA(1) - E_HEI_23S_SIGMA_EDGE) > 1.0e-9_wp*E_HEI_23S_SIGMA_EDGE) then
+       if (mpar%p_rank == 0) write(*,'(a,f10.6,a,f10.6,a)') &
+          'ERROR: the SIGMA3A edge ', hm_sigA(1), ' eV differs from '// &
+          'E_HEI_23S_SIGMA_EDGE = ', E_HEI_23S_SIGMA_EDGE, &
+          ' eV in define.f90 (the default FUV floor); make them agree.'
        call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
     end if
     hm_loaded = .true.
-    if (mpar%p_rank == 0) write(*,'(2a)') &
-       ' HEIMETA: 2^3S coefficients loaded from ', trim(fname)
+    if (mpar%p_rank == 0) write(*,'(a,i3,2a)') &
+       ' HEIMETA: 2^3S coefficients (', hm_nrow, ' Bray et al. 2000 rows) '// &
+       'loaded from ', trim(fname)
   end subroutine hei_metastable_load
 
   !=========================================================================
-  ! Write '<base>_heimeta' (rank 0): n_2s3, Phi_3, n_e, T_e + leaf geometry.
+  ! Write '<base>_heimeta' (rank 0): n_2s3, Phi_3, alpha_3, Gamma_3, n_H,
+  ! n_e, T_e + leaf geometry.
   !=========================================================================
-  subroutine hei_metastable_write(n2s3, phi3, nleaf)
+  subroutine hei_metastable_write(n2s3, phi3, a3, heat3, nleaf)
     use iofile_mod
     use utility,       only : get_base_name, fatal_error
     use gas_state_mod, only : gas_nH, gas_ne, gas_Te
     implicit none
     integer,       intent(in) :: nleaf
-    real(kind=wp), intent(in) :: n2s3(nleaf), phi3(nleaf)
+    real(kind=wp), intent(in) :: n2s3(nleaf), phi3(nleaf), a3(nleaf), heat3(nleaf)
     type(io_file_type) :: file
     character(len=PATH_LEN) :: filename
     real(kind=wp), allocatable :: lxyz(:,:), tmp(:)
@@ -359,6 +573,14 @@ contains
 
     call io_append_image(file, phi3, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Phi_3','2^3S photoionization rate [s^-1]',status)
+
+    call io_append_image(file, a3, status, bitpix=-64)
+    call io_put_keyword(file,'EXTNAME','alpha_3', &
+         'recombination into 2^3S, f_3S alpha_B(He II) [cm^3 s^-1]',status)
+
+    call io_append_image(file, heat3, status, bitpix=-64)
+    call io_put_keyword(file,'EXTNAME','Gamma_3', &
+         '2^3S photoionization heating [erg s^-1 per atom]',status)
 
     allocate(tmp(nleaf))
     tmp = gas_nH(1:nleaf)

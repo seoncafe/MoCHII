@@ -44,12 +44,17 @@ module qmc_mod
   integer, parameter, public :: QMC_MAXDIM     = 12
   integer, parameter, public :: QMC_NDIM_USED  = 3
 
-  !--- two decorrelated scramble streams sharing the same Sobol net: the stellar
-  !--- launch (stream 1) and the diffuse launch (stream 2).  Distinct keys for
-  !--- each dimension make the two streams independent randomized replicates.
+  !--- three decorrelated scramble streams sharing the same Sobol net: the
+  !--- stellar launch (stream 1), the diffuse launch (stream 2) and the FUV
+  !--- stratum of the stellar launch (stream 3, par%fuv_sampling = 'separate':
+  !--- the [efuv_min, eion_min) packets, indexed from 0 on their own, so the
+  !--- ionizing packets keep exactly the stream-1 points they have without the
+  !--- FUV band).  Distinct keys for each dimension make the streams
+  !--- independent randomized replicates.
   integer, parameter, public :: QMC_STREAM_STELLAR = 1
   integer, parameter, public :: QMC_STREAM_DIFFUSE = 2
-  integer, parameter :: NSTREAM = 2
+  integer, parameter, public :: QMC_STREAM_FUV     = 3
+  integer, parameter :: NSTREAM = 3
 
   integer, parameter :: NBITS = 32
   integer(int64), parameter :: MASK32 = int(z'FFFFFFFF', int64)
@@ -124,15 +129,19 @@ contains
 
     !--- Owen scramble seeds for each dimension and stream, from (qmc_seed, dimension,
     !--- stream).  Stream 1 (stellar) keeps the exact stage-1 expression, so the
-    !--- stellar launch set is unchanged; stream 2 (diffuse) adds a distinct
-    !--- 32-bit stream constant, decorrelating the two streams while both remain
-    !--- balanced scrambles of the same net.
+    !--- stellar launch set is unchanged; streams 2 (diffuse) and 3 (FUV) each
+    !--- add a distinct 32-bit stream constant (the two MurmurHash3 finalizer
+    !--- multipliers), decorrelating the streams while all remain balanced
+    !--- scrambles of the same net.
     do d = 1, QMC_MAXDIM
        dkey(d, QMC_STREAM_STELLAR) = hash32( iand( int(seed, int64) &
                  + int(d, int64) * int(z'9E3779B9', int64), MASK32 ) )
        dkey(d, QMC_STREAM_DIFFUSE) = hash32( iand( int(seed, int64) &
                  + int(d, int64) * int(z'9E3779B9', int64) &
                  + int(z'85EBCA6B', int64), MASK32 ) )
+       dkey(d, QMC_STREAM_FUV)     = hash32( iand( int(seed, int64) &
+                 + int(d, int64) * int(z'9E3779B9', int64) &
+                 + int(z'C2B2AE35', int64), MASK32 ) )
     end do
 
     qmc_ready = .true.
@@ -151,8 +160,8 @@ contains
 
   !=========================================================================
   ! Scrambled uniforms from a chosen stream (QMC_STREAM_STELLAR /
-  ! QMC_STREAM_DIFFUSE).  Same Sobol net, stream-specific scramble keys, so the
-  ! two streams are decorrelated randomized replicates.
+  ! QMC_STREAM_DIFFUSE / QMC_STREAM_FUV).  Same Sobol net, stream-specific
+  ! scramble keys, so the streams are decorrelated randomized replicates.
   !=========================================================================
   subroutine qmc_uniforms_stream(idx, u, stream)
     implicit none

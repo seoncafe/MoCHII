@@ -2,7 +2,7 @@
 """Summarize the HII40 residual experiments against the Cloudy reference.
 
 The reported fronts use volume-weighted 0.01-pc spherical shells and linear
-interpolation between shell centres.  This deliberately matches the diagnostic
+interpolation between shell centers.  This deliberately matches the diagnostic
 used for the Figure 14 residual investigation rather than individual AMR-cell
 values.
 """
@@ -49,7 +49,7 @@ def read_mochii(path):
 
 def read_cloudy(prefix):
     profiles = {}
-    # ``genfromtxt(names=True)`` sanitises the Cloudy header ``C+2`` to C2.
+    # ``genfromtxt(names=True)`` sanitizes the Cloudy header ``C+2`` to C2.
     for suffix, column, name in (("ele_h", "H", "H0"),
                                  ("ele_he", "He", "He0"),
                                  ("ele_c", "C2", "C2")):
@@ -77,7 +77,7 @@ def at_radius(profile, radius):
     return np.interp(radius, SHELL_CENTRES, profile)
 
 
-def summarise(label, profiles):
+def summarize(label, profiles):
     return [label, outward_crossing(profiles["He0"], 0.5),
             outward_crossing(profiles["C2"], 0.5),
             outward_crossing(profiles["H0"], 0.1),
@@ -101,8 +101,8 @@ def main():
         if path.exists():
             cases.append((tag, path))
 
-    rows = [summarise(label, read_mochii(path)) for label, path in cases]
-    rows.append(summarise("Cloudy c25", read_cloudy(args.cloudy_prefix)))
+    rows = [summarize(label, read_mochii(path)) for label, path in cases]
+    rows.append(summarize("Cloudy c25", read_cloudy(args.cloudy_prefix)))
     headings = ("case", "r(He0=0.5)", "r(C2=0.5)", "r(H0=0.1)",
                 "C2@4.20", "C2@4.35", "C2@4.50")
     print(" | ".join(headings))

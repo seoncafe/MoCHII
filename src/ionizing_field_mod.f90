@@ -10,6 +10,14 @@ module ionizing_field_mod
 ! field that drove the iteration -- same launch set, same diffuse rebuild,
 ! same reduction.
 !
+! With par%add_fuv and par%fuv_sampling = 'separate' the source packets are
+! launched in two strata, the ionizing part of the band (par%nphotons packets
+! on the stellar Sobol stream, the same indices as without the FUV band) and
+! the FUV part (par%nphotons_fuv packets on their own stream); each carries its
+! stratum's luminosity over its stratum's count (ion_band_mod).  Every
+! estimator downstream sums Lpacket * wgt * path, so nothing past the launch
+! needs to know which stratum a packet came from.
+!
 ! With with_peel every emitted packet (stellar AND diffuse) also peels a
 ! direct contribution toward each observer, and -- when dust scattering is
 ! sampled -- every interaction peels a scattered contribution through the
@@ -17,10 +25,15 @@ module ionizing_field_mod
 !---------------------------------------------------------------------------
   use define
   use ion_band_mod,     only : gen_ion_photon, gen_ion_photon_qmc, &
-                               ion_Ltot, ion_qmc_ndim
-  use qmc_mod,          only : qmc_uniforms, qmc_uniforms_stream, &
-                               QMC_MAXDIM, QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE
-  use jtally_mod,       only : jtally_ion_reduce, jt_ion, &
+                               ion_Ltot, ion_qmc_ndim, fuv_stratified, &
+                               ion_L_ionizing, ion_L_fuv, &
+                               band_packet_count, ionizing_packet_luminosity, &
+                               LAUNCH_BAND_WHOLE, LAUNCH_BAND_IONIZING, &
+                               LAUNCH_BAND_FUV
+  use qmc_mod,          only : qmc_uniforms_stream, QMC_MAXDIM, &
+                               QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE, &
+                               QMC_STREAM_FUV
+  use jtally_mod,       only : jtally_ion_reduce, jt_ion, jt_ion_on, &
                                slab_tally_on, slab_Iesc
   use ion_score_mod,    only : ion_score_reset, ion_score_reduce, &
                                ion_score_report_energy_closure, &
@@ -30,6 +43,7 @@ module ionizing_field_mod
   use species_mod,      only : species_gamma_compute
   use diffuse_mod,      only : diffuse_build, gen_diffuse_photon, &
                                gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum
+  use heii_cascade_mod, only : heii_cascade_transported
   use ion_peel_mod,     only : ion_peel_setup, ion_peel_direct, ion_peel_scatter
   use photon_schedule_mod, only : photon_schedule_begin, photon_schedule_next, &
                                   photon_schedule_end
@@ -44,6 +58,10 @@ module ionizing_field_mod
   integer(kind=int64) :: n_step    = 1_int64
   logical             :: use_sobol = .false.
   integer             :: nd_qmc    = 0
+  !--- the launched-luminosity check of the band strata is printed once, on
+  !--- the first pass that has an FUV extension.
+  logical             :: strata_reported = .false.
+  integer, parameter  :: LEDGER_WP = selected_real_kind(18, 300)
 
 contains
 
@@ -77,6 +95,7 @@ contains
     integer(kind=int64) :: ip, n_done
     real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
     real(kind=wp)       :: dtime
+    real(kind=LEDGER_WP) :: launched(2)   ! launched Sum Lpacket*wgt: stratum 1 (or whole band), FUV
     logical             :: peel
 
     peel = .false.
@@ -87,7 +106,7 @@ contains
        if (par%ion_add_dust .and. par%ion_dust_scatter) &
           ion_peel_scatter_hook => ion_peel_scatter
     end if
-    jt_ion(:,:) = 0.0_wp
+    if (jt_ion_on) jt_ion(:,:) = 0.0_wp
     call ion_score_reset()
     !--- keep the last pass's escaping field: an iterating pass starts the
     !--- slab tally from zero, the imaging pass adds to what is already there.
@@ -104,40 +123,32 @@ contains
        end if
     end if
     n_done = 0
+    launched = 0.0_LEDGER_WP
     !--- how the photon indices are split over the ranks (static cyclic or
     !--- served on demand) is par%use_master_slave; the body below is the
     !--- same either way.  An iterating pass also asks the dynamic master to
     !--- print the progress line, since it transports nothing itself and the
     !--- count below would never advance on rank 0.
-    if (peel) then
-       call photon_schedule_begin(par%nphotons)
+    if (fuv_stratified) then
+       call launch_band_part(LAUNCH_BAND_IONIZING, QMC_STREAM_STELLAR, &
+                             band_packet_count(LAUNCH_BAND_IONIZING), launched(1))
+       call launch_band_part(LAUNCH_BAND_FUV, QMC_STREAM_FUV, &
+                             band_packet_count(LAUNCH_BAND_FUV), launched(2))
     else
-       call photon_schedule_begin(par%nphotons, n_step*int(mpar%nproc,int64))
+       call launch_band_part(LAUNCH_BAND_WHOLE, QMC_STREAM_STELLAR, &
+                             band_packet_count(LAUNCH_BAND_WHOLE), launched(1))
     end if
-    do while (photon_schedule_next(ip))
-       if (use_sobol) then
-          call qmc_uniforms(ip-1_int64, u_launch(1:nd_qmc))
-          call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc))
-       else
-          call gen_ion_photon(photon)
-       end if
-       photon%id      = ip
-       photon%istream = QMC_STREAM_STELLAR
-       if (peel) call ion_peel_direct(photon)
-       call transport_ion_packet(photon)
-       if (.not. peel) then
-          n_done = n_done + 1
-          if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
-             call time_stamp(dtime)
-             write(6,'(es14.3,a,f8.3,a)') real(n_done,wp)*mpar%nproc, &
-                ' photons  @ ', dtime/60.0_wp, ' mins'
-          endif
-       end if
-    end do
-    call photon_schedule_end()
-    !--- diffuse ground-recombination packets from the current state.
-    if (par%diffuse_field) then
-       call diffuse_build(ion_Ltot/real(par%nphotons, wp))
+    if (par%add_fuv .and. .not. strata_reported) call report_launched_luminosity(launched)
+    !--- diffuse recombination packets from the current state: every channel
+    !--- with the transported continuum, the He III cascade alone (channel 5)
+    !--- with the on-the-spot one and par%heii_diffuse.
+    if (trim(par%recombination_continuum) == 'transported' .or. &
+        heii_cascade_transported()) then
+       !--- the diffuse packets carry the luminosity of one IONIZING source
+       !--- packet (ionizing_packet_luminosity: ion_Ltot/nphotons for the
+       !--- whole band, L_ion/nphotons with the strata), so the recombination
+       !--- field is sampled as finely as the field that drives it.
+       call diffuse_build(ionizing_packet_luminosity())
        if (.not. peel .and. mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
           '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
           diffuse_nphot, ' packets'
@@ -166,6 +177,82 @@ contains
     call ion_score_report_energy_closure()
     if (par%use_metals) call species_gamma_compute()
     call ion_score_report_metal_rates()
+
+  contains
+
+    !--- one launch loop over npk packets of band part iband, on the Sobol
+    !--- stream istream (indices 0..npk-1) or the Mersenne Twister; adds the
+    !--- launched luminosity sum Lpacket*wgt to Lsum.
+    subroutine launch_band_part(iband, istream, npk, Lsum)
+      integer,                  intent(in)    :: iband, istream
+      integer(kind=int64),      intent(in)    :: npk
+      real(kind=LEDGER_WP),     intent(inout) :: Lsum
+      if (peel) then
+         call photon_schedule_begin(npk)
+      else
+         call photon_schedule_begin(npk, n_step*int(mpar%nproc,int64))
+      end if
+      do while (photon_schedule_next(ip))
+         if (use_sobol) then
+            call qmc_uniforms_stream(ip-1_int64, u_launch(1:nd_qmc), istream)
+            call gen_ion_photon_qmc(photon, u_launch(1:nd_qmc), iband)
+         else
+            call gen_ion_photon(photon, iband)
+         end if
+         photon%id      = ip
+         photon%istream = istream
+         Lsum = Lsum + real(photon%Lpacket*photon%wgt, LEDGER_WP)
+         if (peel) call ion_peel_direct(photon)
+         call transport_ion_packet(photon)
+         if (.not. peel) then
+            n_done = n_done + 1
+            if (mpar%p_rank == 0 .and. mod(n_done, n_step) == 0) then
+               call time_stamp(dtime)
+               write(6,'(es14.3,a,f8.3,a)') real(n_done,wp)*mpar%nproc, &
+                  ' photons  @ ', dtime/60.0_wp, ' mins'
+            endif
+         end if
+      end do
+      call photon_schedule_end()
+    end subroutine launch_band_part
+
   end subroutine ionizing_field_and_rates
+
+  !=========================================================================
+  ! Launched luminosity of each band part against what it must carry:
+  ! stratified, the two sums against L(eion_min-eion_max) and
+  ! L(efuv_min-eion_min) and their total against the band luminosity
+  ! ion_Ltot; whole band, the one sum against ion_Ltot.  By construction a
+  ! stratum launches N packets of L/N, so the ratios are 1 to rounding
+  ! (gate tests/fuv_stratified).  Printed once.
+  !=========================================================================
+  subroutine report_launched_luminosity(launched)
+    use mpi
+    real(kind=LEDGER_WP), intent(in) :: launched(2)
+    real(kind=wp) :: tot(2)
+    integer :: ierr
+    tot = real(launched, wp)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, tot, 2, MPI_DOUBLE_PRECISION, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
+    strata_reported = .true.
+    if (mpar%p_rank /= 0) return
+    if (fuv_stratified) then
+       write(*,'(a,es23.15,a,es10.2)') ' ION: launched L, ionizing stratum = ', &
+          tot(1), ',  /L(eion_min-eion_max) - 1 = ', rel_dev(tot(1), ion_L_ionizing)
+       write(*,'(a,es23.15,a,es10.2)') ' ION: launched L, FUV stratum      = ', &
+          tot(2), ',  /L(efuv_min-eion_min) - 1 = ', rel_dev(tot(2), ion_L_fuv)
+       write(*,'(a,es23.15,a,es10.2)') ' ION: launched L, both strata      = ', &
+          sum(tot), ',  /L_band - 1               = ', rel_dev(sum(tot), ion_Ltot)
+    else
+       write(*,'(a,es23.15,a,es10.2)') ' ION: launched L, whole band       = ', &
+          tot(1), ',  /L_band - 1               = ', rel_dev(tot(1), ion_Ltot)
+    end if
+  contains
+    real(kind=wp) function rel_dev(a, b)
+      real(kind=wp), intent(in) :: a, b
+      rel_dev = 0.0_wp
+      if (b > 0.0_wp) rel_dev = a/b - 1.0_wp
+    end function rel_dev
+  end subroutine report_launched_luminosity
 
 end module ionizing_field_mod

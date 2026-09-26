@@ -4,15 +4,18 @@
  ! The same star and diagnostic as hei_low_density, but a 100x denser sphere:
  ! nH=1e4 cm^-3.  Since R_S ~ (Q/nH^2)^(1/3), the same ionizing luminosity now
  ! gives R_S ~ 3.15 (100/1e4)^(2/3) ~ 0.146 pc, so the box shrinks to
- ! xmax=0.16 pc, rmax=0.15 pc.  par%hei_metastable = .true. again adds only the
- ! diagnostic pass (the physics is unchanged).
+ ! xmax=0.16 pc, rmax=0.15 pc.  par%hei_metastable = .true. again writes the
+ ! 2^3S population; with par%hei_metastable_coupling (default on) it also
+ ! feeds back, and the band extends to the 4.78 eV 2^3S edge by default
+ ! (add_fuv and efuv_min are left out), so Phi_3 carries the soft UV.
  !
  ! What this run shows: the ionized core has n_e ~ 1.1e4 cm^-3, about
- ! 2.8 n_crit (n_crit ~ 3945 at 1e4 K), so the metastable balance is now
- ! COLLISION-dominated.  The collisional sink n_e(q_31a+q_31b) exceeds A_31,
- ! so n_3/n_HeII is pushed well BELOW the low-density radiative limit
- ! alpha_3 n_e/A_31 and toward the density-independent plateau
- !    n_3/n_HeII  ->  alpha_3/(q_31a+q_31b)  ~ 6.5e-6.
+ ! 3.1 n_crit (n_crit = 3502 at 1e4 K), so the metastable balance is now
+ ! COLLISION-dominated.  The electron-impact sink
+ ! n_e(q_31g+q_31a+q_31b+q_31s+C_3) exceeds A_31, so n_3/n_HeII is pushed
+ ! well BELOW the low-density radiative limit alpha_3 n_e/A_31 and toward the
+ ! density-independent plateau
+ !    n_3/n_HeII  ->  alpha_3/(q_31g+q_31a+q_31b+q_31s+C_3) = 5.87e-6.
  ! The plot script overlays both limits on the radial profile: the core sits
  ! at ~0.7 of the plateau, the signature of collisional suppression.  Because
  ! n_3 is large here, the 10833 line-center optical depth through the core is
@@ -42,12 +45,12 @@
  par%gas_niter     = 40
  par%conv_crit     = 'vol'
  par%gas_tol       = 5.0e-3
- par%case_ab       = 'B'
+ par%recombination_continuum = 'transported'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
- par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%solve_te      = .false.   ! Te held at te_fixed (solve_te defaults to .true.)
 
  par%atomic_dir      = '../../data/atomic'   ! for hei_metastable.txt
- par%hei_metastable  = .true.                ! 2^3S diagnostic (no physics change)
+ par%hei_metastable  = .true.                ! write the 2^3S population
  par%emis_output     = .true.                ! leaf emissivities: the Porter He I
                                              ! block carries 10833 A, the emission
                                              ! side of the same 2^3S-2^3P transition
@@ -55,4 +58,9 @@
  par%source_geometry = 'point'
  par%out_file        = 'hei_high_density.h5'
  par%launch_sequence = 'sobol'   ! better with no_photons = 2^m, e.g. 2^21 = 2097152 (a Sobol set of 2^m points fills most evenly)
+ par%charge_exchange_heating = .true.
+ par%hei_metastable_coupling = .true.
+ par%twophoton_quenching = 'colliders'
+ par%hei_diffuse = .true.
+ par%heii_diffuse = .true.
 /

@@ -84,7 +84,7 @@ def report(tag, rates_file, in_file, interior_mask_fn):
     print(f"  measured interior <J>    = {Jmean:.6e}")
     print(f"  ratio <J>/J_ext          = {ratio:.4f}")
     print(f"  interior J scatter       = {Ji.std()/Jmean*100:.2f}% (leaf-to-leaf)")
-    # per-axis uniformity: split interior into low/high halves on each axis
+    # uniformity along each axis: split interior into low/high halves on each axis
     for a, nm in enumerate("xyz"):
         c = xyz[a, mask]
         lo = Ji[c < np.median(c)].mean()

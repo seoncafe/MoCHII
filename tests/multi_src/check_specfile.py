@@ -6,7 +6,7 @@ Two gates on the optically thin uniform box (band-integration convention
 identical to check_multi.py / check_ext.py):
 
   G-file-equivalence   par%src_spectrum_file (two_temp_file) reproduces the
-                       per-source Planck run (two_temp).  The two internal
+                       Planck run of each source (two_temp).  The two internal
                        sources take their 3e4/5e4 K shapes from columns of one
                        multi-column file instead of src_tstar; the RNG stream is
                        unchanged, so the volume-summed J_nu(bin) must match
@@ -60,7 +60,7 @@ def load(rates_file):
 
 
 def compare_spectra(tag, test_file, ref_file, ref_label):
-    """Per-bin and band-total comparison of two volume-summed spectra."""
+    """Bin-by-bin and band-total comparison of two volume-summed spectra."""
     _, jt, _, ebin, _ = load(test_file)
     _, jr, _, _, _ = load(ref_file)
     spec_t = jt.sum(axis=1)              # volume-summed J_nu(bin)
@@ -75,11 +75,11 @@ def compare_spectra(tag, test_file, ref_file, ref_label):
     print(f"  reference                           = {ref_label}")
     print(f"  populated ionizing bins             = {pop.sum()} of {ion.sum()}")
     print(f"  median |test - ref| / ref           = {med*100:.3f}%")
-    print(f"  max    per-bin rel diff             = {mx*100:.3f}%")
+    print(f"  max    rel diff over bins           = {mx*100:.3f}%")
     print(f"  band-integrated ratio test/ref      = {tot_ratio:.5f}")
     ok = (mx < 0.01) and (abs(tot_ratio - 1.0) < 0.005)
     print(f"  --> {'PASS' if ok else 'FAIL'} "
-          f"(max per-bin < 1% and |band ratio - 1| < 0.5%)")
+          f"(max over bins < 1% and |band ratio - 1| < 0.5%)")
     return ok
 
 
@@ -99,7 +99,7 @@ def main():
     fr = os.path.join(HERE, "twotemp_rates.h5")
     if os.path.exists(ft) and os.path.exists(fr):
         passed &= compare_spectra("G-file-equivalence", ft, fr,
-                                  "twotemp_rates.h5 (per-source src_tstar)")
+                                  "twotemp_rates.h5 (src_tstar of each source)")
     else:
         print("G-file-equivalence: rates files missing "
               "(run two_temp.in and two_temp_file.in)")

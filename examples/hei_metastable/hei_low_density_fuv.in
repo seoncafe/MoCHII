@@ -5,8 +5,11 @@
  ! 2^3S ionization threshold at 4.78 eV (par%add_fuv, efuv_min=4.78).  The
  ! extra low-energy photons raise the 2^3S photoionization rate Phi_3, adding
  ! a sink to the metastable balance and depleting n_3 where the field is
- ! strong (near the star).  par%hei_metastable = .true. adds only the
- ! diagnostic pass; the switch changes no physics.
+ ! strong (near the star).  par%hei_metastable = .true. writes the 2^3S
+ ! population, which par%hei_metastable_coupling (default on) also feeds back
+ ! into the ionization balance and the He I recombination photons.  These two
+ ! band settings are what the default gives when the 2^3S population is used;
+ ! they are written out because hei_low_density turns the extension off.
  !
  ! What this run shows: with the soft-UV band, Phi_3 climbs to a substantial
  ! fraction of A_31 near the source (the gate reaches Phi_3 ~ 9e-5 s^-1 vs
@@ -44,14 +47,19 @@
  par%gas_niter     = 40
  par%conv_crit     = 'vol'
  par%gas_tol       = 5.0e-3
- par%case_ab       = 'B'
+ par%recombination_continuum = 'transported'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
- par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%solve_te      = .false.   ! Te held at te_fixed (solve_te defaults to .true.)
 
  par%atomic_dir      = '../../data/atomic'   ! for hei_metastable.txt
- par%hei_metastable  = .true.                ! 2^3S diagnostic (no physics change)
+ par%hei_metastable  = .true.                ! write the 2^3S population
 
  par%source_geometry = 'point'
  par%out_file        = 'hei_low_density_fuv.h5'
  par%launch_sequence = 'sobol'   ! better with no_photons = 2^m, e.g. 2^21 = 2097152 (a Sobol set of 2^m points fills most evenly)
+ par%charge_exchange_heating = .true.
+ par%hei_metastable_coupling = .true.
+ par%twophoton_quenching = 'colliders'
+ par%hei_diffuse = .true.
+ par%heii_diffuse = .true.
 /

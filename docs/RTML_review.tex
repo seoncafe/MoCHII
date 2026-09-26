@@ -256,7 +256,7 @@ Ly$\alpha$ luminosity.
 
 Taken together, existing studies support RTMLs as a physically plausible
 source of intermediate temperature ions and interface radiation.  They do not
-yet establish a unique spectral template.  Per-interface columns are often
+yet establish a unique spectral template.  Columns through a single interface are often
 below observed CGM columns, with some models requiring roughly
 $10^2$--$10^3$ interfaces along a sightline \cite{TanOh2021,Ji2019}.  The
 number and orientation of interfaces, NEI history, magnetic topology, and
@@ -498,7 +498,7 @@ velocity-profile predictions for a multiphase wind
 \cite{FieldingBryan2022,Wiersma2009}\\
 \textsc{Torus} (local checkout) &
 1-D/2-D/3-D AMR, Eulerian hydrodynamics, Monte Carlo radiation transport,
-photoionization equilibrium, dust, and line-transfer machinery; a
+photoionization equilibrium, dust, and line transfer; a
 \texttt{geometry="kelvin"} hydrodynamic initial condition is present &
 No ready-made collisionally ionized full C/N/O NEI network, self-consistent
 RTML metal cooling, MHD, or conductive front model was found; C\,IV is
@@ -532,7 +532,7 @@ scales and iterates the upstream photoionized precursor
 \cite{Sutherland2017}.  Such a shock spectrum must \emph{not} be identified
 with a shear-driven RTML spectrum: compression, velocity history, and
 self-irradiation differ.  It is nevertheless a stringent test of the same
-ionization, cooling, and emissivity machinery over the temperature range
+ionization, cooling, and emissivity calculations over the temperature range
 occupied by a radiative mixing layer.
 
 There are four recommended uses:
@@ -639,7 +639,7 @@ $F_\lambda^{\rm RTML}$ should come from \textsc{Mappings} tables or resolved
 \textsc{Pluto}/\textsc{Flash} interface calculations, not from the
 bolometric cooling curve alone.
 
-The repository's bundled cooling table is based on the redshift-zero
+The repository's cooling table is based on the redshift-zero
 Wiersma et al.\ UV-background calculation \cite{Wiersma2009}.  It is useful
 for the steady wind energy equation but supplies neither the NEI state nor
 C\,IV/N\,V/O\,VI line emissivities.  The code also assumes steady radial

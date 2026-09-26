@@ -2,14 +2,15 @@
 """He I 2^3S metastable diagnostic gate (md/HEI_10833_PLAN.md H2).
 
 Independently recomputes the module's n_2s3 (and Phi_3) from the data-file
-coefficients on each run's OWN converged state, and checks the OH18 analytic
-limits.
+coefficients on each run's OWN converged state, and checks the analytic
+limits of the balance (Oklopcic & Hirata 2018, OH18, as an independent anchor
+for the radiative limit).
 
 Gates:
   1. Agreement (every run): module n_2s3 vs the Python closed form on the same
      n_e/T_e/x_* and the module's own Phi_3 -> machine precision (same formula,
      same inputs).  NOTE: Phi_3 is never 0 even without add_fuv -- the 2^3S
-     threshold is 4.78 eV, so the 13.6-100 eV ionizing band photoionizes the
+     threshold is 4.768 eV (the cross-section fit starts at 4.78 eV), so the 13.6-100 eV ionizing band photoionizes the
      metastable too (sigma_3 is significant across the band); the module is
      right to integrate over all bins.
   2. Analytic limits: low-d n_3/n_HeII near alpha_3 n_e/A_31 (the pure-
@@ -23,9 +24,11 @@ Gates:
      The full-chain n_2s3 (large soft-UV Phi_3, so the sigma_3 cross section
      is exercised) still matches to machine precision.
 
-The sink carries q_31g (2^3S -> 1^1S, the detailed-balance inverse of q_13)
-and C_3 (e-impact ionization of 2^3S, Black 1981), both added 2026-09-24 and Q_31 is the Garcia Munoz (2025) form, as in
-hei_metastable_mod.
+The balance is hei_metastable_mod's since 2026-09-25: the Bray et al. (2000)
+electron-impact rows (q_13 and the feed through the higher triplets as
+sources; q_31g, q_31a, q_31b and the n >= 3 singlets as sinks), C_3 (Black
+1981), Q_31 (Garcia Munoz 2025), and alpha_3 = f_3S alpha_B(He II), taken
+from the run's own 'alpha_3' output.
 """
 import os
 import sys
@@ -55,81 +58,37 @@ def check(name, ok, detail=""):
 
 
 # --------------------------------------------------------- rate reconstruction
-def parse_coeffs():
-    """Read data/atomic/hei_metastable.txt into a dict (independent of M's
-    module-level constants; proves the FILE is the source of truth)."""
-    c = {}
-    for ln in open(os.path.join(ATOM, "hei_metastable.txt")):
-        ln = ln.strip()
-        if not ln or ln.startswith("#"):
-            continue
-        t = ln.split()
-        key, vals = t[0], [float(x) for x in t[1:]]
-        c[key] = vals
-    return c
+# The data file is parsed and evaluated by make_hei_metastable.read_coefficients
+# / triplet_rates, which read the FILE (not the script's constants) with the
+# formulas and operations of hei_metastable_mod.  alpha_3 = f_3S alpha_B(He II)
+# is not in the file: it is the module's own value, written per leaf as
+# 'alpha_3' in <base>_heimeta and checked against hei_cascade_mod x recomb_mod
+# in tests/hei_metastable_coupling.
+C = M.read_coefficients(os.path.join(ATOM, "hei_metastable.txt"))
+sigma3 = M.sigma3          # same VFKY96 wings + bridge as the SIGMA3 rows
 
 
-C = parse_coeffs()
-KB_EV = 1.380649e-16 / 1.602176634e-12
-TMIN, TMAX = C["TRANGE"]
+def rates(T):
+    return M.triplet_rates(float(T), C)
 
 
-def clampT(T):
-    return np.minimum(np.maximum(T, TMIN), TMAX)
+def n3_closed(ne, Te, nHI, nHeI, nHeII, Phi3, a3):
+    out = np.zeros_like(ne)
+    for i in range(ne.size):
+        r = rates(Te[i])
+        D = (r["A31"] + Phi3[i] + ne[i] * (r["q31g"] + r["q31a"] + r["q31b"]
+                                           + r["q31s"] + r["c3"])
+             + nHI[i] * r["pen"])
+        out[i] = ne[i] * (a3[i] * nHeII[i] + (r["q13"] + r["qfeed"]) * nHeI[i]) / D
+    return out
 
 
-def alpha3(T):
-    Cc, p = C["ALPHA3"]
-    return Cc * (T / 1e4) ** p
+def electron_sinks(T):
+    r = rates(T)
+    return r["q31g"] + r["q31a"] + r["q31b"] + r["q31s"] + r["c3"]
 
 
-def qexc(T, key):
-    """q = beta (a exp(bT) + c exp(dT)) exp(-Eexc/kT) / (g_l sqrt T)."""
-    beta, Ee, gl, a, b, cc, d = C[key]
-    kT = KB_EV * T
-    ups = a * np.exp(b * T) + cc * np.exp(d * T)
-    return beta * ups * np.exp(-Ee / kT) / (gl * np.sqrt(T))
-
-
-def qdeexc_ground(T):
-    """q_31g = q_13 (g_1/g_3) exp(E_13/kT), Boltzmann factor removed."""
-    beta, Ee, gl, a, b, cc, d = C["QEXC13"]
-    ups = a * np.exp(b * T) + cc * np.exp(d * T)
-    return beta * ups / (3.0 * np.sqrt(T))
-
-
-def cion3(T):
-    """C_3 = A T^p exp(-T0/T): e-impact ionization of 2^3S (Black 1981)."""
-    A, p, T0 = C["CION3"]
-    return A * T ** p * np.exp(-T0 / T)
-
-
-def penning(T):
-    """Garcia Munoz (2025): A exp(c/T + d1 lnT + d2 lnT^2 + d3 lnT^3)."""
-    A, c, d1, d2, d3 = C["PENNING"]
-    lt = np.log(T)
-    return A * np.exp(c / T + lt * (d1 + lt * (d2 + lt * d3)))
-
-
-def sigma3(E):
-    return M.sigma3(E)     # same VFKY96 wings + bridge; reads M's SIG3* (= file)
-
-
-def n3_closed(ne, Te, nHI, nHeI, nHeII, Phi3):
-    Tc = clampT(Te)
-    a3 = alpha3(Tc)
-    q13 = qexc(Tc, "QEXC13")
-    q31a = qexc(Tc, "QEXC31A")
-    q31b = qexc(Tc, "QEXC31B")
-    q31g = qdeexc_ground(Tc)
-    Q31 = penning(Tc)
-    A31 = C["A31"][0]
-    src = a3 * ne * nHeII + q13 * ne * nHeI
-    snk = A31 + Phi3 + ne * (q31a + q31b + q31g + cion3(Tc)) + nHI * Q31
-    return src / snk
-
-
-# ------------------------------------------------------------------- per-run
+# ------------------------------------------------------------ one run's state
 def load_run(base):
     hm = read_sections(os.path.join(HERE, base + "_heimeta.h5"))
     rt = read_sections(os.path.join(HERE, base + "_rates.h5"))
@@ -138,6 +97,7 @@ def load_run(base):
         Phi3=hm["Phi_3"]["data"].ravel(),
         ne=hm["n_e"]["data"].ravel(),
         Te=hm["T_e"]["data"].ravel(),
+        a3=hm["alpha_3"]["data"].ravel(),
         xHI=rt["x_HI"]["data"].ravel(),
         xHeI=rt["x_HeI"]["data"].ravel(),
         xHeII=rt["x_HeII"]["data"].ravel(),
@@ -160,8 +120,9 @@ def agreement_gate(base, d):
     nHI = d["nH"] * d["xHI"]
     nHeI = d["nH"] * YHE * d["xHeI"]
     nHeII = d["nH"] * YHE * d["xHeII"]
-    ref = n3_closed(d["ne"], d["Te"], nHI, nHeI, nHeII, d["Phi3"])
-    rel = np.abs(ref[m] - d["n2s3"][m]) / np.maximum(np.abs(d["n2s3"][m]), 1e-300)
+    ref = n3_closed(d["ne"][m], d["Te"][m], nHI[m], nHeI[m], nHeII[m],
+                    d["Phi3"][m], d["a3"][m])
+    rel = np.abs(ref - d["n2s3"][m]) / np.maximum(np.abs(d["n2s3"][m]), 1e-300)
     worst = rel.max()
     check("%s agreement: worst rel = %.2e" % (base, worst), worst < 1e-8,
           "(tol 1e-8)")
@@ -296,18 +257,22 @@ def main():
     # ---- pure-Python analytic limits (data-file coefficients) --------------
     print("\n[analytic limits, one-zone from the data file]")
     T0 = 1e4
-    a3 = alpha3(T0)
-    q31 = (qexc(T0, "QEXC31A") + qexc(T0, "QEXC31B") + qdeexc_ground(T0)
-           + cion3(T0))
+    # alpha_3(1e4 K) as the module forms it (every leaf of hei_lowd is at 1e4 K)
+    a3 = float(load_run("hei_lowd")["a3"][0])
+    q31 = electron_sinks(T0)
     A31 = C["A31"][0]
     lowd = a3 * 100.0 / A31
     plateau = a3 / q31
     ncrit = A31 / q31
-    check("low-density ratio alpha_3 ne/A_31 @ne=100,1e4K = %.4e (spec 1.65e-7)"
-          % lowd, abs(lowd / 1.65e-7 - 1.0) < 0.03)
-    check("plateau alpha_3/(q31a+q31b+q31g+C3) = %.4e" % plateau, plateau > 0)
-    check("n_crit = A_31/(q31a+q31b+q31g+C3) = %.1f cm^-3 (few x 1e3)" % ncrit,
-          1e3 < ncrit < 1e4)
+    # Oklopcic & Hirata (2018) carry an independent 2.10e-13 at 1e4 K
+    check("alpha_3(1e4 K) = f_3S alpha_B(He II) = %.4e, %.4f x OH18's 2.10e-13"
+          % (a3, a3 / 2.10e-13), abs(a3 / 2.10e-13 - 1.0) < 0.05)
+    # reported, not gated: both follow from alpha_3 (gated above against OH18)
+    # and the data-file rates, which the agreement gates below exercise
+    print("  [info] low-density ratio alpha_3 ne/A_31 @ne=100,1e4K = %.4e" % lowd)
+    print("  [info] plateau alpha_3/(q31g+q31a+q31b+q31s+C3) = %.4e" % plateau)
+    check("n_crit = A_31/(q31g+q31a+q31b+q31s+C3) = %.1f cm^-3 (few x 1e3)"
+          % ncrit, 1e3 < ncrit < 1e4)
     # n_e scan: ratio crosses 0.5*plateau near n_crit
     ne = np.logspace(1, 6, 400)
     ratio = a3 * ne / (A31 + ne * q31)             # n_3/n_HeII, no HI/Phi
@@ -331,7 +296,7 @@ def main():
     # deep ionized core (r<1 pc, x_HeII high): n_3/n_HeII near alpha_3 ne/A_31
     nHeII = dl["nH"] * YHE * dl["xHeII"]
     ratio_run = dl["n2s3"][core] / nHeII[core]
-    rad_lim = alpha3(clampT(dl["Te"][core])) * dl["ne"][core] / A31
+    rad_lim = dl["a3"][core] * dl["ne"][core] / A31
     dev = np.abs(ratio_run / rad_lim - 1.0)
     check("hei_lowd core n_3/n_HeII within a few %% of alpha_3 ne/A_31 "
           "(median dev %.2f%%, max %.2f%%)" % (100 * np.median(dev), 100 * dev.max()),

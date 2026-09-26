@@ -62,7 +62,7 @@ contains
      par%xmax = half;  par%ymax = half;  par%zmax = half
   else
      !--- MoCHII: build a single-level Cartesian ('car') grid.  With
-     !--- par%density_file set, nx/ny/nz and the per-leaf nH come from a 3D
+     !--- par%density_file set, nx/ny/nz and the leaf nH come from a 3D
      !--- density cube (FITS/HDF5, NAXIS1/2/3 = nx/ny/nz, values = nH [cm^-3]);
      !--- otherwise nx/ny/nz are from the namelist and nH is uniform (set by
      !--- the density model below).  The box is par%xmax/ymax/zmax; the car

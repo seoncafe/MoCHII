@@ -25,8 +25,8 @@ module previous_state_mod
 ! the integer position of the containing cell, one table per distinct leaf
 ! size, so a deep octree costs no dense lattice.
 !
-! The convergence history (fixed_point_distance_mod) starts empty: the drift
-! test needs four iterations of the new run before it can pass.
+! The convergence history (fixed_point_distance_mod) starts empty: the
+! stopping test needs NWIN = 8 iterations of the new run before it can pass.
 !---------------------------------------------------------------------------
   use define
   use mpi

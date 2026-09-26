@@ -33,13 +33,12 @@ continuum and Storey \& Hummer recombination lines, and the
 quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
 sphere vs.\ an exact 1D reference ($+0.56\%$ in ionized volume; AMR
-$\equiv$ uniform); the thermal H/He nebula (median $0.14\%$ in $T_e$);
-the MOCASSIN Lexington benchmarks ($T_e = 8207$~K at HII40 and 6946~K at
+$\equiv$ uniform); the thermal H/He nebula (median $0.61\%$ in $T_e$);
+the MOCASSIN Lexington benchmarks ($T_e = 8180$~K at HII40 and 6940~K at
 HII20 with the density-suppressed cooling default, run to the drift stopping
-test, matching a current \textsc{Cloudy} c25.00 run to $0.04\%$ and $0.52\%$,
-with the HII40 He\,\textsc{i} front $0.034$~pc inside \textsc{Cloudy}'s; the
-zero-density limit gives 7907 and 6295~K, and both modern codes sit above
-the 2000-era published ranges); and the line-flux comparison (H$\beta$ within a few
+test, matching a current \textsc{Cloudy} c25.00 run to $-0.37\%$ and $+0.44\%$,
+with the HII40 He\,\textsc{i} front $0.033$~pc inside \textsc{Cloudy}'s; the
+zero-density limit gives 7877 and 6282~K); and the line-flux comparison (H$\beta$ within a few
 percent of the published values, the optical collisional lines within
 the published spread).
 Also documented: the solution-driven I-front re-refinement
@@ -145,8 +144,16 @@ coarsen the ionizing resolution (the earlier single-segment caveat).
 $[E_{\min}, E_{\max}]$ luminosity; the FUV part of the same source
 spectrum rides on top ($L_{\rm FUV}/L_{\rm ion} = 1.097$ for a
 4$\times$10$^4$~K Planck source at 6~eV), so the ionizing photon budget
-$Q_{\rm H}$ is preserved without manual band-ratio rescaling and packets
-carry $L_{\rm pkt} = (L_{\rm ion} + L_{\rm FUV})/N$.  H and He cross
+$Q_{\rm H}$ is preserved without manual band-ratio rescaling.  How the
+packets are shared between the two segments is \code{par\%fuv\_sampling}
+(Section~\ref{sec:band-strata}): by default each segment is a stratum with
+its own packet count, and a packet carries its stratum's luminosity over
+that count; \code{'proportional'} draws every packet from one CDF over the
+whole band, with $L_{\rm pkt} = (L_{\rm ion} + L_{\rm FUV})/N$.  An input
+that leaves \code{add\_fuv} and \code{efuv\_min} out gets the extension
+from 4.78~eV whenever the He\,\textsc{i} 2$^3$S population is used, since
+its photoionization rate is scored from this band
+(Section~\ref{sec:hei-phi3}).  H and He cross
 sections vanish below their thresholds, so the FUV bins interact only
 with dust and with the low-threshold metal stages (next subsection) ---
 they penetrate the neutral gas beyond the I-front and photoionize
@@ -447,13 +454,31 @@ other items of that update.
 \subsection{H/He recombination}
 \label{sec:hherec}
 Recombination coefficients in the ionization balance are chosen by
-\code{par\%recomb\_model}.  The default \code{'badnell\_milne'} takes the
-total (case A) radiative recombination $\alpha_A$ from the same Badnell
-(2023) RR fit used for the metals [Eq.~(\ref{eq:badnellrr})], obtains the
-ground-level ($n{=}1$) direct-capture rate $\alpha_1$ from the Milne
-relation applied to the \emph{same} photoionization cross sections the
-transport absorbs with [Eq.~(\ref{eq:milne-alpha1})], and forms case B by
-removing the ground term, $\alpha_B = \alpha_A - \alpha_1$.  At run time
+\code{par\%recomb\_model}.  In every case the default \code{'detailed\_balance'}
+obtains the ground-level ($n{=}1$) direct-capture rate $\alpha_1$ from the
+Milne relation applied to the \emph{same} photoionization cross sections the
+transport absorbs with [Eq.~(\ref{eq:milne-alpha1})].  For He\,\textsc{ii}
+$\to$ He\,\textsc{i} it takes the total (case A) radiative recombination
+$\alpha_A$ from the same Badnell (2023) RR fit used for the metals
+[Eq.~(\ref{eq:badnellrr})] and forms case B by removing the ground term,
+$\alpha_B = \alpha_A - \alpha_1$.  For the two hydrogenic ions,
+H\,\textsc{ii} and He\,\textsc{iii}, it takes $\alpha_B$ from an
+$nl$-resolved radiative cascade in the zero-density limit on Storey \&
+Hummer's (1991) hydrogenic A-values and cross sections
+(\code{hydrogenic\_recombination\_mod}; the cascade and its checks are
+described with the two-photon continuum, Section~\ref{sec:twophoton}) and
+forms case A by adding the same Milne term, $\alpha_A = \alpha_B + \alpha_1$.
+Until 2026-09-26 the hydrogenic ions took $\alpha_A$ from the Badnell fit as
+well.  That fit is $0.6\%$ above the Storey \& Hummer (1995) total for
+H\,\textsc{ii} at $10^4$~K, and subtracting an exact $\alpha_1$ from it
+carried the error into $\alpha_B$ amplified: $+1.13\%$ at $10^4$~K, $+0.7$
+to $+1.2\%$ over 5000--$2{\times}10^4$~K ($+0.35\%$ for He\,\textsc{iii}).
+The cascade's $\alpha_B$ is within $0.1\%$ of the SH95 alpha-tot at
+$10^4$~K for both ions.  Toward low temperature both zero-density
+determinations fall below SH95's value at $n_e = 100\,{\rm cm^{-3}}$
+($-3.5\%$ at 500~K), and there the Badnell total and the cascade agree
+with each other to $0.1\%$: that departure is the collisional transitions
+SH95 include, not an error of either.  At run time
 $\alpha_1$ is evaluated from the seven-coefficient functional form of
 Mao \& Kaastra (2016, A\&A 587, A84) ($T_{\rm eV} = k_B T$; $a_0$ in
 $10^{-10}\,\cmc$),
@@ -468,9 +493,11 @@ taken from Mao \& Kaastra; \S\ref{sec:diffuse} lists them with their fit
 residuals and gives the measurement that forced the replacement.  The
 routine name \code{rr\_mao} in \code{recomb\_mod} therefore records the
 functional form, not the origin of the numbers, while the namelist value
-names the two determinations the default combines --- Badnell's total and
-the Milne ground level --- and so records that $\alpha_B$ here is a
-difference rather than a fit of its own.  Because $\alpha_1$ and the
+names what the default does for all three ions --- the ground level by
+detailed balance on the transport cross section --- and not where the
+totals come from, which is the best determination for each ion (it was
+\code{'badnell\_milne'} until 2026-09-26, when the hydrogenic ions stopped
+using the Badnell total; the old name is refused).  Because $\alpha_1$ and the
 ground-continuum emissivity of \S\ref{sec:diffuse} are now one integral
 over one cross section, the case A/B split and the diffuse packet count
 cannot drift apart.  He\,\textsc{ii}$\to$He\,\textsc{i} adds
@@ -484,9 +511,9 @@ values in parentheses, are
 \toprule
 reaction & $\alpha_A$ & $\alpha_1$ & $\alpha_B$ \\
 \midrule
-H\,\textsc{ii}$\to$H\,\textsc{i}     & 4.19 (4.16) & 1.579 (1.584) & 2.61 \\
+H\,\textsc{ii}$\to$H\,\textsc{i}     & 4.16 (4.16) & 1.579 (1.584) & 2.58 \\
 He\,\textsc{ii}$\to$He\,\textsc{i}   & 4.37 (4.36) & 1.609 (1.603) & 2.76 \\
-He\,\textsc{iii}$\to$He\,\textsc{ii} & 21.9 (21.8) & 6.512 (6.515) & 15.4 \\
+He\,\textsc{iii}$\to$He\,\textsc{ii} & 21.8 (21.8) & 6.512 (6.515) & 15.3 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -543,9 +570,10 @@ H\,\textsc{i}/He\,\textsc{ii}; MOCASSIN fits them with VFKY96 (agreeing
 with the exact curve to $<1\%$), and Cloudy resolves them from its
 iso-electronic H-like/He-like model atoms.  For the recombination that
 closes the ionization balance (Table~\ref{tab:codecmp}), MoCHII's default
-takes $\alpha_A$ from the modern Strathclyde (Badnell) data and splits off
-$\alpha_1$ with the Milne relation, which is how Cloudy resolves its
-H-like and He-like recombination level by level; MOCASSIN uses the
+takes $\alpha_A$ of He\,\textsc{i} from the modern Strathclyde (Badnell)
+data and $\alpha_B$ of the hydrogenic ions from a level-resolved Storey \&
+Hummer cascade, with $\alpha_1$ from the Milne relation in both, which is
+how Cloudy resolves its H-like and He-like recombination level by level; MOCASSIN uses the
 older Verner \& Ferland (1996) total; EXHALE, a planetary-atmosphere
 code, adopted the Badnell RR $+$ Mao \& Kaastra $\alpha_1$ construction as
 its default on 2026-07-17, before the $\alpha_1$ correction of
@@ -1107,10 +1135,194 @@ $5.0{\times}10^{-7}$; on four partially neutral cells the three balances
 plus charge neutrality close to $2.6{\times}10^{-11}$; and the exchange
 lowers He$^+$ and raises H$^+$ (on the cell with $x_{\rm HII} = 0.041$,
 $x_{\rm HII}$ rises $3.1\times$ and $x_{\rm HeII}$ falls to $0.968\times$).
-Not included: the heating by the energy defect of the exchange --- the
-non-radiative $\mathrm{He}^+ + \mathrm{H}$ channel leaves $11$~eV as kinetic
-energy --- and the same heating term is absent for the metal charge
-exchange as well (\S\ref{sec:limits}).
+The heat these reactions exchange with the gas is the next paragraph.
+
+\paragraph{Charge-exchange heating (\code{par\%charge\_exchange\_heating},
+default on, 2026-09-25).}
+A charge-exchange reaction moves one electron between two binding
+energies.  In this code the ionization energy is not thermal energy
+(photoionization deposits $h\nu - {\rm IP}$, recombination removes the
+captured electron's kinetic energy), so what a reaction does to the gas is
+the kinetic energy of its products:
+\begin{equation}
+  \Delta E_{\rm kin} = \big[{\rm IP}(\text{acceptor's product stage})
+    - {\rm IP}(\text{donor})\big] - E_{\rm rad},
+  \label{eq:cxheat}
+\end{equation}
+with $E_{\rm rad}$ the excitation of the product state that leaves as
+radiation --- an allowed or intercombination decay, a forbidden line below
+its critical density, or the photon of a radiative charge transfer.  An
+endothermic reaction has $\Delta E_{\rm kin} < 0$ and takes it from the gas
+(Kingdon \& Ferland 1996, \S2 and Table~4, write the reaction
+$\mathrm{X}^{q+} + \mathrm{H} \to \mathrm{X}^{(q-1)+} + \mathrm{H}^+ +
+\Delta E$ with the same sign convention, and note that the recombined ion
+``can and usually will be in an excited state'').  The thermal balance
+(\S\ref{sec:thermal}) adds $\sum k\,n_{\rm reactant}\,n_{\rm partner}\,
+\Delta E_{\rm kin}$ over the carried reactions:
+\code{species\_mod::metal\_charge\_exchange\_heating} (under
+\code{use\_metals}) with the cascade's stage fractions and rate
+coefficients, and \code{ion\_balance\_mod::helium\_charge\_exchange\_heating}
+(under \code{helium\_charge\_exchange}).  The defects are data: each
+transition of \code{data/atomic/element\_<el>.txt} carries a \code{CXHEAT}
+row, $\Delta E_{\rm ion}$, $\Delta E_{\rm rec}$ and $g_{\rm split}$, written
+by \code{tools/fitting/make\_element\_data.py}, which states the product
+state and its source for every reaction and refuses a carried reaction
+without one; the loader refuses a file without the rows while the switch is
+on.  Term energies are CHIANTI observed energies, $(2J+1)$-weighted over the
+term.  KF96 print no defect for their Table~1 fits; the electronic version
+of their tables that \textsc{Cloudy} c25.00 distributes
+(\code{data/ctrecombdata.dat} column~7, \code{ctiondata.dat} column~8;
+row mapping verified against KF96 Table~1 and the MoCHII rows) carries one,
+and where it equals $\Delta{\rm IP}$ minus a level energy it identifies the
+product (O$^+$ 4P, N$^+$ 3D, Mg$^+$ 3p, Si$^+$ 4P, Si$^{3+}$ 4s, all to
+0.01~eV).  Where it does not, it is used as distributed and marked
+unidentified.
+
+\begin{table}[!tbp]
+\centering\small
+\caption{Kinetic energy $\Delta E_{\rm kin}$ [eV] one event gives the gas
+(Eq.~\ref{eq:cxheat}); $k$ at $10^4$~K.  ``ion'': $\mathrm{X}^{i} +
+\mathrm{H}^+ \to \mathrm{X}^{i+1} + \mathrm{H}^0$; ``rec'': the reverse
+direction.}
+\label{tab:cxheat}
+\begin{tabular}{@{}llrrl@{}}
+\toprule
+reaction & dir & $\Delta{\rm IP}$ & $\Delta E_{\rm kin}$ & product; source \\
+\midrule
+C$+$H$^+$ & ion & 2.338 & 2.338 & C$^+$ $^2$P, non-radiative part only (below) \\
+C$^+$$+$H & rec & $-2.338$ & $-2.338$ & C $^3$P, ground \\
+C$^{2+}$$+$H & rec & 10.785 & 4.010 & not identified; KF96 electronic \\
+C$^{3+}$$+$H & rec & 34.290 & 5.730 & not identified; KF96 electronic, $2.86(q-1)$ \\
+N$+$H$^+$ & ion & $-0.936$ & $-0.936$ & N$^+$ $^3$P, ground by energetics \\
+N$^+$$+$H & rec & 0.936 & 0.936 & N $^4$S, ground by energetics \\
+N$^{2+}$$+$H & rec & 16.003 & 4.566 & N$^+$ 2s2p$^3$ $^3$D; Barragan et al.\ 2006 \\
+O$+$H$^+$ & ion & $-0.020$ & $-0.020$ & O$^+$ $^4$S, ground \\
+O$^+$$+$H & rec & 0.020 & 0.020 & O $^3$P, ground \\
+O$^{2+}$$+$H & rec & 21.523 & 6.653 & O$^+$ 2s2p$^4$ $^4$P; Barragan et al.\ 2006, KF96 electronic \\
+Ne$^{2+}$, S$^{2+}$, Ar$^{2+}$$+$H & rec & & 0 & radiative ($10^{-14}\,\cmc$ rows, KF96 \S3.1) \\
+S$+$H$^+$ & ion & 3.238 & 0.276 & S$^+$ $^2$P/$^2$D/$^4$S; Zhao et al.\ 2005 Table III \\
+S$^+$$+$H & rec & $-3.238$ & $-3.238$ & S $^3$P, ground \\
+S$^{3+}$, Ar$^{3+}$$+$H & rec & 21.2, 27.1 & 5.730 & not identified; KF96 electronic \\
+Mg$+$H$^+$ & ion & 5.952 & $-1.258$ & Mg$^+$ 3p ($+1.522$) or 4s ($-2.703$), branched by Allan et al.\ (1988) Table 1; value at $10^4$~K ($+0.61$ at 5000~K, $-1.86$ at $2{\times}10^4$~K) \\
+Mg$^+$$+$H & rec & $-5.952$ & $-5.952$ & Mg $^1$S, ground \\
+Mg$^{2+}$$+$H & rec & 1.437 & 1.437 & Mg$^+$ 3s, ground by energetics \\
+Fe$+$H$^+$ & ion & 5.696 & 0.151 & Fe$^+$ z$^4$F/z$^4$D, near resonance (derived) \\
+Fe$^+$$+$H & rec & $-5.696$ & $-5.696$ & Fe a$^5$D, ground \\
+Fe$^{2+}$$+$H & rec & 2.601 & 2.601 & Fe$^+$ a$^6$D, ground; KF96 electronic 2.56 \\
+Fe$^{3+}$$+$H & rec & 17.053 & 6.300 & not identified; KF96 electronic \\
+Si$+$H$^+$ & ion & 5.446 & 0.115 & Si$^+$ 3s3p$^2$ $^4$P; KF96 electronic \\
+Si$^+$$+$H & rec & $-5.446$ & $-5.446$ & Si $^3$P, ground \\
+Si$^{2+}$$+$H & rec & 2.748 & 2.748 & Si$^+$ $^2$P, ground by energetics \\
+Si$^{3+}$$+$H & rec & 19.895 & 4.230 & not identified; KF96 electronic \\
+Si$^{4+}$$+$H & rec & 31.544 & 7.493 & Si$^{3+}$ 4s $^2$S; KF96 electronic \\
+He$^+$$+$H, non-rad. & rec & 10.989 & 10.989 & He 1$^1$S; Zygelman et al.\ 1989 \\
+He$^+$$+$H, radiative & rec & 10.989 & 0 & photon \\
+He$+$H$^+$ & ion & $-10.989$ & $-10.989$ & reverse of the non-radiative channel \\
+He$^{2+}$$+$H & rec & 40.819 & 0 & radiative (KF96 $10^{-14}$ row) or He$^+$($n=2$) \\
+He$^+$$+$H$^+$ & ion & $-40.819$ & $-40.819$ & H 1s, ground \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three product assignments deserve their reasoning.  For
+$\mathrm{O}^{2+} + \mathrm{H}$, Barragan et al.\ (2006) name no product but
+place the avoided crossing of the quartet subsystem at $R_0 = 4.57$~a.u.;
+by KF96 Eqs.~(3)--(4) that is an asymptotic defect near 6.5~eV, the
+O$^+$ 2s2p$^4$ $^4$P channel (6.65~eV), whose 833~\AA\ decay lies above
+13.6~eV (a photon that would ionize hydrogen, not transported).
+$\mathrm{S} + \mathrm{H}^+$ is weighted over Zhao et al.'s Table~III
+channels at $10^4$~K ($^2$P 93\%, $^2$D 7\%); the $^2$P share runs from 0.978
+at 4000~K to 0.888 at $2{\times}10^4$~K, which moves $E_{\rm rad}$ by less
+than 0.05~eV.  For $\mathrm{Fe} + \mathrm{H}^+$ Rutherford \& Vroom (1972)
+state that ``the state of excitation of the products could not be
+determined'' and attribute the large cross sections to near resonance; the
+z$^4$F/z$^4$D terms 0.15~eV below the defect are the near-resonant ones, and
+their decay chain ends in [Fe\,\textsc{ii}] lines, so $E_{\rm rad}$ is their
+mean --- derived, not a determination of the product.  Counting a
+metastable product (S$^+$ $^2$D, $^2$P) as radiated holds below its critical
+density ($\sim$$10^3$~cm$^{-3}$ for $^2$D).
+
+Detailed balance fixes the defects of a pair that is one channel and its
+reverse: the two carry opposite $\Delta E_{\rm kin}$ and deposit nothing
+where they balance.  That holds for N, O and the non-radiative He$^+$ + H
+pair.  $\mathrm{C} + \mathrm{H}^+$ is mostly radiative charge transfer
+(KF96 \S3.1 assume the reverse of $\mathrm{C}^+ + \mathrm{H}$ to be
+radiative), so only its non-radiative part, the detailed-balance reverse of
+$\mathrm{C}^+ + \mathrm{H}$,
+$k_{\rm nr} = \min[k_{\rm ion},\, g_{\rm split}\,k_{\rm rec}\,
+e^{\Delta E/kT}]$ with $g_{\rm split} = g({\rm C^+})g({\rm H})/
+[g({\rm C})g({\rm H^+})] = 4/3$, heats.  The S, Mg, Si and Fe pairs are
+\emph{not} one channel: the exothermic direction ends in a radiating
+term, whereas the endothermic direction starts from whatever term the ion
+is in.  Huang et al.\ (2023, sec.~2.4.2) ``estimate the reverse rates
+assuming microscopic balance'' from the TOTAL forward rate, which is the
+reverse with the ion's excited terms in LTE; in nebular gas the ion sits in
+its ground term, and that overstates the reverse (the reason EXHALE drops
+$\mathrm{Mg}^+ + \mathrm{H}$).
+
+\emph{Sulfur is resolved by product term (2026-09-26, charge-exchange form
+9).}  Zhao et al.\ (2005, PRA 71, 062713; read) Table~III gives the
+forward rate into each S$^+$ term, 25 temperatures from 20~K to
+$10^6$~K; at $10^4$~K $^4$S $8.90{\times}10^{-16}$, $^2$D
+$1.19{\times}10^{-12}$, $^2$P $1.63{\times}10^{-11}\cmc$.  The element
+file carries that table (\code{CXSTATE} rows), the forward rate is its
+sum, and the reverse is each channel's detailed balance weighted by the
+term's actual population,
+\begin{equation}
+ k_{\rm rev} = \sum_j p_j(T,n_e)\,k_j(T)\,
+   \frac{g({\rm S})}{g_j\,g({\rm H})}\,
+   e^{-({\rm IP(H)} - {\rm IP(S)} - E_j)/kT},
+\end{equation}
+$p_j$ from the [S\,\textsc{ii}] $n$-level atom, tabulated at setup on a
+(log $T$, log $n_e$) grid and interpolated in $\ln p_j$.  At $10^4$~K it
+is $2.34{\times}10^{-17}$ at $n_e\rightarrow0$ (the $^4$S channel alone)
+and $6.0{\times}10^{-16}$ at $n_e = 100$, where the slightly populated
+$^2$D and $^2$P terms already dominate, against the $3.7{\times}10^{-13}$
+of the LTE reverse, which it recovers at $n_e = 10^{12}$ to $0.2\%$ (gate
+\code{check\_detailed\_balance}).  The heat is resolved the same way.
+Measured on the converged states (restarts from \code{m8\_defaults}): the
+Lexington models move by $\le0.023$~K, $L({\rm H}\beta)$ by $2{\times}10^{-6}$
+and no line by more than $0.13\%$ (the largest is [Ne\,\textsc{iii}] at HII20,
+the run-to-run level; the sulfur lines move less), and
+the PDR test's neutral-zone $x({\rm S^0})$ by $-23\%$
+($1.59\to1.23{\times}10^{-5}$), $T_e$ by $-1.4$~K, lines by $\le0.1\%$ ---
+small because the FUV band photoionizes S$^0$ and the endothermic reverse
+is slow at the neutral zone's 700~K.
+\emph{Mg, Si and Fe} keep the total-balance reverse (Mg: Huang et al.\ from
+the Kingdon \& Ferland forward; Si, Fe: the same form in Huang et al.'s
+Table~4), marked in the element files as an upper bound on the reverse
+from the ground term: no forward rate into that term is available (Allan
+et al.\ 1988 give Mg$^+$ 3p and 4s only).  Likewise
+$\mathrm{He}^+ + \mathrm{H}^+ \to \mathrm{He}^{2+} + \mathrm{H}$ is the
+reverse of a ground channel that the $10^{-14}$ forward rate does not
+describe; at $10^4$~K it is $\sim$$10^{-35}\,\cmc$.
+
+Gate \code{tests/charge\_exchange/check\_charge\_exchange\_heating.f90}
+(in \code{run\_check.sh}): all 29 metal reactions have a defect and
+nothing else does; every defect equals $\Delta{\rm IP} - E_{\rm rad}$ with
+$E_{\rm rad}$ transcribed independently into the gate, to $10^{-6}$~eV; the
+N, O, C (non-radiative) and He pairs cancel where they balance to
+$1.2{\times}10^{-16}$ relative (tolerance $10^{-12}$) at 3000, $10^4$ and
+$2{\times}10^4$~K; and \code{metal\_charge\_exchange\_heating} equals the sum
+of the reactions formed in the gate to $3.3{\times}10^{-14}$.
+
+Measured on the converged Lexington states (\S\ref{sec:hii};
+\code{results/continuous\_energy/m5\_converged}, with the code's own
+functions applied to the written leaf states, not a rerun): the
+charge-exchange heat is $3.55{\times}10^{-4}$ of the volume-integrated
+photoheating at HII40 and $3.0{\times}10^{-6}$ at HII20.  At HII40 it is
+$\mathrm{O}^{2+} + \mathrm{H}$ ($3.0{\times}10^{-4}$) and
+$\mathrm{N}^{2+} + \mathrm{H}$ ($4.3{\times}10^{-5}$); the oxygen pair
+$\mathrm{O}^0 \leftrightarrow \mathrm{O}^+$, individually $\pm1.4\times10^{-4}$
+(HII40) and $\pm2.8\times10^{-4}$ (HII20), cancels to $1.7\times10^{-6}$ and
+$2.2\times10^{-6}$ because charge exchange locks oxygen's ionization to
+hydrogen's; He--H adds $3.0{\times}10^{-6}$ and $5{\times}10^{-8}$.  The local
+share rises outward with $x_{\rm HI}$ while O$^{2+}$ survives, to a maximum of
+$7.9{\times}10^{-4}$ at $r = 3.98$~pc (HII40, 0.7~pc inside the H front, where O$^{2+}$ is still abundant), and
+falls to $10^{-5}$ in the front itself, where O$^{2+}$ is gone; at HII20 the
+maximum is $7.1{\times}10^{-5}$ at the front.
+\code{.false.}\ restores the thermal balance of runs made before 2026-09-25
+exactly.
 
 \subsection{Cooling fits}
 \label{sec:cool}
@@ -1334,14 +1546,35 @@ size of the neglected bound-free Gaunt factor).  Consequently the port
 never adds free-free inside the table range.  The Ercolano \& Storey
 (2006) item is resolved as \emph{provenance}: the MOCASSIN 2.02 tables
 ship in the ES06 compact paired-edge format, so no swap is needed ---
-the verification above is the record.  Two-photon continua
-follow MOCASSIN: Nussbaumer \& Schmutz (1984) spectral shape with
-Pengelly (1964) $\alpha_{\rm eff}(2s)$ and the Osterbrock
-$q(2^2{\rm S}{-}2^2{\rm P})$ collisional suppression for H\,\textsc{i};
-the $Z$-scaled form with Storey \& Hummer $\alpha_{\rm eff}$ for
-He\,\textsc{ii}; Almog \& Netzer (1989) shape
-(\code{data/HeI2phot.dat}) with Benjamin, Skillman \& Smits (1999)
-$\alpha_{\rm eff}$ for He\,\textsc{i}.
+the verification above is the record.  The tables leave three ranges
+out, and until 2026-09-26 the code returned zero emission there.  (i) Each
+edge pair runs from just above one edge to just below the next, and the
+nodes, rounded to $10^{-4}$~Ryd, leave a gap of about $2{\times}10^{-4}$~Ryd
+around every edge (10 in the H$^+$ table, 7 in He$^+$, 1 in He$^{2+}$); five
+of the written-continuum frequencies fell in one.  The edge is now placed at
+the gap's midpoint, within the $10^{-4}$~Ryd precision of the nodes, and
+each side extends its own pair.  (ii) From the last node to the ground edge
+the last pair is extended (He$^+$: 1.7999--1.8080~Ryd).  (iii) Below the
+first node.  The He$^+$ table starts at 0.0911~Ryd ($1.0\,\mu$m), so He$^+$
+contributed neither free-free nor free-bound at longer wavelengths --- the
+same omission as in \textsc{Mocassin}'s \code{fb\_ff}, whose arrays are zero
+there.  The levels whose edges lie below that frequency ($n\ge4$) are nearly
+hydrogenic, and a capture into them weighs $g_n/g_{\rm ion} = 4n^2/2$, the
+$2n^2$ of H$^+$, so the He$^+$ coefficient per ion is the H$^+$ one; the two
+tables agree at the join to $0.4\%$ ($10^4$~K) and $2.2\%$ (5000~K).  Below
+the H$^+$ (0.0069~Ryd) and He$^{2+}$ (0.0278~Ryd) tables the coefficient is
+free-free plus the captures into every level with an edge below $h\nu$,
+summed in the Kramers approximation,
+$\sum_{n\ge n_1}\gamma_{{\rm fb},n} = [e^{\chi_{n_1}/kT}-1]\,\gamma_{\rm ff}/g_{\rm ff}$,
+which lands $-0.3\%$ (H$^+$) and $+3.6\%$ (He$^{2+}$) off the first table
+node at $10^4$~K where free-free alone would be $-6.6\%$ and $-30\%$.  Two-photon continua: the
+Nussbaumer \& Schmutz (1984) spectral shape for H\,\textsc{i} and
+He\,\textsc{ii}, fed at $\alpha_B f_{2s}$ with $f_{2s}$ from a
+zero-density $nl$-resolved cascade in the case of the recombination lines
+(Section~\ref{sec:twophoton}), and the collisional $2s\to2p$ suppression
+for H\,\textsc{i}; the Drake, Victor \& Dalgarno (1969) shape
+(\code{data/HeI2phot.dat}) for He\,\textsc{i}, fed at the $2^1$S decay
+rate of the He\,\textsc{i} cascade exits.
 
 \subsection{H\,\textsc{i} and He\,\textsc{ii} recombination lines
 (Storey \& Hummer 1995)}
@@ -1385,11 +1618,11 @@ the line table by $n_e n_{\rm HeII}$ (He$^+$ recombining).  Emergent
 ratios are physical: $5877/4473 = 2.88$, $6680/4473 = 0.82$,
 $7067/4473 = 0.49$ at $\sim$7~kK.
 
-The H\,\textsc{i} and He\,\textsc{ii} tables follow \code{par\%case\_ab}:
-case-A tables (\code{sh95\_\{hi,heii\}\_caseA.txt}, parsed from the
-original CDS files \code{e1a.d}/\code{e2a.d} onto the $10\times9$/$12\times9$
-grids case A tabulates) are loaded when the ionization runs case A, so the
-line emissivities match the balance; case B (H$\alpha$/H$\beta = 2.94$) is
+The H\,\textsc{i} and He\,\textsc{ii} tables follow \code{par\%lyman\_lines},
+the fate of the Lyman-line photons, not the continuum treatment: case-A tables
+(\code{sh95\_\{hi,heii\}\_caseA.txt}, parsed from the original CDS files
+\code{e1a.d}/\code{e2a.d} onto the $10\times9$/$12\times9$ grids case A
+tabulates) are loaded when the Lyman lines escape (\code{'escaping'}); case B (H$\alpha$/H$\beta = 2.94$) is
 the default.  The He\,\textsc{i} Porter set is case B only.  An optional
 collisional H\,\textsc{i} Balmer component (\code{par\%h\_coll\_effects},
 off by default) solves a 25-level H\,\textsc{i} atom (from CHIANTI
@@ -1399,7 +1632,7 @@ H$\alpha$/H$\beta$/H$\gamma$, weights it by $n_{\rm HI}$, and writes it as
 separate \code{hc} rows --- a first-cut estimate (optically-thin cascade)
 for the front and hot-cell bias, kept apart from the recombination lines.
 
-\subsection{He\,\textsc{i} 2$^3$S metastable diagnostic}
+\subsection{He\,\textsc{i} 2$^3$S metastable population and its coupling}
 \label{sec:heimeta}
 The Porter case-B 10833~\AA\ table above is a collisional-radiative
 \emph{total} emissivity, correct in the dense, optically-thin,
@@ -1407,106 +1640,289 @@ recombination-dominated H\,\textsc{ii} regime it was built for.  It does
 \emph{not} give the 2$^3$S population $n_3$, its line-of-sight column, or
 the 10833~\AA\ \emph{absorption} opacity --- the observables of exoplanet
 transit, chromospheric, and PDR 10833 work, where the line is seen against
-a background.  \code{hei\_metastable\_mod} (\code{par\%hei\_metastable})
-adds these as a separate diagnostic; it does not add or modify any emission
-row, and in particular \emph{nothing is summed onto} the Porter 10833 line
-(which already carries the metastable-collisional term --- summing an
-explicit collisional 10833 would double-count).
+a background.  \code{hei\_metastable\_mod} computes $n_3$; the output
+diagnostic \code{par\%hei\_metastable} writes it, and it does not add or
+modify any emission row --- in particular \emph{nothing is summed onto} the
+Porter 10833 line (which already carries the metastable-collisional term).
+Since 2026-09-25 the same population is also \emph{coupled}
+(\code{par\%hei\_metastable\_coupling}, default on) into the ionization
+balance, the thermal balance and the He\,\textsc{i} diffuse channel, below.
 
-\paragraph{The 2$^3$S balance (Oklopcic \& Hirata 2018).}  OH18 track the
-neutral singlet ground 1$^1$S, the metastable triplet 2$^3$S, and the ion.
-Because $n_3/n_{\rm He}\sim10^{-7}$ the balance is linear in $n_3$ --- a
-closed-form quotient in each leaf, no iteration:
+\paragraph{The 2$^3$S balance.}  Because $n_3/n_{\rm He}\sim10^{-7}$ the
+balance is linear in $n_3$ --- a closed-form quotient in each leaf, no
+iteration (\code{hei\_triplet\_population}, the one $n_3$ every user reads):
 \begin{equation}
-n_3 = \frac{\alpha_3\,n_e\,n_{\rm HeII} + q_{13}\,n_e\,n_{\rm HeI}}
-           {A_{31} + \Phi_3 + n_e\,(q_{31a}+q_{31b}+q_{31g}+C_3) + n_{\rm HI}\,Q_{31}},
+n_3 = \frac{n_e\,[\alpha_3\,n_{\rm HeII} + (q_{13}+q_{\rm feed})\,n_{\rm HeI}]}
+           {D},\qquad
+D = A_{31} + \Phi_3 + n_e\,(q_{31g}+q_{31a}+q_{31b}+q_{31s}+C_3) + n_{\rm HI}\,Q_{31}.
+\label{eq:heimeta}
 \end{equation}
-with source terms recombination into the triplet system
-($\alpha_3\,n_e\,n_{\rm HeII}$) and e-impact excitation
-1$^1$S\,$\to$\,2$^3$S ($q_{13}\,n_e\,n_{\rm HeI}$), and sinks the radiative
-decay $A_{31}$ (2$^3$S\,$\to$\,1$^1$S), photoionization $\Phi_3$,
-spin-changing e-impact transfer into the singlets
-($q_{31a} = $ 2$^3$S\,$\to$\,2$^1$S, $q_{31b} = $ 2$^3$S\,$\to$\,2$^1$P),
-e-impact de-excitation straight to the ground ($q_{31g} = $
-2$^3$S\,$\to$\,1$^1$S), e-impact ionization ($C_3$), and Penning/associative
-ionization with neutral hydrogen ($n_{\rm HI}\,Q_{31}$).
+Sources: recombination into the triplets, $\alpha_3 n_e n_{\rm HeII}$; electron
+impact $1^1{\rm S}\rightarrow2^3{\rm S}$ ($q_{13}$) and
+$1^1{\rm S}\rightarrow n^3L$ for every other triplet term $n\le5$
+($q_{\rm feed}$: each such atom decays within the triplets to 2$^3$S).  Sinks:
+the radiative decay $A_{31} = 1.272{\times}10^{-4}$~s$^{-1}$ (19.82~eV; the
+CHIANTI \code{he\_1.wgfa} $1.73{\times}10^{-4}$ is $\sim$36\% high and is
+\emph{not} used), photoionization $\Phi_3$, electron impact to the ground
+($q_{31g}$), to 2$^1$S ($q_{31a}$), 2$^1$P ($q_{31b}$) and to $n^1L$,
+$n\ge3$ ($q_{31s}$), electron-impact ionization ($C_3$), and Penning plus
+associative ionization by atomic hydrogen ($n_{\rm HI}Q_{31}$).  The
+excitations $2^3{\rm S}\rightarrow n^3L$ ($2^3$P and above, rate $q_{33}$)
+return to 2$^3$S by radiative cascade (10830~\AA\ for 2$^3$P): they change no
+population and are an energy loss only.  Two limits anchor the gates: the
+low-density radiative limit $n_3/n_{\rm He^+} = \alpha_3 n_e/A_{31}$ and the
+collisional plateau $\alpha_3/(q_{31g}+q_{31a}+q_{31b}+q_{31s}+C_3)$, crossing
+at $n_{\rm crit} = A_{31}/(q_{31g}+q_{31a}+q_{31b}+q_{31s}+C_3) = 3502$~cm$^{-3}$
+at $10^4$~K (4131 at 8000~K, 2921 at $1.5{\times}10^4$~K).
 
-$q_{31g}$ is not in the OH18 balance, and its absence there is an error:
-$q_{13}$ is carried, and a collisional rate whose forward direction is
-carried must carry its inverse, or the two levels cannot reach their
-Boltzmann ratio in equilibrium.  MoCHII takes it from the same
-\code{QEXC13} fit by detailed balance,
-$q_{31g} = q_{13}\,(g_1/g_3)\,e^{E_{13}/kT}$ with $g_1/g_3 = 1/3$,
-evaluated with the Boltzmann factor of $q_{13}$ removed rather than
-multiplied back so it does not underflow at low $T$
-(\code{hei\_qdeexc\_ground}).  Against $q_{31a}+q_{31b}$ it is $5.6\%$ at
-$10^4$~K, $7.2\%$ at 8000~K, $15\%$ at 5000~K and $57\%$ at 3000~K (added
-2026-09-24).  $C_3$, also absent from OH18, is the electron-impact
-ionization of 2$^3$S, Black (1981, MNRAS 197, 553) eq.~(12),
-$8.38{\times}10^{-10}\,T^{1/2}e^{-55338/T}\,\cmc$ from the Taylor,
-Kingston \& Bell (1979) cross sections over $10^3$--$10^5$~K (read from the
-published scan; EXHALE carries the same rate as Black's cooling
-coefficient divided by the 2$^3$S ionization potential): $1.0\%$ of
-$q_{31a}+q_{31b}$ at $10^4$~K, $6.8\%$ at $1.5{\times}10^4$~K and $20\%$ at
-$2{\times}10^4$~K.  The three excitation rates are evaluated as
-$q = \beta\,\Upsilon(T)\,e^{-E/kT}/(g_l\sqrt{T})$ with the exact
-Maxwellian constant $\beta = h^2/[(2\pi m_e)^{3/2}k^{1/2}] =
-8.629132{\times}10^{-6}$ and the observed level energies of CHIANTI
-\code{he\_1.elvlc} (19.8196, 0.7962 and 1.3984~eV); OH18's
-$2.1{\times}10^{-8}\sqrt{13.6\,{\rm eV}/kT}$ is the same constant $3.4\%$ low
-and their energies are rounded (19.81, 0.80, 1.40~eV); both corrected
-2026-09-24.  Two limits anchor the gates: the low-density radiative limit
-$n_3/n_{\rm He^+} = \alpha_3 n_e/A_{31}$ and the high-density collisional
-plateau $\alpha_3/(q_{31a}+q_{31b}+q_{31g}+C_3)$, crossing at
-$n_{\rm crit} = A_{31}/(q_{31a}+q_{31b}+q_{31g}+C_3)$ --- at $10^4$~K the
-plateau is $5.887{\times}10^{-6}$ and $n_{\rm crit} = 3566$~cm$^{-3}$ (with
-$q_{31g}$ alone and the OH18 constant they were $6.170{\times}10^{-6}$ and
-3737, with the two singlet channels alone $6.513{\times}10^{-6}$ and 3945).
+\emph{Recombination.}  $\alpha_3(T) = f_{3S}(T)\,\alpha_B({\rm He\,II},T)$,
+the triplet share of the case-B cascade (Eq.~\ref{eq:hei-branch},
+\code{hei\_cascade\_mod}) times the case-B coefficient the ionization balance
+itself uses (\code{recomb\_mod}).  Every triplet recombination ends in
+2$^3$S and ground captures feed no triplet, so it is $\alpha_B$ whatever
+\code{recombination\_continuum} is.  Until 2026-09-25 the module carried its own fit,
+$2.10{\times}10^{-13}T_4^{-0.778}$ (Oklopcic \& Hirata 2018, OH18): a second
+normalization of the same recombinations supplied beside the one the balance
+fixes --- the defect of lesson~(4).  It sits $1.5\%$ below
+$f_{3S}\alpha_B$ at $10^4$~K, $0.6\%$ below at 8000~K and $8\%$ above at
+3000~K.
 
-The rate coefficients are closed-form fits transcribed from the EXHALE
-triplet implementation (offline into the coefficient file, Fortran only
-evaluates): $\alpha_3(T) = 2.10{\times}10^{-13}(T/10^4)^{-0.778}$ (OH18);
-$q_{13}, q_{31a}, q_{31b}$ from Bray et al.\ (2000) collision strengths via
-OH18; $A_{31} = 1.272{\times}10^{-4}$~s$^{-1}$ (the CHIANTI \code{he\_1.wgfa}
-$A(1\!-\!2) = 1.73{\times}10^{-4}$ is $\sim$36\% high and is \emph{not} used);
-$Q_{31}$ from Garc\'{\i}a Mu\~noz (2025, A\&A 698, A199, Fig.~5), the
-Maxwellian average of the Movre \& Meyer (1997) cross sections,
+\emph{Electron impact.}  All rates are $q = \beta\,\Upsilon(T)\,e^{-\Delta
+E/kT}/(g_l\sqrt T)$ with the exact Maxwellian constant $\beta =
+h^2/[(2\pi m_e)^{3/2}k^{1/2}] = 8.629132{\times}10^{-6}$ (Bray et al.'s
+eq.~1 is the same expression), $g_l = 1$ or 3, and the effective collision
+strengths $\Upsilon$ of Bray, Burgess, Fursa \& Tully (2000, A\&AS 146, 481),
+Table~2 (from 1$^1$S, the triplet columns) and Table~3 (from 2$^3$S), all
+terms $n\le5$: 41 transitions, each a row of \code{data/atomic/hei\_metastable.txt}
+tagged with its role (\code{Q13}, \code{FEED}, \code{Q31A}, \code{Q31B},
+\code{SINGLET}, \code{TRIPLET}).  $\Delta E$ are the $g$-weighted observed
+term energies of CHIANTI \code{he\_1.elvlc}.  Bray et al.\ tabulate
+$\Upsilon$ at $\log T = 3.75$--$5.75$ and stop there because of the
+pseudo-resonances of their close-coupling cross sections near threshold;
+they also state that for a neutral target $\Omega\propto E_j^{1/2}$ near
+threshold, so $\Upsilon$ must fall as $T\rightarrow0$ and holding the
+$10^{3.75}$~K value would contradict their own threshold law.  Below the
+table the file therefore carries, at $\log T = 3.00$, 3.25, 3.50, the
+temperature dependence of the CHIANTI v11.0.2 \code{he\_1} strength of the
+same term (its $J$ levels summed, Burgess--Tully descaled) anchored to the
+Bray value at $10^{3.75}$~K; the CHIANTI file states its strengths (Sawey \&
+Berrington 1993, Bray et al.\ 2000) are used over $3.0<\log T<5.75$.  The
+one term CHIANTI lacks from 2$^3$S (4$^3$S) holds its $10^{3.75}$~K value.
+The Fortran interpolates $\log\Upsilon$ linearly in $\log T$ and holds the
+end values outside $[10^3, 10^{5.75}]$~K; the Boltzmann factor is always at
+the actual $T$ (below $10^3$~K every excitation here is suppressed by
+$e^{-\Delta E/kT}<e^{-9.2}$).  $q_{31g}$ is the detailed-balance inverse of
+the \code{Q13} row, $q_{31g} = q_{13}(g_1/g_3)e^{E_{13}/kT}$, evaluated with
+the Boltzmann factor removed.  At $10^4$~K:
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+rate [$\cmc$] & MoCHII & EXHALE (cross-check) \\
+\midrule
+$q_{13}$                    & $5.720{\times}10^{-19}$ & $5.720{\times}10^{-19}$ \\
+$q_{\rm feed}$              & $6.055{\times}10^{-20}$ & $6.055{\times}10^{-20}$ \\
+$q_{31g}$                   & $1.858{\times}10^{-9}$  & $1.858{\times}10^{-9}$ \\
+$q_{31a}$                   & $2.804{\times}10^{-8}$  & $2.804{\times}10^{-8}$ \\
+$q_{31b}$                   & $5.438{\times}10^{-9}$  & $5.438{\times}10^{-9}$ \\
+$q_{31s}$ ($n^1L$, $n\ge3$) & $6.539{\times}10^{-10}$ & $6.539{\times}10^{-10}$ \\
+$q_{33}$ ($n^3L$)           & $2.022{\times}10^{-7}$  & --- \\
+$C_3$                       & $3.311{\times}10^{-10}$ & --- \\
+$Q_{31}$                    & $1.272{\times}10^{-9}$  & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+EXHALE evaluates the same Bray tables independently (its own transcription,
+identical in every column used here); its tabulated quartic fits for the feed
+and the $n\ge3$ singlets sit $0.9\%$ and $1.1\%$ off the sums above, which
+its own reference sums reproduce.  The feed is $10.6\%$ of $q_{13}$ at
+$10^4$~K and $33\%$ at $2{\times}10^4$~K; $q_{31s}$ is $2.0\%$ of
+$q_{31a}+q_{31b}$ at $10^4$~K and $7.9\%$ at $2{\times}10^4$~K.  $C_3$,
+Black (1981, MNRAS 197, 553) eq.~(12),
+$8.38{\times}10^{-10}\,T^{1/2}e^{-55338/T}$ from the Taylor, Kingston \& Bell
+(1979) cross sections over $10^3$--$10^5$~K, and $Q_{31}$ below are evaluated
+at $T$ clamped to $[10^2, 3{\times}10^4]$~K.
+
+\emph{Penning and associative ionization}, He(2$^3$S)\,+\,H$^0$, from
+Garc\'{\i}a Mu\~noz (2025, A\&A 698, A199, Fig.~5), the Maxwellian average of
+the Movre \& Meyer (1997) total ionization cross sections,
 \begin{equation}
   Q_{31} = 10^{-9}\exp\!\big(c/T + d_1\ln T + d_2(\ln T)^2 + d_3(\ln T)^3\big)
   \;\cmc,
 \end{equation}
 $c = -86.4804$, $d_1 = -0.286766$, $d_2 = 0.0868445$, $d_3 = -0.00573001$,
 which reproduces the paper's Table~A.5 ($1.02$, $1.32$, $1.35$,
-$1.27{\times}10^{-9}$ at 500, 2000, 5000, $10^4$~K).  It replaces (2026-09-24)
-the Taylor et al.\ (2025, ApJ 989, 68) Table~2 two-branch power law, which is
-physically wrong as a rate coefficient: a Maxwellian average of a cross
-section is continuous in $T$, whereas that fit jumps by $1.57\times$ at
-4000~K; it was also $1.17$--$1.84\times$ above the Garc\'{\i}a Mu\~noz
-values over $10^3$--$10^4$~K.  The alternative formula that the data-file header used to record
-for Garc\'{\i}a Mu\~noz was itself miswritten as $\exp(c + \ldots)$; the
-correct argument is $c/T$.  A consistency check: at $10^4$~K,
-$\alpha_3 = 0.998\times0.75\,\alpha_B({\rm He\,II})$, matching the
-\code{HEI\_F3S} $=0.75$ triplet branching the diffuse field already uses.
+$1.27{\times}10^{-9}$ at 500, 2000, 5000, $10^4$~K).  It replaced
+(2026-09-24) the Taylor et al.\ (2025, ApJ 989, 68) two-branch power law,
+which jumps by $1.57\times$ at 4000~K.  The same paper partitions the total
+0.9\,:\,0.1 between Penning (He\,+\,H$^+$\,+\,$e$) and associative
+(HeH$^+$\,+\,$e$) ionization, ``an average''.  MoCHII carries no HeH$^+$,
+so both branches are counted as H$^0\rightarrow$H$^+$ (the molecular ion
+carries the hydrogen's charge) and both deposit $E_3 - {\rm IP(H)} =
+6.22$~eV; for the associative 10\% that omits the HeH$^+$ binding.
 
-\paragraph{The 2$^3$S photoionization rate.}
+\paragraph{The 2$^3$S photoionization rate.}\label{sec:hei-phi3}
 $\Phi_3 = \int 4\pi J_\nu\,\sigma_3(\nu)\,d\nu/(h\nu)$ over the
-\emph{full} transported band, accumulated during transport as a path
-estimator, $\sum \ell_{\rm eff}\,w\,L_{\rm pkt}\,\sigma_3(E)/(h\nu)$ over
-the packet segments crossing the leaf ($\ell_{\rm eff}$ the effective path
-length of the segment, $(e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}})/\kappa$ for
-an analytic segment as in Eq.~\ref{eq:edgewalk}), at each packet's own
-energy (\code{hei\_metastable\_path\_score}, called from
-\code{ion\_score\_mod}), and normalized by the leaf volume exactly as the
-$\Gamma_i$ are.  Until 2026-09-24 it was a sum over the bin centers of the
-diagnostic spectrum \code{jt\_ion}, which contradicts the continuous-energy
-transport of \S\ref{sec:band}: $\sigma_3$ has structure inside a bin
-(the Cooper minimum below).  The threshold is 4.78~eV, but $\sigma_3 \sim
-1$--$2{\times}10^{-18}$~cm$^2$ remains significant far above 13.6~eV
-(Cooper minimum near 34.7~eV, bump near 45.6~eV), so the ionizing band alone
-gives $\Phi_3 > 0$ wherever a field exists; \code{add\_fuv} with
-\code{efuv\_min}$=4.78$ adds the soft-UV part $[4.78, 13.6)$~eV (a rank-0 note
-fires when the band floor sits above 4.78~eV).  $\sigma_3(E)$ is two VFKY96
-wings joined by a log-linear bridge, a $\sim$4\% fit to Norcross (1971)\,+\,TOPbase.
+transported band, accumulated during transport as a path estimator,
+$\sum \ell_{\rm eff}\,w\,L_{\rm pkt}\,\sigma_3(E)/(h\nu)$ over the packet
+segments crossing the leaf, at each packet's own energy
+(\code{hei\_metastable\_path\_score}, called from \code{ion\_score\_mod}
+whenever \code{hei\_metastable} or \code{hei\_metastable\_coupling} is on),
+and normalized by the leaf volume exactly as the $\Gamma_i$ are.  Its
+heating companion $\Gamma_3 = \sum \ell_{\rm eff}\,w\,L_{\rm pkt}\,
+\sigma_3(E)\,(1 - {\rm IP}_3/E)$, ${\rm IP}_3 = {\rm IP(He)} - E_3 =
+4.768$~eV, is accumulated beside it.  \emph{Band limitation:} the threshold
+is 4.78~eV (the edge of the $\sigma_3$ fit; ${\rm IP}_3 = 4.768$~eV), but
+without \code{add\_fuv} the transported band starts at 13.6~eV, so
+$[4.78, 13.6)$~eV is missing from both; $\sigma_3$ falls from
+$4.7{\times}10^{-18}$~cm$^2$ at the edge to $1.2{\times}10^{-18}$ at
+13.6~eV, $5.9{\times}10^{-19}$ at 20~eV and $2.2{\times}10^{-19}$ at the
+Cooper minimum near 34.7~eV, then rises to $2.6{\times}10^{-18}$ at the bump
+near 45.6~eV, so the ionizing band alone gives
+$\Phi_3>0$ wherever a field exists, and \code{add\_fuv} with
+\code{efuv\_min}$=4.78$ adds the soft-UV part.  That part dominates, so an
+input that leaves \code{add\_fuv} and \code{efuv\_min} out gets both
+whenever this population is used, launched as its own stratum
+(Section~\ref{sec:band-strata}).  Measured on the \code{tests/hei\_meta}
+spheres (40~kK, coupling and thermal balance on, two seeds each; the FUV
+extension against none): the $n_e$-weighted $\Phi_3$ rises 13.0-fold at
+$n_{\rm H}=100$ and 13.4-fold at $10^4$~cm$^{-3}$.  At $n_{\rm H}=100$ the
+2$^3$S level still empties by $A_{31}$ ($\Phi_3 = 1.8{\times}10^{-7}$ against
+$A_{31}=1.27{\times}10^{-4}$~s$^{-1}$), so the population moves by
+$-0.05\%$ (central column $-0.8\%$, at the seed scatter) and $T_e$ by
+$-2$~K.  At $10^4$~cm$^{-3}$ photoionization is a main exit:
+$N(2^3{\rm S})$ falls 13.9\%, the central column 27.8\%, and the
+photoionization heating raises $\langle T_e\rangle_{n_e}$ by 2.8\% (525~K),
+with $x_{\rm HI}$ $-0.46\%$ and $x_{\rm HeI}$ $-0.74\%$ (seed scatter
+$\le3{\times}10^{-4}$ on every one of these).  The runs cost 22\% and 46\%
+more wall time.  The 2$^3$S opacity is not
+carried in the transport, so the photons $\Phi_3$ absorbs are not removed
+from the field.  Below 13.6~eV H$^0$ does not compete, so the comparison that
+bounds this is the 2$^3$S column itself: through the densest standing case
+(\code{examples/hei\_metastable/hei\_high\_density.in},
+largest column $N(2^3{\rm S}) = 2.87{\times}10^{15}$~cm$^{-2}$)
+it is $\tau_3 = 0.013$ at 4.8~eV, where $\sigma_3$ is largest.  $\sigma_3(E)$ is two VFKY96 wings joined by a
+log-linear bridge, a $\sim$4\% fit to Norcross (1971)\,+\,TOPbase.
+
+\paragraph{Coupling into the ionization balance.}  Ionization of 2$^3$S by
+electrons and photons returns the atom to He$^+$: it undoes the recombination
+that fed it.  \code{solve\_ion\_cell} adds $(n_eC_3+\Phi_3)\,n_3$ to the
+He$^0\rightarrow$He$^+$ rate.  Because $n_3$ is linear in $n_{\rm HeI}$ and
+$n_{\rm HeII}$ this is solved \emph{jointly} in the closed form rather than
+lagged: with $u = (n_eC_3+\Phi_3)/D$, the share of 2$^3$S atoms that end
+ionized,
+\begin{equation}
+\frac{n_{\rm HeII}}{n_{\rm HeI}} =
+ \frac{\Gamma_{\rm HeI} + C_{\rm HeI}n_e + u\,(q_{13}+q_{\rm feed})\,n_e\;[+\,{\rm CX}]}
+      {(\alpha_{\rm He} - u\,\alpha_3)\,n_e\;[+\,{\rm CX}]},
+\end{equation}
+i.e.\ a share $u$ of the triplet recombinations is undone and a share $u$ of
+the collisional triplet excitations becomes a two-step ionization;
+$\alpha_{\rm He}-u\alpha_3>0$ always.  $D$ is taken at the iterate's $n_e$ and
+$n_{\rm HI}$.  Penning ionization adds $n_3Q_{31}$ to the H$^0$ ionization
+rate; there $n_3$ uses the previous iterate's helium fractions, the lag the
+He--H charge-exchange terms already carry, and the loop's exit test then
+also requires $x_{\rm HI}$ and $x_{\rm HeII}$ to have stopped moving.  The
+gate solves partially neutral cells ($x_{\rm HII} = 0.006$--$0.87$, with and
+without He--H charge exchange, Penning up to $0.7\%$ of $\Gamma_{\rm H}$) and
+finds both balances closed, \emph{with} the 2$^3$S terms at the solved state,
+to $\le1.1{\times}10^{-10}$ inside one call.
+\code{hydrogen\_balance\_residual} carries the Penning term too.
+
+\paragraph{Coupling into the thermal balance: the energy ledger.}  Energies
+above 1$^1$S, $E_3 = E(2^3{\rm S}) = 19.8196$~eV.  Per event, the gas
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+process & rate [cm$^{-3}$\,s$^{-1}$] & gas energy \\
+\midrule
+excitation $1^1{\rm S}\rightarrow2^3{\rm S}$, $n^3L$ & $n_en_{\rm HeI}q$ &
+  $-E(n^3L)$ \quad [$E(n^3L)-E_3$ leaves as triplet lines] \\
+super-elastic $2^3{\rm S}\rightarrow1^1{\rm S}$ & $n_en_3q_{31g}$ & $+E_3$ \\
+$2^3{\rm S}\rightarrow2^1$S, $2^1$P, $n^1L$, $n^3L$ & $n_en_3q$ & $-\Delta E$
+  \quad [the atom then radiates] \\
+electron-impact ionization & $n_en_3C_3$ & $-{\rm IP}_3$ \\
+photoionization & $n_3\Phi_3$ & $+(h\nu - {\rm IP}_3)$, i.e.\ $n_3\Gamma_3$ \\
+Penning / associative & $n_{\rm HI}n_3Q_{31}$ & $+(E_3 - {\rm IP(H)})$ \\
+radiative decay & $n_3A_{31}$ & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+so \code{hei\_triplet\_net\_heating}, added to the net rate of
+\code{thermal\_mod::net\_rate}, is
+\begin{equation}
+H_3 = n_3\Big[n_e\Big(q_{31g}E_3 - \!\!\sum_{31a,31b,31s,33}\!\! q\,\Delta E
+      - C_3\,{\rm IP}_3\Big) + \Gamma_3 + n_{\rm HI}Q_{31}\,(E_3-{\rm IP(H)})\Big]
+      - n_en_{\rm HeI}\!\!\sum_{13,\,{\rm feed}}\!\! q\,E(n^3L).
+\end{equation}
+It closes: with $n_3$ steady, recombination $E_3$ plus the photon energy
+$\Phi_3$ absorbs equals $H_3$ plus the photon energy the levels emit plus the
+ionization energy stored (IP(He) for $C_3$ and $\Phi_3$, IP(H) for $Q_{31}$);
+the gate assembles the photon side from the rows' own energies and finds
+closure to $4{\times}10^{-16}$.  Not in it: excitation of the singlets from
+1$^1$S (the open He\,\textsc{i} collisional-excitation item) and the
+recombination kinetic energy, already in \code{cooling\_mod}'s
+$\beta$ on the balance's own $\alpha$.  The 2$^1$S/2$^1$P populations are not
+solved: a transfer into them is taken to decay radiatively ($A_{2q} =
+51$~s$^{-1}$ against $n_e q(2^1{\rm S}\rightarrow2^3{\rm S})\sim
+2{\times}10^{-7}n_e$~s$^{-1}$).
+
+\paragraph{Coupling into the He\,\textsc{i} diffuse channel.}  See
+Section~\ref{sec:heidiffuse}: the 19.82~eV photons are $n_3A_{31}$, and the
+collisional transfers feed the two-photon and 584~\AA\ branches.
+
+\paragraph{Measured sizes (2026-09-25).}  On the converged Lexington states
+(\code{results/continuous\_energy/m5\_converged/}), restarted for one
+iteration with the coupling on and off at 36 ranks, volume-integrated and
+relative to the H+He photoheating:
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+ & HII40 & HII20 \\
+\midrule
+excitation from 1$^1$S (direct + feed)      & $-4.7{\times}10^{-8}$ & $-6.6{\times}10^{-10}$ \\
+super-elastic $q_{31g}$                      & $+4.4{\times}10^{-4}$ & $+5.4{\times}10^{-5}$ \\
+transfers to the singlets                    & $-2.7{\times}10^{-4}$ & $-2.7{\times}10^{-5}$ \\
+triplet excitations ($q_{33}$, 10830 etc.)   & $-1.58{\times}10^{-3}$ & $-1.36{\times}10^{-4}$ \\
+$C_3$                                        & $-3.6{\times}10^{-6}$ & $-1.3{\times}10^{-7}$ \\
+$\Phi_3$ heating                             & $+4.0{\times}10^{-5}$ & $+8.5{\times}10^{-6}$ \\
+Penning                                      & $+6.4{\times}10^{-8}$ & $+1.7{\times}10^{-9}$ \\
+net $H_3$                                    & $-1.37{\times}10^{-3}$ & $-1.01{\times}10^{-4}$ \\
+\midrule
+Penning / photoionization of H               & $3.2{\times}10^{-8}$ & $4.2{\times}10^{-10}$ \\
+undone share of triplet recombinations       & $3.1{\times}10^{-4}$ & $5.6{\times}10^{-4}$ \\
+\quad of which $\Phi_3$ / $C_3$              & 0.81 / 0.19 & 0.97 / 0.03 \\
+2$^3$S decaying by $A_{31}$                  & 0.974 & 0.977 \\
+channel 4: 19.82~eV / 584~\AA\ / 2$^1$S energy, coupled/uncoupled
+                                             & 0.974 / 1.014 / 1.080 & 0.977 / 1.011 / 1.064 \\
+channel 4 total energy                       & $-1.27\%$ & $-1.20\%$ \\
+$\langle T[{\rm N_pN_e}]\rangle$ after the one update, on $-$ off
+                                             & $-9.7$~K & $-0.7$~K \\
+\bottomrule
+\end{tabular}
+\end{center}
+The net term is a cooling dominated by the collisional excitation of
+2$^3$S within the triplets, which no other term of the thermal balance
+carries; the population itself moves by a few percent because 2.0--2.6\% of
+the 2$^3$S atoms leave by $q_{31a}$ and $q_{31b}$ instead of decaying.  The
+leaf temperatures of the two runs also differ by $\pm80$~K (1st/99th
+percentile): the coupled diffuse channel changes the diffuse packets, so the
+two transport realizations differ; the $-9.7$~K is the ionized-gas mean
+($x_{\rm HI}<0.01$ leaves: median $-10.0$~K) and the full effect needs a
+converged run.  The cell maximum of $|H_3|$ against photoheating (11 at
+HII40) is set by leaves whose tallied photoheating is Monte Carlo zero.
+
+On the three \code{tests/hei\_meta} inputs (fixed $T_e = 10^4$~K, case B, no
+diffuse field, so only the ionization coupling acts; 24 ranks, same seed),
+coupling on against off moves the total 2$^3$S column by $+0.018\%$
+(\code{hei\_lowd}), $+1.09\%$ (\code{hei\_highd}) and $+0.091\%$
+(\code{hei\_fuv}), the mass-weighted $x_{\rm HeII}$ by $+0.019\%$, $+1.12\%$
+and $+0.095\%$, and in the leaves where helium is mostly ionized the median
+$x_{\rm HeI}$ by $-0.061\%$, $-5.4\%$ and $-0.33\%$ (median $u$ there
+$3.2{\times}10^{-4}$, $1.9{\times}10^{-2}$, $1.3{\times}10^{-3}$, with
+$\Phi_3$ supplying 15\%, 64\% and 78\% of it).  The coefficient change alone
+(Bray feed and $n\ge3$ singlets, $\alpha_3 = f_{3S}\alpha_B$), evaluated on
+the same coupling-off state, moves the column by $+1.42\%$, $+0.13\%$ and
+$+1.42\%$.
 
 \paragraph{10833~\AA\ absorption (Stage 2).}  From $n_3$ the line-center
 opacity of each fine-structure component is
@@ -1529,13 +1945,12 @@ sight (the flux-conserving deposit of the emissivity maps) into column
 [cm$^{-2}$] and $\tau_0 = \int\!\kappa_0\,{\rm d}l$ maps, and warns when
 line-center $\tau_0 > 1$.
 
-The module runs once at output time (no hot-loop cost, no feedback --- $n_3$
-is a $\sim$10$^{-7}$ trace of He).  Caveats recorded at the code site:
-(i)~\emph{local equilibrium} --- the advection term $v\,{\rm d}f_3/{\rm d}r$
-is absent, valid where the 2$^3$S destruction time is short against any flow
-time (dense H\,\textsc{ii}), not a faithful outflow benchmark; (ii)~10833 can
-be optically thick in dense metastable columns, where the optically-thin
-$\tau_0$ diagnostic breaks down (line transfer is out of scope).
+Caveats recorded at the code site: (i)~\emph{local equilibrium} --- the
+advection term $v\,{\rm d}f_3/{\rm d}r$ is absent, valid where the 2$^3$S
+destruction time is short against any flow time (dense H\,\textsc{ii}), not
+a faithful outflow benchmark; (ii)~10833 can be optically thick in dense
+metastable columns, where the optically-thin $\tau_0$ diagnostic breaks down
+(line transfer is out of scope).
 
 %==========================================================================
 \section{Algorithms}
@@ -1595,6 +2010,71 @@ weight is not divided by the probability density: equal packet luminosity
 combined with inverse-CDF sampling is the importance sampling rule that
 recovers the source luminosity spectrum in expectation.
 
+\paragraph{Band strata with the FUV extension.}\label{sec:band-strata}
+With \code{par\%add\_fuv} the band $[E_{\rm FUV}, E_{\max}]$ has two parts
+that do different physics: above $E_{\min}$ the photons ionize H and He,
+below it they heat grains, ionize the low-threshold metals and the
+He\,\textsc{i} 2$^3$S level, and nothing else.  Drawn from one CDF, a
+packet lands in the ionizing part with probability equal to that part's
+luminosity share, $f_{\rm ion} = 1 - F(E_{\min})$: 0.448 for a 40~kK
+blackbody from 4.78~eV, 0.064 for 20~kK.  Every hydrogen and helium rate
+then rests on $f_{\rm ion}N$ packets, and its Monte Carlo noise grows by
+$f_{\rm ion}^{-1/2}$ --- 1.5 and 3.9 for those two stars --- over a run
+without the extension.  \code{par\%fuv\_sampling = 'separate'} (the default)
+launches the two parts as strata.  For source component $c$ with band
+luminosity $L_c$ and CDF $F_c$, the parts carry
+\begin{equation}
+  L_{{\rm ion},c} = L_c\,[1 - F_c(E_{\min})], \qquad
+  L_{{\rm FUV},c} = L_c\,F_c(E_{\min}),
+\end{equation}
+and the ionizing stratum launches $N$ = \code{no\_photons} packets, the FUV
+stratum $N_{\rm FUV}$ = \code{no\_photons\_fuv} (default $N/4$).  Within a
+stratum the component is chosen with probability
+$L_{s,c}/\sum_{c'}L_{s,c'}$, so a component with no luminosity there
+launches nothing in it, and the energy comes from its conditional CDF,
+\begin{equation}
+  E = F_c^{-1}\!\big(F_c(E_{\min}) + u\,[1 - F_c(E_{\min})]\big)
+  \quad\text{(ionizing)},\qquad
+  E = F_c^{-1}\!\big(u\,F_c(E_{\min})\big)
+  \quad\text{(FUV)},
+\end{equation}
+the same piecewise-linear CDF the whole-band draw inverts ($E_{\min}$ is a
+knot of every Planck sampler, and the tabulated CDF is exact at any
+energy).  A packet of stratum $s$ carries $L_s/N_s$ with
+$L_s = \sum_c L_{s,c}$; its weight starts at 1 as before, so the Russian
+roulette of the dust scattering acts relative to the launch weight.  Each
+stratum then reproduces its own luminosity exactly, and the two sum to the
+band luminosity.  Every estimator downstream --- the rate and heating path
+estimators, $\Phi_3$ and its heating, the dust absorption, the
+$J_\nu$ tally and hence $G_0$, the peel-off images, the slab boundary
+tally, the energy ledger --- sums $L_{\rm pkt}\,w\,\ell$ over segments, so
+none of them needs to know which stratum a packet came from.  The diffuse
+recombination packets carry the luminosity of one \emph{ionizing} source
+packet, $L_{\rm ion}/N$ ($L/N$ without the strata), so the field that
+drives the ionization and the field it produces are sampled equally finely
+whatever the FUV share.  With \code{launch\_sequence = 'sobol'} the ionizing
+stratum uses the stellar stream at indices $0\ldots N-1$ --- the points a
+run without the extension uses --- and the FUV stratum a third scramble
+stream of its own, indexed from 0.
+
+Measured on one fixed state (\code{tests/fuv\_stratified/}, a dusty 4~pc
+sphere, $N = 10^6$, four seeds per mode): the volume integrals of
+$n_{\rm HI}\Gamma_{\rm HI}$, $\Phi_3$, $G_0$ and the grain heating agree
+between \code{'separate'} and \code{'proportional'} within 1.6$\sigma$
+($\le 1.1\times10^{-3}$); the leaf noise of $\Gamma_{\rm HI}$ in the ionized
+gas is that of a run without the extension, and \code{'proportional'}'s is
+1.51 and 4.07 times larger for the 40 and 20~kK stars (predicted 1.49, 3.95).
+The FUV side pays for it: with $N/4$ FUV packets the leaf noise of $G_0$ is
+1.5 (40~kK) and 1.9 (20~kK) times \code{'proportional'}'s.  An FUV packet is
+absorbed by nothing in ionized gas without dust or metals and crosses more
+of the grid than an ionizing one --- 1.6 times the path segments, 2.0 with
+dust scattering, in that geometry --- so the default $N/4$ adds 40--50\% to
+a pass, about what \code{'proportional'} costs at the same $N$ for a 40~kK
+star.  \code{'proportional'} is kept so runs made with it reproduce bit for
+bit (verified against the previous binary, all \code{rates.h5} datasets and
+the line files, with and without the extension, pseudo-random and Sobol,
+single, multiple and preset sources).
+
 \paragraph{Convergence measures.}\label{sec:conv}  Two pairs are computed every
 iteration and \code{par\%conv\_crit} selects which gates the loop:
 the cell-max tests ($\max|\Delta x_{\rm HII}| <$ \code{gas\_tol},
@@ -1617,10 +2097,25 @@ recommended production setting; \code{'cell'} (the historical
 behavior) remains the default so the recorded gates reproduce.
 \emph{The drift test (2026-09-25).}  Under \code{'vol'} the ionization
 measures are no longer tested on their last step: with $d_n$ the step and
-$\rho$ the median of its last three decay ratios, a measure passes when the
-drift still to come, $d_n\rho/(1-\rho)$, is below \code{gas\_tol}, or ---
-once the steps no longer fall monotonically (the Monte Carlo floor,
-$\rho \ge 0.95$ with at least one ratio $\ge 1$) --- when $d_n$ is.  Helium
+$\rho$ its decay ratio, a measure passes when the drift still to come,
+$d_n\rho/(1-\rho)$, is below \code{gas\_tol}, or --- once the steps no
+longer fall (the Monte Carlo floor) --- when $d_n$ is.  \emph{Revised
+2026-09-26:} $\rho$ is the least-squares slope of $\ln d$ over the last 8
+iterations (it was the median of the last three ratios), and the floor is
+accepted only when the signed step
+\begin{equation}
+  s_n = \frac{\sum_{\rm leaf} V\,(x_{{\rm HII},n} - x_{{\rm HII},n-1})}
+             {\sum_{\rm leaf} V\,x_{{\rm HII},n}}
+\end{equation}
+(and its helium counterparts) has a mean over those 8 iterations that does
+not stand out of its scatter, $|\bar s| < 2.365\,\sigma_s/\sqrt{8}$ (Student's
+$t$, two-sided 95\%, 7 degrees of freedom).  On the floor the leaves
+fluctuate about their fixed point and their changes cancel in $s$; a front
+still moving changes the ionized volume with one sign every iteration.  The
+floor had been read off the step ratios alone (any of the last three
+$\ge 1$), which a slow decay under Monte Carlo noise also satisfies: a
+restart of HII40 onto the hydrogenic $\alpha_B$ ($-1.1\%$) passed after 4
+iterations with its H front still moving outward, $\rho \approx 0.97$.  Helium
 is tested alongside hydrogen, through
 $\sum V|\Delta x_{\rm HeI}|/\sum V(1-x_{\rm HeI})$ and, where He$^{2+}$ is at
 least 1\% of the ionized helium, the He$^{2+}$ counterpart
@@ -1853,7 +2348,10 @@ midpoint $\sqrt{T_{\rm lo}T_{\rm hi}}$ (up to 60 steps, stopping at
 $T_{\rm hi}/T_{\rm lo}-1 < 10^{-5}$), and if cooling already wins at
 \code{te\_min} ($\mathcal{N}\le 0$) the leaf is pinned to \code{te\_min}
 while if heating still wins at \code{te\_max} it is pinned to
-\code{te\_max}.
+\code{te\_max}.  With \code{charge\_exchange\_heating} (on by default)
+$\mathcal{H}$ also carries the kinetic energy the charge-exchange reactions
+release or take up (Eq.~\ref{eq:cxheat}, \S\ref{sec:cx}), evaluated with the
+fractions of the same trial $T$.
 
 The cooling $\mathcal{C}(T)$ (\code{cooling\_mod}) assembles recombination
 (Eq.~\ref{eq:betarec}), free-free
@@ -2147,6 +2645,238 @@ acts on the spectral shape in the band where He$^0$ and H$^0$ compete.  An
 on/off statement is the form such a justification has to take here, since
 the response is asymmetric and a single number in either direction
 misstates it.
+
+\subsection{Case B on the spot: the He\,\textsc{i} recombination photons}
+\label{sec:ots-hei}
+With \code{par\%recombination\_continuum = 'on\_the\_spot'} (the default until 2026-09-26, since then \code{'transported'}) the
+recombination photons are not transported but absorbed where they are made.
+For hydrogen that is case B itself.  For helium it was, until 2026-09-25,
+only half of the approximation: every He$^+\rightarrow$He$^0$ recombination
+photon was given back to helium and none ionized hydrogen, although the whole
+excited cascade lies below the He$^0$ edge and only hydrogen can take it.
+With \code{par\%hei\_on\_the\_spot} (default \code{.true.};
+\code{hei\_recombination\_photons\_mod}) the two balances are those of
+Osterbrock \& Ferland (2006) eqs.~2.24--2.25,
+\begin{align}
+ n({\rm H^0})\,(\Gamma_{\rm H} + C_{\rm H}n_e)
+   + \bigl[y\,\alpha_1({\rm He^0}) + p\,\alpha_B({\rm He^0})\bigr]\,n_e n({\rm He^+})
+   &= \alpha_B({\rm H^0})\,n_e n_{\rm p}, \\
+ n({\rm He^0})\,(\Gamma_{\rm He} + C_{\rm He}n_e)
+   &= \bigl[\alpha_B({\rm He^0}) + y\,\alpha_1({\rm He^0})\bigr]\,n_e n({\rm He^+}).
+\end{align}
+$y$ is the share of the ground-capture photons that H$^0$ absorbs,
+$n({\rm H^0})\sigma_{\rm H}/[n({\rm H^0})\sigma_{\rm H} + n({\rm He^0})\sigma_{\rm He}]$
+averaged over the Milne spectrum $E^2\sigma_{\rm He}(E)e^{-(E-E_{\rm th})/kT}$
+by a four-point Gauss--Laguerre rule on the transport cross sections
+(within $4\times10^{-8}$ of a direct quadrature).  $p$ counts the
+H-ionizing photons of one case-B recombination with the same exits the
+diffuse field's channel~4 uses --- one routine serves both:
+$p = f_{3S} + f_{1P}\,p_{584} + [f_{1S} + f_{1P}(1-p_{584})]\,N_{2q}$, with the
+branch fractions of Section~\ref{sec:diffuse}, $p_{584}$ of Wood, Mathis \&
+Ercolano (2004) and $N_{2q} = 0.556$ H-ionizing photons per $2^1$S decay; with
+the $2^3$S population coupled the triplet term is $n_3A_{31}$ and the
+collisional transfers feed the singlet exits.  Osterbrock \& Ferland assume
+every 584~\AA\ photon ionizes H ($p_{584}=1$) and find $p\simeq0.96$; the
+same limit here gives $0.966$.  Each photon H$^0$ absorbs heats the gas by
+$E - 13.598$~eV; for the ground captures the capture's own kinetic-energy
+loss, which the case-B recombination cooling omits, cancels the photon's
+excess over threshold, leaving $10.989$~eV.  Dust and the metals are given
+no share of these photons.  Hydrogen's source enters its photoionization
+rate per H$^0$ at the previous iterate of the cell solve; it is at most
+${\sim}15\%$ of hydrogen's recombinations, so that map converges fast.
+Gate \code{tests/hei\_on\_the\_spot/}.  \code{.false.} reproduces the
+earlier case B bit for bit.
+
+The omission was not small.  On the on-the-spot Lexington runs
+(\code{results/continuous\_energy/m7\_hei\_on\_the\_spot/}, restarted from
+converged states), turning the He\,\textsc{i} photons over to hydrogen
+raises $\langle T[{\rm N^+}n_e]\rangle$ by $178$~K at HII40
+($7959\rightarrow8137$~K), $L({\rm H}\beta)$ by $7.8\%$ and moves the
+H front out by $0.16$~pc.  Against the run with the continuum transported,
+the on-the-spot result then misses by $62$~K and $0.023$~pc instead of
+$240$~K and $0.18$~pc.  At HII20 it adds $21$~K overall and ${\sim}550$~K
+inside the He$^+$ zone.  What remains between the two treatments is the
+locality of the on-the-spot approximation itself.
+
+\subsection{Case B on the spot: the He\,\textsc{ii} recombination photons}
+\label{sec:ots-heii}
+Where He$^{2+}$ exists the same omission is larger.  Osterbrock \& Ferland
+(2006, sec.~2.5) name the coupling: the He$^{2+}$ zone is also an H$^+$
+zone, and the He\,\textsc{ii} Ly$\alpha$ (40.8~eV), the $2^2$S two-photon
+continuum and the Balmer continuum (whose threshold, 13.604~eV, is the
+hydrogen edge) all ionize H$^0$ --- their Table~2.6 gives $0.64+0.36+0.20$
+H-ionizing photons per H recombination at $n({\rm He^{2+}})/n_{\rm p}=0.15$
+and $10^4$~K.  Until 2026-09-25 the on-the-spot mode recombined He$^{2+}$ at
+$\alpha_B$ and let none of those photons ionize anything.  With
+\code{par\%heii\_on\_the\_spot} (default \code{.true.};
+\code{heii\_recombination\_photons\_mod}) the three balances read
+\begin{align}
+ n({\rm H^0})(\Gamma_{\rm H}+C_{\rm H}n_e) + S_{\rm H}^{\rm I} + S_{\rm H}^{\rm II}
+   &= \alpha_B({\rm H^0})\,n_e n_{\rm p}, \\
+ n({\rm He^0})(\Gamma_{\rm He}+C_{\rm He}n_e) + S_{\rm He}^{\rm II}
+   &= \bigl[\alpha_B({\rm He^0}) + y\,\alpha_1({\rm He^0})\bigr]\,n_e n({\rm He^+}), \\
+ n({\rm He^+})(\Gamma_{\rm He^+}+C_{\rm He^+}n_e)
+   &= \bigl[\alpha_B({\rm He^+}) + (y_{\rm H}+y_{\rm He})\,\alpha_1({\rm He^+})\bigr]\,
+      n_e n({\rm He^{2+}}),
+\end{align}
+with $S_{\rm H}^{\rm I}$ the He\,\textsc{i} source of
+Section~\ref{sec:ots-hei} and
+\begin{align}
+ S_{\rm H}^{\rm II}  &= n_e n({\rm He^{2+}})\Bigl[y_{\rm H}\,\alpha_1({\rm He^+})
+    + \sum_k q_k\,f_{{\rm H},k}\Bigr], &
+ S_{\rm He}^{\rm II} &= n_e n({\rm He^{2+}})\Bigl[y_{\rm He}\,\alpha_1({\rm He^+})
+    + \sum_k q_k\,f_{{\rm He},k}\Bigr].
+\end{align}
+\emph{Ground captures.}  The He$^{2+}\rightarrow$He$^+(1s)$ photons,
+$E\ge54.416$~eV with the Milne spectrum
+$E^2\sigma_{\rm He^+}(E)e^{-(E-E_{\rm th})/kT}$, are shared by opacity among
+He$^+$, He$^0$ and H$^0$; $y_{\rm H}$ and $y_{\rm He}$ are
+$n_X\sigma_X/\sum_{X'} n_{X'}\sigma_{X'}$ averaged by the same four-point
+Gauss--Laguerre rule as the He\,\textsc{i} captures (within $8.5\times10^{-8}$
+of a direct quadrature).  He$^+$'s share re-ionizes it --- case B --- and
+changes nothing.
+\emph{Excited cascade.}  $q_k$ counts the photons, per $n_e n({\rm He^{2+}})$,
+of the three paths channel~5 transports (Section~\ref{sec:heiicascade}):
+free--bound into $n\ge2$, the 40.813~eV Ly$\alpha$ and the in-band
+$2^2$S pair, taken from the \emph{same} branch luminosities and split into
+a part below the He$^0$ edge and eight groups above it (boundaries
+quadratic in the group index, the first 0.47~eV wide for the free--bound).
+None reaches 54.4~eV, so He$^+$ takes none; below 24.587~eV
+$f_{{\rm H},k}=1$, above it H$^0$ and He$^0$ share each group by opacity at
+its photon-mean energy (within $5.2\times10^{-4}$ of a photon-by-photon
+quadrature).  The energy of each path closes on the transported channel's
+luminosity to $2\times10^{-16}$, and the photon count on what its samplers
+imply, $L\langle1/E\rangle$, to $2.1\times10^{-5}$.  At
+$n({\rm He^{2+}})/n_{\rm p}=0.15$ the paths give $0.648$ (Ly$\alpha$),
+$0.339$ (two-photon) and $0.199$ (free--bound) H-ionizing photons per H
+recombination at 10.5~kK, against Osterbrock \& Ferland's $0.64$, $0.36$,
+$0.20$ at 10~kK.  The tables are built over the whole spectrum the gas
+emits whatever \code{par\%eion\_max} is: the photons are made by the gas,
+not by the band.
+\emph{Heat.}  An absorber $X$ gains $E-{\rm IP}(X)$ per photon.  For the
+excited photons that is the whole of it, since the kinetic energy the
+captures into $n\ge2$ remove is in the case-B recombination cooling
+($\beta$ from $\alpha_B({\rm He^+})$).  The ground captures are not in it:
+each removes its electron's kinetic energy $K$ and emits
+$E={\rm IP(He^+)}+K$, so an absorption by $X$ nets
+${\rm IP(He^+)}-{\rm IP}(X)$ per photon whatever its energy --- $40.819$~eV
+for H$^0$, $29.830$~eV for He$^0$, and nothing for He$^+$.
+\emph{Iteration.}  Both sources join the photoionization rates \emph{per
+absorber} at the previous iterate of the cell solve.  For He$^0$ this form
+is required rather than convenient: its share of an excited group falls
+with $n({\rm He^0})$, so the rate per He$^0$ stays finite as He$^0$ is
+depleted, whereas a source count held at the previous iterate's share can
+exceed the He$^+\rightarrow$He$^0$ recombinations that replenish He$^0$, and
+the closed form then has no positive solution.
+\emph{Validity.}  Absorption by H, He$^0$ and He$^+$ only (no dust, no
+metals), in the leaf that made the photon.  Osterbrock \& Ferland note that
+Ly$\alpha$ (resonance-scattered by He$^+$) and the Balmer continuum (just
+above the H edge) travel little, but that most of the two-photon continuum
+escapes the He$^{2+}$ zone into the He$^+$ zone; on the spot those photons
+are misplaced, not lost.  Gate \code{tests/heii\_on\_the\_spot/}.
+\code{.false.} reproduces the earlier case B bit for bit.
+
+Measured on a $10^5$~K blackbody in the HII40 geometry
+(\code{results/heii\_on\_the\_spot/}: gas to 5.2~pc at $n_{\rm H}=100$,
+$L=9.3598\times10^{38}$\,erg\,s$^{-1}$ so that $Q({\rm H})$ equals HII40's,
+$Q({\rm He^+})/Q({\rm H})=0.058$; $2^{22}$ Sobol packets, 20 ranks, thermal
+balance on, C/N/O/Ne/S at the HII20 abundances).  The three runs share every
+input but the treatment of the recombination continuum: on the spot with
+\code{heii\_on\_the\_spot} on and off (both converged by the drift test, 35
+and 34 iterations), and transported with \code{hei\_diffuse} and
+\code{heii\_diffuse} on, which stopped at 80 iterations with the H and
+He$^0$ drift at the Monte Carlo floor and the He$^{2+}$ drift at
+$5.9\times10^{-3}$ against the $5\times10^{-3}$ tolerance.
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+ & on the spot, on & on the spot, off & transported & on/off vs transported \\
+\midrule
+$\langle T[n_{\rm p}n_e]\rangle$ [K] & 11799 & 11577 & 11704 & $+95$ / $-128$ K \\
+$L({\rm H}\beta)$ [$10^{36}$\,erg\,s$^{-1}$] & 9.2438 & 8.5419 & 9.2540 & $-0.11\%$ / $-7.7\%$ \\
+He\,\textsc{ii} 4686 [$10^{35}$\,erg\,s$^{-1}$] & 10.069 & 10.736 & 10.529 & $-4.4\%$ / $+2.0\%$ \\
+H front, $x({\rm H^0})=0.5$ [pc] & 4.049 & 3.932 & 4.056 & $-0.006$ / $-0.124$ \\
+He$^{2+}$ front, $x({\rm He^{2+}})=0.5$ [pc] & 1.997 & 1.904 & 1.926 & $+0.071$ / $-0.022$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+(Fronts from volume-weighted spherical shells.)  Everything outside the
+He$^{2+}$ zone moves onto the transported run: $L({\rm H}\beta)$ from $7.7\%$
+low to $0.11\%$, the H front from 0.124~pc inside to 0.006~pc.  Inside the
+He$^{2+}$ zone the on-the-spot run is now the one that is off
+(Figure~\ref{fig:heii-ots}): it deposits the whole cascade there, $x({\rm H^0})$
+falls eightfold, $T_e$ rises to 15.2~kK against the transported 12.8~kK and
+the unheated 11.3~kK, and the hotter gas recombines more slowly, moving the
+He$^{2+}$ front 0.071~pc out and lowering 4686.  In the gas the source
+replaces $0.71$ of hydrogen's recombinations there (volume mean, at most
+$0.82$), and the local balance closes.  That is not guaranteed: H$^0$'s share
+of the cascade does not fall with $n({\rm H^0})$ (below the He$^0$ edge nothing
+else absorbs, above it He$^0$ is as scarce as H$^0$ in the He$^{2+}$ zone), so
+it enters hydrogen's balance as an absolute source, its share evaluated at
+every trial $x_{\rm HI}$ of the root find
+(\code{hydrogen\_fraction\_with\_cascade}), and a cell can hold only as many
+absorptions as the recombinations that make H$^0$.  A weakly lit fully
+He$^{2+}$ cell at He/H $=0.1$ reaches $0.92$ and closes to $10^{-11}$; at
+He/H $=0.15$ (1.2--$1.8{\times}10^4$~K) the cascades outnumber the supply and
+no local balance exists.  There the cell settles at $x_{\rm HI}\approx0$, the
+heat is limited to the photons the supply can absorb (\code{f\_h\_only},
+e.g.\ $0.66$ at He/H $=0.2$, $1.8{\times}10^4$~K), the H balance residual
+printed each iteration shows the leaf, and setup prints a note for
+\code{abund\_He} $>0.12$: such nebulae (Type~I planetary nebulae) need the
+transported continuum.  Where both H$^0$ and He$^0$ are trace absorbers of
+the cascade, the two shares are solved together (since 2026-09-26,
+\code{joint\_neutral\_fractions} in \code{solve\_ion\_cell}, used where
+$x({\rm He^{2+}}) > 10^{-3}$): $x_{\rm HeI}$ is the root of helium's balance
+with hydrogen's own root evaluated at each trial $n({\rm He^0})$.  He$^0$'s
+share vanishes with $n({\rm He^0})$ and grows as H$^0$'s falls, so that root
+is unique.  Before it, He$^0$'s share entered its balance as a rate per
+He$^0$ at the previous iterate, the two shares traded places from pass to
+pass, and a cell could leave the loop with hydrogen's balance open by
+$O(1)$: $0.89$ in the He$^{2+}$ core of the G2a run at He/H $=0.1$, and
+$0.46$ at He/H $=0.2$ in the gate, which a change of $\alpha_B$ by $1\%$
+had moved off the state it happened to settle in before.  Now the gate's
+He/H $=0.2$ cell closes to $2{\times}10^{-16}$ with $f = 0.661$.  Gate
+\code{tests/heii\_on\_the\_spot/} (g).  How much of that is the
+approximation and how much the reference: in the transported run the
+photons cross the He$^{2+}$ zone almost freely --- at 40.8~eV hydrogen
+there gives $\tau\approx0.01$--$0.04$ per pc --- and its $x({\rm H^0})$
+there stays within $25\%$ of the run without them.  For the two-photon and
+free--bound photons that is what Osterbrock \& Ferland describe; Ly$\alpha$,
+two thirds of the cascade, is transported as a continuum photon, whereas
+they note it is resonance-scattered and absorbed close to where it is
+made.  The He$^{2+}$ zone of a real nebula therefore lies between the two
+runs, and neither is a reference for it.
+
+Where the He$^{2+}$ zone is optically thin at 40.8~eV the on-the-spot
+treatment of the cascade fails outright, not by degree.  In the G2a sphere
+(4$\times10^4$~K star, $n_{\rm H}=100$) hydrogen gives $\tau = 2{\times}10^{-6}$
+at 40.8~eV from the center to 0.24~pc, yet the cascade absorbed in place
+there deposits 6 times the stellar photoheating at 0.1~pc and 4 times at
+0.2~pc, and $T_e$ reaches \code{te\_max} = $5{\times}10^4$~K in the run and
+in its 1D reference alike.  The mode keeps its definition, and two things
+are offered with it (2026-09-26).  Each iteration \code{thermal\_mod} counts,
+and prints when there are any, the leaves held at \code{te\_max} and the
+leaves where the on-the-spot He\,\textsc{ii} photons (the He$^{2+}$ ground
+captures, and the cascade unless it is transported) out-heat the
+transported field while the leaf is thin at 40.8~eV
+($\tau_{\rm leaf} < 0.01$).  And
+\code{par\%heii\_diffuse}, set in the input, transports the cascade alone
+as channel~5 while every other recombination photon stays on the spot:
+\code{heii\_on\_the\_spot} then keeps only the He$^{2+}$ ground captures
+(\code{heii\_cascade\_mod::heii\_cascade\_transported}, which
+\code{heii\_ots\_nodes} consults, so the sources, the heat and the absorption
+limit drop the cascade together; gate \code{tests/heii\_on\_the\_spot/} (h)).
+Left out of the input it stays off in this mode, so existing on-the-spot
+runs do not change.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{../results/heii_on_the_spot/heii_ots_profiles.pdf}
+\caption{Spherically averaged $T_e$, $x({\rm H^0})$, $x({\rm He^+})$ and
+$x({\rm He^{2+}})$ of the three runs of Section~\ref{sec:ots-heii}
+(\code{results/heii\_on\_the\_spot/plot\_profiles.py}).}
+\label{fig:heii-ots}
+\end{figure}
 
 \subsection{Explicit diffuse LyC field and packet sampling}
 \label{sec:diffuse}
@@ -2456,7 +3186,7 @@ axis & bound measured & to reach $0.178$~pc \\
 \midrule
 what the diffuse field emits & four corrections, net $-0.00306$~pc
   & wrong sign \\
-explicit transport vs.\ on-the-spot & 4.11970 to 4.18159~pc
+explicit transport vs.\ on-the-spot$^\dagger$ & 4.11970 to 4.18159~pc
   & the whole range is $0.062$~pc \\
 total diffuse band luminosity & $0.233$--$0.585$~pc per unit fraction
   & $30$--$76\%$ \\
@@ -2479,6 +3209,11 @@ Cloudy-side resolution & median zone width $0.0106$~pc at the front
   & $17\times$ finer already \\
 \bottomrule
 \end{tabular}
+
+\smallskip
+{\footnotesize $^\dagger$ Measured before the on-the-spot He\,\textsc{i}
+photons of Section~\ref{sec:ots-hei} existed: the on-the-spot end then gave
+every He recombination photon back to helium.}
 \end{center}
 The transport entry is the decisive one, because it was the leading candidate:
 switching the whole diffuse treatment between its extremes --- explicit
@@ -2589,15 +3324,19 @@ the He-ionizing supply lost to competing absorbers is not bounded by any of
 the experiments above.  Testing it requires varying several ingredients
 jointly, not one at a time, and that is the open item.
 
-All diffuse packets carry the same luminosity as direct packets,
-$L_{\rm pkt}=L_{\rm band}/N_{\rm pkt}$, so their number is
-$N_{\rm dif}=\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})$.  A packet first
-selects a leaf from the CDF of $\sum_{\rm ch}L_{{\rm ch},l}$, then a channel
-from that leaf's four-channel luminosity weights.  Its emission point is
+The number of diffuse packets is $N_{\rm dif} = \max[1,
+\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})]$, with $L_{\rm pkt}$ the luminosity
+of one ionizing source packet ($L_{\rm ion}/N$; with the FUV extension the
+ionizing stratum's), and each carries $L_{\rm dif}/N_{\rm dif}$, so the
+emitted luminosity is exactly $L_{\rm dif}$ (until 2026-09-25 each carried
+$L_{\rm pkt}$, off by up to half a packet, and a field under half a packet
+was dropped).  A packet first selects a leaf from the CDF of
+$\sum_{\rm ch}L_{{\rm ch},l}$, then a channel from that leaf's luminosity
+weights over the five channels.  Its emission point is
 uniform in the selected cubic leaf and its direction is isotropic.  It is
 then transported with the same exact-energy edge walk and path estimator as
 a stellar packet.  Hence diffuse luminosity is represented by packet count,
-not by a different packet weight.  At HII40 the diffuse band luminosity
+with a packet weight within half a packet of the stellar one.  At HII40 the diffuse band luminosity
 converges to $6.8{\times}10^{38}$~erg/s $=0.50\,L_\star$.
 
 For output bookkeeping, the energy from Eq.~(\ref{eq:diffuse-energy}) is
@@ -2675,13 +3414,15 @@ $\alpha_{\rm eff}(2^1{\rm S})$.  An earlier version of this section read it
 as the latter and closed $2^1$P against $\alpha_B$, obtaining
 $0.746 : 0.224 : 0.031$ together with an argument that case-B trapping
 inverts the singlet split; both the numbers and the argument are withdrawn.
-Second, the $2^3$S coefficient here is deliberately \emph{not} shared with
-the \code{ALPHA3} of \code{hei\_metastable\_mod}, which is
-$2.10{\times}10^{-13}(T_4)^{-0.778}$ (Oklopcic \& Hirata 2018): the same
-prefactor with a steeper exponent, $9\%$ higher at 8000~K.  That one is an
-absolute production rate for the metastable population; this one is a member
-of a set whose ratios are the branch fractions, and mixing sources would
-break the internal consistency those ratios depend on.
+Second, the 2$^3$S population of \code{hei\_metastable\_mod}
+(Section~\ref{sec:heimeta}) takes its recombination source from this set:
+$\alpha_3 = f_{3S}\,\alpha_B({\rm He\,II})$.  It used to carry its own
+Oklopcic \& Hirata (2018) fit, $2.10{\times}10^{-13}(T_4)^{-0.778}$, which an
+earlier version of this paragraph defended as a separate ``absolute
+production rate''.  That defense is withdrawn (2026-09-25): the absolute rate
+of triplet recombinations is fixed once the balance's $\alpha_B$ and the
+branch fraction are, and a second normalization supplied beside them is the
+defect of lesson~(4).
 
 The $2^1$S photons follow the tabulated Drake, Victor \& Dalgarno (1969)
 distribution (\code{data/HeI2phot.dat}, the same table the nebular continuum
@@ -2717,18 +3458,26 @@ the ground state on He\,\textsc{i} Ly$\alpha$, 584~\AA{} $=21.22$~eV, which
 is both an H-ionizing photon and a resonance photon in a medium optically
 thick to it in He$^0$.  It therefore scatters many times before anything
 irreversible happens, and two irreversible outcomes compete: photoionization
-of a hydrogen atom (depositing $21.22-13.60 = 7.62$~eV of heat), or
-collisional transfer $2^1{\rm P}\rightarrow 2^1{\rm S}$ in the last He atom
-that absorbed it, after which the decay is the two-photon continuum instead.
+of a hydrogen atom (depositing $21.22-13.60 = 7.62$~eV of heat), or the
+2.06~$\mu$m decay $2^1{\rm P}\rightarrow 2^1{\rm S}$ of the last He atom
+that absorbed it ($A \approx 2{\times}10^6$~s$^{-1}$ against
+$1.8{\times}10^9$~s$^{-1}$ at 584~\AA{}, about one scattering in a thousand;
+electron impact is slower still at nebular densities), after which the decay
+is the two-photon continuum instead.
 Which one wins is set by the H$^0$ and He$^0$ opacities the trapped photon
 sees, so it is a local, density- and ionization-dependent branching and not a
 constant.  MoCHII resolves it with the escape-probability closure of Wood,
 Mathis \& Ercolano (2004), Section~3.3,
 \begin{equation}
- p_{584} = \left[1 + \frac{77\,x({\rm He^0})}
+ p_{584} = \left[1 + \frac{77\,(y_{\rm He}/0.1)\,x({\rm He^0})}
                           {\sqrt{T}\;x({\rm H^0})}\right]^{-1},
  \label{eq:hei-584}
 \end{equation}
+with $y_{\rm He} = n_{\rm He}/n_{\rm H}$.  Their eq.~17 competes
+$n({\rm H^0})a_\nu({\rm H^0})$ against $n({\rm He^0})a_\nu({\rm He^0})/914$
+and writes the result in neutral fractions ``assuming He/H $=0.1$'', so the
+77 carries that abundance; the factor $y_{\rm He}/0.1$ (since 2026-09-26) is
+exactly 1 for every run at He/H $=0.1$.
 the probability that the 584~\AA{} photon ends up ionizing hydrogen
 (\code{hei\_584\_ionizes\_H} in \code{hei\_cascade\_mod}).  Its two limits are
 the correct ones: $x({\rm H^0})\rightarrow0$ gives $p_{584}\rightarrow0$,
@@ -2786,10 +3535,9 @@ own, so the nine-coordinate Sobol assignment below is unchanged:
 A converted decay radiates the two-photon pair, $20.62$~eV, and not
 $21.22$~eV; the difference of $0.60$~eV leaves as $2^1{\rm P}\rightarrow
 2^1{\rm S}$ at 2.06~$\mu$m, which is non-ionizing and therefore correctly
-absent from the band.  \code{gamma\_2q\_HeI} uses the same split for the
-He\,\textsc{i} two-photon nebular continuum,
-$\alpha_{2q} = \alpha_{\rm eff}(2^1{\rm S}) + [1-p_{584}]\,
-\alpha_{\rm eff}(2^1{\rm P})$ (Section~\ref{sec:twophoton}), which closes an
+absent from the band.  The He\,\textsc{i} two-photon nebular continuum
+takes its $2^1$S decays from the same exits
+(\code{hei\_twophoton\_decays}, Section~\ref{sec:twophoton}), which closes an
 internal inconsistency: \code{nebcont\_mod} had inherited MOCASSIN's singlet
 total, the $p_{584}\rightarrow0$ limit, while \code{diffuse\_mod} transported
 every $2^1$P decay as a 21.22-eV packet, the $p_{584}\rightarrow1$ limit, so
@@ -2847,6 +3595,43 @@ probability predicts what happens per event, never how far a front moves;
 that second factor is the channel's share of the budget, set by the hardness
 of the source.
 
+\paragraph{The 2$^3$S population in channel 4
+(\code{par\%hei\_metastable\_coupling}).}
+\label{sec:heidiffuse}
+The branch weights above send every triplet recombination out as a 19.82~eV
+photon.  That is the low-density limit only: the 2$^3$S atom is destroyed by
+electrons, photons and hydrogen atoms long before it decays at $n_e\gtrsim
+n_{\rm crit}$ (Section~\ref{sec:heimeta}), and it is also fed by
+collisional excitation from $1^1$S.  With the coupling on,
+\code{hei\_branch\_energies\_coupled} builds the three weights per unit
+volume from the population $n_3$ of Eq.~(\ref{eq:heimeta}):
+\begin{equation}
+\begin{aligned}
+ e(2^3{\rm S}) &= n_3A_{31}\times19.82~{\rm eV},\\
+ N_{1S} &= n_en_{\rm HeII}\alpha_Bf_{1S} + n_en_3q_{31a}
+          + n_en_3q_{31s}\,f_{1S}/(f_{1S}+f_{1P}),\\
+ N_{1P} &= n_en_{\rm HeII}\alpha_Bf_{1P} + n_en_3q_{31b}
+          + n_en_3q_{31s}\,f_{1P}/(f_{1S}+f_{1P}),\\
+ e(2^1{\rm P}) &= N_{1P}\,p_{584}\times21.22~{\rm eV},\qquad
+ e(2^1{\rm S}) = [N_{1S} + N_{1P}(1-p_{584})]\times8.9646~{\rm eV}.
+\end{aligned}
+\end{equation}
+The destruction channels without a photon --- $q_{31g}$, $C_3$, $\Phi_3$,
+Penning --- emit nothing; the singlet recombination branches are unchanged.
+The transfers into $n^1L$, $n\ge3$, are divided between $2^1$S and $2^1$P
+in the ratio of the singlet recombination branches, an approximation that
+gives a collisionally populated $n^1L$ term the cascade of a recombining
+one.  In the limit $n_e\rightarrow0$ with $\Phi_3=0$, $n_{\rm HI}=0$ and
+no excitation from $1^1$S, $n_3A_{31} = f_{3S}\alpha_Bn_en_{\rm HeII}$ and
+the weights reduce to $n_en_{\rm HeII}\alpha_B$ times the uncoupled ones;
+the gate finds $2.5{\times}10^{-13}$ at $n_e = 10^{-10}$~cm$^{-3}$.  At
+$10^4$~K with $n_{\rm HeII} = 0.1\,n_e$, $n_{\rm HI} = n_{\rm HeI} =
+10^{-3}n_e$ and $\Phi_3 = 0$ (gate case), the 19.82~eV / 584~\AA / two-photon
+weights are $0.972 / 1.023 / 1.093$ times the uncoupled ones at
+$n_e = 100$~cm$^{-3}$ and $0.259 / 1.603 / 3.491$ at $10^4$~cm$^{-3}$.
+Because the weights depend on $\Phi_3$ they are stored per leaf at build
+time and read by both launchers; the Sobol coordinates are unchanged.
+
 With \code{launch\_sequence='sobol'}, diffuse packets use a separate
 Owen-scrambled Sobol stream so that their changing count does not disturb
 the direct-source sequence.  Its fixed nine coordinates are: one for the
@@ -2860,7 +3645,7 @@ are still reserved, preserving the global packet-indexed layout across
 iterations and MPI task counts.  The fifth channel adds no coordinate: its
 path pick and its energy draw are the same two decisions channel~4 makes.
 
-\subsubsection{The He\,\textsc{iii} case-B cascade (channel 5)}
+\subsubsection{The He\,\textsc{iii} cascade (channel 5)}
 \label{sec:heiicascade}
 Channel 3 emits the He\,\textsc{ii} \emph{ground} continuum,
 $\alpha_1 = \alpha_A - \alpha_B$, above 54.416~eV.  Everything else a
@@ -2877,15 +3662,15 @@ He\,\textsc{i}'s 20.62~eV.  \code{par\%heii\_diffuse} adds the three paths
 path & coefficient & share of the channel \\
 \midrule
 free--bound, $n\ge2$ & $\int(\gamma_{\rm tab} - \gamma_{\rm ff})\,
-  {\rm d}\nu$, 13.598--54.416~eV & $7.4$--$10.2\%$ \\
+  {\rm d}\nu$, 13.598--54.416~eV & $7.5$--$10.2\%$ \\
 Ly$\alpha$, $2^2$P$\rightarrow1^2$S, 40.813~eV &
-  $\alpha_B\,(1-f_{2s})$ & $64.2$--$70.0\%$ \\
+  $\alpha_B\,(1-f_{2s})$ (case B) & $64.2$--$70.0\%$ \\
 two-photon, $2^2$S$\rightarrow1^2$S & $\alpha_B\,f_{2s}$, 36.090~eV in band &
   $22.5$--$25.6\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-over $10^4$--$3{\times}10^4$~K.  The two-photon term --- the only one of the
+over $10^4$--$3{\times}10^4$~K in case B.  The two-photon term --- the only one of the
 three the written continuum ever carried --- is under a quarter of the
 channel, which is why adding it alone would have been the wrong repair.
 
@@ -2896,25 +3681,41 @@ It is read off the same fb$+$ff tables the written continuum uses
 reason) with the free--free term removed, integrated from the hydrogen edge
 to $E_{\rm th}({\rm He\,\textsc{ii}})$ where channel 3 takes over.  Nothing
 is double counted: the tabulated range stops at the He\,\textsc{ii} ground
-edge, so the $n=1$ continuum is structurally absent from it.
+edge, so the $n=1$ continuum is structurally absent from it.  The
+integral is Simpson on a 512-point grid, and each panel is broken at the
+table's frequency nodes: the He\,\textsc{ii} $n=2$ edge (0.9999~Ryd) sits
+inside the first grid cell above the hydrogen edge, and a panel across that
+jump undercounted the free--bound by $0.87\%$ at 9.5~kK falling to $0.26\%$
+at 37.5~kK (corrected 2026-09-25; the channel luminosity moves by
+${<}0.07\%$).
 
-The $n=2$ exit branching is
-$f_{2s} = \alpha_{\rm eff}(2^2{\rm S})/\alpha_B$, with \emph{both} parts from
-Storey \& Hummer (1995) at $n_e=100$ --- $\alpha_B$ from the
-\code{alpha-tot} table that follows the emissivity blocks of the CDS file
-\code{e2b.d}, $\alpha_{\rm eff}(2^2{\rm S})$ from the same $n_e=100$ set the
-written He\,\textsc{ii} two-photon continuum already used.  Taking them from
-one source makes the ratio a closure of one cascade calculation rather than
-a difference of determinations, the error that put a 2.4\% He\,\textsc{i}
-bias into the diffuse packet count when $\alpha_B$ was formed as
-$\alpha_A - \alpha_1$ across sources.  It gives $f_{2s} = 0.242$ at 5~kK
-rising to $0.311$ at 30~kK.  The \emph{rate} that branching multiplies is
+The exit branching, $f_{2s} = \alpha_{\rm eff}(2^2{\rm S})/\alpha_B$ and the
+Lyman-line shares, comes with \emph{both} parts from one zero-density
+$nl$-resolved cascade (\code{hydrogenic\_recombination\_mod},
+Section~\ref{sec:twophoton}), in the case of the recombination lines,
+\code{par\%lyman\_lines}.  Taking them from one calculation makes each share
+a closure rather than a difference of determinations, the error that put a
+2.4\% He\,\textsc{i} bias into the diffuse packet count when $\alpha_B$ was
+formed as $\alpha_A - \alpha_1$ across sources.  In case B the only Lyman
+exit is Ly$\alpha$, $1 - f_{2s}$, with $f_{2s} = 0.241$ at 5~kK rising to
+$0.311$ at 30~kK.  In case A, when the Lyman lines escape, every
+$n{\rm p}\rightarrow1{\rm s}$ is an exit: at $10^4$~K Ly$\alpha$ $0.706$,
+Ly$\beta$ $0.110$, Ly$\gamma$ $0.038$, $n = 5$--30 $0.054$ and $n\ge31$
+$0.0014$ (put at the $n=31$ energy, within 0.06~eV), with $f_{2s} = 0.091$;
+the shares sum to 1 to $2{\times}10^{-8}$.  Each line is transported at its
+own energy, 40.8--54.4~eV, the line picked by its energy share so that the
+equal-energy packets carry the photon rate.  Until 2026-09-26 the channel
+was case B whatever \code{par\%lyman\_lines} said, and $f_{2s}$ came from
+SH95's $\alpha_{\rm eff}(2^2{\rm S})$ at $n_e=100$ on four anchors,
+5000--30000~K, held at the end values outside them ($24\%$ low at 3000~K,
+$62\%$ high at $6{\times}10^4$~K), over the SH95 alpha-tot; inside the
+anchors the two agree to $0.3\%$ at $10^4$~K and $0.6\%$ at 5000~K.  The \emph{rate} that branching multiplies is
 MoCHII's own $\alpha_B({\rm He\,\textsc{iii}})$, the one the ionization
 balance uses, exactly as channel 4 applies its fractions to
 $\alpha_B({\rm He\,\textsc{ii}})$.  The one independent check available on
 the $2^2$P branch is MOCASSIN's He\,\textsc{ii} Ly$\alpha$ emissivity fit,
 $10^{-0.792\log_{10}T_e + 6.01}{\times}10^{-25}\,{\rm erg\,cm^3\,s^{-1}}$,
-which the closure reproduces to $2.3$--$6.1\%$ over 5--30~kK
+which the case-B closure reproduces to $2.3$--$6.2\%$ over 5--30~kK
 (\code{tests/heii\_cascade/}).
 
 Two approximations, with their range.  He\,\textsc{ii} Ly$\alpha$ is emitted
@@ -2923,10 +3724,16 @@ scatters off He\,\textsc{ii} many times first, but since 40.8~eV cannot
 photoionize He\,\textsc{ii} (54.4~eV) the scattering only diffuses it
 spatially before hydrogen or He\,\textsc{i} absorbs it, and the He$^{2+}$
 zone is compact wherever it exists.  This is what \textsc{Mocassin} does with
-its \code{HeIILyman} lines.  Second, only Ly$\alpha$ is emitted: case B routes
-every cascade through $n=2$, so Ly$\beta$ and above are converted rather than
-emitted.  Lines ending on $n\ge2$ all fall below the 13.604~eV series limit
-and are correctly absent from the band.
+its \code{HeIILyman} lines.  That holds only while the continuum photon is
+itself absorbed near its origin; where the He$^{2+}$ zone is large and
+highly ionized it is not --- on a $10^5$~K blackbody in the HII40 geometry
+hydrogen there gives $\tau\approx0.01$--$0.04$ per pc at 40.8~eV across a
+2~pc zone --- and the transported Ly$\alpha$ leaves a zone that resonance
+scattering would hold it in (Section~\ref{sec:ots-heii}).  The same holds
+for each higher Lyman line in case A.  Second, in case B only Ly$\alpha$ is
+emitted: every cascade is routed through $n=2$, so Ly$\beta$ and above are
+converted rather than emitted.  Lines ending on $n\ge2$ all fall below the
+13.604~eV series limit and are correctly absent from the band.
 
 Measured end to end on a $10^5$~K blackbody in the HII40 geometry, where
 He$^{2+}$ is abundant, switching the channel on raises the diffuse-field
@@ -2935,10 +3742,11 @@ $L({\rm H}\beta)$ by $0.98\%$, leaves the He\,\textsc{ii} lines within
 $0.11\%$ in absolute terms, raises the He\,\textsc{i} lines by $0.2$--$0.3\%$ (the
 40.8~eV photons ionize He$^0$ as well), and drops
 [C\,\textsc{i}]\,9827,\,9853 by $9.0\%$ as the extra ionizing photons reach
-the partly neutral edge.  Off by default, so nothing recorded moves; it is
-the hard planetary-nebula and AGN spectra of Section~\ref{sec:limits} that
-turn it on.  Both Lexington benchmarks have essentially no He$^{2+}$ and are
-unaffected either way.
+the partly neutral edge.  Since 2026-09-25 it is on whenever the continuum
+is transported and the band reaches 40.813~eV (the tests and results that
+predate that pin it off); the hard planetary-nebula and AGN spectra of
+Section~\ref{sec:limits} are where it matters.  Both Lexington benchmarks
+have essentially no He$^{2+}$ and are unaffected either way.
 
 \subsection{Solution-driven I-front re-refinement}
 \label{sec:refine}
@@ -3642,15 +4450,15 @@ emission coefficient is written per $n_e n_{\rm ion}$ and is fed by the
 \begin{center}
 \begin{tabular}{llll}
 \toprule
-ion & weight & $\nu_0$ [Ryd] & $\alpha_{\rm eff}(2s)$ \\
+ion & weight & $\nu_0$ [Ryd] & rate into the emitting level \\
 \midrule
 H\,\textsc{i}   & $n_e n_{\rm HII}$   & 0.7496 &
-  $0.8368{\times}10^{-13}(T_4)^{-0.723}$ (Pengelly 1964) \\
+  $\alpha_B({\rm H\,II})\,f_{2s}(1, T, {\rm case})$ \\
 He\,\textsc{i}  & $n_e n_{\rm HeII}$  & 1.514  &
-  $\alpha_{\rm eff}(2^1{\rm S}) + [1-p_{584}]\,\alpha_{\rm eff}(2^1{\rm P})$
-  (BSS99) \\
+  $\alpha_B({\rm He\,II})\left[f_{1S} + (1-p_{584})\,f_{1P}\right]$
+  (+ 2$^3$S transfers) \\
 He\,\textsc{ii} & $n_e n_{\rm HeIII}$ & 3.00   &
-  SH95 table, $6.16 \rightarrow 2.04{\times}10^{-13}$ over 5--30~kK \\
+  $\alpha_B({\rm He\,III})\,f_{2s}(2, T, {\rm case})$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -3658,6 +4466,58 @@ with the Nussbaumer \& Schmutz (1984) shape $A(y)$, $y = \nu/\nu_0$, for
 H\,\textsc{i} and He\,\textsc{ii} (\code{hydrogenic\_twophoton\_mod}), and the
 Drake, Victor \& Dalgarno (1969) tabulated shape,
 \code{data/HeI2phot.dat}, for He\,\textsc{i} (\code{hei\_twophoton\_mod}).
+
+For the two hydrogenic ions the rate is MoCHII's own $\alpha_B$, the one the
+ionization balance uses, times the share of the captures into $n\ge2$ that
+end in $2s$,
+\begin{equation}
+  f_{2s}(Z, T, {\rm case}) = \frac{\alpha_{\rm eff}(2s, {\rm case})}{\alpha_B},
+\end{equation}
+numerator and denominator from \emph{one} $nl$-resolved radiative cascade in
+the zero-density limit (\code{hydrogenic\_recombination\_mod}, whose data
+\code{src/hydrogenic\_recombination\_data.inc} are written by
+\code{tools/fitting/make\_hydrogenic\_recombination.py}; the same cascade
+gives $\alpha_B$ of both ions, Section~\ref{sec:hherec}).  The cascade
+takes the hydrogenic A-values and photoionization cross sections of Storey \&
+Hummer (1991, the CPC routines \code{ACOFZ1} and \code{PIXZ1}, unmodified),
+forms $\alpha_{nl}(T)$ by the Milne relation, and passes each level's
+effective coefficient down in proportion to its A-values from $n = 499$, the
+largest $n$ the routines allow, with the captures above it added as a
+power-law tail ($0.026\%$ of $\alpha_B$ at $10^4$~K, $1.2\%$ at 30~K, the
+low end of the table, $\log T = 1.5$--7.0).  Case A keeps every decay; case B
+deletes $np\to1s$.  The case is that of the recombination lines
+(\code{par\%lyman\_lines}: case A when the Lyman lines escape), so a run
+writes Balmer lines and their two-photon partner in the same case.  The
+fraction is relative to $\alpha_B$ in both cases, since a capture into $1s$
+never feeds $2s$.  Checks: the case-B H\,\textsc{i} $\alpha_{\rm eff}(2s)$
+is within $0.3\%$ of Osterbrock \& Ferland (2006) Table~4.11 over
+$10^4$--$2{\times}10^4$~K; the same cascade's $\alpha_{\rm eff}({\rm H}\beta)$
+reproduces the SH95 case-A emissivity at $n_e = 100$ to $0.06\%$ over
+7500--30000~K (the case-A branching, tested directly) and case B to
+$0.04$--$1.0\%$ over 30000--3000~K; the He\,\textsc{ii} case-B $\alpha_{\rm eff}(2^2{\rm S})$ is
+$0.92\%$ (5000~K) to $0.11\%$ (3e4~K) below SH95's at $n_e = 100$, the
+collisional $l$-mixing SH95 include and this limit leaves out.  O\&F's
+5000~K entry, $1.38{\times}10^{-13}$, is $4\%$ above the cascade's
+$1.326{\times}10^{-13}$ --- and above SH95's He\,\textsc{ii} value at
+$2{\times}10^4$~K taken to H\,\textsc{i} by hydrogenic scaling,
+$\alpha_{\rm H}(T) = \alpha_{\rm HeII}(4T)/2 = 1.324{\times}10^{-13}$.  At
+$10^4$~K, $f_{2s} = 0.3234$ (B) and $0.1231$ (A) for H\,\textsc{i}, $0.2661$
+and $0.0909$ for He\,\textsc{ii}; case A sends $62\%$ fewer recombinations
+through H\,\textsc{i} $2s$, since a $np$ level that may decay to $1s$ mostly
+does.  The same cascade gives the exit shares of the He\,\textsc{iii}
+cascade in the diffuse field, $f_{2s}$ and the Lyman lines, in either case
+(Section~\ref{sec:heiicascade}).
+
+Before 2026-09-26 the H\,\textsc{i} term was the case-B Pengelly (1964) power
+law $0.8368{\times}10^{-13}(T_4)^{-0.723}$ whatever the lines did, so a
+case-A run wrote a two-photon continuum $2.6$ times its own case; and the
+He\,\textsc{ii} term and the channel-5 branching were SH95's
+$\alpha_{\rm eff}(2^2{\rm S})$ at $n_e = 100$ on four anchors,
+5000--30000~K, held at the end values outside them ($24\%$ low at 3000~K,
+$22\%$ high at $4{\times}10^4$~K and $62\%$ at $6{\times}10^4$~K), case B
+only.  In case B the written H\,\textsc{i} term, now the cascade's own
+$\alpha_{\rm eff}(2s)$ since $\alpha_B$ is the cascade's too, moves from the
+power law by $-0.16\%$ at $10^4$~K and $-4.0\%$ at 5000~K.
 
 Each shape is normalized on \emph{its own} integral, so that
 $\int_0^1 n(y)\,{\rm d}y = 2$ exactly: a decay emits a pair, and the pair
@@ -3690,89 +4550,96 @@ the exponent $-0.827$ is a fit to the sum and not a sum of exponents.  Using
 it is MOCASSIN's stated assumption that every He\,\textsc{i} singlet ends in
 $2^1$S, i.e.\ the $p_{584}\rightarrow0$ limit of Eq.~(\ref{eq:hei-584}), and
 it disagreed with the $p_{584}\rightarrow1$ limit \code{diffuse\_mod} was
-transporting.  That constant is no longer used.  \code{gamma\_2q\_HeI} now
-builds the emitting $2^1$S population from the two coefficients separately,
+transporting.  That constant is no longer used.  The emitting $2^1$S
+population is the one the cascade itself feeds
+(\code{hei\_recombination\_photons\_mod::hei\_twophoton\_decays}), per
+unit volume
 \begin{equation}
- \alpha_{2q}({\rm He\,I}) = 2.06{\times}10^{-14}(T_4)^{-0.451}
-   + \left[1-p_{584}\right]4.17{\times}10^{-14}(T_4)^{-0.695},
+ r_{2q} = n_e\,n({\rm He^+})\,\alpha_B({\rm He\,II})
+   \left[f_{1S} + \left(1-p_{584}\right) f_{1P}\right],
 \end{equation}
-with the same local $p_{584}$ that \code{diffuse\_mod} folds into its branch
-weights, so the written continuum and the transported field now describe one
-nebula (Section~\ref{sec:diffuse}).  The MOCASSIN constant is recovered
-exactly as $p_{584}\rightarrow0$ and $\alpha_{\rm eff}(2^1{\rm S})$ alone as
-$p_{584}\rightarrow1$.  Only H\,\textsc{i} carries the
-collisional suppression
+with the branch fractions and the local $p_{584}$ of the transported channel
+and the on-the-spot sources, and, with the 2$^3$S population coupled, the
+collisional transfers into the singlets added (Section~\ref{sec:heimeta}),
+so the written continuum, the transported field and the on-the-spot sources
+describe one nebula.  Until 2026-09-26 it took
+$2.06{\times}10^{-14}(T_4)^{-0.451} + [1-p_{584}]\,4.17{\times}10^{-14}
+(T_4)^{-0.695}$ in absolute units, while the cascade normalizes the same fits
+by their sum and scales by $\alpha_B$: the two differed by that sum,
+$0.91\,\alpha_B$ at 8000~K and $0.985$ at $10^4$~K, and the coupled
+transfers were missing.  On a 1e5~K blackbody in the HII40 geometry the He
+two-photon continuum near 1~Ryd moved by $+5.3\%$, the total two-photon
+continuum by $+0.45\%$.  Only H\,\textsc{i} carries a collisional suppression.  A
+$2s$ atom decays by two photons at $A_{2s}$ or is moved to $2p$, and so to
+Ly$\alpha$, by a passing charged particle; $2s$ and $2p$ are separated only
+by the Lamb shift ($0.0353\,{\rm cm^{-1}}$ to $2p_{1/2}$) and the fine
+structure ($0.330\,{\rm cm^{-1}}$ to $2p_{3/2}$).  With
+\code{par\%twophoton\_quenching = 'colliders'} (the default) every partner
+enters with its own rate,
 \begin{equation}
-  \gamma_{2q} \rightarrow \frac{\gamma_{2q}}
-       {1 + n_e q_{2s\text{-}2p}/A_{2q}},
-  \qquad A_{2q} = 8.2249\ {\rm s^{-1}},
+  \gamma_{2q} \rightarrow \gamma_{2q}\,\frac{A_{2s}}
+    {A_{2s} + n_e q_{\rm e} + n_{\rm p} q_{\rm p} + n({\rm He^+})\,q_{\rm He^+}
+     + n({\rm He^{2+}})\,q_{\rm He^{2+}}},
+  \qquad A_{2s} = 8.2246\ {\rm s^{-1}},
 \end{equation}
-with $q_{2s\text{-}2p} = 5.31{\times}10^{-4}$ (at $T \le 10^4$~K) falling to
-$4.71{\times}10^{-4}\,{\rm cm^3\,s^{-1}}$ (at $T \ge 2{\times}10^4$~K), so
-the continuum is quenched above
-$n_{\rm crit} \simeq 1.6{\times}10^4\,{\rm cm^{-3}}$.  At the
-$100\,{\rm cm^{-3}}$ of the HII20 and HII40 benchmarks that factor is
-under $1\%$; the first case where it matters is the PN150 standard at
-$3000\,{\rm cm^{-3}}$, where it removes $16\%$ of the continuum.
+$A_{2s}$ from Drake (1986) eq.~27 for $Z=1$ with the proton reduced-mass
+factor.  The rates follow Pengelly \& Seaton (1964): a particle of charge
+$Z$ at impact parameter $R$ drives the transition with probability
+$P = 4Z^2e^2S/(3\hbar^2R^2v^2)$, $P = 1/2$ inside $R_1$, and the
+integral is cut at the smallest of $1.12\,\hbar v/\Delta E$, $0.72\,v\tau$
+and the Debye radius, giving $Q = \pi R_1^2[\frac12 + \ln(R_c/R_1)]$
+(their eqs.~34--37, 42).  \code{tools/fitting/make\_h2s\_collisional\_mixing.py}
+integrates that $Q$ over the Maxwellian of the relative velocity for each
+final level ($2p_{1/2}$ with $1/3$ of the line strength, $2p_{3/2}$ with
+$2/3$) and each collider, with the limit $Q = \pi R_c^2/2$ where
+$R_c < R_1$ that their closed form (eq.~43) does not carry; the $\Delta E$
+cutoff is the smallest wherever $n_e \lesssim 2{\times}10^{12}\,{\rm
+cm^{-3}}$, so the table is the low-density limit.  Osterbrock \& Ferland
+(2006) Table~4.10, which ``comes from'' Pengelly \& Seaton, prints the
+proton and electron rates for both final levels at $10^4$ and
+$2{\times}10^4$~K; the quadrature reproduces their level split and
+temperature dependence but lies above them by $13\%$ ($10^4$~K) and $9.5\%$
+($2{\times}10^4$~K) for protons and $4.7\%$ and $2.8\%$ for electrons, so
+the printed values are taken and the quadrature
+supplies the temperature dependence outside that interval and the He$^+$
+and He$^{2+}$ rates, which the table does not give, as their ratio to the
+proton rate.  At $10^4$~K: $q_{\rm e} = 5.70{\times}10^{-5}$,
+$q_{\rm p} = 4.74{\times}10^{-4}$, $q_{\rm He^+} = 5.08{\times}10^{-4}$,
+$q_{\rm He^{2+}} = 1.52{\times}10^{-3}\,{\rm cm^3\,s^{-1}}$
+(\code{data/atomic/h\_2s\_2p\_mixing.txt}).  Protons do $8.3$ times what
+electrons do.
 
-Two things about that coefficient are worth stating explicitly, because
-the form above hides both.  \emph{First}, $2s$ is depopulated by protons as
-well as by electrons, and the physical suppression is
-$1 + (n_{\rm p}q_{\rm p} + n_e q_{\rm e})/A_{2q}$; the single
-$n_e q$ written here is that expression with $n_{\rm p}$ set to
-$n_e$.  Where hydrogen is fully ionized and helium supplies few
-electrons that is a good identity, and it is why the lumped form survives
-in \textsc{Mocassin}, which is where this code took it.  Where the
-electrons come from carbon instead of from hydrogen --- the partly neutral
-zone, the PDR skin --- $n_{\rm p} \ll n_e$ and the lumped form
-over-suppresses; the continuum there is already a lower bound for the
-reason given at the end of this paragraph, and this adds to it.  Codes that
-keep the two partners apart evaluate each rate in the Pengelly \& Seaton
-(1964) formalism; \textsc{Colt} does, writing the denominator out as
-$A_{2q} + q_{\rm e}n_e + q_{\rm p}n_{\rm HII}$ with reduced masses,
-$D_{nl} = Z^{-2}6n^2(n^2-l^2-l-1)$ and the smaller of the two
-impact-parameter cutoffs (\code{source/nebcont.cc}:340--364 of
-\code{\char`~/RT\_Codes/colt}).
+\code{'lumped\_ne'} keeps the form carried over from \textsc{Mocassin},
+$1 + n_e q/8.23$ with $q = 5.31{\times}10^{-4}$ ($T \le 10^4$~K) to
+$4.71{\times}10^{-4}$ ($T \ge 2{\times}10^4$~K).  Those two numbers are the
+Table~4.10 proton-plus-electron sums, multiplied by $n_e$ alone: where
+hydrogen is ionized and helium neutral that is nearly right ($n_{\rm p} =
+n_e$), where He$^+$ also collides it is right to $0.6$--$0.8\%$ by accident
+(He/H $= 0.1$ all He$^+$, $10^4$--$2{\times}10^4$~K), and
+where the electrons come from metals ($n_{\rm p} \ll n_e$) it over-suppresses.
+It is retained to reproduce the earlier gates.  On the converged HII20
+state the default moves the two-photon continuum by $-0.043\%$.  At the
+$3000\,{\rm cm^{-3}}$ of the PN150 standard the continuum surviving is
+$0.84$.
 
-\emph{Second, and larger than the first:} that implementation and this one
-disagree about the \emph{size} of the quenching, not only about how the
-partners are counted.  Evaluated at $10^4$~K, the Pengelly \& Seaton
-expression gives $q_{\rm e}+q_{\rm p} = 3.24{\times}10^{-3}\,{\rm
-cm^3\,s^{-1}}$ at $n_e = 100$, falling only to $2.80{\times}10^{-3}$ at
-$n_e = 10^4$ (the weak density dependence is the Debye cutoff), against the
-single $5.31{\times}10^{-4}$ used here --- a factor $6.1$.  The critical
-density is $2.5{\times}10^3\,{\rm cm^{-3}}$ rather than
-$1.6{\times}10^4$, and the surviving fraction of the continuum is
+A factor-six disagreement once recorded here against \textsc{Colt} is a
+defect of that implementation: \textsc{Colt} takes the Pengelly \& Seaton
+cutoff $1.12\,\hbar v/\Delta E$ with \code{nu\_12\_HI = c * 82258.9544}
+(\code{source/nebcont.cc}:295), the Ly$\alpha$ frequency in place of the
+$2s$--$2p$ separation, so the logarithm of that cutoff goes negative,
+\code{minpos} (\code{:301}) drops it and the Debye cutoff alone is left
+($q_{\rm e}+q_{\rm p} = 3.24{\times}10^{-3}$ at $10^4$~K, $n_e = 100$).  With
+the physical separations its expression gives $5.79{\times}10^{-4}$.
 
-\begin{center}
-\begin{tabular}{rrrr}
-\hline
-$n_e$ [cm$^{-3}$] & this code & Pengelly \& Seaton & ratio \\
-\hline
-   100 & 0.994 & 0.962 & 0.97 \\
-  1000 & 0.939 & 0.731 & 0.78 \\
-  3000 & 0.838 & 0.485 & 0.58 \\
- 10000 & 0.608 & 0.227 & 0.37 \\
-\hline
-\end{tabular}
-\end{center}
-
-\noindent
-so at the $100\,{\rm cm^{-3}}$ of HII20 and HII40 the choice is worth $3\%$
-of a term that is itself a few percent and nothing recorded moves, while at
-the $3000\,{\rm cm^{-3}}$ of the PN150 gate it is a factor $1.7$ in the
-transported continuum.  Which is right is \emph{not} decided here.  The
-number this code uses reaches it through \textsc{Mocassin}
-\code{emission\_mod.f90}:605--615, whose only provenance note is ``the value
-given in table 4.10 from Osterbrock'', and it has not been checked against
-the printed table --- so it is not even established whether
-$5.31{\times}10^{-4}$ is the proton-plus-electron sum or the proton term
-alone.  Settling it needs Osterbrock's table and Pengelly \& Seaton (1964)
-itself, and it should be settled before PN150 is used as a gate.  No factor is applied
-to the helium terms: $A_{2q}$ is $51.3\,{\rm s^{-1}}$ for
+No collisional factor is applied
+to the helium two-photon terms: $A_{2q}$ is $50.9\,{\rm s^{-1}}$ for
 He\,\textsc{i} $2^1{\rm S}$ and $526\,{\rm s^{-1}}$ for He\,\textsc{ii}
-$2s$, putting their critical densities one to two orders of magnitude
-higher.  The three terms are summed into the total $L_\nu$ of
+$2s$.  For He\,\textsc{i} the critical density is some four orders of
+magnitude above hydrogen's: the fastest collisional exit of $2^1$S is to
+$2^3$S, $2.1{\times}10^{-7}$~cm$^3$\,s$^{-1}$ at $10^4$~K by detailed balance
+of the $q_{31a}$ row of \code{hei\_metastable.txt}, so $n_{\rm crit} \approx
+2{\times}10^8$~cm$^{-3}$.  For He\,\textsc{ii} $2s$ the $\sim10^{6}$
+quoted in \code{nebcont\_mod}'s header is not rechecked here.  The three terms are summed into the total $L_\nu$ of
 \code{\_nebcont.txt} and also written separately as its last column.
 Because the population is the recombination cascade alone, collisional
 excitation of $2s$ contributes nothing to the emitted continuum, which is
@@ -3875,8 +4742,10 @@ front-refined (green, overlying blue).}
 \subsection{Thermal H/He nebula}
 Same configuration with the thermal balance on
 (Figure~\ref{fig:g2a}): $T_e(r)$ matches the 1D thermal reference to
-median $0.136\%$, mean bias $+0.006\%$, max $0.95\%$ over
-$0.3 < r < 2.8$~pc --- including the central He\,\textsc{iii}-zone
+median $0.61\%$, mean bias $+0.61\%$, max $1.6\%$ over
+$0.3 < r < 2.8$~pc (\code{results/continuous\_energy/m4\_nitrogen/g2a\_thermal\_nitrogen},
+the reference from \code{tools/python/mochii\_rates.py}; the 0.14\% recorded
+before was a July run against a reference with its own rate fits) --- including the central He\,\textsc{iii}-zone
 temperature structure and the front drop.  Without metals the nebula
 runs at 19--24~kK, the known pure-H/He overshoot that motivates the
 metal frame.
@@ -3891,8 +4760,15 @@ against the 1D exact reference.}
 
 \subsection{The MOCASSIN Lexington benchmarks}
 \label{sec:hii}
-\emph{Converged runs (2026-09-25).}  The numbers of this section are from
-\code{results/continuous\_energy/m5\_converged}: the production inputs run to
+\emph{Converged runs (2026-09-25, current defaults 2026-09-26).}  The
+numbers of this section are from \code{results/continuous\_energy/m5\_converged}
+and, where the current code is quoted, from
+\code{results/continuous\_energy/m10\_drift\_test}: those states restarted
+with every default of 2026-09-25 in force (charge-exchange heating, the
+2$^3$S coupling with the band from 4.78~eV, the on-the-spot helium photons;
+\code{m8\_defaults}), with the hydrogenic $\alpha_B$ of \S\ref{sec:hherec}
+(\code{m9\_hydrogenic\_alpha}), and continued to the stopping test as
+revised on 2026-09-26 (52 and 59 further iterations in all): the production inputs run to
 the drift stopping test (\S\ref{sec:conv}; 64 iterations at HII40, 55 at
 HII20), with the HII40 gas extended to 5.2~pc because the converged
 hydrogen front sits on the $1.46\times10^{19}$~cm outer radius of the
@@ -3919,21 +4795,30 @@ diffuse field, and use case-B recombination lines:
  & MoCHII & MoCHII & \textsc{Cloudy} & Lexington-2000 & MOCASSIN \\
  & (\code{local\_ne}) & (\code{low\_density}) & c25.00 & (Ercolano+03) & 40-it \\
 \midrule
-HII20 & 6946 K & 6295 K & 6910 K & 6402--6749 K & --- \\
-HII40 & 8207 K & 7907 K & 8210 K & 7720--8199 K & 8176 K \\
+HII20 & 6940 K & 6282 K & 6910 K & 6402--6749 K & --- \\
+HII40 & 8180 K & 7877 K & 8210 K & 7720--8199 K & 8176 K \\
 \bottomrule
 \end{tabular}
 \end{center}
 With the density-suppressed cooling default (\code{par\%cooling\_model =
-local\_ne}) MoCHII gives $T_e = 8207$~K (HII40) and 6946~K (HII20),
+local\_ne}) MoCHII gives $T_e = 8180$~K (HII40) and 6940~K (HII20),
 matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
-$0.04\%$ and $0.52\%$ (\code{results/continuous\_energy/m5\_converged},
-2026-09-25; the \code{low\_density} column is the same input with
-\code{cooling\_model = 'low\_density'}).  Both modern codes sit a few hundred K \emph{above} the
+$-0.37\%$ and $+0.44\%$ (\code{results/continuous\_energy/m10\_drift\_test},
+2026-09-26; the hydrogenic $\alpha_B$, 1.1\% below the Badnell-minus-Milne
+value it replaced, lowered them by 27 and 18~K from the 8207 and 6958~K of
+\code{m8\_defaults}, and the continuation to the revised stopping test
+moved them by $+0.2$ and $+0.0$~K while the HII40 hydrogen front moved out
+by a further 0.012~pc; \code{m5\_converged}, before the defaults of 2026-09-25, gave
+8207 and 6946~K and the \code{low\_density} limit 7907 and 6295~K; the
+\code{low\_density} column is the same input with
+\code{cooling\_model = 'low\_density'}).  Of the $+12$~K at HII20, the
+band below the hydrogen edge carries about all: the other switches moved
+it by $-0.7$~K (\code{m6\_new\_physics}).  Both modern codes sit \emph{above} the medians of the
 2000-era published ranges of Ercolano et al.\ (2003) ---
 $\langle T[N_pN_e]\rangle = 7720$--$8199$~K (median 8026) at HII40 and
 $6402$--$6749$~K (median 6662) at HII20 --- whose tabulated columns carry
-older atomic data; the two modern codes now agree with each other far
+older atomic data: at HII40 at the top of the range (MoCHII inside it,
+\textsc{Cloudy} 11~K above), at HII20 160--190~K above it; the two modern codes now agree with each other far
 more closely than either does with the historical spread.
 
 The $\sim$9\% HII40 excess reported in earlier revisions (a superseded
@@ -3970,9 +4855,11 @@ Eq.~\ref{eq:betarec} and the metal ionization-energy loss) gave 8177 and
 6936~K: at HII40 the first five items moved it by $-9.4$~K and the two
 cooling terms by $+16.4$~K.  All of these steps were measured on
 early-stopped runs, and step differences of a few K are within that rule's
-resolution; run to the drift test the current code gives 8207 and 6946~K,
-and the \code{low\_density} limit 7907 and 6295~K (it was 7894 and 6376~K
-when the fits were regenerated).  The former
+resolution; run to the drift test the code gave 8207 and 6946~K, and the
+\code{low\_density} limit 7907 and 6295~K (it was 7894 and 6376~K when the
+fits were regenerated); the defaults of 2026-09-25 make these 8207 and
+6958~K and 7907 and 6304~K, and the hydrogenic $\alpha_B$ 8180 and 6940~K
+and 7877 and 6282~K.  The former
 ``cooling-side residual'' was thus the low-density over-cooling of the
 low-$n_{\rm crit}$ fine-structure lines, and there is no open temperature
 discrepancy with the current reference code.
@@ -4321,13 +5208,38 @@ continua), written on a 400-point log-$\nu$ grid from 11.4\,$\mu$m to
 217\,\AA.
 
 \subsection{He\,\textsc{i} 2$^3$S metastable and 10833~\AA\ absorption}
-The 2$^3$S diagnostic (Section~\ref{sec:heimeta}) is gated in
+The 2$^3$S population (Section~\ref{sec:heimeta}) is gated in
 \code{tests/hei\_meta/} on three runs (low/high density and an
-\code{add\_fuv} run).  The numbers below are from the current binary
-(2026-09-24, evening: $q_{31g}$, the Garc\'{\i}a Mu\~noz $Q_{31}$, the path
+\code{add\_fuv} run) and its coupling in \code{tests/hei\_metastable\_coupling/}.
+\textbf{Current (2026-09-26, Bray et al.\ rows, $\alpha_3 =
+f_{3S}\alpha_B$; the three inputs, which pin the coupling off, rerun at 16
+ranks in \code{results/hei\_metastable\_gate\_2026-09-26/}):} all
+\code{check\_hei\_meta.py} gates pass.  $\alpha_3(10^4\,{\rm K}) =
+2.1311{\times}10^{-13}$ ($1.0148\times$ OH18's $2.10{\times}10^{-13}$), the
+low-density ratio $\alpha_3n_e/A_{31} = 1.6754{\times}10^{-7}$ at
+$n_e = 100$, the plateau $5.8669{\times}10^{-6}$, $n_{\rm crit} =
+3502$~cm$^{-3}$ (the $n_e$-scan half-plateau crossing at 3498); the module
+$n_3$ matches the Python evaluation of the data file on each run's own
+state to $\le1.0{\times}10^{-15}$; the low-density core sits within median
+3.12\%\,/\,max 4.26\% of the radiative limit and the high-density core at
+0.701 of the plateau; $\Phi_3$ matches the bin-center quadrature to
+$1.5{\times}10^{-2}$ (bound $4.5{\times}10^{-2}$, max $\Phi_3 =
+9.04{\times}10^{-5}$~s$^{-1}$); the Stage 2 results below are unchanged
+(high-density column conservation $6.9{\times}10^{-15}$, doublet/$J'{=}0$
+ratio 8.003).  The coupling gate: Bray Tables 2/3 reproduced at their nodes to
+$7.8{\times}10^{-16}$, the rate sums and $q_{31g}$ detailed balance to
+$7.1{\times}10^{-15}$, $\alpha_3 = f_{3S}\alpha_B$ exactly, the closed-form
+$n_3$ against a direct $2\times2$ solve within $0.75\,n_3/n_{\rm HeI}$ (the
+size of the $n_1 = n_{\rm HeI}$ approximation), the energy ledger to
+$3.8{\times}10^{-16}$, the diffuse low-density limit to
+$2.5{\times}10^{-13}$, and \code{solve\_ion\_cell} balances with the
+2$^3$S terms to $1.1{\times}10^{-10}$.  The earlier record follows; its
+$\alpha_3$, plateau and $n_{\rm crit}$ are those of the OH18 coefficient set
+and are superseded.  From the 2026-09-24 evening binary
+($q_{31g}$, the Garc\'{\i}a Mu\~noz $Q_{31}$, the path
 estimator for $\Phi_3$, the exact collision constant and $C_3$), run on
-those three inputs in \code{results/hei\_metastable/} with the current
-\code{check\_hei\_meta.py}; the outputs stored under \code{tests/hei\_meta/}
+those three inputs in \code{results/hei\_metastable/} with the
+\code{check\_hei\_meta.py} of that day; the outputs stored under \code{tests/hei\_meta/}
 are dated 2026-07-24 and predate all of it.  Against the 12:40 binary of
 the same day (which had $q_{31g}$, $Q_{31}$ and the path estimator but not
 the constant or $C_3$) the total 2$^3$S column changes by $-0.136\%$
@@ -4413,13 +5325,14 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   this and is the recommended production setting.
 \item The MOCASSIN Lexington benchmark temperatures are resolved
   (Section~\ref{sec:hii}): with the density-suppressed cooling default
-  MoCHII (HII40 8207~K, HII20 6946~K, run to the drift stopping test)
-  matches a current \textsc{Cloudy} c25.00 run to $0.04\%$ and $0.52\%$, the
+  MoCHII (HII40 8180~K, HII20 6940~K, run to the drift stopping test)
+  matches a current \textsc{Cloudy} c25.00 run to $-0.37\%$ and $+0.44\%$, the
   earlier excess having been traced
   to two Tier-1 cooling defects (D1/D2) and the missing density suppression,
-  all fixed.  The one remaining note is that both modern codes sit a few
-  hundred K above the 2000-era published Lexington temperatures --- a
-  data-vintage difference, not a code defect.
+  all fixed.  The one remaining note is that both modern codes sit above the
+  medians of the 2000-era published Lexington temperatures (at the top of
+  the HII40 range, 160--190~K above the HII20 one) --- a data-vintage
+  difference, not a code defect.
 \item The HII40 He\,\textsc{i} front sits $0.034$~pc ($0.8\%$ in radius)
   inside the \textsc{Cloudy} c25.00 one.  The $0.18$~pc once reported here
   as unexplained was, to $0.14$~pc, premature stopping of the gas iteration
@@ -4447,11 +5360,20 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   $\ge 0.995$ for these vacancies.  The stage fractions and the heating of
   Mg, Ca and Fe in gas that sees 35--100~eV photons are affected; the fix
   needs the stage matrix of HS6.
-\item \emph{Charge-exchange heating is absent.}  The energy defect of a
-  charge-exchange reaction goes to the kinetic energy of the products ---
-  11~eV for the non-radiative $\mathrm{He}^+ + \mathrm{H}$ channel --- and
-  neither the He--H reactions nor the metal--H reactions add it to the
-  thermal balance.
+\item \emph{Charge-exchange heating rests on unidentified products for six
+  reactions} (C$^{2+}$, C$^{3+}$, S$^{3+}$, Ar$^{3+}$, Si$^{3+}$, Fe$^{3+}$ + H),
+  which take the KF96 electronic defect as distributed with \textsc{Cloudy}
+  (\S\ref{sec:cx}, Table~\ref{tab:cxheat}).  Two products were settled from
+  the papers on 2026-09-25: Mg + H$^+$ branches into Mg$^+$ 3p and the
+  endothermic Mg$^+$ 4s channel (Allan et al.\ 1988 Table 1; 66\% 4s at
+  $10^4$~K, so the reaction cools by 1.26~eV per event; below the table's
+  5000~K the 4s share is carried down by its threshold Boltzmann factor),
+  and He$^{2+}$ + H is radiative at low energy (West, Lane \& Cohen 1982).
+  Its heat is set to zero, which is an approximation marked at the code
+  site: the products He$^+$ + H$^+$ repel, and the gas keeps
+  $\Delta E(\infty) - \Delta E(R)$ of the emission distance, ${\sim}3$--10~eV
+  from their Fig.~2, but they give no emission spectrum to average over.
+  The same holds for the radiative X$^{2+}$ + H rows of the metals.
 \item Further metal ions as science needs them.
 \end{itemize}
 

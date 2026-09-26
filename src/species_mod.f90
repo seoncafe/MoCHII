@@ -46,8 +46,10 @@ module species_mod
   public :: species_ne, metal_heating, metal_ionization_cooling
   public :: metal_cooling_H
   public :: species_ne_prepare, species_ne_cached, species_metal_sums
-  public :: species_cx_coefficients
+  public :: species_cx_coefficients, species_cx_kinetic_energy
+  public :: metal_charge_exchange_heating
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
+  public :: elem_cx_form
   public :: species_rate_path_setup, species_rate_path_reset
   public :: species_rate_path_score, species_rate_path_reduce
   public :: species_stage_cache_refresh, species_set_photoionization_rates
@@ -59,6 +61,13 @@ module species_mod
   integer, parameter :: MAX_SHELL = 7
   !--- points of a tabulated charge-exchange rate coefficient (CXRTAB)
   integer, parameter :: MAX_CX_TAB = 40
+  !--- charge exchange resolved by product term (form 9, CXSTATE rows):
+  !--- product terms and tabulated temperatures
+  integer, parameter :: MAX_CXS_TERM = 4, MAX_CXS_T = 40
+  !--- the (log T, log n_e) grid of their term populations
+  integer, parameter :: CXS_NT = 201, CXS_NNE = 161
+  real(kind=wp), parameter :: CXS_T_LO = 2.0_wp, CXS_DT = 0.02_wp
+  real(kind=wp), parameter :: CXS_NE_LO = -6.0_wp, CXS_DNE = 0.1_wp
 
   type element_type
      character(len=2) :: name = ''
@@ -100,6 +109,33 @@ module species_mod
      integer       :: ncxr_tab(MAX_ST) = 0
      real(kind=wp) :: cxr_tab_T(MAX_CX_TAB,MAX_ST) = 0.0_wp
      real(kind=wp) :: cxr_tab_k(MAX_CX_TAB,MAX_ST) = 0.0_wp
+     !--- cxi_form = cxr_form = 9: charge exchange resolved by the product
+     !--- term of the ion X^(it+1) (CXSTATE rows; Zhao et al. 2005 for S).
+     !--- cxs_k(:,j) is the forward rate X^it + H+ -> X^(it+1)(term j) + H
+     !--- on the grid cxs_T; cxs_g, cxs_E the term's weight and energy [eV];
+     !--- cxs_lev the first and last level of the term in the ion's n-level
+     !--- atom; cxs_greact the weight of the X^it reactant; cxs_dip =
+     !--- IP(H) - IP(X^it) [eV], the energy released into the ground term.
+     integer       :: ncxs_term(MAX_ST) = 0, ncxs_T(MAX_ST) = 0
+     real(kind=wp) :: cxs_greact(MAX_ST) = 0.0_wp, cxs_dip(MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxs_T(MAX_CXS_T,MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxs_k(MAX_CXS_T,MAX_CXS_TERM,MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxs_g(MAX_CXS_TERM,MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxs_E(MAX_CXS_TERM,MAX_ST) = 0.0_wp
+     integer       :: cxs_lev(2,MAX_CXS_TERM,MAX_ST) = 0
+     !--- CXHEAT row: kinetic energy [eV] one event gives the gas,
+     !--- cxheat(1) for X^it + H+ -> X^(it+1) + H0, cxheat(2) for
+     !--- X^(it+1) + H0 -> X^it + H+, and cxheat(3) > 0 when the ionization
+     !--- rate includes radiative charge transfer (the statistical-weight
+     !--- ratio of its non-radiative part; metal_charge_exchange_heating).
+     logical       :: has_cxheat(MAX_ST) = .false.
+     real(kind=wp) :: cxheat(3,MAX_ST) = 0.0_wp
+     !--- CXHEATTAB: dE_ion(T) of an ionization whose product channels
+     !--- branch with temperature (Mg + H+, Allan et al. 1988); nonzero
+     !--- ncxheat_tab replaces cxheat(1) by linear interpolation in T
+     integer       :: ncxheat_tab(MAX_ST) = 0
+     real(kind=wp) :: cxheat_tab_T(MAX_CX_TAB,MAX_ST) = 0.0_wp
+     real(kind=wp) :: cxheat_tab_e(MAX_CX_TAB,MAX_ST) = 0.0_wp
      !--- cooling fits per stage (loaded when the file exists)
      logical :: has_cool(MAX_ST) = .false.
      type(cooling_fit_type) :: cool(MAX_ST)
@@ -152,6 +188,16 @@ module species_mod
   real(kind=wp) :: cch_gam(MAX_ST, MAX_EL), cch_ci(MAX_ST, MAX_EL)
   real(kind=wp) :: cch_rec(MAX_ST, MAX_EL), cch_cxi(MAX_ST, MAX_EL)
   real(kind=wp) :: cch_cxr(MAX_ST, MAX_EL)
+  !--- form 9: the reverse rate of each product term at the cached T (its
+  !--- population, which depends on n_e, is applied in species_metal_sums)
+  real(kind=wp) :: cch_cxs(MAX_CXS_TERM, MAX_ST, MAX_EL), cch_T = 0.0_wp
+
+  !--- form 9: term populations of the product ion on the (log T, log n_e)
+  !--- grid, from its n-level atom at setup
+  type cxs_pop_type
+     real(kind=wp), allocatable :: f(:,:,:)      ! ln pop (CXS_NT, CXS_NNE, term)
+  end type cxs_pop_type
+  type(cxs_pop_type) :: cxs_pop(MAX_ST, MAX_EL)
 
 contains
 
@@ -165,6 +211,9 @@ contains
   !--- it = 1..elem_nstage(ie)-1.  Exposed for the threshold-aligned band.
   real(kind=wp) function elem_eth(ie, it);  integer, intent(in) :: ie, it
     elem_eth = elems(ie)%eth(it);  end function elem_eth
+  !--- the charge-exchange form of transition it (9: resolved by product term)
+  integer function elem_cx_form(ie, it);  integer, intent(in) :: ie, it
+    elem_cx_form = elems(ie)%cxr_form(it);  end function elem_cx_form
 
   !=========================================================================
   subroutine species_setup(nleaf)
@@ -192,6 +241,7 @@ contains
        call read_element(trim(par%atomic_dir)//'/element_'// &
                          trim(names(k))//'.txt', elems(ie))
        elems(ie)%abund = abunds(k)
+       call cx_state_setup(ie, trim(names(k)))
        !--- cooling fits for each stage where a file exists.
        do i = 1, elems(ie)%nstage
           write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)// &
@@ -431,12 +481,13 @@ contains
   !=========================================================================
   subroutine read_element(fname, el)
     use mpi
-        use utility, only : fatal_error
-implicit none
+    use utility, only : fatal_error
+    implicit none
     character(len=*),   intent(in)  :: fname
     type(element_type), intent(out) :: el
     character(len=512) :: line, key
-    integer :: unit, ios, it, ierr, n
+    character(len=8)   :: label
+    integer :: unit, ios, it, ierr, n, k, ncxs_seen
 
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
@@ -502,6 +553,37 @@ implicit none
           el%ncxr_tab(it) = n
           backspace(unit)
           read(unit,*) key, n, el%cxr_tab_T(1:n,it), el%cxr_tab_k(1:n,it)
+       case ('CXSTATE')
+          read(line,*) key, el%ncxs_term(it), el%ncxs_T(it), &
+                       el%cxs_greact(it), el%cxs_dip(it)
+          if (el%ncxs_term(it) < 1 .or. el%ncxs_term(it) > MAX_CXS_TERM .or. &
+              el%ncxs_T(it) < 2 .or. el%ncxs_T(it) > MAX_CXS_T) &
+             call fatal_error('CXSTATE size out of range in '//trim(fname))
+          ncxs_seen = 0
+       case ('CXSTATET')
+          backspace(unit)
+          read(unit,*) key, el%cxs_T(1:el%ncxs_T(it),it)
+       case ('CXSTATEK')
+          ncxs_seen = ncxs_seen + 1
+          if (ncxs_seen > el%ncxs_term(it)) &
+             call fatal_error('more CXSTATEK rows than CXSTATE terms in '// &
+                              trim(fname))
+          backspace(unit)
+          read(unit,*) key, label, el%cxs_lev(1:2,ncxs_seen,it), &
+                       el%cxs_g(ncxs_seen,it), el%cxs_E(ncxs_seen,it), &
+                       el%cxs_k(1:el%ncxs_T(it),ncxs_seen,it)
+       case ('CXHEAT')
+          read(line,*) key, el%cxheat(1:3,it)
+          el%has_cxheat(it) = .true.
+       case ('CXHEATTAB')
+          read(line,*) key, n
+          if (n < 2 .or. n > MAX_CX_TAB) &
+             call fatal_error('CXHEATTAB size out of range in '//trim(fname))
+          !--- the row can outgrow the line buffer (n pairs of reals), so it
+          !--- is read again from the unit, as CXRTAB is
+          backspace(unit)
+          read(unit,*) key, n, (el%cxheat_tab_T(k,it), el%cxheat_tab_e(k,it), k = 1, n)
+          el%ncxheat_tab(it) = n
        end select
     end do
     close(unit)
@@ -516,6 +598,18 @@ implicit none
           call fatal_error(trim(fname)//': PHINNER > 0 without a PHOTO row')
        if (el%cxr_form(it) == 8 .and. el%ncxr_tab(it) < 2) &
           call fatal_error(trim(fname)//': CXR form 8 without a CXRTAB row')
+       if ((el%cxi_form(it) == 9 .or. el%cxr_form(it) == 9) .and. &
+           (el%cxi_form(it) /= el%cxr_form(it) .or. el%ncxs_term(it) < 1 .or. &
+            any(el%cxs_k(1:el%ncxs_T(it),1:el%ncxs_term(it),it) <= 0.0_wp))) &
+          call fatal_error(trim(fname)//': CX form 9 needs both directions '// &
+                           'and complete CXSTATE rows')
+       !--- charge-exchange heating needs the energy of every carried
+       !--- reaction; a file written before the CXHEAT rows existed would
+       !--- leave it silently at zero.
+       if (par%charge_exchange_heating .and. .not. el%has_cxheat(it)) &
+          call fatal_error(trim(fname)//' has no CXHEAT row for a '// &
+             'transition (par%charge_exchange_heating): regenerate it '// &
+             'with tools/fitting/make_element_data.py')
     end do
   end subroutine read_element
 
@@ -552,14 +646,34 @@ implicit none
   real(kind=wp) function cxi_rate(ie, it, T) result(k)
     integer,       intent(in) :: ie, it
     real(kind=wp), intent(in) :: T
+    real(kind=wp) :: kf(MAX_CXS_TERM)
+    if (elems(ie)%cxi_form(it) == 9) then
+       call cxs_forward_terms(ie, it, T, kf)
+       k = sum(kf(1:elems(ie)%ncxs_term(it)))
+       return
+    end if
     k = cx_rate(elems(ie)%cxi_form(it), elems(ie)%cxi(1:6,it), T)
   end function cxi_rate
 
-  real(kind=wp) function cxr_rate(ie, it, T) result(k)
+  !--- ne: the electron density that sets the product-term populations of a
+  !--- form-9 reverse rate; left out, their n_e -> 0 limit (the ground term)
+  real(kind=wp) function cxr_rate(ie, it, T, ne) result(k)
     integer,       intent(in) :: ie, it
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lt, w
+    real(kind=wp), intent(in), optional :: ne
+    real(kind=wp) :: lt, w, kr(MAX_CXS_TERM), f(MAX_CXS_TERM)
     integer :: n, j
+    if (elems(ie)%cxr_form(it) == 9) then
+       call cxs_reverse_terms(ie, it, T, kr)
+       if (present(ne)) then
+          call cxs_populations(ie, it, T, ne, f)
+       else
+          call cxs_populations(ie, it, T, 0.0_wp, f)
+       end if
+       n = elems(ie)%ncxs_term(it)
+       k = sum(f(1:n)*kr(1:n))
+       return
+    end if
     if (elems(ie)%cxr_form(it) /= 8) then
        k = cx_rate(elems(ie)%cxr_form(it), elems(ie)%cxr(1:6,it), T)
        return
@@ -575,6 +689,140 @@ implicit none
       k = exp(log(kk(j)) + w*(log(kk(j+1)) - log(kk(j))))
     end associate
   end function cxr_rate
+
+  !=========================================================================
+  ! Charge exchange resolved by product term (form 9).  Forward
+  !   X^it + H+ -> X^(it+1)(j) + H,  k_j(T) from the table (log-log in T,
+  !   clamped to it);
+  ! reverse from term j of the ion by detailed balance of that channel,
+  !   k_rj = k_j g_react / (g_j g_H) exp[-(dIP - E_j)/kT],  g_H = 2, g_H+ = 1,
+  ! dIP - E_j being the energy the reverse reaction from j needs.  The rate
+  ! of the ion is sum_j pop_j(T, n_e) k_rj with its ACTUAL term populations
+  ! (cxs_populations).  A reverse formed from the summed forward rate by one
+  ! detailed balance -- Huang et al. (2023, sec. 2.4.2) for S+ + H -- is
+  ! this sum with the populations in LTE; at nebular densities S+ sits in
+  ! 4S and that overstates the reverse by ~1e4 (2.3e-17 against 3.7e-13 at
+  ! 1e4 K and n_e -> 0).
+  !=========================================================================
+  subroutine cxs_forward_terms(ie, it, T, kf)
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(in)  :: T
+    real(kind=wp), intent(out) :: kf(MAX_CXS_TERM)
+    real(kind=wp) :: lt, w
+    integer :: n, j, i
+    kf = 0.0_wp
+    n = elems(ie)%ncxs_T(it)
+    associate (tt => elems(ie)%cxs_T(1:n,it))
+      lt = log(min(max(T, tt(1)), tt(n)))
+      i = 1
+      do while (i < n-1 .and. lt > log(tt(i+1)))
+         i = i + 1
+      end do
+      w = (lt - log(tt(i)))/(log(tt(i+1)) - log(tt(i)))
+    end associate
+    do j = 1, elems(ie)%ncxs_term(it)
+       kf(j) = exp(log(elems(ie)%cxs_k(i,j,it)) &
+                   + w*(log(elems(ie)%cxs_k(i+1,j,it)) - log(elems(ie)%cxs_k(i,j,it))))
+    end do
+  end subroutine cxs_forward_terms
+
+  subroutine cxs_reverse_terms(ie, it, T, kr)
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(in)  :: T
+    real(kind=wp), intent(out) :: kr(MAX_CXS_TERM)
+    real(kind=wp) :: kf(MAX_CXS_TERM), x
+    integer :: j
+    call cxs_forward_terms(ie, it, T, kf)
+    kr = 0.0_wp
+    do j = 1, elems(ie)%ncxs_term(it)
+       x = (elems(ie)%cxs_dip(it) - elems(ie)%cxs_E(j,it))*ev2erg/(kboltz_cgs*T)
+       kr(j) = kf(j)*elems(ie)%cxs_greact(it)/(2.0_wp*elems(ie)%cxs_g(j,it)) &
+               *exp(-min(x, 600.0_wp))
+    end do
+  end subroutine cxs_reverse_terms
+
+  !--- term populations of the product ion (sum = 1), bilinear in
+  !--- (log T, log n_e) of their LOGARITHM on the setup table -- an excited
+  !--- term goes as exp(-E/kT), which a linear interpolation of the
+  !--- population itself misses by ~1% at 3000 K on a 0.02-dex grid -- T and
+  !--- n_e clamped to the table (n_e below 1e-6 cm^-3 is the low-density
+  !--- column, the ground term)
+  subroutine cxs_populations(ie, it, T, ne, f)
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(in)  :: T, ne
+    real(kind=wp), intent(out) :: f(MAX_CXS_TERM)
+    real(kind=wp) :: x, y, wx, wy
+    integer :: i, j, n
+    n = elems(ie)%ncxs_term(it)
+    x = (log10(max(T, 1.0_wp)) - CXS_T_LO)/CXS_DT
+    x = min(max(x, 0.0_wp), real(CXS_NT-1, wp) - 1.0e-9_wp)
+    y = (log10(max(ne, 1.0e-30_wp)) - CXS_NE_LO)/CXS_DNE
+    y = min(max(y, 0.0_wp), real(CXS_NNE-1, wp) - 1.0e-9_wp)
+    i = int(x) + 1;  wx = x - real(i-1, wp)
+    j = int(y) + 1;  wy = y - real(j-1, wp)
+    f = 0.0_wp
+    associate (p => cxs_pop(it,ie)%f)
+      f(1:n) = exp((1.0_wp-wx)*(1.0_wp-wy)*p(i,j,1:n) + wx*(1.0_wp-wy)*p(i+1,j,1:n) &
+                   + (1.0_wp-wx)*wy*p(i,j+1,1:n) + wx*wy*p(i+1,j+1,1:n))
+    end associate
+  end subroutine cxs_populations
+
+  !--- build the population table of every form-9 transition of element ie
+  !--- from the n-level atom of the product ion, after checking that the
+  !--- term energies of the element file are that atom's
+  subroutine cx_state_setup(ie, name)
+    use utility,    only : fatal_error
+    use nlevel_mod, only : nlevel_cooling_prepT, nlevel_populations, MAXLEV
+    integer,          intent(in) :: ie
+    character(len=*), intent(in) :: name
+    type(nlevel_atom_type), allocatable :: atom
+    real(kind=wp), allocatable :: Rcoll(:,:), Rrad(:,:)
+    real(kind=wp) :: pop(MAXLEV), sg, se, Eterm
+    character(len=PATH_LEN) :: fname
+    logical :: ok
+    integer :: it, i, j, jt, lo, hi, n
+    real(kind=wp), parameter :: HC_EV_CM = 1.239841984e-4_wp
+    do it = 1, elems(ie)%nstage - 1
+       if (elems(ie)%cxr_form(it) /= 9) cycle
+       n = elems(ie)%ncxs_term(it)
+       write(fname,'(a,a,a,i0,a)') trim(par%atomic_dir)//'/nlevel_', &
+          trim(name), '_', it+1, '.txt'
+       allocate(atom)
+       call nlevel_load(trim(fname), atom, ok)
+       if (.not. ok) call fatal_error('charge exchange form 9 needs '// &
+          trim(fname)//' (the product ion''s levels)')
+       do jt = 1, n
+          lo = elems(ie)%cxs_lev(1,jt,it);  hi = elems(ie)%cxs_lev(2,jt,it)
+          if (lo < 1 .or. hi > atom%nlev .or. hi < lo) call fatal_error( &
+             'CXSTATEK levels outside '//trim(fname))
+          sg = sum(atom%g(lo:hi))
+          se = sum(atom%g(lo:hi)*atom%e_cm1(lo:hi))
+          Eterm = se/sg*HC_EV_CM
+          if (abs(Eterm - elems(ie)%cxs_E(jt,it)) > 2.0e-3_wp .or. &
+              abs(sg - elems(ie)%cxs_g(jt,it)) > 1.0e-6_wp) call fatal_error( &
+             'CXSTATEK term energy or weight disagrees with '//trim(fname))
+       end do
+       allocate(cxs_pop(it,ie)%f(CXS_NT, CXS_NNE, n))
+       allocate(Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV))
+       do i = 1, CXS_NT
+          call nlevel_cooling_prepT(atom, 10.0_wp**(CXS_T_LO + (i-1)*CXS_DT), &
+                                    Rcoll, Rrad)
+          do j = 1, CXS_NNE
+             call nlevel_populations(atom, Rcoll, Rrad, &
+                  10.0_wp**(CXS_NE_LO + (j-1)*CXS_DNE), pop)
+             do jt = 1, n
+                lo = elems(ie)%cxs_lev(1,jt,it);  hi = elems(ie)%cxs_lev(2,jt,it)
+                cxs_pop(it,ie)%f(i,j,jt) = log(max(sum(pop(lo:hi)), 1.0e-300_wp))
+             end do
+          end do
+       end do
+       deallocate(Rcoll, Rrad, atom)
+       if (mpar%p_rank == 0) write(*,'(3a,i0,a,es10.3,a,es10.3)') &
+          ' SPEC: ', trim(name), ' transition ', it, &
+          ' charge exchange by product term; reverse at 1e4 K, n_e -> 0: ', &
+          cxr_rate(ie, it, 1.0e4_wp), ', n_e = 1e2: ', cxr_rate(ie, it, 1.0e4_wp, 1.0e2_wp)
+    end do
+  end subroutine cx_state_setup
 
   real(kind=wp) function cx_rate(form, c, T) result(k)
     integer,       intent(in) :: form
@@ -663,10 +911,13 @@ implicit none
           cch_cxr(it,ie) = 0.0_wp
           if (elems(ie)%cxi_form(it) > 0) cch_cxi(it,ie) = &
              cxi_rate(ie, it, T)
-          if (elems(ie)%cxr_form(it) > 0) cch_cxr(it,ie) = &
-             cxr_rate(ie, it, T)
+          if (elems(ie)%cxr_form(it) > 0 .and. elems(ie)%cxr_form(it) /= 9) &
+             cch_cxr(it,ie) = cxr_rate(ie, it, T)
+          if (elems(ie)%cxr_form(it) == 9) &
+             call cxs_reverse_terms(ie, it, T, cch_cxs(:,it,ie))
        end do
     end do
+    cch_T = T
   end subroutine species_ne_prepare
 
   !=========================================================================
@@ -704,8 +955,9 @@ implicit none
     real(kind=wp), intent(out) :: nem, r_cx_in, r_cx_out
     real(kind=wp), intent(out), optional :: cx_in_stage(MAX_ST, MAX_EL)
     real(kind=wp), intent(out), optional :: cx_out_stage(MAX_ST, MAX_EL)
-    real(kind=wp) :: r(MAX_ST), rion, rrec, s, prod, fr, nX
-    integer :: ie, it, i, ns
+    real(kind=wp) :: r(MAX_ST), rion, rrec, s, prod, fr, nX, kcr(MAX_ST)
+    real(kind=wp) :: fpop(MAX_CXS_TERM)
+    integer :: ie, it, i, ns, nt
     logical :: resolved
     nem = 0.0_wp
     r_cx_in  = 0.0_wp
@@ -717,11 +969,21 @@ implicit none
     end if
     do ie = 1, n_elements
        ns = elems(ie)%nstage
+       !--- reverse charge-exchange rates; a form-9 transition's depends on
+       !--- n_e through the product-term populations, applied here
+       kcr(1:ns-1) = cch_cxr(1:ns-1,ie)
+       do it = 1, ns-1
+          if (elems(ie)%cxr_form(it) == 9) then
+             nt = elems(ie)%ncxs_term(it)
+             call cxs_populations(ie, it, cch_T, ne, fpop)
+             kcr(it) = sum(fpop(1:nt)*cch_cxs(1:nt,it,ie))
+          end if
+       end do
        do it = 1, ns-1
           rion = cch_gam(it,ie) + ne*cch_ci(it,ie)
           if (cch_cxi(it,ie) > 0.0_wp) rion = rion + nHII*cch_cxi(it,ie)
           rrec = ne*cch_rec(it,ie)
-          if (cch_cxr(it,ie) > 0.0_wp) rrec = rrec + nHI*cch_cxr(it,ie)
+          if (kcr(it) > 0.0_wp) rrec = rrec + nHI*kcr(it)
           r(it) = rion/max(rrec, tinest)
        end do
        s = 1.0_wp;  prod = 1.0_wp
@@ -742,10 +1004,10 @@ implicit none
           nem = nem + elems(ie)%abund*nH*fr*real(i-1, wp)
           !--- stage i is the recombining partner of transition i-1 and the
           !--- ionized partner of transition i.
-          r_cx_out = r_cx_out + cch_cxr(i-1,ie)*nX*fr
+          r_cx_out = r_cx_out + kcr(i-1)*nX*fr
           if (i < ns) r_cx_in = r_cx_in + cch_cxi(i,ie)*nX*fr
           if (resolved) then
-             cx_out_stage(i-1,ie) = cch_cxr(i-1,ie)*nX*fr
+             cx_out_stage(i-1,ie) = kcr(i-1)*nX*fr
              if (i < ns) cx_in_stage(i,ie) = cch_cxi(i,ie)*nX*fr
           end if
        end do
@@ -759,11 +1021,14 @@ implicit none
   !   k_cxr  for  X^(it+1) + H^0 -> X^it + H^+,
   ! zero where the registry carries no determination for that direction.
   !=========================================================================
-  subroutine species_cx_coefficients(ie, it, T, k_cxi, k_cxr)
+  subroutine species_cx_coefficients(ie, it, T, k_cxi, k_cxr, ne)
     implicit none
     integer,       intent(in)  :: ie, it
     real(kind=wp), intent(in)  :: T
     real(kind=wp), intent(out) :: k_cxi, k_cxr
+    !--- the electron density a form-9 reverse rate depends on (its product-
+    !--- term populations); left out, the n_e -> 0 limit
+    real(kind=wp), intent(in), optional :: ne
     k_cxi = 0.0_wp
     k_cxr = 0.0_wp
     if (ie < 1 .or. ie > n_elements) return
@@ -771,8 +1036,52 @@ implicit none
     if (elems(ie)%cxi_form(it) > 0) &
        k_cxi = cxi_rate(ie, it, T)
     if (elems(ie)%cxr_form(it) > 0) &
-       k_cxr = cxr_rate(ie, it, T)
+       k_cxr = cxr_rate(ie, it, T, ne)
   end subroutine species_cx_coefficients
+
+  !=========================================================================
+  ! Kinetic energy [eV] one event of each charge-exchange direction of
+  ! transition it of element ie gives the gas (the CXHEAT row):
+  !   de_ion  for  X^it + H^+ -> X^(it+1) + H^0,
+  !   de_rec  for  X^(it+1) + H^0 -> X^it + H^+,
+  ! and g_split > 0 when the ionization rate includes radiative charge
+  ! transfer (metal_charge_exchange_heating).  Zero where no rate is carried.
+  ! A transition resolved by product term (form 9) returns the rate-weighted
+  ! mean over the terms at (T, ne) -- the forward into term j releases
+  ! dIP - E_j, the reverse from j takes it back -- which is what the heating
+  ! uses; without T the CXHEAT row (its 1e4 K, n_e -> 0 values).
+  !=========================================================================
+  subroutine species_cx_kinetic_energy(ie, it, de_ion, de_rec, g_split, T, ne)
+    implicit none
+    integer,       intent(in)  :: ie, it
+    real(kind=wp), intent(out) :: de_ion, de_rec, g_split
+    real(kind=wp), intent(in), optional :: T   ! for a CXHEATTAB defect
+    real(kind=wp), intent(in), optional :: ne  ! for a form-9 reverse
+    real(kind=wp) :: kf(MAX_CXS_TERM), kr(MAX_CXS_TERM), f(MAX_CXS_TERM)
+    real(kind=wp) :: de(MAX_CXS_TERM)
+    integer :: nt
+    de_ion = 0.0_wp;  de_rec = 0.0_wp;  g_split = 0.0_wp
+    if (ie < 1 .or. ie > n_elements) return
+    if (it < 1 .or. it > elems(ie)%nstage-1) return
+    if (elems(ie)%cxi_form(it) == 9 .and. present(T)) then
+       nt = elems(ie)%ncxs_term(it)
+       call cxs_forward_terms(ie, it, T, kf)
+       call cxs_reverse_terms(ie, it, T, kr)
+       if (present(ne)) then
+          call cxs_populations(ie, it, T, ne, f)
+       else
+          call cxs_populations(ie, it, T, 0.0_wp, f)
+       end if
+       de(1:nt) = elems(ie)%cxs_dip(it) - elems(ie)%cxs_E(1:nt,it)
+       de_ion = sum(kf(1:nt)*de(1:nt))/sum(kf(1:nt))
+       de_rec = -sum(f(1:nt)*kr(1:nt)*de(1:nt))/max(sum(f(1:nt)*kr(1:nt)), tinest)
+       return
+    end if
+    de_ion  = elems(ie)%cxheat(1,it)
+    if (present(T)) de_ion = cx_ionization_defect(ie, it, T)
+    de_rec  = elems(ie)%cxheat(2,it)
+    g_split = elems(ie)%cxheat(3,it)
+  end subroutine species_cx_kinetic_energy
 
   !=========================================================================
   ! Metal electrons alone, for the n_e closure of charge_neutrality_ne.
@@ -862,6 +1171,103 @@ implicit none
   end function metal_heating
 
   !=========================================================================
+  ! Charge-exchange heating of the metals [erg s^-1 cm^-3]
+  ! (par%charge_exchange_heating): every carried reaction with hydrogen,
+  !   X^it + H^+ -> X^(it+1) + H^0      rate k_CXI n(X^it) n_HII,
+  !   X^(it+1) + H^0 -> X^it + H^+      rate k_CXR n(X^(it+1)) n_HI,
+  ! times the kinetic energy one event gives the gas,
+  !   dE = [IP of the stage the electron joins - IP of the stage it
+  !         leaves] - E_rad,
+  ! i.e. the binding energy the electron gains (O2+ + H: 35.121 - 13.598
+  ! = 21.52 eV less the O+ excitation that radiates),
+  ! E_rad being the excitation of the product state that leaves as
+  ! radiation.  The ionization energy the reaction moves between the two
+  ! species is not thermal energy in this code (photoionization deposits
+  ! h nu - IP, recombination removes the electron's kinetic energy), so this
+  ! is the whole change of the gas energy; an endothermic reaction has
+  ! dE < 0.  The dE of every reaction, its product states and their sources
+  ! are in the CXHEAT rows written by tools/fitting/make_element_data.py.
+  ! E_rad counts a metastable product (S+ 2D, 2P) as radiated, which holds
+  ! below its critical density (~1e3 cm^-3 for S+ 2D); above it the
+  ! excitation is partly returned to the gas by collisional de-excitation.
+  ! Where the ionization rate includes radiative charge transfer (carbon,
+  ! cxheat(3) > 0) only its non-radiative part heats, and that part is the
+  ! detailed-balance reverse of the recombination rate,
+  !   k_nr = min[k_CXI, g k_CXR exp(dE_ion/kT)],
+  ! so the pair deposits nothing when the two reactions balance.  Stage
+  ! fractions and rate coefficients are those of the cascade.
+  !=========================================================================
+  real(kind=wp) function metal_charge_exchange_heating(il, T, nH, ne, nHI, nHII) &
+                                                       result(heat)
+    implicit none
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
+    real(kind=wp) :: frac(MAX_ST), nel, k_ion, k_rec
+    real(kind=wp) :: kf(MAX_CXS_TERM), kr(MAX_CXS_TERM), fpop(MAX_CXS_TERM)
+    real(kind=wp) :: de(MAX_CXS_TERM)
+    integer :: ie, it, nt
+    heat = 0.0_wp
+    do ie = 1, n_elements
+       if (all(elems(ie)%cxi_form(1:elems(ie)%nstage-1) <= 0) .and. &
+           all(elems(ie)%cxr_form(1:elems(ie)%nstage-1) <= 0)) cycle
+       call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+       nel = elems(ie)%abund*nH
+       do it = 1, elems(ie)%nstage-1
+          if (elems(ie)%cxi_form(it) == 9) then
+             !--- by product term: into term j the reaction releases
+             !--- dIP - E_j (the term's excitation radiated, as for the
+             !--- CXHEAT products), and the reverse from j takes it back
+             call cxs_forward_terms(ie, it, T, kf)
+             call cxs_reverse_terms(ie, it, T, kr)
+             call cxs_populations(ie, it, T, ne, fpop)
+             nt = elems(ie)%ncxs_term(it)
+             de(1:nt) = elems(ie)%cxs_dip(it) - elems(ie)%cxs_E(1:nt,it)
+             heat = heat + nel*( frac(it)*nHII*sum(kf(1:nt)*de(1:nt)) &
+                               - frac(it+1)*nHI*sum(fpop(1:nt)*kr(1:nt)*de(1:nt)) )
+             cycle
+          end if
+          k_ion = 0.0_wp;  k_rec = 0.0_wp
+          if (elems(ie)%cxi_form(it) > 0) k_ion = cxi_rate(ie, it, T)
+          if (elems(ie)%cxr_form(it) > 0) k_rec = cxr_rate(ie, it, T)
+          if (elems(ie)%cxheat(3,it) > 0.0_wp) &
+             k_ion = min(k_ion, elems(ie)%cxheat(3,it)*k_rec &
+                     *exp(min(elems(ie)%cxheat(1,it)*ev2erg/(kboltz_cgs*T), 600.0_wp)))
+          heat = heat + nel*( frac(it)*nHII*k_ion*cx_ionization_defect(ie, it, T) &
+                            + frac(it+1)*nHI*k_rec*elems(ie)%cxheat(2,it) )
+       end do
+    end do
+    heat = heat*ev2erg
+  end function metal_charge_exchange_heating
+
+  !--- kinetic energy [eV] of one X^it + H+ -> X^(it+1) + H event at T: the
+  !--- CXHEAT value, or the CXHEATTAB interpolation (linear in T, end values
+  !--- held) where the product channels branch with temperature
+  real(kind=wp) function cx_ionization_defect(ie, it, T) result(de)
+    integer,       intent(in) :: ie, it
+    real(kind=wp), intent(in) :: T
+    integer :: n, k
+    real(kind=wp) :: w
+    n = elems(ie)%ncxheat_tab(it)
+    if (n == 0) then
+       de = elems(ie)%cxheat(1,it)
+       return
+    end if
+    if (T <= elems(ie)%cxheat_tab_T(1,it)) then
+       de = elems(ie)%cxheat_tab_e(1,it);  return
+    end if
+    if (T >= elems(ie)%cxheat_tab_T(n,it)) then
+       de = elems(ie)%cxheat_tab_e(n,it);  return
+    end if
+    k = 1
+    do while (elems(ie)%cxheat_tab_T(k+1,it) < T)
+       k = k + 1
+    end do
+    w  = (T - elems(ie)%cxheat_tab_T(k,it)) &
+         /(elems(ie)%cxheat_tab_T(k+1,it) - elems(ie)%cxheat_tab_T(k,it))
+    de = (1.0_wp - w)*elems(ie)%cxheat_tab_e(k,it) + w*elems(ie)%cxheat_tab_e(k+1,it)
+  end function cx_ionization_defect
+
+  !=========================================================================
   ! The loss side of the metal ionization energy budget [erg s^-1 cm^-3]
   ! (par%metal_heat, the counterpart of metal_heating):
   !  - recombination removes the kinetic energy of the captured electron,
@@ -871,8 +1277,8 @@ implicit none
   !  - collisional ionization removes the ionization energy E_th of the stage.
   ! Each transition it (stage it -> it+1) contributes
   !   n_e [ n_(it+1) beta_it + n_it C_it E_th,it ].
-  ! Charge-exchange energy defects are not included (open item: MoCHII
-  ! carries no charge-exchange heating for any reaction).
+  ! The kinetic energy the charge-exchange reactions exchange with the gas is
+  ! metal_charge_exchange_heating (par%charge_exchange_heating).
   !=========================================================================
   real(kind=wp) function metal_ionization_cooling(il, T, nH, ne, nHI, nHII) &
                                                   result(cool)
@@ -971,7 +1377,7 @@ implicit none
           rion = rion + nHII*cxi_rate(ie, it, T)
        rrec = ne*alpha_rec(elems(ie), it, T)
        if (elems(ie)%cxr_form(it) > 0) &
-          rrec = rrec + nHI*cxr_rate(ie, it, T)
+          rrec = rrec + nHI*cxr_rate(ie, it, T, ne)
        r(it) = rion/max(rrec, tinest)
     end do
     !--- fractions from the ratio chain, normalized.

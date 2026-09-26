@@ -38,4 +38,10 @@
  par%file_format='hdf5'
  par%out_file='ga60_n2_dda.h5'
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%recombination_continuum = 'on_the_spot'   ! pinned: this input predates 'transported' as the default
 /

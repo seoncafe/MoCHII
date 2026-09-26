@@ -1,0 +1,40 @@
+=== HII40 ===
+  m5       <T[NpNe]>  8206.72 K   L(Hb) 1.99991e+37   <He+>/<H+> 0.7270   H front 4.7329 pc   He front 4.2676 pc
+  control  <T[NpNe]>  8206.87 K   L(Hb) 2.00043e+37   <He+>/<H+> 0.7269   H front 4.7333 pc   He front 4.2678 pc
+  new      <T[NpNe]>  8199.22 K   L(Hb) 2.00131e+37   <He+>/<H+> 0.7269   H front 4.7327 pc   He front 4.2676 pc
+  new - control: dT -7.65 K, L(Hb) +0.044%, He front -0.0003 pc, H front -0.0006 pc
+  control - m5: dT +0.14 K, L(Hb) +0.026% (restart band)
+  lines (rel. Hb > 1e-4) moving > 0.5%, new vs control:
+     c 3       977.02  1.0329e-04 -> 1.0165e-04  (-1.58%)
+     o 3      1666.15  1.6576e-03 -> 1.6350e-03  (-1.36%)
+     o 3      1660.81  6.6574e-04 -> 6.5667e-04  (-1.36%)
+     n 3      1752.16  5.1681e-04 -> 5.1020e-04  (-1.28%)
+     n 3      1754.00  1.9277e-04 -> 1.9031e-04  (-1.28%)
+     n 3      1748.65  1.8627e-04 -> 1.8389e-04  (-1.28%)
+     n 3      1749.67  4.9450e-04 -> 4.8820e-04  (-1.27%)
+     c 3      1906.68  3.5169e-02 -> 3.4803e-02  (-1.04%)
+     c 3      1908.73  2.3437e-02 -> 2.3193e-02  (-1.04%)
+     o 3      4364.45  4.5989e-03 -> 4.5523e-03  (-1.01%)
+     o 3      2321.67  1.1570e-03 -> 1.1453e-03  (-1.01%)
+     s 3      1728.95  7.3976e-04 -> 7.3357e-04  (-0.84%)
+     s 3      1713.11  2.6961e-04 -> 2.6736e-04  (-0.84%)
+    ne 3      3869.85  5.5943e-02 -> 5.5593e-02  (-0.63%)
+    ne 3      3968.58  1.6854e-02 -> 1.6748e-02  (-0.63%)
+=== HII20 ===
+  m5       <T[NpNe]>  6946.07 K   L(Hb) 4.79165e+36   <He+>/<H+> 0.0414   H front 2.9033 pc   He front 1.2415 pc
+  control  <T[NpNe]>  6946.10 K   L(Hb) 4.79200e+36   <He+>/<H+> 0.0414   H front 2.9034 pc   He front 1.2415 pc
+  new      <T[NpNe]>  6945.40 K   L(Hb) 4.79221e+36   <He+>/<H+> 0.0414   H front 2.9034 pc   He front 1.2415 pc
+  new - control: dT -0.70 K, L(Hb) +0.004%, He front +0.0000 pc, H front -0.0000 pc
+  control - m5: dT +0.02 K, L(Hb) +0.007% (restart band)
+  lines (rel. Hb > 1e-4) moving > 0.5%, new vs control:
+     c 1   6091246.88  2.8208e-04 -> 2.8427e-04  (+0.78%)
+     c 3      1906.68  5.6114e-04 -> 5.5787e-04  (-0.58%)
+     c 3      1908.73  3.7458e-04 -> 3.7240e-04  (-0.58%)
+     c 1   3704115.27  1.0142e-03 -> 1.0198e-03  (+0.55%)
+     o 3      5008.24  1.6062e-03 -> 1.5980e-03  (-0.51%)
+     o 3      4960.29  5.5557e-04 -> 5.5276e-04  (-0.51%)
+=== HII40 single-switch attribution (each switch alone vs control) ===
+only_cxh   d<T[NpNe]>   +1.36 K  L(Hb) -0.017%  mean dT(1.2-4 pc)  +1.37 K  min dT(4.4-4.9 pc)  -15.30 K
+only_meta  d<T[NpNe]>   -9.02 K  L(Hb) +0.056%  mean dT(1.2-4 pc)  -9.82 K  min dT(4.4-4.9 pc)  -49.40 K
+only_q2p   d<T[NpNe]>   +0.00 K  L(Hb) +0.000%  mean dT(1.2-4 pc)  +0.00 K  min dT(4.4-4.9 pc)   +0.00 K
+new        d<T[NpNe]>   -7.65 K  L(Hb) +0.044%  mean dT(1.2-4 pc)  -8.45 K  min dT(4.4-4.9 pc)  -49.16 K

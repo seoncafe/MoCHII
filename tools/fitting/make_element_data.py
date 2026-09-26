@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Element rate-data files for the MoCHII species registry (Stage G2b).
 
-For each registry element (C, N, O, Ne, S) writes
+For each registry element (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) writes
 data/atomic/element_<el>.txt with one block for each ionization transition
 i <-> i+1:
 
@@ -30,19 +30,31 @@ i <-> i+1:
           RECOMBINING ion (stage i+1), parsed from the CHIANTI v11
           .rrparams/.drparams files (verified identical to the EXHALE
           Badnell table for the shared ions).
-  CXI/CXR — charge exchange with H+ / H0 (first stage only), from the
-          verified transcription of Huang et al. (2023) Table 4
+  CXI/CXR — charge exchange with H+ / H0.  Transition 1 both directions,
+          from the verified transcription of Huang et al. (2023) Table 4
           (EXHALE docs/charge_exchange_table4.md; original sources
           KF96/S98/S99/Z05), except nitrogen, which takes Kingdon &
-          Ferland (1996) Tables 1 and 3 (see the CX table below).
+          Ferland (1996) Tables 1 and 3 (see the CX table below); higher
+          transitions the recombination direction only (CX_HIGH: KF96, and
+          Barragan et al. 2006 for N2+ and O2+).
+  CXHEAT — dE_ion dE_rec g_split: the kinetic energy [eV] one event of each
+          carried charge-exchange direction gives the gas (the CX_HEAT table
+          below, with the product states and their sources).
+  CXHEATTAB — n, then n pairs (T [K], dE_ion [eV]): the ionization defect
+          of a reaction whose product channels branch with temperature (Mg +
+          H+, Allan et al. 1988, extended below 5000 K by the threshold
+          Boltzmann factor, BRANCH_T_EXTEND); the Fortran interpolates
+          linearly in T and holds the end values; the CXHEAT row then
+          carries the 1e4 K value.
 
 The Fortran species registry parses these files; it never sees CHIANTI or
 the Verner sources directly.  Run:  python3 make_element_data.py
 """
+import math
 import os
 import re
 
-DATE = "2026-09-24"
+DATE = "2026-09-25"
 VERNER_DIR = os.path.expanduser("~/RT_Codes/Verner_Fortran_sub")
 DBASE = os.path.expanduser("~/RT_Codes/CHIANTI/dbase")
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -86,6 +98,10 @@ ETH = {(6, 6): 11.260, (6, 5): 24.383, (6, 4): 47.888,
 #        5 form4 * exp(-c6/T4); 6 a*t4^b*(1 + c*exp(d*t4))  (KF96);
 #        7 a*t4^b*(1 + c*exp(d*t4))*exp(-e/t4)  (KF96 with barrier);
 #        8 tabulated rate coefficient (a CXRTAB row follows), log-log in T
+#        9 resolved by product term (CXSTATE rows follow; both directions):
+#          the forward rate is the sum over the product terms of the ion,
+#          the reverse the detailed balance of each term's channel weighted
+#          by that term's actual population, from the n-level atom
 CX = {
     "c":  dict(CXI=(1, [1.31e-15, 0.213, 0.0, 0, 0, 0]),
                CXR=(1, [6.3e-17, 1.96, 17.0, 0, 0, 0])),
@@ -125,8 +141,15 @@ CX = {
     "o":  dict(CXI=(3, [1.26e-9, 0.517, 4.25e-10, 6.69e-3, 227.0, 0]),
                CXR=(2, [2.08e-9, 0.405, 1.11e-11, -0.458, 0, 0])),
     "ne": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
-    "s":  dict(CXI=(4, [-50.0, 13.3, -2.77, 0.243, -7.24e-3, 0]),
-               CXR=(5, [-50.14, 13.3, -2.77, 0.243, -7.24e-3, 3.76])),
+    # S (2026-09-26): both directions resolved by the S+ term (form 9) from
+    # Zhao et al. (2005) Table III (ZHAO2005 below).  Huang et al. (2023)
+    # Table 4 carried the fit of Zhao's TOTAL forward rate and, for S+ + H,
+    # "estimate[d] the reverse rates assuming microscopic balance" (their
+    # sec. 2.4.2) from that total: a reverse that presumes the S+ 2D and 2P
+    # terms populated in LTE.  At nebular densities S+ sits in 4S, and the
+    # reverse from 4S is the detailed balance of the 4S channel alone,
+    # 2.3e-17 at 1e4 K against the 3.7e-13 of the total -- 1.6e4 x.
+    "s":  dict(CXI=(9, [0]*6), CXR=(9, [0]*6)),
     "ar": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),   # Ar+ + H negligible (KF96)
     # Mg (Huang Table 4 A1/A2, KF96): fast forward Mg + H+, endothermic
     # reverse with a 6.91e4-K barrier.
@@ -145,6 +168,96 @@ CX = {
     "cl": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
     "ca": dict(CXI=(0, [0]*6), CXR=(0, [0]*6)),
 }
+
+# Zhao, Stancil, Gu, Liebermann, Funke, Buenker & Kimura (2005, PRA 71,
+# 062713; read) Table III, S(3P) + H+ -> S+(term) + H, quantum-mechanical
+# molecular-orbital close coupling, rate coefficients [cm^3 s^-1] by product
+# term; their "Total" column is the sum.  Terms: the S+ levels of
+# nlevel_s_2.txt they comprise (1: 4S3/2; 2, 3: 2D; 4, 5: 2P) and the
+# CHIANTI term label, for the observed term energy.
+ZHAO2005 = dict(
+    T=[20., 40., 60., 80., 100., 200., 400., 600., 800., 1000., 2000.,
+       4000., 6000., 8000., 1.0e4, 2.0e4, 4.0e4, 6.0e4, 8.0e4, 1.0e5, 2.0e5,
+       4.0e5, 6.0e5, 8.0e5, 1.0e6],
+    terms=[("4S", [1], "3s2 3p3 4S",
+            [3.10e-16, 3.90e-16, 4.09e-16, 4.21e-16, 4.12e-16, 3.71e-16,
+             3.28e-16, 3.07e-16, 2.96e-16, 2.93e-16, 3.11e-16, 4.05e-16,
+             5.35e-16, 6.97e-16, 8.90e-16, 8.10e-15, 7.94e-13, 4.34e-12,
+             1.03e-11, 1.77e-11, 6.30e-11, 1.59e-10, 2.48e-10, 3.40e-10,
+             4.39e-10]),
+           ("2D", [2, 3], "3s2 3p3 2D",
+            [1.87e-15, 4.33e-15, 7.32e-15, 1.02e-14, 1.28e-14, 2.21e-14,
+             3.03e-14, 3.24e-14, 3.33e-14, 3.43e-14, 4.48e-14, 1.23e-13,
+             3.22e-13, 6.64e-13, 1.19e-12, 8.65e-12, 5.95e-11, 1.52e-10,
+             2.69e-10, 4.02e-10, 1.13e-09, 2.53e-09, 3.76e-09, 4.83e-09,
+             5.81e-09]),
+           ("2P", [4, 5], "3s2 3p3 2P",
+            [3.16e-13, 8.51e-13, 1.20e-12, 1.45e-12, 1.66e-12, 2.44e-12,
+             3.28e-12, 3.65e-12, 3.85e-12, 3.98e-12, 4.39e-12, 5.34e-12,
+             7.52e-12, 1.11e-11, 1.63e-11, 6.92e-11, 3.13e-10, 6.97e-10,
+             1.17e-09, 1.68e-09, 4.40e-09, 9.34e-09, 1.35e-08, 1.70e-08,
+             2.01e-08])],
+    # the reactant S(3P): the term's statistical weight, the fine-structure
+    # levels (<= 0.07 eV) being unresolved in the calculation
+    g_react=9.0,
+    # printed totals, for the transcription check in cx_state_rows
+    total=[3.18e-13, 8.56e-13, 1.21e-12, 1.46e-12, 1.67e-12, 2.47e-12,
+           3.31e-12, 3.68e-12, 3.88e-12, 4.01e-12, 4.44e-12, 5.46e-12,
+           7.84e-12, 1.18e-11, 1.75e-11, 7.79e-11, 3.74e-10, 8.53e-10,
+           1.45e-09, 2.10e-09, 5.59e-09, 1.20e-08, 1.75e-08, 2.22e-08,
+           2.64e-08])
+CX_STATE = {("s", 1): ("s_2", ZHAO2005)}
+
+# Transition-1 reverse rates that are the detailed balance of the TOTAL
+# forward rate.  For Mg+ + H that is stated: Kingdon & Ferland (1996) give
+# only Mg + H+, and Huang et al. (2023, sec. 2.4.2) "estimate the reverse
+# rates assuming microscopic balance".  The Si+ + H and Fe+ + H rows of their
+# Table 4 (Glover & Jappsen 2007; Rutherford & Vroom 1972) carry the whole
+# endothermicity as the Boltzmann factor (6.32 and 6.61 T4 against 5.45 and
+# 5.70 eV) and have the same form; how they were derived is not stated.  Where the forward reaction ends mostly in excited terms
+# of the ion (Mg+ 3p and 4s, Allan et al. 1988; Si+ 4P and Fe+ z4F/z4D by
+# the KF96 electronic defects), that reverse presumes those terms populated
+# in LTE, and at nebular densities the ion sits in its ground term: an UPPER
+# BOUND on the reverse from the ground term, which needs the forward rate
+# into that term and is not available.  Sulfur is resolved by term (form 9).
+CX_LTE_UPPER = {"mg": "Huang et al. 2023 from the Kingdon & Ferland 1996 forward",
+                "si": "form of Huang et al. 2023 Table 4",
+                "fe": "form of Huang et al. 2023 Table 4"}
+
+
+def cx_state_rows(el, it, eth):
+    """The CXSTATE rows of a form-9 transition: header (number of terms, of
+    temperatures, reactant weight, dIP = IP(H) - IP(X) [eV], the energy the
+    forward reaction into the product ground term releases), the T grid,
+    and one row per product term: label, its first and last level in the
+    n-level atom, g, observed term energy [eV], rate at each T."""
+    ion, tab = CX_STATE[(el, it)]
+    for i, tot in enumerate(tab["total"]):
+        s = sum(t[3][i] for t in tab["terms"])
+        if abs(s/tot - 1.0) > 0.01:
+            raise ValueError(f"{el} CX_STATE: terms sum to {s:.3e} at "
+                             f"T = {tab['T'][i]}, printed total {tot:.3e}")
+    rows = [f"CXSTATE {len(tab['terms'])} {len(tab['T'])} "
+            f"{tab['g_react']:.1f} {IP_H - eth:.6f}",
+            "CXSTATET " + " ".join(f"{x:.6e}" for x in tab["T"])]
+    for label, levs, term, k in tab["terms"]:
+        g = sum(2.0*j + 1.0 for j in term_J(ion, levs))
+        E = 0.0 if levs == [1] else chianti_term_energy(ion, levs, term)
+        rows.append(f"CXSTATEK {label} {levs[0]} {levs[-1]} {g:.1f} {E:.6f} " +
+                    " ".join(f"{x:.6e}" for x in k))
+    return rows
+
+
+def term_J(ion, levels):
+    """J of the given CHIANTI levels of ion."""
+    el = ion.split("_")[0]
+    path = os.path.join(DBASE, el, ion, f"{ion}.elvlc")
+    J = {}
+    for ln in open(path):
+        t = ln.split()
+        if len(t) >= 6 and t[0].isdigit():
+            J[int(t[0])] = float(t[-3])
+    return [J[i] for i in levels]
 
 # charge exchange with H, higher transitions (recombination direction only;
 # the ionization direction is endothermic and negligible there).  Kingdon &
@@ -205,6 +318,314 @@ BARRAGAN = dict(
         0.88640, 0.89963, 0.90935, 0.92378, 0.93484, 0.94395, 0.95174,
         0.95857, 0.96469, 0.97027, 1.01334, 1.06250, 1.13596, 1.22873,
         1.33023, 1.43343, 1.53502, 1.63390, 1.73000])
+
+
+# ---------------------------------------------------------------------------
+# Charge-exchange heating: the kinetic energy each carried reaction gives the
+# gas (CXHEAT rows).  One rule for every row:
+#
+#     dE_rec = [IP(X^it) - IP(H)] - E_rad     X^(it+1) + H0  -> X^it + H+
+#     dE_ion = [IP(H) - IP(X^it)] - E_rad     X^it     + H+  -> X^(it+1) + H0
+#
+# with IP(X^it) the registry's own threshold ETH of transition it and E_rad the
+# excitation of the product state that leaves the gas as radiation (an allowed
+# or intercombination decay, a forbidden line below its critical density, or
+# the photon of a radiative charge transfer).  A reaction into ground-term
+# products has E_rad = 0; an endothermic one has dE < 0 and takes that energy
+# from the gas.  Kingdon & Ferland (1996, ApJS 106, 205; KF96, read from the
+# published scan) state the convention (Sec. 2: X^q + H -> X^(q-1) + H+ + dE,
+# dE negative for endothermic reactions, Table 4) and that the recombined ion
+# "can and usually will be in an excited state".  KF96 prints no defect for
+# its Table 1 recombination fits; the electronic version of their tables, as
+# Cloudy c25.00 distributes it (data/ctrecombdata.dat column 7,
+# data/ctiondata.dat column 8, read by source/atmdat_char_tran.cpp as
+# CTRecombData[nelem][ion] = X^(ion+1) + H -> X^ion + H+; row mapping
+# verified here by matching the a, b, c, d columns against KF96 Table 1 and
+# this file's CX / CX_HIGH rows), carries one.  Where that defect equals
+# dIP minus a level energy it identifies the product; where it does not, it
+# is used as distributed and the product is recorded as not identified.
+# Level energies are CHIANTI observed energies (.elvlc column 6), averaged
+# over the J levels of the term with weights 2J+1.
+#
+# Entries: ("level", element_ion, [level indices], term) -> E_rad = that term;
+#          ("ground",) -> E_rad = 0;  ("radiative",) -> E_rad = dIP;
+#          ("branch", [(fraction, spec), ...]) -> fraction-weighted E_rad;
+#          ("defect", dE, note) -> dE as given (E_rad = dIP - dE).
+# "split" > 0 marks a pair whose ionization rate includes radiative charge
+# transfer; only its non-radiative part, the detailed-balance reverse of the
+# recombination rate, heats (species_mod::metal_charge_exchange_heating), and
+# the value is that reverse's statistical-weight ratio
+# g(X^(it+1)) g(H0) / [g(X^it) g(H+)].
+IP_H = 13.598434          # eV, NIST ASD
+KB_EV = 8.617333262e-5    # Boltzmann constant [eV/K], CODATA 2018
+HC_EV_CM = 1.239841984e-4  # eV per cm^-1 (CODATA 2018)
+
+CX_HEAT = {
+    # C + H+ -> C+ + H: the carried rate (Huang et al. 2023 Table 4, citing
+    # Stancil et al. 1998, not read) is dominated by radiative charge
+    # transfer; KF96 Sec. 3.1 (read) "assumed simple radiative charge
+    # transfer for the reverse" of C+ + H.  Its non-radiative part, the
+    # detailed-balance reverse of C+ + H -> C(3P) + H+, ends in C+ 2P and
+    # releases the whole dIP; g(C+ 2P) g(H) / [g(C 3P) g(H+)] = 6*2/9.
+    ("c", 1): dict(ion=("ground",), rec=("ground",), split=12.0/9.0,
+                   note="C+H+ radiative except the detailed-balance reverse "
+                        "of C+ + H (KF96 Sec. 3.1); C+ + H -> C(3P) + H+"),
+    ("c", 2): dict(rec=("defect", 4.01,
+                        "KF96 electronic defect (Cloudy c25 ctrecombdata); "
+                        "dIP - 4.01 = 6.775 eV matches no C II term "
+                        "(2s2p2 4P 5.33, 2D 9.29 eV): product not identified"),
+                   note="C2+ + H -> C+ (KF96 Table 1, Butler et al. 1980)"),
+    ("c", 3): dict(rec=("defect", 5.73,
+                        "KF96 electronic defect 5.73 = 2.86 (q-1), the "
+                        "Landau-Zener crossing-window value; product not "
+                        "identified"),
+                   note="C3+ + H -> C2+ (KF96 Table 1, Herrero et al. 1995b)"),
+    # N: N 2D lies 2.38 eV up, above the 0.936 eV defect, so both directions
+    # connect the ground terms by energetics; KF96 Tables 1/3 are one
+    # calculation and its detailed-balance reverse.
+    ("n", 1): dict(ion=("ground",), rec=("ground",),
+                   note="N(4S) + H+ <-> N+(3P) + H, ground terms by "
+                        "energetics (KF96 Tables 1 and 3)"),
+    # N2+ + H: Barragan et al. (2006) Sec. 3 (read): their rate "agree[s]
+    # with the values ... evaluated from the cross sections for populating
+    # N+ (2s2p3 3Do) of Bienstock et al. (1986)"; it decays by the allowed
+    # 1085 A multiplet.  The KF96 electronic defect 4.56 eV is the same term.
+    ("n", 2): dict(rec=("level", "n_2", [7, 8, 9], "2s.2p3 3D"),
+                   note="N2+ + H -> N+(2s2p3 3Do) + H+ (Barragan et al. 2006)"),
+    # O: ground terms both ways; the carried pair encodes exactly this dIP in
+    # its 227 K Boltzmann factor.  Fine-structure branching of O(3P_J)
+    # (Stancil et al. 1999, not read) is not resolved: |E_rad| <= 0.028 eV.
+    ("o", 1): dict(ion=("ground",), rec=("ground",),
+                   note="O(3P) + H+ <-> O+(4S) + H, ground terms "
+                        "(Stancil et al. 1999 via Huang et al. 2023)"),
+    # O2+ + H: Barragan et al. (2006) name no product, but place the avoided
+    # crossing of the quartet subsystem at R0 = 4.57 a.u.; by KF96 eqs.
+    # (3)-(4) that is an asymptotic defect of about 6.5 eV, the O+ 2s2p4 4P
+    # channel (6.65 eV), and the KF96 electronic defect 6.65 eV is the same
+    # term.  4P decays by the allowed 833 A multiplet, above 13.6 eV: that
+    # photon would photoionize hydrogen, a diffuse source not transported.
+    ("o", 2): dict(rec=("level", "o_2", [6, 7, 8], "2s 2p4 4P"),
+                   note="O2+ + H -> O+(2s2p4 4P) + H+ (Barragan et al. 2006; "
+                        "KF96 electronic defect 6.65 eV)"),
+    # 1e-14 cm^3 s^-1 rows: KF96 Sec. 3.1 "When a reaction has no
+    # significant channels, it may proceed via radiative charge transfer.
+    # The rates for these cases have all been set to 1 x 10^-14": the photon
+    # carries dIP.  (Cloudy's table gives these rows -dIP, which its heating
+    # sum books as cooling; that sign is not explained by KF96.)
+    ("ne", 2): dict(rec=("radiative",),
+                    note="Ne2+ + H -> Ne+ + H+ + photon (KF96 1e-14 row)"),
+    # S + H+: Zhao et al. (2005, PRA 71, 062713) Table III (read), S(3P) +
+    # H+ at 1e4 K: S+(4S) 8.90e-16, S+(2D) 1.19e-12, S+(2P) 1.63e-11 cm^3
+    # s^-1.  2D and 2P radiate [S II] 6716/6731 and 4069/4076 below their
+    # critical densities (~1e3 and ~1e6 cm^-3).  The 2P share is 0.978 at
+    # 4000 K and 0.888 at 2e4 K, so E_rad moves by less than 0.05 eV over
+    # 4e3-2e4 K; the 1e4 K branching is used.  The reverse, S+ + H (Huang's
+    # row, exp(-3.76/T4)), starts from the S+ ground term.
+    ("s", 1): dict(ion=("branch", [(8.90e-16, ("ground",)),
+                                   (1.19e-12, ("level", "s_2", [2, 3],
+                                               "3s2 3p3 2D")),
+                                   (1.63e-11, ("level", "s_2", [4, 5],
+                                               "3s2 3p3 2P"))]),
+                   rec=("ground",),
+                   note="S(3P) + H+ -> S+(4S, 2D, 2P) + H (Zhao et al. 2005 "
+                        "Table III, 1e4 K); S+(4S) + H -> S(3P) + H+"),
+    ("s", 2): dict(rec=("radiative",),
+                   note="S2+ + H -> S+ + H+ + photon (KF96 1e-14 row)"),
+    ("s", 3): dict(rec=("defect", 5.73,
+                        "KF96 electronic defect 5.73 = 2.86 (q-1); product "
+                        "not identified"),
+                   note="S3+ + H -> S2+ (KF96 Table 1, Butler & Dalgarno "
+                        "1980a)"),
+    ("ar", 2): dict(rec=("radiative",),
+                    note="Ar2+ + H -> Ar+ + H+ + photon (KF96 1e-14 row)"),
+    ("ar", 3): dict(rec=("defect", 5.73,
+                         "KF96 electronic defect 5.73 = 2.86 (q-1); product "
+                         "not identified"),
+                    note="Ar3+ + H -> Ar2+ (KF96 Table 1, Butler & Dalgarno "
+                         "1980a)"),
+    # Mg + H+ -> Mg+ + H: Allan, Clegg, Dickinson & Flower (1988, MNRAS 235,
+    # 1245; read) Table 1 splits the rate between the 2 1Sigma channel, which
+    # ends in Mg+ 3p 2P (exothermic, dIP - E(3p) = +1.52 eV), and the 4 1Sigma
+    # channel, which ends in Mg+ 4s 2S, "closed for collision energies less
+    # than 2.7 eV" (endothermic by E(4s) - dIP = 2.70 eV; the 4s level cascades
+    # to 3p and both radiate).  At 1e4 K the 4s channel carries 66% of the
+    # rate, so the reaction COOLS the gas by 1.26 eV per event on average;
+    # the KF96 electronic defect (+1.52 eV) is the 3p channel alone.  The
+    # printed "total" at 26000 K (7.954) is a misprint of 1.504 + 6.350 =
+    # 7.854; only the two channel columns are used.  [T K, 2 1Sigma, 4 1Sigma]
+    # in 1e-10 cm^3 s^-1:
+    ("mg", 1): dict(ion=("branch_T", [
+                        (5000., 0.2549, 0.07057), (6000., 0.3430, 0.1856),
+                        (8000., 0.5055, 0.6125), (10000., 0.6419, 1.236),
+                        (12000., 0.7582, 1.955), (14000., 0.8632, 2.696),
+                        (15000., 0.9138, 3.060), (16000., 0.9641, 3.415),
+                        (18000., 1.066, 4.093), (20000., 1.170, 4.723),
+                        (22000., 1.278, 5.307), (24000., 1.390, 5.847),
+                        (26000., 1.504, 6.350), (28000., 1.620, 6.819),
+                        (30000., 1.736, 7.259), (32000., 1.850, 7.673)],
+                        [("level", "mg_2", [2, 3], "3p 2P"),
+                         ("level", "mg_2", [4], "4s 2S")]),
+                    rec=("ground",),
+                    note="Mg(1S) + H+ -> Mg+(3p 2P or 4s 2S) + H, branched by "
+                         "Allan et al. 1988 Table 1 (CXHEATTAB); Mg+(3s) + H "
+                         "-> Mg + H+"),
+    # Mg2+ + H: Mg+ 3p (4.43 eV) lies above the 1.44 eV defect, so the
+    # product is the ground term by energetics.
+    ("mg", 2): dict(rec=("ground",),
+                    note="Mg2+ + H -> Mg+(3s) + H+, ground by energetics"),
+    # Fe + H+: Rutherford & Vroom (1972, JCP 57, 3091; read): "the state of
+    # excitation of the products could not be determined" and the large
+    # cross sections are attributed to near resonance.  DERIVED here: the
+    # near-resonant Fe+ terms are 3d6(5D)4p z4F and z4D (their mean 5.545
+    # eV, 0.15 eV below the defect); they decay by allowed lines to a4F/a4D,
+    # whose [Fe II] lines radiate below their critical densities, so E_rad is
+    # the z4F + z4D mean.  Not a determination of the product.
+    # (the two terms weighted by their statistical weights, 20 and 28)
+    ("fe", 1): dict(ion=("branch", [(20.0, ("level", "fe_2", [50, 51, 52, 53],
+                                            "3d6(5D).4p 4D")),
+                                    (28.0, ("level", "fe_2", [54, 55, 56, 57],
+                                            "3d6(5D).4p 4F"))]),
+                    rec=("ground",),
+                    note="Fe + H+ -> Fe+(z4F, z4D; near-resonant, derived from "
+                         "Rutherford & Vroom 1972) + H; Fe+(a6D) + H -> Fe + H+"),
+    ("fe", 2): dict(rec=("ground",),
+                    note="Fe2+ + H -> Fe+(a6D) + H+ (KF96 Table 1, Neufeld & "
+                         "Dalgarno 1987; electronic defect 2.56 eV = the "
+                         "ground-term dIP to 0.04 eV)"),
+    ("fe", 3): dict(rec=("defect", 6.3,
+                         "KF96 electronic defect 6.3 eV; product not "
+                         "identified"),
+                    note="Fe3+ + H -> Fe2+ (KF96 Table 1, Neufeld 1984)"),
+    # Si + H+: Glover & Jappsen (2007) R42, which Huang et al. cite, takes
+    # the rate from KF96; the KF96 electronic defect 0.12 eV = dIP - E(Si+
+    # 3s3p2 4P), which decays by the Si II] 2335 A intercombination line.
+    ("si", 1): dict(ion=("level", "si_2", [3, 4, 5], "3s.3p2 4P"),
+                    rec=("ground",),
+                    note="Si(3P) + H+ -> Si+(3s3p2 4P) + H (KF96 electronic "
+                         "defect 0.12 eV); Si+(2P) + H -> Si + H+"),
+    ("si", 2): dict(rec=("ground",),
+                    note="Si2+ + H -> Si+(2P) + H+, ground by energetics "
+                         "(Si+ 4P at 5.33 eV > dIP)"),
+    ("si", 3): dict(rec=("defect", 4.23,
+                         "KF96 electronic defect 4.23 eV; dIP - 4.23 = 15.67 "
+                         "eV matches no Si III term: product not identified"),
+                    note="Si3+ + H -> Si2+ (KF96 Table 1, Butler & Dalgarno "
+                         "1980a)"),
+    ("si", 4): dict(rec=("level", "si_4", [6], "4s 2S"),
+                    note="Si4+ + H -> Si3+(4s 2S) + H+ (KF96 electronic "
+                         "defect 7.49 eV = dIP - E(4s))"),
+}
+
+
+def chianti_term_energy(ion, levels, term):
+    """(2J+1)-weighted mean observed energy [eV] of the given level indices of
+    CHIANTI ion (e.g. 'o_2'), checking that each carries the expected term."""
+    el = ion.split("_")[0]
+    path = os.path.join(DBASE, el, ion, f"{ion}.elvlc")
+    want_cfg, want_term = term.rsplit(" ", 1)
+    rows = {}
+    for ln in open(path):
+        t = ln.split()
+        if len(t) < 6 or not t[0].isdigit():
+            continue
+        rows[int(t[0])] = t
+    sw, se = 0.0, 0.0
+    for i in levels:
+        t = rows[i]
+        if t[-4] != want_term[1:] or t[-5] != want_term[0]:
+            raise ValueError(f"{ion} level {i}: term {t[-5]}{t[-4]} is not "
+                             f"{want_term}")
+        have = " ".join(t[1:-5]).replace(".", " ").split()
+        if any(c not in have for c in want_cfg.replace(".", " ").split()):
+            raise ValueError(f"{ion} level {i}: configuration {t[1:-5]} is "
+                             f"not {want_cfg}")
+        g = 2.0*float(t[-3]) + 1.0
+        E = float(t[-2])
+        if E <= 0.0 and i != 1:
+            raise ValueError(f"{ion} level {i}: no observed energy")
+        sw += g
+        se += g*E
+    return se/sw*HC_EV_CM
+
+
+def radiated_energy(spec, dip):
+    """E_rad [eV] of one CX_HEAT entry for a reaction of energy defect dip."""
+    kind = spec[0]
+    if kind == "ground":
+        return 0.0
+    if kind == "radiative":
+        return dip
+    if kind == "level":
+        return chianti_term_energy(spec[1], spec[2], spec[3])
+    if kind == "branch":
+        tot = sum(f for f, _ in spec[1])
+        return sum(f*radiated_energy(s, dip) for f, s in spec[1])/tot
+    if kind == "defect":
+        return dip - spec[1]
+    if kind == "branch_T":
+        # the value at 1e4 K; the temperature table is branch_T_table
+        T, E = branch_T_table(spec, dip)
+        return E[T.index(1.0e4)]
+    raise ValueError(f"unknown CX_HEAT entry {spec}")
+
+
+# Below its first node the table is extended to these temperatures: the
+# second channel is endothermic, so its share of the rate falls there as
+# its threshold Boltzmann factor.  The ratio k_b/k_a of the first node is
+# carried down as r(T) = r(T1) exp[-(E_th/k)(1/T - 1/T1)], with E_th the
+# channel's endothermicity (for Mg + H+ -> Mg+ 4s: 2.70 eV, where Allan et
+# al. state the channel closes), and the first channel held at its node
+# value.  In the table itself the 4s rate rises from 5000 to 6000 K as an
+# activation energy of 2.50 eV, close to that threshold, while the 3p rate
+# rises by 1.35x; holding the 3p rate overstates the 4s share slightly
+# below the node.  An extrapolation, not data: the 4s share is 21.7% at the
+# 5000 K node, 5.5% at 4000 K and 0.4% at 3000 K, so the defect approaches
+# the 3p channel's +1.52 eV.
+BRANCH_T_EXTEND = (2000.0, 3000.0, 4000.0)
+
+
+def branch_T_table(spec, dip):
+    """(T, E_rad(T)) of a two-channel entry branched by a rate table,
+    extended below the first node by BRANCH_T_EXTEND."""
+    ea = radiated_energy(spec[2][0], dip)
+    eb = radiated_energy(spec[2][1], dip)
+    t1, ka1, kb1 = spec[1][0]
+    e_th = eb - dip                        # endothermicity of channel b [eV]
+    rows = [(t, 1.0, kb1/ka1*math.exp(-e_th/(KB_EV*t) + e_th/(KB_EV*t1)))
+            for t in BRANCH_T_EXTEND if t < t1] + list(spec[1])
+    T = [t for t, _, _ in rows]
+    E = [(ka*ea + kb*eb)/(ka + kb) for _, ka, kb in rows]
+    return T, E
+
+
+def charge_exchange_heat_row(el, it, eth, has_ion, has_rec):
+    """CXHEAT dE_ion dE_rec g_split [eV, eV, -] of transition it, and a
+    comment line naming the product states.  Every carried direction must
+    have an entry."""
+    entry = CX_HEAT.get((el, it), {})
+    for direction, carried in (("ion", has_ion), ("rec", has_rec)):
+        if carried and direction not in entry:
+            raise ValueError(f"{el} transition {it}: carried {direction} "
+                             "charge exchange has no CX_HEAT entry")
+        if not carried and direction in entry:
+            raise ValueError(f"{el} transition {it}: CX_HEAT entry for a "
+                             f"{direction} direction that carries no rate")
+    dip_rec = eth - IP_H          # released by X^(it+1) + H -> X^it + H+
+    dE_ion = dE_rec = 0.0
+    if has_ion:
+        dE_ion = -dip_rec - radiated_energy(entry["ion"], -dip_rec)
+    if has_rec:
+        dE_rec = dip_rec - radiated_energy(entry["rec"], dip_rec)
+    table = None
+    if has_ion and entry.get("ion", ("",))[0] == "branch_T":
+        T, E = branch_T_table(entry["ion"], -dip_rec)
+        table = [(t, -dip_rec - e) for t, e in zip(T, E)]
+    split = entry.get("split", 0.0)
+    if split > 0.0 and not (has_ion and has_rec and dE_ion > 0.0
+                            and abs(dE_ion + dE_rec) < 1e-12):
+        raise ValueError(f"{el} transition {it}: split needs an exothermic "
+                         "ionization and its ground-channel reverse")
+    return dE_ion, dE_rec, split, entry.get("note", ""), table
 
 
 def parse_badnell_rr():
@@ -396,7 +817,24 @@ def main():
                      "actual T);\n")
             fh.write("#   8 tabulated: CXRTAB n T_1..T_n [K] k_1..k_n [cm^3 s^-1], "
                      "log-log in T, T clamped to the table (Barragan et al. "
-                     "2006 for N2+ and O2+))\n")
+                     "2006 for N2+ and O2+);\n")
+            fh.write("#   9 resolved by product term (sulfur, Zhao et al. 2005 "
+                     "Table III): CXSTATE nterm nT g_react dIP[eV]; CXSTATET "
+                     "T_1..T_n; CXSTATEK label lev_lo lev_hi g E[eV] k_1..k_n "
+                     "(forward rate into that term).  Forward = sum over terms; "
+                     "reverse = sum over terms of pop_j(T, n_e) k_j g_react/(2 g_j) "
+                     "exp(-(dIP - E_j)/kT), pop_j from the n-level atom of the "
+                     "product ion)\n")
+            fh.write("# CXHEAT: dE_ion dE_rec g_split -- kinetic energy [eV] given "
+                     "to the gas by one X^it + H+ -> X^(it+1) + H event (dE_ion) "
+                     "and one X^(it+1) + H -> X^it + H+ event (dE_rec),\n")
+            fh.write("#   dE = dIP - E_rad (E_rad: product excitation that "
+                     "radiates, or the photon of radiative charge transfer; "
+                     "< 0 endothermic); 0 where no rate is carried;\n")
+            fh.write("#   g_split > 0: the ionization rate includes radiative "
+                     "charge transfer and only its non-radiative part, the "
+                     "detailed-balance reverse of the recombination rate with "
+                     "this statistical-weight ratio, heats\n")
             fh.write(f"# generated by tools/fitting/make_element_data.py on {DATE}\n")
             fh.write(f"ELEMENT {el} {Z} {nstage}\n")
             for i in range(1, nstage):
@@ -449,10 +887,20 @@ def main():
                         fh.write("DR2 " +
                                  " ".join(f"{x:.6e}" for x in dr[1]) + "\n")
                 if i == 1:
+                    if el in CX_LTE_UPPER:
+                        fh.write(f"# CXR: detailed balance of the total forward "
+                                 f"rate ({CX_LTE_UPPER[el]}), i.e. the ion's "
+                                 "excited terms in LTE -- an upper bound on the "
+                                 "reverse from the ground term at nebular "
+                                 "densities (no forward rate into that term is "
+                                 "available)\n")
                     for key in ("CXI", "CXR"):
                         form, coef = CX[el][key]
                         fh.write(f"{key} {form} " +
                                  " ".join(f"{x:.6e}" for x in coef) + "\n")
+                    if CX[el]["CXI"][0] == 9:
+                        for row in cx_state_rows(el, i, ETH[(Z, ne_ion)]):
+                            fh.write(row + "\n")
                 elif (el, i) in CX_HIGH:
                     form, coef = CX_HIGH[(el, i)]
                     fh.write("CXI 0 0 0 0 0 0 0\n")
@@ -468,6 +916,23 @@ def main():
                                  " ".join(f"{x:.6e}" for x in coef) + "\n")
                 else:
                     fh.write("CXI 0 0 0 0 0 0 0\nCXR 0 0 0 0 0 0 0\n")
+                #--- charge-exchange heating of the reactions just written
+                if i == 1:
+                    has_ion = CX[el]["CXI"][0] > 0
+                    has_rec = CX[el]["CXR"][0] > 0
+                else:
+                    has_ion = False
+                    has_rec = (el, i) in CX_HIGH
+                dE_ion, dE_rec, split, note, table = charge_exchange_heat_row(
+                    el, i, ETH[(Z, ne_ion)], has_ion, has_rec)
+                if note:
+                    fh.write(f"# CXHEAT: {note}\n")
+                fh.write(f"CXHEAT {dE_ion:.6f} {dE_rec:.6f} {split:.6f}\n")
+                if table:
+                    #--- dE_ion(T) of a branched ionization; linear in T,
+                    #--- held at the end values outside the table
+                    fh.write(f"CXHEATTAB {len(table)} " + " ".join(
+                        f"{t:.1f} {e:.6f}" for t, e in table) + "\n")
         print(f"wrote {os.path.relpath(path)}")
 
 

@@ -48,7 +48,7 @@ module dust_emis_transport_mod
 ! thin to its own infrared (tau_IR ~ 1e-3), so the reabsorbed fraction f is
 ! small and successive passes change the total by f, f^2, ...: two passes
 ! reach 1e-6 there.  Optically thick models need more, which is what the
-! reported per-pass change measures.
+! reported change measures of each pass.
 !
 ! Documented approximation: the reabsorbed infrared enters the EMITTED POWER
 ! of each leaf (exactly, through Heat_dust) but not the local mean intensity

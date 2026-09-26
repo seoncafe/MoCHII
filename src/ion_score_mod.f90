@@ -105,8 +105,10 @@ contains
          call species_rate_path_setup(nleaf)
        end block
     end if
-    !--- He I 2^3S photoionization rate Phi_3 (par%hei_metastable)
-    if (par%hei_metastable) then
+    !--- He I 2^3S photoionization rate Phi_3 and its heating (the output
+    !--- diagnostic par%hei_metastable and the coupling
+    !--- par%hei_metastable_coupling)
+    if (par%hei_metastable .or. par%hei_metastable_coupling) then
        block
          use hei_metastable_mod, only : hei_metastable_path_setup
          call hei_metastable_path_setup(nleaf)
@@ -138,7 +140,7 @@ contains
          call species_rate_path_reset()
        end block
     end if
-    if (par%hei_metastable) then
+    if (par%hei_metastable .or. par%hei_metastable_coupling) then
        block
          use hei_metastable_mod, only : hei_metastable_path_reset
          call hei_metastable_path_reset()
@@ -147,7 +149,7 @@ contains
   end subroutine ion_score_reset
 
   subroutine score_ion_path(photon, il, path_lum)
-    use jtally_mod,       only : jt_ion
+    use jtally_mod,       only : jt_ion, jt_ion_on
     use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
                                  dust_ir_absorb_path
     implicit none
@@ -169,7 +171,7 @@ contains
        return
     end if
     inu = photon%inu
-    jt_ion(inu,il) = jt_ion(inu,il) + path_lum
+    if (jt_ion_on) jt_ion(inu,il) = jt_ion(inu,il) + path_lum
     !--- EUV grain-heating integral: accumulate the packet's dust absorption
     !--- cross section, evaluated at its exact energy.
     if (allocated(dust_abs_path)) &
@@ -223,7 +225,7 @@ contains
               photon%ionphys%n_metal, il, path_lum)
        end block
     end if
-    if (par%hei_metastable) then
+    if (par%hei_metastable .or. par%hei_metastable_coupling) then
        block
          use hei_metastable_mod, only : hei_metastable_path_score
          call hei_metastable_path_score(il, photon%ionphys%energy_eV, path_lum)
@@ -294,7 +296,7 @@ contains
          call species_rate_path_reduce()
        end block
     end if
-    if (par%hei_metastable) then
+    if (par%hei_metastable .or. par%hei_metastable_coupling) then
        block
          use hei_metastable_mod, only : hei_metastable_path_reduce
          call hei_metastable_path_reduce()

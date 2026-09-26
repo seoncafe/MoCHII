@@ -487,7 +487,7 @@ contains
 
   !=========================================================================
   ! Incremental Amanatides-Woo walks for the Cartesian (car) grid
-  ! (par%car_walk = 'dda'): per-ray tMax/tDelta per axis, the inner loop
+  ! (par%car_walk = 'dda'): tMax/tDelta for each ray along each axis, the inner loop
   ! advances by comparisons and additions only — no cell-geometry reads.
   ! The tally expressions are identical to the octree walks; only the
   ! step computation differs (results agree statistically, not bitwise).

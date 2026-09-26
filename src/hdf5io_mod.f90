@@ -1224,7 +1224,7 @@ contains
     !    string_dtype).  Reading vlen into a Fortran character buffer via
     !    h5aread_f returns garbage on most Fortran/HDF5 bindings, so we
     !    treat vlen as unreadable here and let the caller treat the value
-    !    as missing.  External pipelines should write fixed-length strings
+    !    as missing.  External writers should write fixed-length strings
     !    (h5py: dtype=h5py.string_dtype(encoding='ascii', length=N) ).
     atype = -1_hid_t
     tid   = -1_hid_t

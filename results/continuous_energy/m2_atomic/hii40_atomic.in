@@ -33,8 +33,7 @@
  par%gas_tol         = 5.0e-3
  par%gas_tol_te      = 1.0e-2
  par%ion_relax       = 1.0
- par%case_ab         = 'A'
- par%diffuse_field   = .true.
+ par%recombination_continuum = 'transported'
 !--- Pinned rather than left to the default: a frozen production input must
 !--- state the physics it was run with.  The residual experiments REPLACE
 !--- this line, so it must be present exactly once.
@@ -60,4 +59,10 @@
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
  par%out_file        = 'hii40_atomic.h5'
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_diffuse = .false.   ! pinned: this input predates heii_diffuse following the transported continuum
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
 /

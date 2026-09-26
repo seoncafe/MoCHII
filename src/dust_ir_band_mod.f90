@@ -6,7 +6,7 @@ module dust_ir_band_mod
 ! every gas photoionization threshold (the lowest in the registry is
 ! Ca I at 6.11 eV, H I at 13.598 eV).  A packet of that band therefore has
 ! sigma_HI = sigma_HeI = sigma_HeII = 0 and no metal cross section at all,
-! and its ONLY interaction is with grains.  The transport machinery is shared
+! and its ONLY interaction is with grains.  The transport code is shared
 ! with the ionizing band (transport_ion_packet evaluates every cross section
 ! at photon%energy_eV, so the vanishing gas terms drop out by themselves),
 ! but the ESTIMATORS are not: an infrared segment carries no photoionization,

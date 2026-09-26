@@ -62,7 +62,7 @@ def load(rates_file):
 
 
 def J_band(jnu, ebin, debin, lo, hi=None):
-    """Per-leaf band-integrated J over lo<=E(<hi) [erg/s/cm^2/sr]."""
+    """Band-integrated J in each leaf over lo<=E(<hi) [erg/s/cm^2/sr]."""
     dnu = debin * EV_TO_HZ
     m = ebin >= lo
     if hi is not None:
@@ -154,9 +154,9 @@ def g_le_equivalence():
     shape_scatter = ratio.std() / ratio.mean()
     print(f"  populated ionizing bins       = {npop} of {nion}")
     print(f"  median |le - shape| / shape   = {med*100:.3f}%")
-    print(f"  max    per-bin rel diff       = {mx*100:.3f}%")
+    print(f"  max    rel diff over bins     = {mx*100:.3f}%")
     print(f"  band-integrated ratio pe/tt   = {tot:.5f}")
-    print(f"  per-bin ratio scatter (shape) = {shape_scatter*100:.4f}%")
+    print(f"  ratio scatter over bins (shape) = {shape_scatter*100:.4f}%")
     dl = grep(os.path.join(HERE, "st_per_ev.log"), r"L_ion \(derived\)")
     for ln in dl:
         print("  log:", ln.strip())
@@ -164,7 +164,7 @@ def g_le_equivalence():
     dok = len(derived) == 2 and all(abs(d/1.0e37 - 1.0) < 0.02 for d in derived)
     ok = (mx < 0.5e-2) and (abs(tot-1.0) < 5e-3) and (shape_scatter < 1e-3) and dok
     print(f"  --> {'PASS' if ok else 'FAIL'} "
-          f"(per-bin<0.5%, |band-1|<0.5%, shape-scatter<0.1%, derived~1e37)")
+          f"(max over bins<0.5%, |band-1|<0.5%, shape-scatter<0.1%, derived~1e37)")
     return ok
 
 
@@ -179,10 +179,10 @@ def g_lambda_conv(tag, testfile):
     med, mx, tot, npop, nion = compare_bins(vol_spectrum(jt), vol_spectrum(jle), eb)
     print(f"  populated ionizing bins       = {npop} of {nion}")
     print(f"  median |{tag} - per_ev| / per_ev = {med*100:.3f}%")
-    print(f"  max    per-bin rel diff       = {mx*100:.3f}%")
+    print(f"  max    rel diff over bins     = {mx*100:.3f}%")
     print(f"  band-integrated ratio         = {tot:.5f}")
     ok = (mx < 0.5e-2) and (abs(tot-1.0) < 5e-3)
-    print(f"  --> {'PASS' if ok else 'FAIL'} (max per-bin < 0.5%, |band-1| < 0.5%)")
+    print(f"  --> {'PASS' if ok else 'FAIL'} (max over bins < 0.5%, |band-1| < 0.5%)")
     return ok
 
 
@@ -197,7 +197,7 @@ def g_rescale():
     med, mx, tot, npop, nion = compare_bins(vol_spectrum(jl), vol_spectrum(js), eb)
     print(f"  populated ionizing bins       = {npop} of {nion}")
     print(f"  median |per_ev - shape| / shape = {med*100:.4f}%")
-    print(f"  max    per-bin rel diff       = {mx*100:.4f}%")
+    print(f"  max    rel diff over bins     = {mx*100:.4f}%")
     print(f"  band-integrated ratio         = {tot:.6f}")
     note = grep(os.path.join(HERE, "st_per_ev_rescale.log"),
                 r"rescaled from file integral")
@@ -206,7 +206,7 @@ def g_rescale():
     nok = len(note) >= 2
     ok = (mx < 1e-3) and (abs(tot-1.0) < 5e-4) and nok
     print(f"  --> {'PASS' if ok else 'FAIL'} "
-          f"(per-bin < 0.1%, |band-1| < 0.05%, rescale NOTE x2 logged)")
+          f"(max over bins < 0.1%, |band-1| < 0.05%, rescale NOTE x2 logged)")
     return ok
 
 

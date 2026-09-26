@@ -25,7 +25,7 @@
  par%conv_crit     = 'vol'
  par%gas_tol       = 3.0e-2
  par%gas_tol_te    = 3.5e-2
- par%case_ab       = 'B'
+ par%recombination_continuum = 'transported'
 
  par%solve_te      = .true.
  par%te_min        = 3.0e3
@@ -56,4 +56,9 @@
  par%abund_O  = 3.3e-4   ! pinned: this input predates zero default abundances
  par%abund_Ne = 5.0e-5   ! pinned: this input predates zero default abundances
  par%abund_S  = 9.0e-6   ! pinned: this input predates zero default abundances
+ par%charge_exchange_heating = .true.
+ par%hei_metastable_coupling = .true.
+ par%twophoton_quenching = 'colliders'
+ par%hei_diffuse = .true.
+ par%heii_diffuse = .true.
 /

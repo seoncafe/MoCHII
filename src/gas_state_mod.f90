@@ -10,6 +10,19 @@ module gas_state_mod
 ! else from par%xHI_init etc.); when gas_niter = 0 it is never updated —
 ! no equilibrium solve, no opacity feedback.  gas_state_setup is called
 ! from grid_create_amr before the transient read arrays are deallocated.
+!
+! Where the cell solves run.  The state is one node-shared copy per node;
+! the per-leaf ionization/thermal solves are divided over ALL ranks of
+! MPI_COMM_WORLD, rank p taking the leaves gas_leaf_owner_first() +
+! k gas_leaf_owner_stride() (cyclic, as the SEDust solve and the dust
+! emission launch divide theirs), so adding nodes divides the work.  Each
+! rank fills its own leaves of private arrays, zero elsewhere, and
+! gas_state_publish sums them over MPI_COMM_WORLD: every leaf has exactly one
+! nonzero contribution, so the sum is exact and the same on every rank
+! whatever the reduction order, and each node's rank 0 then writes it into
+! that node's shared copy.  Until 2026-09-26 the thermal solve was divided
+! over the ranks of one node only, every node repeating all leaves, and the
+! fixed-Te solve ran on each node's rank 0 alone.
 !---------------------------------------------------------------------------
   use define
   use memory_mod, only : create_shared_mem, get_window
@@ -18,6 +31,7 @@ module gas_state_mod
   private
 
   public :: gas_state_setup, gas_state_recreate, gas_state_sync
+  public :: gas_state_publish, gas_leaf_owner_first, gas_leaf_owner_stride
   public :: gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_Te, gas_nleaf
 
   real(kind=wp), pointer :: gas_nH(:)    => null()  ! H number density [cm^-3]
@@ -117,6 +131,54 @@ contains
     end if
     call gas_state_sync()
   end subroutine gas_state_recreate
+
+  !--- the first leaf this rank solves, and the step to its next one
+  integer function gas_leaf_owner_first() result(i)
+    i = mpar%p_rank + 1
+  end function gas_leaf_owner_first
+
+  integer function gas_leaf_owner_stride() result(i)
+    i = mpar%nproc
+  end function gas_leaf_owner_stride
+
+  !=========================================================================
+  ! Sum the ranks' solved leaves over MPI_COMM_WORLD (each array holds this
+  ! rank's own leaves, zero elsewhere) and write the result into every
+  ! node's shared state.  te_new is absent for the fixed-T_e solve, which
+  ! leaves T_e as it is.  The arrays come back holding the full state.
+  !=========================================================================
+  subroutine gas_state_publish(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
+    real(kind=wp), intent(inout)           :: xHI_new(:), xHeI_new(:), &
+                                              xHeII_new(:), ne_new(:)
+    real(kind=wp), intent(inout), optional :: te_new(:)
+    call sum_over_world(xHI_new)
+    call sum_over_world(xHeI_new)
+    call sum_over_world(xHeII_new)
+    call sum_over_world(ne_new)
+    if (present(te_new)) call sum_over_world(te_new)
+    if (mpar%h_rank == 0) then
+       gas_xHI(1:gas_nleaf)   = xHI_new(1:gas_nleaf)
+       gas_xHeI(1:gas_nleaf)  = xHeI_new(1:gas_nleaf)
+       gas_xHeII(1:gas_nleaf) = xHeII_new(1:gas_nleaf)
+       gas_ne(1:gas_nleaf)    = ne_new(1:gas_nleaf)
+       if (present(te_new)) gas_Te(1:gas_nleaf) = te_new(1:gas_nleaf)
+    end if
+    call gas_state_sync()
+  end subroutine gas_state_publish
+
+  !--- in-place MPI_SUM over MPI_COMM_WORLD, in chunks of at most 1e8 values
+  subroutine sum_over_world(a)
+    real(kind=wp), intent(inout) :: a(:)
+    integer, parameter :: NCHUNK = 100000000
+    integer :: i0, n, ierr
+    i0 = 1
+    do while (i0 <= size(a))
+       n = min(NCHUNK, size(a) - i0 + 1)
+       call MPI_ALLREDUCE(MPI_IN_PLACE, a(i0:i0+n-1), n, MPI_DOUBLE_PRECISION, &
+                          MPI_SUM, MPI_COMM_WORLD, ierr)
+       i0 = i0 + n
+    end do
+  end subroutine sum_over_world
 
   !=========================================================================
   ! Publish direct loads/stores to the node-shared gas-state windows.

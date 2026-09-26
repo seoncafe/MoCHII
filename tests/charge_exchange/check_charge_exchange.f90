@@ -107,10 +107,13 @@ program check_charge_exchange
   !--- the balance residual below is formed with the metal terms alone, so
   !--- the He-H exchange (gated in check_helium_charge_exchange) is held off
   par%helium_charge_exchange = .false.
-  par%case_ab        = 'B'
+  !--- and so is the Penning term of the He I 2^3S coupling
+  !--- (gated in tests/hei_metastable_coupling)
+  par%hei_metastable_coupling = .false.
+  par%recombination_continuum = 'on_the_spot'
   par%abund_He       = 0.1_wp
   par%ci_model       = 'voronov'
-  par%recomb_model   = 'badnell_milne'
+  par%recomb_model   = 'detailed_balance'
   !--- the n-level (T, n_e) cooling tables play no part here and are built by
   !--- cooling_setup, which this gate does not call.
   par%cooling_model  = 'low_density'
@@ -123,7 +126,7 @@ program check_charge_exchange
   call species_setup(1)
 
   ok    = .true.
-  caseA = trim(par%case_ab) == 'A'
+  caseA = trim(par%recombination_continuum) /= 'on_the_spot'
 
   !--- 1: the reaction census the two sums run over.
   ncxi = 0;  ncxr = 0
@@ -175,7 +178,7 @@ program check_charge_exchange
      do ie = 1, n_elements
         call species_fractions(ie, 1, T, ne, nHI, nHII, frac)
         do it = 1, elem_nstage(ie)-1
-           call species_cx_coefficients(ie, it, T, k_cxi, k_cxr)
+           call species_cx_coefficients(ie, it, T, k_cxi, k_cxr, ne)
            !--- X^it + H+ -> X^(it+1) + H0
            if (k_cxi > 0.0_wp) then
               rate_M = k_cxi*elem_abund(ie)*nH*frac(it)*nHII

@@ -29,9 +29,9 @@
  par%gas_niter     = 40
  par%conv_crit     = 'vol'
  par%gas_tol       = 5.0e-3
- par%case_ab       = 'B'
+ par%recombination_continuum = 'transported'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]
- par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%solve_te      = .false.   ! Te held at te_fixed (solve_te defaults to .true.)
 
  par%dust_density_law = 'global_dgr'
  par%ion_add_dust    = .true.       ! EUV dust absorption + grain heating
@@ -45,4 +45,9 @@
  par%file_format     = 'hdf5'
  par%out_file        = 'dusty_nebula.h5'
  par%launch_sequence = 'sobol'   ! better with no_photons = 2^m, e.g. 2^21 = 2097152 (a Sobol set of 2^m points fills most evenly)
+ par%charge_exchange_heating = .true.
+ par%hei_metastable_coupling = .true.
+ par%twophoton_quenching = 'colliders'
+ par%hei_diffuse = .true.
+ par%heii_diffuse = .true.
 /

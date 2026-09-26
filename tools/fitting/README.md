@@ -1,6 +1,6 @@
 # tools/fitting
 
-Python pipeline: CHIANTI v11.0.2 (`~/RT_Codes/CHIANTI/dbase`) -> rate/cooling
+Python fitting scripts: CHIANTI v11.0.2 (`~/RT_Codes/CHIANTI/dbase`) -> rate/cooling
 fits. Seeded from EXHALE `cooling_data` (`chianti_cooling.py`). The auditable
 source of every coefficient in `data/atomic/` — Fortran never parses CHIANTI
 at runtime.
@@ -14,6 +14,13 @@ at runtime.
 | `fit_nlevel.py` | `data/atomic/nlevel_<ion>.txt` | Tier-2 n-level data: level energies/weights, A-values, Upsilon(T) as Chebyshev fits in Burgess-Tully scaled space; for output-time diagnostics |
 | `make_cooling_table.py` | `data/atomic/cooling_fit_parameters.txt` | collects the Tier-1 coefficient files into one listing |
 | `fit_alpha1_milne.py` | `src/recomb_mod.f90` `alpha1_*` coefficients | ground-level alpha_1 from the Milne relation applied to the transport photoionization cross sections (the same integral the diffuse ground continua are sampled from), fitted to the Mao & Kaastra (2016) form over 1e3-1e5 K; agrees with Cloudy c25.00's level-resolved values to <= 0.4%. Gate `tests/milne/check_alpha1.f90` |
+| `make_hydrogenic_recombination.py` | `src/hydrogenic_recombination_data.inc` | H II -> H I and He III -> He II from one zero-density nl-resolved radiative cascade on Storey & Hummer's (1991) CPC routines ACOFZ1/PIXZ1 (compiled from `~/RT_Codes/Storey_Hummer/CPC_code/abzs_v1_0`, unmodified): alpha_B, the 2s share in case A and case B, and the He II case-A Lyman-line shares, log T = 1.5-7.0; validated against the SH95 alpha-tot, O&F Table 4.11 and the SH95 H-beta emissivities (printed). Replaces `make_heii_cascade.py` (2026-09-26). Gate `tests/hydrogenic_recombination/` |
+| `make_element_data.py` | `data/atomic/element_<el>.txt` | photoionization (VFKY96 outer shell, VY95 subshells as `phfit2`), Badnell RR+DR (CHIANTI forms outside Badnell's coverage), collisional ionization, charge exchange (with the product-term form for sulfur) and its heat, for the 11 registry elements |
+| `make_hcoll_fine_structure.py` | `data/atomic/hcoll_<el>_<stage>.txt` | atomic-hydrogen impact rates on the C I, C II and O I ground terms, added to the n-level statistical equilibrium |
+| `make_h2s_collisional_mixing.py` | `data/atomic/h_2s_2p_mixing.txt` | collisional H(2s) -> H(2p) rate coefficients by collider (e, p, He+, He2+) and A_2s, for the H I two-photon quenching |
+| `make_hei_lines.py` | `data/atomic/hei_porter_caseB.txt` | He I case-B collisional-radiative line emissivities of Porter et al. (2012, 2013) |
+| `make_hei_metastable.py` | `data/atomic/hei_metastable.txt` | He I 2^3S coefficients (every term of its balance except the recombination source) |
+| `make_sh95_lines.py` | `data/atomic/sh95_{hi,heii}_case{A,B}.txt` | Storey & Hummer (1995) H I and He II recombination-line emissivities from the CDS files |
 | `verify_nlevel_pyneb.py` | (report) | end-to-end check: reads the fitted files, solves statistical equilibrium as the Fortran will, compares diagnostic ratios against PyNeb |
 
 ## Current ion set (2026-07-26)

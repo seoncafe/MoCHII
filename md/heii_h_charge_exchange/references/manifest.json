@@ -1,0 +1,224 @@
+{
+ "organized_on": "2026-09-25",
+ "description": "External published sources preserved without changes for comparison with the original publications. Bibliographic metadata was retrieved through NASA ADS during the preceding review.",
+ "papers": [
+  {
+   "file": "Zygelman_1989_PhRvA_40_2340.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Zygelman_1989PhysRevA.40.2340.pdf",
+   "sha256": "dff45f005b05b3e884caa5b22423eff9c617635d9ac6b754a956fcd8f39f6234",
+   "bytes": 279097,
+   "pages": 6,
+   "bibliography": {
+    "bibcode": "1989PhRvA..40.2340Z",
+    "title": [
+     "Radiative and nonradiative charge transfer in He<SUP> + </SUP>+H collisions at low energy"
+    ],
+    "doi": [
+     "10.1103/PhysRevA.40.2340"
+    ],
+    "author": [
+     "Zygelman, B.",
+     "Dalgarno, A.",
+     "Kimura, M.",
+     "Lane, N. F."
+    ],
+    "year": "1989"
+   }
+  },
+  {
+   "file": "Kimura_1993_ApJ_405_801.pdf",
+   "original_local_path": "/tmp/mochii_heh_review/Kimura_1993.pdf",
+   "sha256": "82838442b07873c2a61358bf091cc25cb9b8347e548eb01af85dd860cee6439f",
+   "bytes": 52010,
+   "pages": 2,
+   "bibliography": {
+    "bibcode": "1993ApJ...405..801K",
+    "title": [
+     "Rate Coefficients for Momentum Transfer, Charge Transfer, and Radiative Association Processes in Collisions of H + with He below 10 5 K"
+    ],
+    "doi": [
+     "10.1086/172410"
+    ],
+    "author": [
+     "Kimura, M.",
+     "Lane, N. F.",
+     "Dalgarno, A.",
+     "Dixson, R. G."
+    ],
+    "year": "1993"
+   },
+   "retrieved_from": "https://articles.adsabs.harvard.edu/pdf/1993ApJ...405..801K"
+  },
+  {
+   "file": "Kingdon_Ferland_1996_ApJS_106_205.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Kingdon_1996_ApJS_106_205.pdf",
+   "sha256": "9de90ffa22b42fe59aea23b42c4fd2daa37a5efb0ff89d80355d5e11a227cf26",
+   "bytes": 703679,
+   "pages": 7,
+   "bibliography": {
+    "bibcode": "1996ApJS..106..205K",
+    "title": [
+     "Rate Coefficients for Charge Transfer between Hydrogen and the First 30 Elements"
+    ],
+    "doi": [
+     "10.1086/192335"
+    ],
+    "author": [
+     "Kingdon, J. B.",
+     "Ferland, G. J."
+    ],
+    "year": "1996"
+   }
+  },
+  {
+   "file": "Stancil_Zygelman_1996_ApJ_472_102.pdf",
+   "original_local_path": "/tmp/mochii_heh_review/Stancil_1996.pdf",
+   "sha256": "b938d004a3494971efe2ff441f3d3a2964eda7bb07745b67b9c2de9222a80e75",
+   "bytes": 89124,
+   "pages": 6,
+   "bibliography": {
+    "bibcode": "1996ApJ...472..102S",
+    "title": [
+     "Radiative Charge Transfer in Collisions of Li with H +"
+    ],
+    "doi": [
+     "10.1086/178044"
+    ],
+    "author": [
+     "Stancil, P. C.",
+     "Zygelman, B."
+    ],
+    "year": "1996"
+   },
+   "retrieved_from": "https://adsabs.harvard.edu/pdf/1996ApJ...472..102S"
+  },
+  {
+   "file": "Stancil_Lepp_Dalgarno_1998_ApJ_509_1.pdf",
+   "original_local_path": "/tmp/claude-1000/-nfs-mocafe-kiseon-MoCHII-MoCHII-v1-00/1df24dc9-bf71-4e75-858c-c9409df0af5a/scratchpad/papers/sld98.pdf",
+   "sha256": "7eb5908038ef737b6d1a60c81d892c98a511acd2e00b42db3301fb7abae1b931",
+   "bytes": 1174165,
+   "pages": 10,
+   "bibliography": {
+    "bibcode": "1998ApJ...509....1S",
+    "title": [
+     "The Deuterium Chemistry of the Early Universe"
+    ],
+    "doi": [
+     "10.1086/306473"
+    ]
+   }
+  },
+  {
+   "file": "Glover_Jappsen_2007_ApJ_666_1.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Glover_2007_ApJ_666_1.pdf",
+   "sha256": "283fcdc6286aa02a8cd4bd6e1d2a4f19ae62f767193a699c1f44447e745d43e5",
+   "bytes": 320929,
+   "pages": 19,
+   "bibliography": {
+    "bibcode": "2007ApJ...666....1G",
+    "title": [
+     "Star Formation at Very Low Metallicity. I. Chemistry and Cooling at Low Densities"
+    ],
+    "doi": [
+     "10.1086/519445",
+     "10.48550/arXiv.0705.0182"
+    ]
+   }
+  },
+  {
+   "file": "Loreau_2014_JPhB_47_135204.pdf",
+   "original_local_path": "/tmp/mochii_heh_review/Loreau_2014.pdf",
+   "sha256": "ef24055211c73a8f05e258fcf4a7c9b26ccfd9acdd59f623feb6d7b19025df52",
+   "bytes": 214559,
+   "pages": 8,
+   "bibliography": {
+    "bibcode": "2014JPhB...47m5204L",
+    "title": [
+     "Charge transfer in proton-helium collisions from low to high energy"
+    ],
+    "doi": [
+     "10.1088/0953-4075/47/13/135204"
+    ]
+   },
+   "retrieved_from": "https://dipot.ulb.ac.be/dspace/bitstream/2013/175151/1/JPhysB_47_135204.pdf"
+  },
+  {
+   "file": "Loreau_2018_JPhB_51_085205.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Loreau_2018JPB.pdf",
+   "sha256": "3239f4001bc1ac88e2ae93f9c88803a31f486a83630bfc5eb7c7d56596da2df2",
+   "bytes": 778964,
+   "pages": 9,
+   "bibliography": {
+    "bibcode": "2018JPhB...51h5205L",
+    "title": [
+     "Charge transfer in low-energy collisions of H with He<SUP>+</SUP> and H<SUP>+</SUP> with He in excited states"
+    ],
+    "doi": [
+     "10.1088/1361-6455/aab425"
+    ]
+   }
+  },
+  {
+   "file": "Del_Zanna_2020_ApJ_898_72.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Del_Zanna_2020_ApJ_898_72.pdf",
+   "sha256": "1e0f59d2bd73c474ac7b17b981a43cbfe056f5269e23d10a8cce35fbcfcfccb2",
+   "bytes": 1099519,
+   "pages": 15,
+   "bibliography": {
+    "bibcode": "2020ApJ...898...72D",
+    "title": [
+     "Helium Line Emissivities in the Solar Corona"
+    ],
+    "doi": [
+     "10.3847/1538-4357/ab9d84",
+     "10.48550/arXiv.2006.08971"
+    ]
+   }
+  },
+  {
+   "file": "Courtney_2021_ApJ_919_70.pdf",
+   "original_local_path": "/home/kiseon/RT_Codes/ExoAtmosphere/references/Courtney_2021_ApJ_919_70.pdf",
+   "sha256": "9abac1639aa180c53227cbe84de8f7b9ce9490297d57f0bee92ccb1e276a8b08",
+   "bytes": 1154478,
+   "pages": 8,
+   "bibliography": {
+    "bibcode": "2021ApJ...919...70C",
+    "title": [
+     "Comprehensive Chemistry of HeH<SUP>+</SUP> in the Early Universe"
+    ],
+    "doi": [
+     "10.3847/1538-4357/ac0f57"
+    ],
+    "author": [
+     "Courtney, E. D. S.",
+     "Forrey, R. C.",
+     "McArdle, R. T.",
+     "Stancil, P. C.",
+     "Babb, J. F."
+    ],
+    "year": "2021"
+   }
+  },
+  {
+   "file": "Igarashi_2023_psacc823supp1.pdf",
+   "original_local_path": "supplied by the author into this folder on 2026-09-25",
+   "sha256": "64744c4c69c637c5b158c72085d464deb92b6d6da42f66acd6841aaf3090166d",
+   "bytes": 418357,
+   "pages": 4,
+   "kind": "supplementary data only; the article itself was not obtained",
+   "bibliography": {
+    "bibcode": "2023PhyS...98e5402I",
+    "title": [
+     "Cross sections in He+ + H collisions for the energy region 1-100 keV u-1"
+    ],
+    "doi": [
+     "10.1088/1402-4896/acc823"
+    ],
+    "author": [
+     "Igarashi, A."
+    ],
+    "year": "2023"
+   }
+  }
+ ]
+}

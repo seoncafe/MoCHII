@@ -1,0 +1,58 @@
+&parameters
+ ! On-the-spot He III recombination photons, the hard-spectrum measurement:
+ ! a 1e5 K blackbody in the HII40 geometry (gas to 5.2 pc, n_H = 100), with
+ ! the luminosity set so that Q(H) equals HII40's 40 kK blackbody
+ ! (1.7624e49 s^-1), so the H front stays inside the grid.  Q(He+)/Q(H) =
+ ! 0.058, a He2+ zone of about half the H+ radius.  Three runs differ only
+ ! in the lines at the end:
+ !   ots_on.in       on the spot, par%heii_on_the_spot = .true.
+ !   ots_off.in      on the spot, par%heii_on_the_spot = .false.
+ !   transported.in  every ground continuum and both excited cascades
+ !                   transported (hei_diffuse, heii_diffuse), the reference
+ ! Run from this directory.
+ par%no_photons      = 4194304
+ par%no_print        = 4194304
+ par%iseed           = 1234
+ par%launch_sequence = 'sobol'
+ par%qmc_seed        = 20260728
+
+ par%grid_type       = 'amr'
+ par%amr_file        = '../../tests/g2_hii/hii40_L6_rout5p2.fits'
+ par%dust_density_law = 'none'
+ par%distance_unit   = 'pc'
+
+ par%nnu_ion         = 64
+ par%eion_min        = 13.598
+ par%eion_max        = 150.0
+ par%tstar           = 1.0e5
+ par%luminosity      = 9.3598e38
+
+ par%xHI_init        = 1.0e-3
+ par%xHeI_init       = 0.1
+ par%xHeII_init      = 0.5
+ par%abund_He        = 0.1
+ par%ion_add_dust    = .false.
+
+ par%gas_niter       = 80
+ par%conv_crit       = 'vol'
+ par%gas_tol         = 5.0e-3
+ par%gas_tol_te      = 1.0e-2
+ par%solve_te        = .true.
+ par%te_min          = 3.0e3
+ par%te_max          = 5.0e4
+
+ par%atomic_dir      = '../../data/atomic'
+ par%data_dir        = '../../data'
+ par%abund_C         = 2.2e-4
+ par%abund_N         = 4.0e-5
+ par%abund_O         = 3.3e-4
+ par%abund_Ne        = 5.0e-5
+ par%abund_S         = 9.0e-6
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'ots_off.h5'
+ par%recombination_continuum = 'on_the_spot'
+ par%heii_on_the_spot = .false.
+ par%add_fuv = .false.   ! pinned: this input predates add_fuv following the 2^3S population
+/

@@ -39,8 +39,7 @@ for case_name in "${cases[@]}"; do
         ;;
     diffuse_off)
         sed -i \
-            -e "s/par%case_ab         = 'A'/par%case_ab         = 'B'/" \
-            -e 's/par%diffuse_field   = .true./par%diffuse_field   = .false./' \
+            -e "s/par%recombination_continuum = 'transported'/par%recombination_continuum = 'on_the_spot'/" \
             -e 's/par%hei_diffuse     = .true./par%hei_diffuse     = .false./' \
             "$work"
         ;;

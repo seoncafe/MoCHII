@@ -583,7 +583,9 @@ class HeiMetaData(_LeafProjectable):
     """He I 2^3S metastable diagnostic from '<base>_heimeta' (par%hei_metastable).
 
     Carries the 2^3S density n_2s3 [cm^-3], the 2^3S photoionization rate Phi_3
-    [s^-1], n_e, T_e, and the leaf geometry.  Adds a line-of-sight ``column_map``
+    [s^-1] and its heating Gamma_3 [erg s^-1 per atom], the recombination
+    coefficient into 2^3S alpha_3 [cm^3 s^-1], n_H, n_e, T_e, and the leaf
+    geometry (files written before 2026-09-25 lack alpha_3 and Gamma_3).  Adds a line-of-sight ``column_map``
     (from _LeafProjectable) and a ``tau10833_map`` for the 10833 A line-center
     optical depth, using the fine-structure constants from
     data/atomic/hei_metastable.txt (Stage 2 of md/HEI_10833_PLAN.md).
@@ -603,7 +605,8 @@ class HeiMetaData(_LeafProjectable):
         self.a31 = float(sec["n_2s3"]["attrs"].get("A31", np.nan))
 
         self.fields = {}
-        for name in ("n_2s3", "Phi_3", "n_H", "n_e", "T_e"):
+        for name in ("n_2s3", "Phi_3", "alpha_3", "Gamma_3", "n_H", "n_e",
+                     "T_e"):
             if name in sec and sec[name]["data"] is not None:
                 self.fields[name] = np.asarray(sec[name]["data"], float).ravel()
         self.vol_cm3 = (self.size * self.dist_cm)**3

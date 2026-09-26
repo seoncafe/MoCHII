@@ -102,7 +102,7 @@ def report_spectra(tag, two_file, s1_file, s2_file):
     print(f"\n=== {tag} ===")
     print(f"  populated ionizing bins            = {pop.sum()} of {ion.sum()}")
     print(f"  median |two - (s1+s2)| / (s1+s2)    = {med*100:.2f}%")
-    print(f"  max    per-bin rel diff            = {mx*100:.2f}%")
+    print(f"  max    rel diff over bins          = {mx*100:.2f}%")
     print(f"  band-integrated ratio two/(s1+s2)  = {tot_ratio:.4f}")
     ok = (med < 0.03) and (abs(tot_ratio - 1.0) < 0.02)
     print(f"  --> {'PASS' if ok else 'FAIL'} "

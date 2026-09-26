@@ -45,7 +45,8 @@ program check_detailed_balance
 !---------------------------------------------------------------------------
   use define
   use species_mod, only : species_setup, species_cx_coefficients, &
-                          n_elements, elem_name, elem_nstage, elem_eth
+                          n_elements, elem_name, elem_nstage, elem_eth, &
+                          elem_cx_form
   use mpi
   implicit none
 
@@ -72,7 +73,12 @@ program check_detailed_balance
   real(kind=wp), parameter :: TT(NT) = [3.0e3_wp, 5.0e3_wp, 8.0e3_wp, &
                                         1.0e4_wp, 2.0e4_wp]
 
-  real(kind=wp) :: k_i, k_r, dE, req, dev, worst, dside
+  real(kind=wp) :: k_i, k_r, dE, req, dev, worst, dside, zp, kT_eV, kr0
+  !--- S+ terms (NIST / CHIANTI observed, (2J+1)-weighted): 4S, 2D, 2P
+  real(kind=wp), parameter :: SP_G(3) = [4.0_wp, 10.0_wp, 6.0_wp]
+  real(kind=wp), parameter :: SP_E(3) = [0.0_wp, 1.8439_wp, 3.0446_wp]
+  !--- Zhao et al. (2005) Table III, S(3P) + H+ -> S+(4S) + H at 1e4 K
+  real(kind=wp), parameter :: ZHAO_4S_1E4 = 8.90e-16_wp
   character(len=2) :: nm
   integer :: ie, j, k, ierr, ntest, nnodata
   logical :: ok, one_sided, fail
@@ -111,6 +117,43 @@ program check_detailed_balance
      if (k_i <= 0.0_wp .or. k_r <= 0.0_wp) then
         nnodata = nnodata + 1
         write(*,'(a4,a)') nm, '   no charge-exchange data in one direction'
+        cycle
+     end if
+
+     !--- resolved by product term (form 9, sulfur): the forward rate sums
+     !--- the terms of X+, the reverse weights each by its actual
+     !--- population.  Detailed balance of the TOTAL then holds only with
+     !--- X+ in LTE, i.e. with the partition function of X+ in place of its
+     !--- ground weight, at a density that thermalizes its terms; and at
+     !--- n_e -> 0 the reverse is the ground term's channel alone.
+     if (elem_cx_form(ie, 1) == 9) then
+        if (trim(nm) /= 's') then
+           write(*,'(a,a)') '  FAIL: form 9 checked for sulfur only: ', nm
+           ok = .false.;  cycle
+        end if
+        do j = 1, NT
+           kT_eV = kboltz_cgs*TT(j)/ev2erg
+           zp = sum(SP_G*exp(-SP_E/kT_eV))
+           call species_cx_coefficients(ie, 1, TT(j), k_i, k_r, 1.0e12_wp)
+           req = (zp*2.0_wp)/(real(GW0(k), wp)*1.0_wp)*exp(-dE/TT(j))
+           dev = k_i/k_r/req
+           ntest = ntest + 1
+           write(*,'(a4,f10.0,es12.3,es12.3,es12.3,es12.3,es10.3,a)') &
+              nm, TT(j), k_i, k_r, k_i/k_r, req, dev, '  LTE (n_e = 1e12)'
+           if (abs(dev - 1.0_wp) > 0.01_wp) then
+              write(*,'(a,f8.0)') '  FAIL: sulfur LTE limit at T = ', TT(j)
+              ok = .false.
+           end if
+        end do
+        call species_cx_coefficients(ie, 1, 1.0e4_wp, k_i, k_r)
+        kr0 = ZHAO_4S_1E4*real(GW0(k), wp)/(SP_G(1)*2.0_wp) &
+              *exp(dE/1.0e4_wp)
+        write(*,'(a,es12.4,a,es12.4)') '   s  n_e -> 0, 1e4 K: reverse ', k_r, &
+           '   ground-term channel (Zhao 4S) by detailed balance ', kr0
+        if (abs(k_r/kr0 - 1.0_wp) > 1.0e-3_wp) then
+           write(*,'(a)') '  FAIL: sulfur reverse at n_e -> 0 is not the 4S channel'
+           ok = .false.
+        end if
         cycle
      end if
 

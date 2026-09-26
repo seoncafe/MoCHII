@@ -31,7 +31,7 @@ contains
   endif
 
   par%require_convergence = .false.   ! definite baseline; namelist may override
-  call read_parameters_with_metal_defaults(trim(model_infile))
+  call read_parameters_with_implicit_defaults(trim(model_infile))
 
   !--- Resolve the SEDust data directory relative to the executable when the
   !--- user leaves par%sed_data_dir blank, so a fresh checkout runs dust
@@ -68,6 +68,7 @@ contains
   if (par%nprint >= par%no_photons) par%nprint = par%no_photons/10
   if (par%no_photons < 10) par%nprint = 1
   par%nphotons   = par%no_photons
+  par%nphotons_fuv = par%no_photons_fuv
   par%nscatt_tot = 0.0_wp
 
   !--- MPI-related parameters (identical to MoCafe).
@@ -175,10 +176,15 @@ contains
         '''metal_only'' (reproduction only).'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (trim(par%recomb_model) /= 'badnell_milne' .and. &
+  if (trim(par%recomb_model) /= 'detailed_balance' .and. &
       trim(par%recomb_model) /= 'hui_gnedin') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%recomb_model must be ''badnell_milne'' (default) or ''hui_gnedin''.'
+     if (mpar%p_rank == 0) then
+        write(*,'(a)') 'ERROR: par%recomb_model must be ''detailed_balance'' '// &
+           '(default) or ''hui_gnedin''.'
+        if (trim(par%recomb_model) == 'badnell_milne') write(*,'(a)') &
+           '       ''badnell_milne'' was renamed ''detailed_balance'' on '// &
+           '2026-09-26 (the hydrogenic ions no longer use the Badnell total).'
+     end if
      call MPI_FINALIZE(ierr);  stop
   endif
   if (trim(par%diffuse_energy_model) /= 'exponential' .and. &
@@ -193,6 +199,12 @@ contains
       trim(par%cooling_model) /= 'local_ne') then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%cooling_model must be ''local_ne'' (default) or ''low_density''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (trim(par%twophoton_quenching) /= 'colliders' .and. &
+      trim(par%twophoton_quenching) /= 'lumped_ne') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%twophoton_quenching must be ''colliders'' (default) or ''lumped_ne''.'
      call MPI_FINALIZE(ierr);  stop
   endif
 
@@ -470,6 +482,19 @@ contains
         'ERROR: par%no_photons must be >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
+  if (trim(par%fuv_sampling) /= 'separate' .and. &
+      trim(par%fuv_sampling) /= 'proportional') then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%fuv_sampling must be ''separate'' (default) or ''proportional''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
+  if (par%add_fuv .and. trim(par%fuv_sampling) == 'separate' .and. &
+      par%no_photons_fuv < 1.0_wp .and. par%no_photons_fuv /= -1.0_wp) then
+     if (mpar%p_rank == 0) write(*,'(a)') &
+        'ERROR: par%no_photons_fuv must be >= 1 with par%add_fuv and '// &
+        'par%fuv_sampling = ''separate''.'
+     call MPI_FINALIZE(ierr);  stop
+  endif
   if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then
      if (mpar%p_rank == 0) write(*,'(a)') &
         'ERROR: par%source_cdf_tol must be in (0, 1).'
@@ -492,15 +517,19 @@ contains
         'ERROR: par%ion_relax must be in (0, 1].'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (trim(par%line_case) /= 'A' .and. trim(par%line_case) /= 'B' .and. &
-      trim(par%line_case) /= 'follow') then
+  if (trim(par%lyman_lines) /= 'on_the_spot' .and. &
+      trim(par%lyman_lines) /= 'escaping') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%line_case must be ''A'', ''B'', or ''follow''.'
+        'ERROR: par%lyman_lines must be ''on_the_spot'' (default) or ' // &
+        '''escaping'' (MoCHII does not transport the Lyman lines).'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (trim(par%case_ab) /= 'A' .and. trim(par%case_ab) /= 'B') then
+  if (trim(par%recombination_continuum) /= 'on_the_spot' .and. &
+      trim(par%recombination_continuum) /= 'transported' .and. &
+      trim(par%recombination_continuum) /= 'escaping') then
      if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%case_ab must be ''A'' or ''B''.'
+        'ERROR: par%recombination_continuum must be ''on_the_spot'', ' // &
+        '''transported'' (default) or ''escaping''.'
      call MPI_FINALIZE(ierr);  stop
   endif
   if (par%solve_te .and. par%te_min >= par%te_max) then
@@ -513,17 +542,27 @@ contains
         'ERROR: par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.'
      call MPI_FINALIZE(ierr);  stop
   endif
-  if (par%hei_metastable) then
-     !--- Phi_3 (2^3S photoionization) starts at 4.78 eV; a band floor above
-     !--- it misses the soft-UV part of the integral (rank-0 note, no abort).
+  if ((par%hei_metastable .or. par%hei_metastable_coupling) .and. &
+      par%abund_He > 0.0_wp) then
+     !--- Phi_3 (2^3S photoionization) starts at E_HEI_23S_SIGMA_EDGE = 4.78
+     !--- eV; a band floor above it misses the soft-UV part of the integral
+     !--- (rank-0 note, no abort).  Phi_3 feeds the coupled balances too, so
+     !--- the note follows either switch.  For a 40 kK star the unattenuated
+     !--- 4.78-13.6 eV part is ~10x the part above 13.6 eV.  An input that
+     !--- leaves add_fuv and efuv_min out gets exactly this floor
+     !--- (read_parameters_with_implicit_defaults), so the note fires only
+     !--- when the input sets one of them otherwise.
      block
        real(kind=wp) :: efloor
        efloor = par%eion_min
        if (par%add_fuv) efloor = par%efuv_min
-       if (mpar%p_rank == 0 .and. efloor > 4.78_wp) &
-          write(*,'(a,f7.3,a)') 'NOTE: hei_metastable band floor ', efloor, &
-          ' eV > 4.78 eV -> Phi_3 misses [4.78, floor); set add_fuv with '// &
-          'efuv_min=4.78 for the full 2^3S photoionization integral.'
+       if (mpar%p_rank == 0 .and. efloor > E_HEI_23S_SIGMA_EDGE) &
+          write(*,'(a,f7.3,a,f4.2,a,f4.2,a,f4.2,a)') &
+          'NOTE: hei_metastable band floor ', efloor, ' eV > ', &
+          E_HEI_23S_SIGMA_EDGE, ' eV -> Phi_3 misses [', E_HEI_23S_SIGMA_EDGE, &
+          ', floor); set add_fuv with efuv_min = ', E_HEI_23S_SIGMA_EDGE, &
+          ' (the default when both are left out) for the full 2^3S '// &
+          'photoionization integral.'
      end block
   endif
   if (par%ion_peel .and. par%xy_periodic) then
@@ -573,14 +612,6 @@ contains
      call MPI_FINALIZE(ierr);  stop
   endif
 
-  !--- the explicit diffuse field requires case A (case B would
-  !--- double-count the on-the-spot absorption of ground recombinations).
-  if (par%diffuse_field .and. trim(par%case_ab) /= 'A') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'NOTE: par%diffuse_field forces par%case_ab = ''A''.'
-     par%case_ab = 'A'
-  endif
-
   select case(trim(par%distance_unit))
      case ('kpc')
         par%distance2cm = kpc2cm
@@ -612,10 +643,37 @@ contains
      !--- cyclic, .true. = rank 0 serves batches on demand.
      write(*,'(a,l14)') 'Master-slave scheduling   : ', par%use_master_slave
      write(*,'(a,i14)') 'Total ionizing photons    : ', par%nphotons
+     if (par%add_fuv) then
+        write(*,'(2a)')    'FUV sampling              : ', trim(par%fuv_sampling)
+        if (trim(par%fuv_sampling) == 'separate') then
+           if (par%nphotons_fuv >= 0_int64) then
+              write(*,'(a,i14)') 'FUV photons               : ', par%nphotons_fuv
+           else
+              write(*,'(a)') 'FUV photons               :  set by the band luminosities'
+           end if
+        end if
+     end if
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
+     write(*,'(a,l14)') 'He I 2^3S coupling        : ', par%hei_metastable_coupling
      if (par%ion_add_dust) &
         write(*,'(a,l14)') 'Dust emission transported : ', par%dust_emis_transport
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
+     write(*,'(2a)')    'Recombination continuum   : ', trim(par%recombination_continuum)
+     write(*,'(2a)')    'Lyman lines               : ', trim(par%lyman_lines)
+     if (trim(par%recombination_continuum) == 'on_the_spot') then
+        write(*,'(a,l14)') 'He I on the spot          : ', par%hei_on_the_spot
+        write(*,'(a,l14)') 'He II on the spot         : ', par%heii_on_the_spot
+        write(*,'(a,l14)') 'He III cascade transported: ', par%heii_diffuse
+        !--- heii_recombination_photons_mod, "Absorption limit"
+        if (par%heii_on_the_spot .and. .not. par%heii_diffuse .and. &
+            par%abund_He > 0.12_wp) &
+           write(*,'(a,f6.3,a)') 'NOTE: abund_He = ', par%abund_He, ' > 0.12: in a'// &
+              ' fully He2+ zone the He II cascade on the spot can outnumber'// &
+              ' hydrogen''s recombinations, where no local balance exists'// &
+              ' (the H balance residual shows those leaves); use'// &
+              ' recombination_continuum = ''transported'' there.'
+     end if
+     write(*,'(a,l14)') 'Charge-exchange heating   : ', par%charge_exchange_heating
      write(*,'(2a)')    'Photon launch sequence    : ', trim(par%launch_sequence)
      write(*,'(a,es14.6)') 'Source CDF tolerance      : ', par%source_cdf_tol
      if (trim(par%launch_sequence) == 'sobol') &
@@ -624,20 +682,40 @@ contains
   end subroutine read_input
 
   !=========================================================================
-  ! Read the namelist, then set the metal switches the input left out from
-  ! the metal abundances the input gave.
+  ! Read the namelist, then set the switches whose defaults depend on other
+  ! items: the metal switches the input left out from the metal abundances it
+  ! gave, and the excited-cascade diffuse channels from
+  ! recombination_continuum.
   !   use_metals            not in the input: .true. if any abund_<X> the
   !                         input sets is > 0, else .false. (every abundance
   !                         defaults to 0, so an input that names no
   !                         abundance stays H/He only);
-  !   metal_ne, metal_heat  not in the input: follow use_metals.
+  !   metal_ne, metal_heat  not in the input: follow use_metals;
+  !   hei_diffuse           not in the input: on when recombination_continuum
+  !                         = 'transported';
+  !   heii_diffuse          not in the input: the same, when the
+  !                         band reaches the 40.813 eV He II Ly-alpha
+  !                         (eion_max), else .false. with a note; set in
+  !                         the input with 'on_the_spot', it transports the
+  !                         He III cascade alone (heii_cascade_transported);
+  !   add_fuv               not in the input: .true. when the He I 2^3S
+  !                         population is used (hei_metastable or
+  !                         hei_metastable_coupling), else .false.: Phi_3
+  !                         is a path estimator over the transported band
+  !                         and starts at 4.78 eV;
+  !   efuv_min              not in the input: E_HEI_23S_SIGMA_EDGE = 4.78 eV
+  !                         when the 2^3S population is used, else 6.0 eV;
+  !   no_photons_fuv        not in the input: no_photons/4, or no_photons when
+  !                         no source has ionizing luminosity (resolved in
+  !                         ion_band_mod once the band luminosities are known).
   ! A value the input does set is kept as given.  Fortran namelist input does
   ! not report which items it contained, so the file is read twice, from two
   ! states that differ only in these items (the switches .true. then
-  ! .false., the abundances -1 then -2): an item the input sets comes out
-  ! equal in both reads, an item it leaves out does not.
+  ! .false., the abundances, efuv_min and no_photons_fuv -1 then -2): an item
+  ! the input sets comes out equal in both reads, an item it leaves out does
+  ! not.
   !=========================================================================
-  subroutine read_parameters_with_metal_defaults(fname)
+  subroutine read_parameters_with_implicit_defaults(fname)
     use define
     use mpi
     implicit none
@@ -648,6 +726,10 @@ contains
     type(params_type) :: par0, par_hi
     real(kind=wp) :: ab_hi(NAB), ab_lo(NAB), ab_default(NAB)
     logical :: given_um, given_ne, given_heat, given_ab(NAB), any_positive
+    logical :: given_hei, given_heii, transported
+    logical :: given_fuv, given_efuv, given_nfuv, uses_23s
+    !--- the He II Ly-alpha energy [eV] (heii_cascade_mod::E_HEII_LYA)
+    real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp
     character(len=64) :: names
     integer :: unit, k, world_rank, ierr
     namelist /parameters/ par
@@ -655,13 +737,13 @@ contains
     par0 = par
     ab_default = abundances()
 
-    call set_metal_items(.true., -1.0_wp)
+    call set_implicit_items(.true., -1.0_wp)
     open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
     par_hi = par
     ab_hi  = abundances()
 
     par = par0
-    call set_metal_items(.false., -2.0_wp)
+    call set_implicit_items(.false., -2.0_wp)
     open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
     ab_lo = abundances()
 
@@ -669,6 +751,11 @@ contains
     given_ne   = par_hi%metal_ne   .eqv. par%metal_ne
     given_heat = par_hi%metal_heat .eqv. par%metal_heat
     given_ab   = ab_hi == ab_lo
+    given_hei  = par_hi%hei_diffuse  .eqv. par%hei_diffuse
+    given_heii = par_hi%heii_diffuse .eqv. par%heii_diffuse
+    given_fuv  = par_hi%add_fuv      .eqv. par%add_fuv
+    given_efuv = par_hi%efuv_min       == par%efuv_min
+    given_nfuv = par_hi%no_photons_fuv == par%no_photons_fuv
 
     !--- every other item is identical in the two reads: keep the first, and
     !--- restore the defaults of the abundances the input left out
@@ -679,6 +766,23 @@ contains
     if (.not. given_um)   par%use_metals = any_positive
     if (.not. given_ne)   par%metal_ne   = par%use_metals
     if (.not. given_heat) par%metal_heat = par%use_metals
+    !--- the excited-cascade diffuse channels follow the diffuse field
+    transported = trim(par%recombination_continuum) == 'transported'
+    if (.not. given_hei)  par%hei_diffuse  = transported
+    if (.not. given_heii) par%heii_diffuse = transported .and. &
+                                             par%eion_max >= E_HEII_LYA
+    !--- the FUV extension follows the He I 2^3S population: Phi_3 is scored
+    !--- from the transported band and its threshold is 4.78 eV
+    !--- no helium, no 2^3S population (solve_ion_cell and thermal_mod run the
+    !--- coupling only for abund_He > 0), so no band for it either
+    uses_23s = (par%hei_metastable .or. par%hei_metastable_coupling) .and. &
+               par%abund_He > 0.0_wp
+    if (.not. given_fuv)  par%add_fuv = uses_23s
+    if (.not. given_efuv) par%efuv_min = merge(E_HEI_23S_SIGMA_EDGE, &
+                                               par0%efuv_min, uses_23s)
+    !--- resolved once the band luminosities are known (ion_band_mod):
+    !--- no_photons/4, or no_photons when no source has ionizing luminosity
+    if (.not. given_nfuv) par%no_photons_fuv = -1.0_wp
 
     !--- the rank communicators are built after this read; ask MPI directly
     call MPI_COMM_RANK(MPI_COMM_WORLD, world_rank, ierr)
@@ -693,15 +797,36 @@ contains
        if (len_trim(names) > 0) write(*,'(2a)') &
           ' METALS: abundances the input gives > 0:', trim(names)
     end if
+    if (world_rank == 0 .and. transported .and. &
+        .not. (given_hei .and. given_heii)) then
+       write(*,'(a,2(a,l1))') ' DIFFUSE: excited-cascade channels on with ', &
+          'the transported continuum (items the input leaves out): hei_diffuse = ', &
+          par%hei_diffuse, ', heii_diffuse = ', par%heii_diffuse
+       if (.not. given_heii .and. .not. par%heii_diffuse) write(*,'(a,f7.3,a)') &
+          ' DIFFUSE: heii_diffuse left off: the band stops at eion_max =', &
+          par%eion_max, ' eV, below the 40.813 eV He II Ly-alpha, so no He III'
+    end if
+    if (world_rank == 0 .and. uses_23s .and. .not. given_fuv) &
+       write(*,'(a)') ' FUV: add_fuv = T for the He I 2^3S population '// &
+          '(the input leaves it out)'
+    if (world_rank == 0 .and. uses_23s .and. par%add_fuv .and. .not. given_efuv) &
+       write(*,'(a,f7.3,a)') ' FUV: efuv_min = ', par%efuv_min, &
+          ' eV, where the 2^3S photoionization cross section starts'// &
+          ' (threshold 4.768 eV; the input leaves it out)'
 
   contains
 
-    subroutine set_metal_items(flag, ab)
+    !--- flag for the logical items, sentinel for the real ones (a value no
+    !--- input gives: every real item here is > 0 when set).
+    subroutine set_implicit_items(flag, sentinel)
       logical,       intent(in) :: flag
-      real(kind=wp), intent(in) :: ab
+      real(kind=wp), intent(in) :: sentinel
       par%use_metals = flag;  par%metal_ne = flag;  par%metal_heat = flag
-      call set_abundances([(ab, k = 1, NAB)])
-    end subroutine set_metal_items
+      par%hei_diffuse = flag;  par%heii_diffuse = flag
+      par%add_fuv = flag
+      par%efuv_min = sentinel;  par%no_photons_fuv = sentinel
+      call set_abundances([(sentinel, k = 1, NAB)])
+    end subroutine set_implicit_items
 
     subroutine set_abundances(a)
       real(kind=wp), intent(in) :: a(NAB)
@@ -718,7 +843,7 @@ contains
            par%abund_Cl, par%abund_Ca]
     end function abundances
 
-  end subroutine read_parameters_with_metal_defaults
+  end subroutine read_parameters_with_implicit_defaults
 
   !---------------------------------------
   subroutine setup_procedure

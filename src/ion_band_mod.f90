@@ -37,6 +37,20 @@ module ion_band_mod
 ! of it.  Each component carries a FIXED physical quantity (ionizing luminosity,
 ! absolute file integral, entering flux pi*J*A), and the FUV/ionizing split
 ! comes from the sampler's ionizing fraction 1 - CDF(par%eion_min).
+!
+! With par%add_fuv the band has two parts, and par%fuv_sampling says how the
+! packets are shared between them.  'proportional' draws every packet from
+! the one CDF over [efuv_min, eion_max], so each part gets packets in
+! proportion to its luminosity and every packet carries ion_Ltot / nphotons.
+! 'separate' launches the two parts as strata with their own counts: the
+! ionizing stratum draws par%nphotons packets from the spectrum conditioned
+! on [eion_min, eion_max], u -> F(eion_min) + u [1 - F(eion_min)] in the same
+! CDF, and the FUV stratum par%nphotons_fuv from [efuv_min, eion_min),
+! u -> u F(eion_min).  A stratum's packet carries L_stratum / N_stratum, with
+! L_stratum = sum over components of band_L F or band_L (1 - F), so each part
+! is launched with exactly its luminosity; the component is picked within a
+! stratum by its luminosity there.  Both strata sample the same spectrum model
+! as 'proportional', so the two modes estimate the same field.
 !---------------------------------------------------------------------------
   use define
   use energy_sampler_mod, only : energy_sampler_type, build_planck_sampler, &
@@ -49,6 +63,19 @@ module ion_band_mod
   public :: ion_e, ion_de, ion_nu, ion_dnu, ion_lum, ion_Ltot
   public :: ion_eedge, ion_bin_of, ion_qmc_ndim
   public :: nnu_band, nfuv_band
+  public :: fuv_stratified, ion_L_ionizing, ion_L_fuv
+  public :: band_packet_luminosity, band_packet_count, ionizing_packet_luminosity
+  public :: LAUNCH_BAND_WHOLE, LAUNCH_BAND_IONIZING, LAUNCH_BAND_FUV
+
+  !--- which part of the band a source packet is drawn from:
+  !---   LAUNCH_BAND_WHOLE    the whole band, one CDF (no FUV extension, or
+  !---                        par%fuv_sampling = 'proportional');
+  !---   LAUNCH_BAND_IONIZING [eion_min, eion_max] (par%fuv_sampling =
+  !---                        'separate');
+  !---   LAUNCH_BAND_FUV      [efuv_min, eion_min) (the same).
+  integer, parameter :: LAUNCH_BAND_WHOLE    = 0
+  integer, parameter :: LAUNCH_BAND_IONIZING = 1
+  integer, parameter :: LAUNCH_BAND_FUV      = 2
 
   real(kind=wp), allocatable :: ion_e(:)     ! bin center [eV]
   real(kind=wp), allocatable :: ion_de(:)    ! bin width  [eV]
@@ -84,6 +111,21 @@ module ion_band_mod
   !--- ([eion_min, eion_max]) plus, with par%add_fuv, the FUV part of the
   !--- same source spectrum.
   real(kind=wp), protected :: ion_Ltot = 0.0_wp
+  !--- the two parts of the band as launch strata (par%add_fuv with
+  !--- par%fuv_sampling = 'separate'): fuv_stratified switches them on;
+  !--- ion_L_ionizing / ion_L_fuv are the band luminosity above / below
+  !--- par%eion_min summed over components [erg/s] (set whenever add_fuv is on,
+  !--- for the log); comp_fuv_cdf(c) = F_c(eion_min), the FUV share of
+  !--- component c's band CDF, which maps a uniform into either stratum;
+  !--- comp_L_ionizing / comp_L_fuv and the normalized selection CDFs
+  !--- src_cdf_ionizing / src_cdf_fuv pick the component within a stratum by
+  !--- its luminosity there.
+  logical,       protected :: fuv_stratified = .false.
+  real(kind=wp), protected :: ion_L_ionizing = 0.0_wp
+  real(kind=wp), protected :: ion_L_fuv      = 0.0_wp
+  real(kind=wp), allocatable :: comp_fuv_cdf(:)
+  real(kind=wp), allocatable :: comp_L_ionizing(:), comp_L_fuv(:)
+  real(kind=wp), allocatable :: src_cdf_ionizing(:), src_cdf_fuv(:)
 
   !--- total number of band bins consumed downstream: nnu_band = the
   !--- ionizing bins (par%nnu_ion) plus, with par%add_fuv, nfuv_band FUV
@@ -101,9 +143,11 @@ module ion_band_mod
   !--- points across the FUV band put the piecewise-linear CDF far below the
   !--- packet sampling noise.  The presets carry no flux above the Lyman limit
   !--- (Draine is defined on 5-13.6 eV; Mathis vanishes below 0.0912 um), so
-  !--- PRESET_EMAX bounds the sampler support.
+  !--- PRESET_EMAX bounds the sampler support at the H I edge itself.  It was
+  !--- 13.6 eV until 2026-09-25, which left 3.1e-5 of a preset's luminosity
+  !--- in 13.598-13.6 eV, where it ionized hydrogen.
   integer,       parameter :: NPRESET     = 4096
-  real(kind=wp), parameter :: PRESET_EMAX = 13.6_wp
+  real(kind=wp), parameter :: PRESET_EMAX = eth_HI
 
   !--- Plane-parallel slab illumination (source_geometry = 'slab').  Per face
   !--- 1 = top (+z), 2 = bottom (-z): lit flag, mode (0 = beam, 1 = isotropic),
@@ -205,7 +249,7 @@ contains
           !===================== plane-parallel slab fast path ================
           !--- global-spectrum shape scaled so the ionizing-band luminosity
           !--- equals L_slab = sum_face F_z(face) * A_zface.  slab_setup fills
-          !--- the per-face F_z / mu / mode used by emit_slab.
+          !--- the F_z / mu / mode of each face used by emit_slab.
           call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false., is_abs)
           call slab_setup(Lnorm)
           call finalize_source(ion_lum, nnu, nfuv, is_abs, Lnorm, Lnorm)
@@ -338,6 +382,8 @@ contains
        src_cdf = src_cdf / src_cdf(ncomp)
     end if
 
+    call setup_band_strata(band_L)
+
     if (mpar%p_rank == 0) then
        f_ion = ionizing_fraction(source_energy_sampler(1))
        if (ncomp == 1 .and. nfuv_band > 0 .and. f_ion > 0.0_wp) then
@@ -351,6 +397,245 @@ contains
     end if
     deallocate(band_L)
   end subroutine setup_continuous_source_sampler
+
+  !=========================================================================
+  ! The two parts of the band as launch strata.  Component c's band
+  ! luminosity band_L(c) splits at par%eion_min by its own CDF,
+  !   L_FUV(c) = band_L(c) F_c(eion_min),  L_ion(c) = band_L(c) [1 - F_c(eion_min)],
+  ! the same split ionizing_fraction makes; the stratum totals and the
+  ! selection CDFs within each stratum follow.  Without par%add_fuv the
+  ! sampler support starts at eion_min, F_c = 0, and the ionizing part is the
+  ! whole band.  The strata are USED only with par%fuv_sampling = 'separate'
+  ! (fuv_stratified); the totals are printed whenever add_fuv is on.
+  !=========================================================================
+  subroutine setup_band_strata(band_L)
+    implicit none
+    real(kind=wp), intent(in) :: band_L(:)
+    integer :: ic
+
+    fuv_stratified = par%add_fuv .and. trim(par%fuv_sampling) == 'separate'
+    if (allocated(comp_fuv_cdf)) deallocate(comp_fuv_cdf, comp_L_ionizing, &
+       comp_L_fuv, src_cdf_ionizing, src_cdf_fuv)
+    allocate(comp_fuv_cdf(ncomp), comp_L_ionizing(ncomp), comp_L_fuv(ncomp), &
+             src_cdf_ionizing(ncomp), src_cdf_fuv(ncomp))
+    do ic = 1, ncomp
+       if (par%add_fuv) then
+          comp_fuv_cdf(ic) = energy_cdf_value(source_energy_sampler(ic), par%eion_min)
+       else
+          comp_fuv_cdf(ic) = 0.0_wp
+       end if
+       comp_L_fuv(ic)      = band_L(ic)*comp_fuv_cdf(ic)
+       comp_L_ionizing(ic) = band_L(ic)*(1.0_wp - comp_fuv_cdf(ic))
+    end do
+    ion_L_ionizing = sum(comp_L_ionizing)
+    ion_L_fuv      = sum(comp_L_fuv)
+    call cumulative_share(comp_L_ionizing, src_cdf_ionizing)
+    call cumulative_share(comp_L_fuv,      src_cdf_fuv)
+    !--- no_photons_fuv left out of the input (setup marks it -1): a quarter of
+    !--- the ionizing launch, or the whole no_photons when no source has
+    !--- ionizing luminosity (an FUV-only field, e.g. an ISRF preset), where
+    !--- the FUV packets are the run's only packets.
+    if (par%nphotons_fuv < 0_int64) then
+       if (ion_L_ionizing > 0.0_wp) then
+          par%nphotons_fuv = max(1_int64, par%nphotons/4_int64)
+       else
+          par%nphotons_fuv = par%nphotons
+       end if
+       par%no_photons_fuv = real(par%nphotons_fuv, wp)
+       if (mpar%p_rank == 0 .and. fuv_stratified) then
+          if (ion_L_ionizing > 0.0_wp) then
+             write(*,'(a,i14,a)') ' FUV: no_photons_fuv = ', par%nphotons_fuv, &
+                ' (no_photons/4; the input leaves it out)'
+          else
+             write(*,'(a,i14,a)') ' FUV: no_photons_fuv = ', par%nphotons_fuv, &
+                ' (no_photons: no source has ionizing luminosity; the input leaves it out)'
+          end if
+       end if
+    end if
+
+    if (mpar%p_rank /= 0 .or. .not. par%add_fuv) return
+    write(*,'(2a)') ' ION: FUV extension, fuv_sampling = ', trim(par%fuv_sampling)
+    write(*,'(a,es14.6,a,es14.6,a,es10.2)') &
+       '   L(eion_min-eion_max) = ', ion_L_ionizing, ',  L(efuv_min-eion_min) = ', &
+       ion_L_fuv, ',  sum/L_band - 1 = ', (ion_L_ionizing + ion_L_fuv)/ion_Ltot - 1.0_wp
+    if (fuv_stratified) then
+       write(*,'(a,i14,a,es14.6,a)') '   ionizing stratum: ', &
+          band_packet_count(LAUNCH_BAND_IONIZING), ' packets of ', &
+          band_packet_luminosity(LAUNCH_BAND_IONIZING), ' erg/s'
+       write(*,'(a,i14,a,es14.6,a)') '   FUV stratum     : ', &
+          band_packet_count(LAUNCH_BAND_FUV), ' packets of ', &
+          band_packet_luminosity(LAUNCH_BAND_FUV), ' erg/s'
+       if (ion_L_fuv <= 0.0_wp) write(*,'(a)') &
+          '   NOTE: no source spectrum carries luminosity in [efuv_min, eion_min) '// &
+          '(a tabulated spectrum starting at or above eion_min), so the FUV '// &
+          'stratum launches nothing.'
+       if (ion_L_ionizing <= 0.0_wp) write(*,'(a)') &
+          '   NOTE: no source spectrum carries luminosity in [eion_min, eion_max], '// &
+          'so the ionizing stratum launches nothing.'
+    else
+       write(*,'(a,f8.5,a,i14,a)') '   ionizing share of the one CDF = ', &
+          ion_L_ionizing/ion_Ltot, ' of ', par%nphotons, ' packets'
+    end if
+  end subroutine setup_band_strata
+
+  !--- normalized cumulative shares of the component luminosities L(1:n), or
+  !--- all zero when they sum to zero (the stratum then launches nothing).
+  subroutine cumulative_share(L, cdf)
+    implicit none
+    real(kind=wp), intent(in)  :: L(:)
+    real(kind=wp), intent(out) :: cdf(:)
+    integer :: ic
+    cdf(1) = L(1)
+    do ic = 2, size(L)
+       cdf(ic) = cdf(ic-1) + L(ic)
+    end do
+    if (cdf(size(L)) > 0.0_wp) then
+       cdf = cdf / cdf(size(L))
+    else
+       cdf = 0.0_wp
+    end if
+  end subroutine cumulative_share
+
+  !=========================================================================
+  ! Luminosity [erg/s] carried by one source packet launched in band part
+  ! iband: ion_Ltot / nphotons for the whole band (the expression the
+  ! launchers always used, so the 'proportional' and no-FUV runs keep their
+  ! bits), L_stratum / N_stratum for a stratum.  Zero for a stratum that
+  ! launches nothing.
+  !=========================================================================
+  real(kind=wp) function band_packet_luminosity(iband) result(Lpk)
+    implicit none
+    integer, intent(in) :: iband
+    integer(kind=int64) :: n
+    select case (iband)
+    case (LAUNCH_BAND_IONIZING)
+       n = band_packet_count(iband)
+       Lpk = 0.0_wp
+       if (n > 0_int64) Lpk = ion_L_ionizing / real(n, wp)
+    case (LAUNCH_BAND_FUV)
+       n = band_packet_count(iband)
+       Lpk = 0.0_wp
+       if (n > 0_int64) Lpk = ion_L_fuv / real(n, wp)
+    case default
+       Lpk = ion_Ltot / real(par%nphotons, wp)
+    end select
+  end function band_packet_luminosity
+
+  !=========================================================================
+  ! Packets launched per transport pass in band part iband; a stratum with no
+  ! luminosity launches none.
+  !=========================================================================
+  integer(kind=int64) function band_packet_count(iband) result(n)
+    implicit none
+    integer, intent(in) :: iband
+    select case (iband)
+    case (LAUNCH_BAND_IONIZING)
+       n = 0_int64
+       if (ion_L_ionizing > 0.0_wp) n = par%nphotons
+    case (LAUNCH_BAND_FUV)
+       n = 0_int64
+       if (ion_L_fuv > 0.0_wp) n = par%nphotons_fuv
+    case default
+       n = par%nphotons
+    end select
+  end function band_packet_count
+
+  !=========================================================================
+  ! Luminosity of one IONIZING source packet [erg/s]: the scale the diffuse
+  ! field divides its luminosity by to set its packet count, so the diffuse
+  ! packets are as fine as the stellar packets that drive the ionization.
+  ! Whole band: ion_Ltot / nphotons, as always.  Stratified: the ionizing
+  ! stratum's L_ion / nphotons, which is the same number the run would use
+  ! without the FUV extension -- the FUV packets have no bearing on how
+  ! finely the recombination field must be sampled.  If no source has
+  ! ionizing luminosity the FUV packet luminosity is the run's only scale.
+  !=========================================================================
+  real(kind=wp) function ionizing_packet_luminosity() result(Lpk)
+    implicit none
+    if (.not. fuv_stratified) then
+       Lpk = band_packet_luminosity(LAUNCH_BAND_WHOLE)
+    else if (band_packet_count(LAUNCH_BAND_IONIZING) > 0_int64) then
+       Lpk = band_packet_luminosity(LAUNCH_BAND_IONIZING)
+    else
+       Lpk = band_packet_luminosity(LAUNCH_BAND_FUV)
+    end if
+  end function ionizing_packet_luminosity
+
+  !=========================================================================
+  ! Component for a uniform u within band part iband.  The whole band keeps
+  ! the original search of src_cdf exactly; a stratum searches its own CDF and
+  ! passes over components with no luminosity there, so a flat CDF step is
+  ! never selected even at u = 0.
+  !=========================================================================
+  integer function component_in_band(u, iband) result(ic)
+    implicit none
+    real(kind=wp), intent(in) :: u
+    integer,       intent(in) :: iband
+    integer :: i
+    select case (iband)
+    case (LAUNCH_BAND_IONIZING)
+       ic = last_lit_component(comp_L_ionizing)
+       do i = 1, ncomp
+          if (comp_L_ionizing(i) > 0.0_wp .and. u <= src_cdf_ionizing(i)) then
+             ic = i;  exit
+          end if
+       end do
+    case (LAUNCH_BAND_FUV)
+       ic = last_lit_component(comp_L_fuv)
+       do i = 1, ncomp
+          if (comp_L_fuv(i) > 0.0_wp .and. u <= src_cdf_fuv(i)) then
+             ic = i;  exit
+          end if
+       end do
+    case default
+       ic = ncomp
+       do i = 1, ncomp
+          if (u <= src_cdf(i)) then
+             ic = i;  exit
+          end if
+       end do
+    end select
+  end function component_in_band
+
+  integer function last_lit_component(L) result(ic)
+    implicit none
+    real(kind=wp), intent(in) :: L(:)
+    integer :: i
+    ic = size(L)
+    do i = size(L), 1, -1
+       if (L(i) > 0.0_wp) then
+          ic = i;  exit
+       end if
+    end do
+  end function last_lit_component
+
+  !=========================================================================
+  ! Photon energy [eV] of component ic for a uniform u within band part iband,
+  ! by inverting the component's own band CDF F_c.  Whole band: F_c^-1(u),
+  ! exactly the original draw.  Ionizing stratum: F_c^-1(F + u(1 - F)), and
+  ! FUV stratum: F_c^-1(u F), with F = F_c(eion_min) -- the conditional
+  ! distributions of the same spectrum on each side of eion_min.  The clamps
+  ! keep a rounding-level draw on its own side of the boundary (eion_min is a
+  ! knot of every Planck sampler, so they bind only at the ends).
+  !=========================================================================
+  real(kind=wp) function source_energy_in_band(ic, u, iband) result(energy)
+    implicit none
+    integer,       intent(in) :: ic, iband
+    real(kind=wp), intent(in) :: u
+    real(kind=wp) :: f
+    select case (iband)
+    case (LAUNCH_BAND_IONIZING)
+       f = comp_fuv_cdf(ic)
+       energy = max(sample_energy_cdf(source_energy_sampler(ic), f + u*(1.0_wp - f)), &
+                    par%eion_min)
+    case (LAUNCH_BAND_FUV)
+       f = comp_fuv_cdf(ic)
+       energy = min(sample_energy_cdf(source_energy_sampler(ic), u*f), &
+                    nearest(par%eion_min, -1.0_wp))
+    case default
+       energy = sample_energy_cdf(source_energy_sampler(ic), u)
+    end select
+  end function source_energy_in_band
 
   !=========================================================================
   ! Fraction of a sampled spectrum's band luminosity that lies above
@@ -1794,19 +2079,28 @@ contains
   ! and its energy is drawn from that component's own spectrum:
   !   comp_kind = i>=1 - internal point source i (par%src_x/y/z(i)), isotropic;
   !   comp_kind = 0    - external field (par%ext_geometry 'rec'/'sph').
-  ! Every packet carries the same Lpacket = ion_Ltot / nphotons, so component c
-  ! collects a band luminosity equal to its share of ion_Ltot.  photon%inu is
-  ! the diagnostic bin the sampled energy falls in; the transported quantity is
-  ! the energy itself.
+  ! Every packet of the whole band carries the same Lpacket = ion_Ltot /
+  ! nphotons, so component c collects a band luminosity equal to its share of
+  ! ion_Ltot.  band (default LAUNCH_BAND_WHOLE) restricts the draw to one
+  ! stratum of par%fuv_sampling = 'separate': the component is picked by its
+  ! luminosity in that stratum, the energy from its conditional CDF there, and
+  ! the packet carries L_stratum / N_stratum (band_packet_luminosity).  The
+  ! weight starts at 1 either way, so the Russian roulette of the dust
+  ! scattering (raytrace_amr) keeps acting relative to the launch weight.
+  ! photon%inu is the diagnostic bin the sampled energy falls in; the
+  ! transported quantity is the energy itself.
   !=========================================================================
-  subroutine gen_ion_photon(photon)
+  subroutine gen_ion_photon(photon, band)
     use random,     only : rand_number
     use octree_mod, only : amr_find_leaf
     implicit none
     type(photon_type), intent(inout) :: photon
+    integer, intent(in), optional    :: band
     real(kind=wp) :: u, sampled_energy
-    integer :: i, ic, ik
+    integer :: ic, ik, iband
 
+    iband = LAUNCH_BAND_WHOLE
+    if (present(band)) iband = band
     if (.not. source_energy_sampler_ready) &
        error stop 'source energy sampler is not initialized'
     if (.not. multi_src) then
@@ -1822,17 +2116,11 @@ contains
           call emit_slab(photon)
        end select
        u = rand_number()
-       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u)
+       sampled_energy = source_energy_in_band(1, u, iband)
     else
        !--- multi-component: pick a component, emit from it, draw its energy.
        u = rand_number()
-       ic = ncomp
-       do i = 1, ncomp
-          if (u <= src_cdf(i)) then
-             ic = i
-             exit
-          end if
-       end do
+       ic = component_in_band(u, iband)
        ik = comp_kind(ic)
        if (ik >= 1) then
           call emit_point(photon, par%src_x(ik), par%src_y(ik), par%src_z(ik))
@@ -1842,12 +2130,12 @@ contains
           call emit_external_rec(photon)
        end if
        u = rand_number()
-       sampled_energy = sample_energy_cdf(source_energy_sampler(ic), u)
+       sampled_energy = source_energy_in_band(ic, u, iband)
     end if
     photon%inu = ion_bin_of(sampled_energy, include_fuv=.true.)
 
     photon%wgt     = 1.0_wp
-    photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
+    photon%Lpacket = band_packet_luminosity(iband)
     photon%energy_eV = sampled_energy
     photon%nscatt  = 0
     photon%inside  = .true.
@@ -1875,27 +2163,32 @@ contains
   ! surface pick, nudges, from_external/snx..snz flags) mirror the legacy
   ! gen_ion_photon path EXACTLY; only the uniforms are supplied instead of drawn.
   ! No Mersenne Twister draw is consumed, so the launch set is indexed by the
-  ! global photon number and is independent of the MPI task count.
+  ! global photon number and is independent of the MPI task count.  band has
+  ! the meaning it has in gen_ion_photon; the dimension layout is the same in
+  ! every band part.
   !=========================================================================
-  subroutine gen_ion_photon_qmc(photon, u)
+  subroutine gen_ion_photon_qmc(photon, u, band)
     use octree_mod, only : amr_find_leaf
     implicit none
     type(photon_type), intent(inout) :: photon
     real(kind=wp),     intent(in)    :: u(:)
-    integer :: i, ic, ik
+    integer, intent(in), optional    :: band
+    integer :: ic, ik, iband
     real(kind=wp) :: sampled_energy
 
+    iband = LAUNCH_BAND_WHOLE
+    if (present(band)) iband = band
     if (.not. source_energy_sampler_ready) &
        error stop 'source energy sampler is not initialized'
     if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
        !--- single point source: stage-1 layout (u1 = photon energy).
        call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
                            u(2), u(3))
-       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(1))
+       sampled_energy = source_energy_in_band(1, u(1), iband)
     else if ((.not. multi_src) .and. trim(par%source_geometry) == 'slab') then
        !--- slab layout: u1 energy, u2 face, u3/u4 xy, u5 mu, u6 phi.
        call emit_slab_qmc(photon, u(2), u(3), u(4), u(5), u(6))
-       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(1))
+       sampled_energy = source_energy_in_band(1, u(1), iband)
     else if (.not. multi_src) then
        !--- single external component (nsource=0): superset angle/surface dims,
        !--- energy from the component's spectrum (u2).  d1 (component) is unused.
@@ -1904,15 +2197,10 @@ contains
        else
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
-       sampled_energy = sample_energy_cdf(source_energy_sampler(1), u(2))
+       sampled_energy = source_energy_in_band(1, u(2), iband)
     else
        !--- multi-component: pick a component (u1), emit from it, draw its energy.
-       ic = ncomp
-       do i = 1, ncomp
-          if (u(1) <= src_cdf(i)) then
-             ic = i;  exit
-          end if
-       end do
+       ic = component_in_band(u(1), iband)
        ik = comp_kind(ic)
        if (ik >= 1) then
           call emit_point_qmc(photon, par%src_x(ik), par%src_y(ik), &
@@ -1922,12 +2210,12 @@ contains
        else
           call emit_external_rec_qmc(photon, u(3), u(4), u(5), u(6), u(7))
        end if
-       sampled_energy = sample_energy_cdf(source_energy_sampler(ic), u(2))
+       sampled_energy = source_energy_in_band(ic, u(2), iband)
     end if
     photon%inu = ion_bin_of(sampled_energy, include_fuv=.true.)
 
     photon%wgt     = 1.0_wp
-    photon%Lpacket = ion_Ltot / real(par%nphotons, wp)
+    photon%Lpacket = band_packet_luminosity(iband)
     photon%energy_eV = sampled_energy
     photon%nscatt  = 0
     photon%inside  = .true.

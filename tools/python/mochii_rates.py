@@ -6,19 +6,26 @@ the rates the run used, or the deviation they report is partly a difference
 between two atomic datasets rather than a property of the transport. Before this
 module they carried their own Hui & Gnedin (1997) case-B coefficients while the
 runs used the Badnell total with the Milne ground-level rate, which at 10^4 K
-differ by 0.86% for H I and by 1.2% at the 19-24 kK of the G2a thermal test,
+differed by 0.86% for H I (0.33% from the cascade alpha_B used since
+2026-09-26) and by 1.2% at the 19-24 kK of the G2a thermal test,
 and their free-free cooling used one Gaunt factor for every ion where the code
 resolves the net charge, which at 10^4 K is 6.5% on the He III term.
 
 Recombination mirrors `src/recomb_mod.f90` for `par%recomb_model =
-'badnell_milne'`, the default:
+'detailed_balance'`, the default (named 'badnell_milne' until 2026-09-26):
 
-  alpha_A  Badnell/Strathclyde TAMOC radiative recombination (`rr_badnell`),
-           plus the He II dielectronic term for He I;
   alpha_1  the ground-level rate from the Milne relation applied to the
            transport cross sections, refitted onto Mao & Kaastra's functional
            form (`tools/fitting/fit_alpha1_milne.py`);
-  alpha_B  alpha_A - alpha_1, exactly as `alphaB_*` computes it.
+  He I     alpha_A the Badnell/Strathclyde TAMOC radiative recombination
+           (`rr_badnell`) plus the He II dielectronic term, alpha_B =
+           alpha_A - alpha_1;
+  H I, He II (hydrogenic)  alpha_B from the nl-resolved cascade tabulated in
+           `src/hydrogenic_recombination_data.inc` (read here, interpolated
+           by the same Catmull-Rom cubic in log-log as
+           `hydrogenic_recombination_mod`), alpha_A = alpha_B + alpha_1.
+           Until 2026-09-26 these two took alpha_A from the Badnell fit as
+           well, which put alpha_B(H II) 1.13% high at 1e4 K.
 
 The `hui_gnedin_*` functions are kept because `par%recomb_model = 'hui_gnedin'`
 selects them and one gate needs to reproduce a run made that way; they are not
@@ -32,6 +39,9 @@ Keep this file in step with `src/recomb_mod.f90`, `src/cooling_mod.f90`, and
 against drift; everything below is compared with the Fortran, group by group,
 by `tests/rates/check_python_rates.py`.
 """
+
+import os
+import re
 
 import numpy as np
 
@@ -87,9 +97,64 @@ def alpha1_HeIII(T):
                   8.97582e-1, 5.01551e-1, 1.21533e-3)
 
 
+#--- the hydrogenic cascade table, read from the Fortran include
+_HYD_INC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                        "src", "hydrogenic_recombination_data.inc")
+_HYD = None
+
+
+def _hydrogenic_table():
+    """log T grid and log alpha_B (z = 1, 2) from the DATA statements."""
+    global _HYD
+    if _HYD is None:
+        text = open(_HYD_INC).read().replace("&\n", " ")
+        vals = {}
+        for m in re.finditer(r"data\s+(\w+(?:\([^)]*\))?)\s*/(.*?)/", text,
+                             re.IGNORECASE | re.DOTALL):
+            nums = [float(x.replace("_wp", "").replace("E", "e"))
+                    for x in m.group(2).replace(",", " ").split()]
+            vals[m.group(1).replace(" ", "")] = np.array(nums)
+        _HYD = (vals["hyd_logT"], vals["hyd_logaB(:,1)"], vals["hyd_logaB(:,2)"])
+    return _HYD
+
+
+def hydrogenic_alpha_B(z, T):
+    """alpha_B of nuclear charge z; `hydrogenic_alpha_B` in
+    hydrogenic_recombination_mod (Catmull-Rom in log-log, C1 across every
+    node, clamped outside the table)."""
+    lt_grid, la1, la2 = _hydrogenic_table()
+    la = la1 if z == 1 else la2
+    n = lt_grid.size
+    dlt = (lt_grid[-1] - lt_grid[0]) / (n - 1)
+    x = (np.clip(np.log10(np.asarray(T, dtype=float)), lt_grid[0], lt_grid[-1])
+         - lt_grid[0]) / dlt
+    i = np.minimum(x.astype(int), n - 2)          # 0-based node below
+    w = x - i
+    p1, p2 = la[i], la[i + 1]
+    # at the table ends the missing neighbor is the linear extrapolation
+    p0 = np.where(i > 0, la[np.maximum(i - 1, 0)], 2.0 * p1 - p2)
+    p3 = np.where(i < n - 2, la[np.minimum(i + 2, n - 1)], 2.0 * p2 - p1)
+    return 10.0 ** (p1 + 0.5 * w * (p2 - p0 + w * (2.0 * p0 - 5.0 * p1 + 4.0 * p2
+                                                   - p3 + w * (3.0 * (p1 - p2)
+                                                               + p3 - p0))))
+
+
+#--- case B
+def alphaB_HII(T):
+    return hydrogenic_alpha_B(1, T)
+
+
+def alphaB_HeII(T):
+    return alphaA_HeII(T) - alpha1_HeII(T)
+
+
+def alphaB_HeIII(T):
+    return hydrogenic_alpha_B(2, T)
+
+
 #--- totals
 def alphaA_HII(T):
-    return rr_badnell(T, 8.318e-11, 0.7472, 2.965, 7.001e5)
+    return alphaB_HII(T) + alpha1_HII(T)
 
 
 def alphaA_HeII(T):
@@ -98,20 +163,7 @@ def alphaA_HeII(T):
 
 
 def alphaA_HeIII(T):
-    return rr_badnell(T, 1.818e-10, 0.7492, 1.017e1, 2.786e6)
-
-
-#--- case B, as alphaB_* computes it
-def alphaB_HII(T):
-    return alphaA_HII(T) - alpha1_HII(T)
-
-
-def alphaB_HeII(T):
-    return alphaA_HeII(T) - alpha1_HeII(T)
-
-
-def alphaB_HeIII(T):
-    return alphaA_HeIII(T) - alpha1_HeIII(T)
+    return alphaB_HeIII(T) + alpha1_HeIII(T)
 
 
 #--- par%recomb_model = 'hui_gnedin'; not the default

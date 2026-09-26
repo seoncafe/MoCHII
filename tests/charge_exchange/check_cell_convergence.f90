@@ -30,10 +30,13 @@ program check_cell_convergence
   par%use_metals      = .true.
   par%metal_ne        = .true.
   par%charge_exchange = 'two_way'
-  par%case_ab         = 'B'
+  !--- the recorded pass counts predate the He I 2^3S coupling, whose own
+  !--- convergence is gated in tests/hei_metastable_coupling
+  par%hei_metastable_coupling = .false.
+  par%recombination_continuum = 'on_the_spot'
   par%abund_He        = 0.1_wp
   par%ci_model        = 'voronov'
-  par%recomb_model    = 'badnell_milne'
+  par%recomb_model    = 'detailed_balance'
   par%cooling_model   = 'low_density'
   par%abund_C  = 2.2e-4_wp;  par%abund_N  = 4.0e-5_wp
   par%abund_O  = 3.3e-4_wp;  par%abund_Ne = 5.0e-5_wp

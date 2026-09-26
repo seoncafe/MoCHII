@@ -4,13 +4,14 @@ program check_heii_cascade
 ! recombination radiates on its way down through He II.
 !
 ! Checks:
-!   1. the n = 2 exit branching closes -- f_2s + f_2p = 1 -- and f_2s equals
-!      alpha_eff(2^2S)/alpha_B from data/atomic/heii_caseB_n2.txt, both parts
-!      from Storey & Hummer (1995) so the ratio closes ONE cascade;
+!   1. the n = 2 exit branching closes -- f_2s + f_2p = 1 -- with f_2s the
+!      case-B alpha_eff(2^2S)/alpha_B of one zero-density Storey & Hummer
+!      (1991) cascade (hydrogenic_recombination_mod; its own gate is
+!      tests/hydrogenic_recombination);
 !   2. alpha_eff(2^2P) = alpha_B (1 - f_2s) agrees with MOCASSIN's INDEPENDENT
 !      He II Ly-alpha emissivity fit, 10^(-0.792 log10 Te + 6.01) e-25
 !      erg cm^3/s, to better than 8%.  This is the one cross-check available
-!      on the 2^2P branch that does not come from SH95;
+!      on the 2^2P branch that does not come from the same cascade;
 !   3. the three branch luminosities are positive and ordered
 !      Ly-alpha > two-photon > free-bound over 1e4-3e4 K;
 !   4. every sampled energy lies in [E_th(H I), min(eion_max, 54.416)] -- no
@@ -22,7 +23,13 @@ program check_heii_cascade
 !      packets represent the physical photon rate;
 !   6. the two-photon in-band moments match independent quadrature of the
 !      Nussbaumer & Schmutz (1984) shape, and the pair integrates to two
-!      photons per decay.
+!      photons per decay;
+!   7. case A (par%lyman_lines = 'escaping'): the Lyman-line path carries
+!      alpha_B sum_n f_n E_n, every sampled line lies in [40.813, 54.42] eV,
+!      the photons the energy-weighted sampler implies, L <1/E>, equal
+!      alpha_B sum_n f_n to 1e-4 (the stratified sampling of NS draws), and
+!      the free-bound term does not depend on the case.  Checks 1-6 run in
+!      case B, the default.
 !---------------------------------------------------------------------------
   use define
   use recomb_mod,               only : alphaB_HeIII
@@ -30,7 +37,10 @@ program check_heii_cascade
                                        heii_branch_luminosity, &
                                        heii_fb_sample_energy, &
                                        heii_2q_sample_energy, &
-                                       heii_alpha_2s, heii_f_2s, E_HEII_LYA
+                                       heii_lyman_sample_energy, &
+                                       heii_f_2s, E_HEII_LYA
+  use hydrogenic_recombination_mod, only : heii_lyman_shares, heii_lyman_energy, &
+                                           HEII_NLY
   use hydrogenic_twophoton_mod, only : h2q_band_photons_per_decay, &
                                        h2q_band_energy_per_decay
   use mpi
@@ -44,9 +54,10 @@ program check_heii_cascade
 
   integer :: ierr, i, nbad
   real(kind=wp) :: T, f2s, aB, a2p, a2p_moc, r
-  real(kind=wp) :: lfb, llya, l2q, tot3, e_hi
+  real(kind=wp) :: lfb, llyman, l2q, tot3, e_hi
   real(kind=wp) :: u, E, s1, sinv, qn, qe, dev
   real(kind=wp) :: ya, yb, ym, dy, accn, acce, totA
+  real(kind=wp) :: fl(HEII_NLY), el(HEII_NLY), lB(3), lA(3), nimp
   real(kind=wp), parameter :: TGRID(5) = [5.0e3_wp, 1.0e4_wp, 1.5e4_wp, &
                                           2.0e4_wp, 3.0e4_wp]
   real(kind=wp), parameter :: TSHARE(3) = [1.0e4_wp, 1.5e4_wp, 3.0e4_wp]
@@ -63,7 +74,7 @@ program check_heii_cascade
   !=======================================================================
   ! 1-2. branching closure and the independent Ly-alpha cross-check
   !=======================================================================
-  write(*,'(a)') ' n = 2 exit branching (SH95, n_e = 100):'
+  write(*,'(a)') ' n = 2 exit branching (zero-density cascade, case B):'
   write(*,'(a)') '   T [K]     alpha_B    alpha_2s     f_2s     f_2p'// &
                  '    alpha_2p   MOCASSIN    ratio'
   do i = 1, 5
@@ -75,7 +86,7 @@ program check_heii_cascade
                /(E_HEII_LYA*EV)
      r = a2p/a2p_moc
      write(*,'(f9.0,2es12.4,2f9.5,2es12.4,f9.4)') &
-        T, aB, heii_alpha_2s(T), f2s, 1.0_wp - f2s, a2p, a2p_moc, r
+        T, aB, aB*f2s, f2s, 1.0_wp - f2s, a2p, a2p_moc, r
      if (f2s <= 0.0_wp .or. f2s >= 1.0_wp) ok = .false.
      if (abs(r - 1.0_wp) > TOL_MOC) ok = .false.
   end do
@@ -90,12 +101,12 @@ program check_heii_cascade
                  '     fb %    Lya %     2q %'
   do i = 1, 3
      T = TSHARE(i)
-     call heii_branch_luminosity(T, lfb, llya, l2q)
-     tot3 = lfb + llya + l2q
-     write(*,'(f9.0,3es12.4,3f9.3)') T, lfb, llya, l2q, &
-        100.0_wp*lfb/tot3, 100.0_wp*llya/tot3, 100.0_wp*l2q/tot3
-     if (lfb <= 0.0_wp .or. llya <= 0.0_wp .or. l2q <= 0.0_wp) ok = .false.
-     if (.not. (llya > l2q .and. l2q > lfb)) ok = .false.
+     call heii_branch_luminosity(T, lfb, llyman, l2q)
+     tot3 = lfb + llyman + l2q
+     write(*,'(f9.0,3es12.4,3f9.3)') T, lfb, llyman, l2q, &
+        100.0_wp*lfb/tot3, 100.0_wp*llyman/tot3, 100.0_wp*l2q/tot3
+     if (lfb <= 0.0_wp .or. llyman <= 0.0_wp .or. l2q <= 0.0_wp) ok = .false.
+     if (.not. (llyman > l2q .and. l2q > lfb)) ok = .false.
   end do
 
   !=======================================================================
@@ -162,7 +173,42 @@ program check_heii_cascade
      ' - ', heii_fb_sample_energy(T, 1.0_wp), ' eV'
   if (nbad > 0) ok = .false.
 
-  write(*,'(/,a,a)') ' GATE (He III case-B cascade channel): ', &
+  !=======================================================================
+  ! 7. case A: the Lyman-line path
+  !=======================================================================
+  T = 1.5e4_wp
+  call heii_branch_luminosity(T, lB(1), lB(2), lB(3))
+  par%lyman_lines = 'escaping'
+  call heii_branch_luminosity(T, lA(1), lA(2), lA(3))
+  call heii_lyman_shares(T, 'A', fl)
+  do i = 1, HEII_NLY
+     el(i) = heii_lyman_energy(i)
+  end do
+  aB = alphaB_HeIII(T)
+  nbad = 0;  sinv = 0.0_wp
+  do i = 1, NS
+     u = (real(i,wp) - 0.5_wp)/real(NS, wp)
+     E = heii_lyman_sample_energy(T, u)
+     if (E < 40.8129_wp .or. E > 54.42_wp) nbad = nbad + 1
+     sinv = sinv + 1.0_wp/E
+  end do
+  nimp = lA(2)/(EV)*sinv/real(NS,wp)
+  write(*,'(/,a)') ' case A (Lyman lines escaping), T = 1.5e4 K:'
+  write(*,'(a,3f9.5,es11.3)') '   shares Ly-alpha, beta, gamma, n>=31:', &
+     fl(1), fl(2), fl(3), fl(HEII_NLY)
+  write(*,'(a,2es13.5)') '   L(Lyman) case B, case A [erg cm^3/s]:', lB(2), lA(2)
+  write(*,'(a,2es13.5)') '   L(2q)    case B, case A             :', lB(3), lA(3)
+  write(*,'(a,es13.5,a,f12.9)') '   L(Lyman)/(aB sum f E) - 1 =', &
+     lA(2)/(aB*sum(fl*el)*EV) - 1.0_wp, &
+     '   sampler photons / (aB sum f) =', nimp/(aB*sum(fl))
+  write(*,'(a,i0)') '   sampled lines outside [40.813, 54.42] eV: ', nbad
+  if (abs(lA(2)/(aB*sum(fl*el)*EV) - 1.0_wp) > 1.0e-13_wp) ok = .false.
+  if (abs(nimp/(aB*sum(fl)) - 1.0_wp) > 1.0e-4_wp) ok = .false.
+  if (nbad > 0) ok = .false.
+  if (abs(lA(1)/lB(1) - 1.0_wp) > 1.0e-14_wp) ok = .false.
+  par%lyman_lines = 'on_the_spot'
+
+  write(*,'(/,a,a)') ' GATE (He III cascade channel): ', &
      merge('PASS', 'FAIL', ok)
   call MPI_FINALIZE(ierr)
   if (.not. ok) stop 1

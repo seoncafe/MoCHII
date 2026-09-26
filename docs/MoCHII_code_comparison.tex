@@ -531,7 +531,7 @@ anywhere in the tree, and He$^{++}$ does not exist as a species.
 Dust is absent from the photoionization path --- a case-insensitive search of
 the ionization, temperature and state-calculator sources returns nothing.  It
 exists instead as a separate hardwired mode whose own documentation calls it
-a first-year lab project (\code{src/CMacIonize.cpp}:50--53), with grey
+a first-year lab project (\code{src/CMacIonize.cpp}:50--53), with gray
 constants in each band, a forced first interaction, single-observer peel-off
 and Stokes imaging.  There is no dust temperature and no infrared emission
 anywhere in the tree.
@@ -567,7 +567,8 @@ something narrower here than in \MoCHII{}.  Independently of that, a
 \emph{constant} $2.7\times10^{-13}$~cm$^3$\,s$^{-1}$, with no temperature
 dependence (\code{photoion\_utils\_mod.F90}:305--310); setup only warns if it
 is combined with a transported diffuse field.  This is exactly the conflation
-\MoCHII{} separated into \code{par\%case\_ab} and \code{par\%line\_case}, left
+\MoCHII{} separated into \code{par\%recombination\_continuum} and
+\code{par\%lyman\_lines}, left
 here as a warning rather than as two parameters.
 
 The frequency grid is 1000 logarithmic bins from 1~mm to about 124~eV with
@@ -840,38 +841,54 @@ each built from the Pengelly \& Seaton (1964) expression --- reduced
 masses, $D_{nl} = Z^{-2}\,6n^2(n^2-l^2-l-1)$, and the smaller of the two
 impact-parameter cutoffs (\code{:340--363}).  $\alpha_{\rm eff}(2s)$ comes
 from a two-dimensional Hummer \& Storey (1987) table in
-$(\log T, \log \nelec)$; \MoCHII{} uses the Pengelly (1964) power law for
-\HI{} and SH95 for \HeII{}.  Two differences are worth carrying away.
+$(\log T, \log \nelec)$; \MoCHII{} takes its own $\alpha_B$ times the
+$2s$ share of a zero-density $nl$-resolved cascade built on Storey \&
+Hummer's (1991) hydrogenic routines, in case A or B as its recombination
+lines are, for both \HI{} and \HeII{} (until 2026-09-26 the case-B
+Pengelly 1964 power law for \HI{} and four SH95 anchors for \HeII{}).  Two differences are worth carrying away.
 
-\emph{The two prescriptions disagree by a factor near six.}  Evaluated at
-$10^4$~K, the \Colt{} expression gives $q_{\rm e}+q_{\rm p} =
-3.24{\times}10^{-3}\,{\rm cm^3\,s^{-1}}$ at $\nelec = 100$ falling to
-$2.80{\times}10^{-3}$ at $10^4$ (the weak density dependence is the Debye
-cutoff), against the single $5.31{\times}10^{-4}$ \MoCHII{} takes from
-Osterbrock's table by way of \Mocassin{}.  The consequence is the
-surviving fraction of the \HI{} two-photon continuum:
+\emph{The factor near six between the two is a \Colt{} defect.}  As coded,
+the \Colt{} expression gives $q_{\rm e}+q_{\rm p} =
+3.24{\times}10^{-3}\,{\rm cm^3\,s^{-1}}$ at $10^4$~K and $\nelec = 100$,
+falling to $2.80{\times}10^{-3}$ at $10^4\,{\rm cm^{-3}}$, against the
+single $5.31{\times}10^{-4}$ \MoCHII{} takes from Osterbrock's table by way
+of \Mocassin{}.  The Pengelly \& Seaton cutoff $R_1 = 1.12\,\hbar v/\Delta
+E$ needs $\Delta E$, the $2s$--$2p$ separation ($0.0353\,{\rm cm^{-1}}$ to
+$2p_{1/2}$, $0.330$ to $2p_{3/2}$); \Colt{} passes \code{nu\_12\_HI = c *
+82258.9544} (\code{nebcont.cc}:295), the Ly$\alpha$ frequency.  The
+logarithm of that cutoff goes negative, \code{minpos} (\code{:301})
+discards it, and only the Debye cutoff is left --- hence the weak density
+dependence.  With the physical separations, weighted $1/3$ and $2/3$ by the
+$2p_{1/2}$ and $2p_{3/2}$ statistical weights, the same expression gives
+$5.79{\times}10^{-4}$, independent of $\nelec$ over $10^2$--$10^4$; EXHALE's
+separate Pengelly \& Seaton evaluation gives $5.37{\times}10^{-4}$.  The
+surviving fraction of the \HI{} two-photon continuum at $10^4$~K:
 
 \begin{center}\small
 \begin{tabular}{rrrr}
 \toprule
-$\nelec$ [cm$^{-3}$] & \MoCHII{} & \Colt{} & ratio \\
+$\nelec$ [cm$^{-3}$] & \MoCHII{} ($n_{\rm p} = \nelec$) & \Colt{}, physical $\Delta E$ & \Colt{} as coded \\
 \midrule
-   100 & 0.994 & 0.962 & 0.97 \\
-  1000 & 0.939 & 0.731 & 0.78 \\
-  3000 & 0.838 & 0.485 & 0.58 \\
- 10000 & 0.608 & 0.227 & 0.37 \\
+   100 & 0.994 & 0.993 & 0.962 \\
+  1000 & 0.939 & 0.934 & 0.731 \\
+  3000 & 0.838 & 0.826 & 0.485 \\
+ 10000 & 0.608 & 0.587 & 0.227 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-At the $100\,{\rm cm^{-3}}$ of HII20 and HII40 the disagreement is $3\%$ of
-a term that is itself a few percent, so nothing recorded moves.  At the
-$3000\,{\rm cm^{-3}}$ of PN150 it is a factor $1.7$ in the transported
-continuum, and that gate is stage HS4.  Which prescription is right is not
-settled here and needs the printed Osterbrock table and Pengelly \& Seaton
-(1964) itself; it is an open check, listed as such in
-\code{MoCHII\_physics.pdf}.
+So at the $3000\,{\rm cm^{-3}}$ of PN150 the corrected expression and
+\MoCHII{} agree to $1.5\%$ in the continuum, and \Colt{} as coded removes
+three times too much of it.  Since 2026-09-25 \MoCHII{} also keeps the
+partners apart (\code{par\%twophoton\_quenching = 'colliders'}): electrons,
+protons, He$^+$ and He$^{2+}$ each with its own Pengelly \& Seaton rate,
+normalized to Osterbrock \& Ferland Table~4.10, with $A_{2s} = 8.2246\,{\rm
+s^{-1}}$ (Drake 1986).  With protons the only ions, as in the table, that
+default and the earlier \code{'lumped\_ne'} give the same $q = 5.31{\times}
+10^{-4}$ at $10^4$~K, so the \MoCHII{} column holds for both; they part where
+He$^+$ or He$^{2+}$ collides (He$^+$ at $1.07$, He$^{2+}$ at $3.21$ times the
+proton rate) or where metals supply electrons without protons.
 
 \emph{And one slip, stated as read.}  \code{HeII\_2p\_rate}
 (\code{nebcont.cc}:373--375) instantiates the template with the atomic
@@ -983,13 +1000,19 @@ PDF containing recombination continua and lines, and its new direction is
 isotropic.  This implements a full three-dimensional alternative to
 outward-only diffuse-field approximations \cite{jin2022}.
 
-\MoCHII{} offers two controlled limits.  Case B uses on-the-spot
-recombination.  With the explicit diffuse field enabled, case A is used
-and the emission table is rebuilt each iteration from the current state.
-The principal channels are H\,\textsc{ii}, He\,\textsc{ii}, and
-He\,\textsc{iii} ground recombination continua; the optional He\,\textsc{i}
-excited channel adds the 19.82-eV, 584-\AA{}, and two-photon contributions.
-These packets use the same transport estimator as stellar packets.  This
+\MoCHII{} offers three controlled treatments of the recombination continuum
+(\code{par\%recombination\_continuum}).  \code{'on\_the\_spot'} (case B)
+absorbs the ground-capture photons where they are made, and
+gives hydrogen its share of the He\,\textsc{i} and He\,\textsc{ii}
+recombination photons that can ionize it (Osterbrock \& Ferland 2006,
+eqs.~2.24--2.25 and sec.~2.5).  \code{'transported'} (the default since 2026-09-26) uses case A and emits
+diffuse packets from an emission table rebuilt each iteration from the
+current state: the H\,\textsc{ii}, He\,\textsc{ii} and He\,\textsc{iii}
+ground continua, the He\,\textsc{i} excited cascade (19.82~eV, 584~\AA{},
+two-photon) and the He\,\textsc{iii} case-B cascade (free--bound into
+$n\ge2$, 40.8-eV Ly$\alpha$, two-photon), the last two on by default in this
+mode.  \code{'escaping'} uses case A and lets the ground-capture photons
+leave.  The packets use the same transport estimator as stellar packets.  This
 split makes case-A/case-B bracketing and energy accounting transparent,
 but it is not yet the full local emissivity inventory sampled by \Mthree{}.
 
@@ -1559,20 +1582,24 @@ density.
 \MoCHII{} deliberately separates two products:
 
 \begin{itemize}[leftmargin=2em]
-\item analytic Tier-1 cooling fits, evaluated cheaply inside the thermal
-  bisection in the optically thin low-density limit; and
+\item Tier-1 line cooling, evaluated cheaply inside the thermal bisection:
+  $\Lambda(T, \nelec)$ tables built from the $n$-level solve at the local
+  $\nelec$ (the default since 2026-07-26), or the analytic fits of the
+  optically thin low-density limit as an option; and
 \item Tier-2 $n$-level statistical-equilibrium data, evaluated on the
   converged state to produce density-dependent diagnostic emissivities.
 \end{itemize}
 
-The output line ratios therefore respond to density, but collisional
-quenching does not feed back into the hot thermal loop.  At ordinary
-H\,\textsc{ii}-region densities this is often acceptable.  In compact
-H\,\textsc{ii} regions, dense PN, shocked cooling zones, or any model with
-$\nelec\gtrsim n_{\rm crit}$ for a dominant coolant, \Mthree{} is
-physically better founded.  Moving the generic \MoCHII{} $n$-level solver
-or a reduced density-suppression fit into the thermal loop is the
-highest-value gas-physics improvement suggested by this comparison.
+The output line ratios therefore respond to density, and since 2026-07-26
+so does the thermal loop: \code{par\%cooling\_model = 'local\_ne'} (the
+default) takes the line cooling from the $n$-level populations at the local
+$\nelec$, tabulated as $\Lambda(T, \nelec)$ for each ion, and the
+zero-density fits remain as the \code{'low\_density'} option.  At the
+Lexington densities that is what brings the benchmark temperatures onto
+\textsc{Cloudy}'s (\MoCHII{} physics document, the Lexington benchmark
+section).  What \Mthree{} still does that \MoCHII{} does not is to solve the
+populations inside the thermal iteration for every ion rather than read a
+table computed from the same solver.
 
 \subsection{Thermal processes and equilibrium solution}
 
@@ -1977,10 +2004,11 @@ hardcodes \code{caseab(1)=1.0d0} with the escape-probability call commented
 out one line below (\code{calpdf.f}:45--46, 54--55), so the connected path is
 pure case B everywhere and the Lyman series above Ly$\alpha$ is identically
 zero even in optically thin gas.  \MoCHII{} sits between the two: two
-explicit parameters, \code{par\%case\_ab} for the ionizing continuum and
-\code{par\%line\_case} for the line tables, both defaulting to B, with the
-second added precisely because tying them together silently loaded case-A
-line tables whenever the diffuse field was switched on.
+explicit parameters, \code{par\%recombination\_continuum} for the ground
+continua and \code{par\%lyman\_lines} for the line tables, both defaulting to
+\code{'on\_the\_spot'} (case B), with the second kept separate precisely
+because tying them together silently loaded case-A line tables whenever the
+diffuse field was switched on.
 
 The other three each conflate the two questions in a different way.  \Wood{}
 has it right by convention and says nothing about it: its lines are case B
@@ -2057,7 +2085,7 @@ Code & Emissivity source & Case mechanism & $\nelec$ depend. & H collis.\ term &
 \bottomrule
 \endfoot
 \MoCHII{} & SH95 case-A/B tables, bilinear in $(\log\Te,\log\nelec)$ &
-\code{line\_case}, separate from the continuum \code{case\_ab} & yes &
+\code{lyman\_lines}, separate from the continuum \code{recombination\_continuum} & yes &
 optional, 25-level atom & no \\
 
 \Mappings{} & SH95 absolute H$\beta$ + 90 ratios, spline in $\log\Te$ &

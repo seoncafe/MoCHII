@@ -4,15 +4,27 @@ module recomb_mod
 !
 ! Recombination — selected by par%recomb_model, for H II, He II, He III as
 ! functions of T [K].
-!   'badnell_milne' (default): total radiative recombination alpha_A from the
-!     Badnell (2023) RR fit; the ground-level (n=1) direct-capture alpha_1
-!     from the Milne relation applied to the transport photoionization cross
-!     sections (see alpha1_* below); case B alpha_B = alpha_A - alpha_1.
-!     He II -> He I includes the Badnell three-term DR sum (negligible below
-!     ~5e4 K); H II and He III have no DR.  The name carries both sources
-!     because the two coefficients come from two determinations, and that
-!     alpha_B is a difference rather than a fit is what the name records.
-!     Only the FIT FORM of alpha_1 is still Mao & Kaastra's, hence rr_mao.
+!   'detailed_balance' (default), named for what all three ions share:
+!     He II -> He I: total radiative recombination alpha_A from the Badnell
+!       (2023) RR fit plus the Badnell three-term DR sum (negligible below
+!       ~5e4 K); the ground-level (n=1) direct capture alpha_1 from the Milne
+!       relation applied to the transport photoionization cross section
+!       (see alpha1_* below); case B alpha_B = alpha_A - alpha_1.
+!     H II -> H I and He III -> He II (hydrogenic): alpha_B from the
+!       nl-resolved cascade of hydrogenic_recombination_mod (Storey & Hummer
+!       1991 hydrogenic data, zero density; within 0.1% of the Storey &
+!       Hummer 1995 alpha-tot at 1e4 K), alpha_A = alpha_B + alpha_1 with the
+!       same Milne alpha_1.  Until 2026-09-26 these two took alpha_A from the
+!       Badnell fit as well, and alpha_B = alpha_A - alpha_1 then amplified
+!       the fit's +0.6% (H II, 1e4 K) into +1.13% on alpha_B (+0.7% to +1.2%
+!       over 5e3-2e4 K; He III +0.35%).  alpha_A - alpha_B is alpha_1 exactly
+!       either way, the rate the ground-continuum packets are counted from.
+!     The name records what all three share: alpha_1 by detailed balance
+!     (the Milne relation) on the cross section the transport absorbs with;
+!     the totals come from the best determination for each ion and may
+!     change.  It was 'badnell_milne' until 2026-09-26, when the hydrogenic
+!     ions stopped using the Badnell total.  Only the FIT FORM of alpha_1 is
+!     still Mao & Kaastra's, hence rr_mao.
 !   'hui_gnedin': Hui & Gnedin (1997, MNRAS 292, 27) case-A/B fits, where one
 !     source supplies both alpha_A and alpha_B directly.  Retained so the
 !     recorded gates reproduce.
@@ -22,6 +34,7 @@ module recomb_mod
 ! Negligible next to photoionization at ~1e4 K but kept in the balance.
 !---------------------------------------------------------------------------
   use define, only : wp, kboltz_cgs, ev2erg, nan64, par
+  use hydrogenic_recombination_mod, only : hydrogenic_alpha_B
   implicit none
   private
 
@@ -42,13 +55,13 @@ contains
   ! is matched by name and there is no catch-all branch: a third model added to
   ! that whitelist but not to these select constructs returns NaN, where the
   ! former 'anything that is not hui_gnedin' would have served it the
-  ! badnell_milne rate and reported success.
+  ! detailed_balance rate and reported success.
   !=========================================================================
   elemental real(kind=wp) function alphaA_HII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
-       a = rr_badnell(T, 8.318e-11_wp, 0.7472_wp, 2.965_wp, 7.001e5_wp, 0.0_wp, 0.0_wp)
+    case ('detailed_balance')
+       a = hydrogenic_alpha_B(1, T) + alpha1_HII(T)
     case ('hui_gnedin')
        a = hg_alphaA_HII(T)
     case default
@@ -59,8 +72,8 @@ contains
   elemental real(kind=wp) function alphaB_HII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
-       a = alphaA_HII(T) - alpha1_HII(T)
+    case ('detailed_balance')
+       a = hydrogenic_alpha_B(1, T)
     case ('hui_gnedin')
        a = hg_alphaB_HII(T)
     case default
@@ -71,7 +84,7 @@ contains
   elemental real(kind=wp) function alphaA_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
+    case ('detailed_balance')
        a = rr_badnell(T, 5.235e-11_wp, 0.6988_wp, 7.301_wp, 4.475e6_wp, 0.0829_wp, 1.682e5_wp) &
            + dr_HeII_badnell(T)
     case ('hui_gnedin')
@@ -84,7 +97,7 @@ contains
   elemental real(kind=wp) function alphaB_HeII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
+    case ('detailed_balance')
        a = alphaA_HeII(T) - alpha1_HeII(T)
     case ('hui_gnedin')
        a = hg_alphaB_HeII(T)
@@ -96,8 +109,8 @@ contains
   elemental real(kind=wp) function alphaA_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
-       a = rr_badnell(T, 1.818e-10_wp, 0.7492_wp, 1.017e1_wp, 2.786e6_wp, 0.0_wp, 0.0_wp)
+    case ('detailed_balance')
+       a = hydrogenic_alpha_B(2, T) + alpha1_HeIII(T)
     case ('hui_gnedin')
        a = hg_alphaA_HeIII(T)
     case default
@@ -108,8 +121,8 @@ contains
   elemental real(kind=wp) function alphaB_HeIII(T) result(a)
     real(kind=wp), intent(in) :: T
     select case (trim(par%recomb_model))
-    case ('badnell_milne')
-       a = alphaA_HeIII(T) - alpha1_HeIII(T)
+    case ('detailed_balance')
+       a = hydrogenic_alpha_B(2, T)
     case ('hui_gnedin')
        a = hg_alphaB_HeIII(T)
     case default
@@ -151,8 +164,9 @@ contains
   end function rr_mao
 
   !=========================================================================
-  ! n=1 ground-level direct-capture rate alpha_1(T), the term that turns the
-  ! Badnell total alpha_A into case B.
+  ! n=1 ground-level direct-capture rate alpha_1(T): for He I the term that
+  ! turns the Badnell total alpha_A into case B, for H I and He II the term
+  ! that turns the cascade's alpha_B into case A.
   !
   ! The coefficients are fits to the Milne relation evaluated with the SAME
   ! ground-state photoionization cross sections the transport uses — exact

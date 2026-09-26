@@ -43,8 +43,7 @@ gen () {  # $1=tag $2=mode(random|sobol) $3=seed
  par%gas_tol       = 5.0e-3
  par%te_fixed      = 1.0e4
  par%ion_relax     = 1.0
- par%case_ab       = 'A'
- par%diffuse_field = .true.
+ par%recombination_continuum = 'transported'
  par%conv_crit     = 'vol'
  par%source_geometry = 'point'
  par%launch_sequence = '$2'

@@ -3,9 +3,9 @@ module sh95_mod
 ! MoCHII: line emissivities on a (T, n_e) grid:
 ! H I (ion 1) and He II (ion 2) are recombination line emissivities from
 ! Storey & Hummer (1995, MNRAS 272, 41) via tools/fitting/make_sh95_lines.py,
-! in the case set by the Lyman-line optical depth, par%line_case (default
-! 'B'; 'follow' ties it to par%case_ab): sh95_{hi,heii}_caseA.txt for case A,
-! sh95_{hi,heii}_caseB.txt for case B.
+! in the case set by the fate of the Lyman-line photons, par%lyman_lines:
+! sh95_{hi,heii}_caseB.txt when they are absorbed on the spot (default,
+! case B), sh95_{hi,heii}_caseA.txt when they escape (case A).
 ! He I (ion 3, hei_porter_caseB.txt) from Porter et al. (2012, 2013) via
 ! tools/fitting/make_hei_lines.py is a case-B collisional-radiative total
 ! (it already includes collisional excitation out of the 2^3S metastable, so
@@ -68,13 +68,12 @@ contains
     use mpi
     implicit none
     character(len=64) :: hi_file, heii_file
-    !--- Select the SH95 tables by the Lyman-LINE optical depth (par%line_case),
-    !--- not by the continuum treatment (par%case_ab): a nebula whose diffuse
-    !--- Lyman continuum is transported explicitly still traps its Lyman lines
-    !--- and therefore radiates case-B Balmer lines.  'follow' reproduces the
-    !--- historical behavior of tying the two together.
-    if (trim(par%line_case) == 'A' .or. &
-        (trim(par%line_case) == 'follow' .and. trim(par%case_ab) == 'A')) then
+    !--- Select the SH95 tables by the fate of the Lyman-LINE photons
+    !--- (par%lyman_lines), not by the continuum (par%recombination_continuum):
+    !--- a nebula whose diffuse Lyman continuum is transported explicitly
+    !--- still traps its Lyman lines and therefore radiates case-B Balmer
+    !--- lines.
+    if (trim(par%lyman_lines) == 'escaping') then
        hi_file   = 'sh95_hi_caseA.txt'
        heii_file = 'sh95_heii_caseA.txt'
     else

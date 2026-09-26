@@ -33,7 +33,7 @@
  par%gas_niter     = 40
  par%gas_tol       = 5.0e-3
  par%ion_relax     = 1.0
- par%case_ab       = 'B'
+ par%recombination_continuum = 'on_the_spot'
  par%solve_te      = .true.
  par%te_min        = 3.0e3
  par%te_max        = 3.0e4
@@ -67,4 +67,9 @@
  par%abund_O  = 3.3e-4   ! pinned: this input predates zero default abundances
  par%abund_Ne = 5.0e-5   ! pinned: this input predates zero default abundances
  par%abund_S  = 9.0e-6   ! pinned: this input predates zero default abundances
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
 /

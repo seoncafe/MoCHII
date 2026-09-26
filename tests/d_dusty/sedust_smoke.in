@@ -26,7 +26,6 @@
  par%xHeI_init     = 0.0
  par%xHeII_init    = 1.0
  par%abund_He      = 0.1
- par%ion_add_dust  = .false.
 
  !--- G1 iteration (case B on-the-spot, fixed Te)
  par%gas_niter     = 6
@@ -34,7 +33,7 @@
  par%te_fixed      = 1.0e4
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0
- par%case_ab       = 'B'
+ par%recombination_continuum = 'on_the_spot'
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
@@ -61,4 +60,9 @@
  par%dust_sed       = .true.
  par%dust_model     = 'astrodust'
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
 /

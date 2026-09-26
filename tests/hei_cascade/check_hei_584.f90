@@ -30,7 +30,7 @@ program check_hei_584
   real(kind=wp), parameter :: TG(4)  = [3.0e3_wp, 8.0e3_wp, 1.0e4_wp, 2.0e4_wp]
   real(kind=wp), parameter :: XH(4)  = [1.0e-5_wp, 1.0e-4_wp, 1.0e-3_wp, 1.0e-1_wp]
   real(kind=wp), parameter :: XHE(4) = [1.0e-4_wp, 1.0e-3_wp, 1.0e-2_wp, 5.0e-1_wp]
-  real(kind=wp) :: T, xh0, xhe0, p, pw, pc, dev, dmax
+  real(kind=wp) :: dmax2, T, xh0, xhe0, p, pw, pc, dev, dmax
   real(kind=wp) :: n40, n20, e40, e20
   integer :: ierr, i, j, k
   logical :: ok
@@ -57,6 +57,23 @@ program check_hei_584
      end do
   end do
   write(*,'(a,es10.3)') ' max |this - Wood|, |this - CMacIonize| = ', dmax
+  !--- 1b. another helium abundance: the published 0.77 carries He/H = 0.1
+  !--- (Wood, Mathis & Ercolano 2004 eq. 17), so at He/H = 0.2 the He0
+  !--- term doubles
+  par%abund_He = 0.2_wp
+  dmax2 = 0.0_wp
+  do i = 1, 4
+     T = TG(i)
+     p  = hei_584_ionizes_H(T, XH(2), XHE(3))
+     pw = 1.0_wp/(1.0_wp + 2.0_wp*0.77_wp/(sqrt(T)/1.0e2_wp)*XHE(3)/XH(2))
+     dmax2 = max(dmax2, abs(p - pw))
+  end do
+  par%abund_He = 0.1_wp
+  write(*,'(a,es10.3)') ' He/H = 0.2: max |this - Wood with 2 x 0.77| = ', dmax2
+  if (dmax2 > 1.0e-12_wp) then
+     write(*,'(a)') '  FAIL: the He/H scaling of the 584 A split'
+     ok = .false.
+  end if
   if (dmax > 1.0e-12_wp) then
      write(*,'(a)') '  FAIL: the three published forms disagree'
      ok = .false.

@@ -51,6 +51,9 @@
  par%nnu_ion       = 16             ! ionizing bins; they stay empty (FUV-only field)
  par%add_fuv       = .true.         ! required by an ISRF preset
  par%efuv_min      = 6.0            ! lower FUV edge [eV]
+ !   6 eV: the logged G0 is u_FUV of the whole FUV band over Habing's
+ !   6-13.6 eV energy density (5.29e-14 erg cm^-3), so the band starts at
+ !   Habing's edge; Phi_3 then misses 4.78-6 eV (setup NOTE)
  par%nnu_fuv       = 16
  par%abund_He      = 0.1
  par%xHI_init      = 1.0            ! start neutral
@@ -83,9 +86,9 @@
                                     ! ionized volume ~ 0 and the volume-integrated
                                     ! metric (normalized by it) is meaningless here
  par%gas_tol       = 5.0e-3
- par%case_ab       = 'B'
+ par%recombination_continuum = 'transported'
  par%te_fixed      = 100.0          ! fixed T [K]; temperatures are not the point here
- par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%solve_te      = .false.   ! Te held at te_fixed (solve_te defaults to .true.)
 
  par%file_format   = 'hdf5'
  par%out_file      = 'isrf_cloud.h5'
@@ -95,4 +98,9 @@
  par%abund_O  = 3.3e-4   ! pinned: this input predates zero default abundances
  par%abund_Ne = 5.0e-5   ! pinned: this input predates zero default abundances
  par%abund_S  = 9.0e-6   ! pinned: this input predates zero default abundances
+ par%charge_exchange_heating = .true.
+ par%hei_metastable_coupling = .true.
+ par%twophoton_quenching = 'colliders'
+ par%hei_diffuse = .true.
+ par%heii_diffuse = .true.
 /

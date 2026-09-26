@@ -6,8 +6,8 @@ tstar = 4e4 K, case B), but T_e solved from heating = cooling per cell.
 The 1D reference is the Gauss-Seidel radial marching of the G1 check with
 the SAME thermal balance as thermal_mod/cooling_mod:
   - photoheating from the attenuated bin fluxes;
-  - recombination cooling (Hui & Gnedin 1997 case B; He II as kT alpha;
-    He III hydrogenic x2);
+  - recombination cooling beta = kT[(3/2) alpha_B + d alpha_B/d lnT] of
+    H II, He II and He III on the balance's own alpha_B (cooling_mod);
   - free-free on the code's own gbar(T, Z), Z = 1 for H II and He II and
     Z = 2 for He III;
   - collisional-ionization cooling;
@@ -23,8 +23,10 @@ reports is partly a difference between two atomic datasets rather than a
 property of the transport.  Three such differences were removed:
 
   - recombination, which mirrors src/recomb_mod.f90 for the default
-    par%recomb_model = 'badnell_milne' (Badnell total minus the Milne
-    ground-level rate); the run here is case B (par%case_ab = 'B').  This
+    par%recomb_model = 'detailed_balance' (for He I the Badnell total minus the
+    Milne ground-level rate; for H I and He II the alpha_B of a zero-density
+    Storey & Hummer cascade since 2026-09-26); the run here is case B
+    (par%recombination_continuum = 'on_the_spot').  This
     check used to carry its own Hui & Gnedin (1997) case-B coefficients, which
     over the 19-24 kK of this test differ by 1.2% and made 0.20 of the 0.97
     percentage points of median deviation atomic data rather than transport;
@@ -38,17 +40,30 @@ property of the transport.  Three such differences were removed:
     The fit is 0.775% high at the H I threshold, and a hot star's rate integral
     carries most of its weight there.  He I is VFKY96 on both sides.
 
-tests/rates/check_python_rates.py holds the module to the Fortran.  The
-recombination *cooling* coefficients below stay Hui & Gnedin, as cooling_mod
-has them.
+tests/rates/check_python_rates.py holds the module to the Fortran,
+recombination cooling included.
+
+The physics is that of the recorded run, g2a_thermal_rates.h5 (2026-07-30):
+the input pins every later default off (He I/He II on-the-spot photons,
+2^3S coupling, He-H charge exchange), and this reference carries none of
+them.  The reference with the current defaults is
+MoCHII_paper/python/make_g2a_thermal.py.  The stored run was made with the
+binary of that date, before the 2026-09-26 hydrogenic alpha_B (1.1% lower for
+H II at 1e4 K), so against the current rates it is a dated record, not a
+regression check.
+
+The stellar band is integrated on NNU = 256 logarithmic bins: the 32 used
+until 2026-09-26 put T low by 0.42% on average over 0.5-2.8 pc (up to 9% at
+0.3-0.5 pc, where the He II edge falls inside a bin), against 5e-5 for 256
+(measured against 512 by make_g2a_thermal.py).
 """
 import os as _os
 import sys
 import numpy as np
 import h5py
 
-sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                 "..", "..", "tools", "python"))
+HERE = _os.path.dirname(_os.path.abspath(__file__))
+sys.path.insert(0, _os.path.join(HERE, "..", "..", "tools", "python"))
 from mochii_rates import (alphaB_HII, alphaB_HeII, alphaB_HeIII, gbar_ff,
                           sigma_HI, sigma_HeI, sigma_HeII,
                           betaB_HII, beta_HeII, beta_HeIII,
@@ -59,7 +74,7 @@ KB     = 1.380649e-16
 PC2CM  = 3.0856776e18
 ETH_HI, ETH_HeI, ETH_HeII = 13.598, 24.587, 54.416
 
-NNU, EMIN, EMAX = 32, 13.598, 100.0
+NNU, EMIN, EMAX = 256, 13.598, 100.0
 TSTAR, LBAND    = 4.0e4, 3.177837e38
 NH, YHE         = 100.0, 0.1
 RSPH_PC         = 4.0
@@ -92,7 +107,8 @@ def load_tier1(path):
     return np.array(A), np.array(Ti)
 
 
-T1_A, T1_T = load_tier1("../../data/atomic/cooling_h_1.txt")
+T1_A, T1_T = load_tier1(_os.path.join(HERE, "..", "..", "data", "atomic",
+                                     "cooling_h_1.txt"))
 
 
 def lam_HI(T):
@@ -215,7 +231,7 @@ print(f"1D: Te at r=0.5 pc = {Te1d[np.argmin(abs(r1d-0.5))]:.1f} K, "
       f"at 2.0 pc = {Te1d[np.argmin(abs(r1d-2.0))]:.1f} K")
 print(f"1D: R(x_HI=0.5) = {r1d[np.argmin(abs(xHI1d-0.5))]:.4f} pc")
 
-f = h5py.File("g2a_thermal_rates.h5", "r")
+f = h5py.File(_os.path.join(HERE, "g2a_thermal_rates.h5"), "r")
 xyz = f["LeafXYZ"]["data"][:]
 r_mc = np.sqrt((xyz**2).sum(axis=0))
 te_mc = f["T_e"]["data"][:]
@@ -253,7 +269,7 @@ ax2.set_xlabel(r"$r$ [pc]");  ax2.set_ylabel(r"$x_{\rm HI}$")
 ax2.set_xlim(0, 4)
 ax2.set_title(r"H ionization with thermal balance")
 fig.tight_layout()
-fig.savefig("g2a_thermal_check.png", dpi=140)
+fig.savefig(_os.path.join(HERE, "g2a_thermal_check.png"), dpi=140)
 print("wrote g2a_thermal_check.png")
 
 #--- The gate must fail the PROCESS, not just print.

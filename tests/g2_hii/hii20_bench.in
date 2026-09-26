@@ -37,8 +37,7 @@
  par%gas_tol       = 5.0e-3
  par%gas_tol_te    = 1.0e-2
  par%ion_relax     = 1.0
- par%case_ab       = 'A'
- par%diffuse_field = .true.
+ par%recombination_continuum = 'transported'
  par%hei_diffuse   = .true.
  par%solve_te      = .true.
  par%te_min        = 3.0e3
@@ -59,4 +58,10 @@
  par%file_format     = 'hdf5'
  par%out_file        = 'hii20_bench.h5'
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_diffuse = .false.   ! pinned: this input predates heii_diffuse following the transported continuum
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
 /

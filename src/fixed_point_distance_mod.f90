@@ -1,72 +1,93 @@
 module fixed_point_distance_mod
 !---------------------------------------------------------------------------
 ! MoCHII: distance of the gas iteration from its fixed point, estimated from
-! the history of one volume-integrated change measure (e.g. the volume-mean
-! |delta x_HII| of successive iterations).
+! the history of two volume-integrated measures of one fraction (e.g. x_HII)
+! over successive iterations:
 !
-! If the iteration converges linearly, successive changes fall by a constant
-! factor rho < 1, d_{n+1} = rho d_n, and what is still to come after
+!   d_n = sum V |x_n - x_(n-1)| / sum V x_n     the step (L1), and
+!   s_n = sum V (x_n - x_(n-1)) / sum V x_n     its signed counterpart, the
+!                                               net change of the ionized
+!                                               volume.
+!
+! If the iteration converges linearly, successive steps fall by a constant
+! factor rho < 1, d_(n+1) = rho d_n, and what is still to come after
 ! iteration n sums to
 !
 !     e_n = d_n rho / (1 - rho).
 !
-! A test on the step d_n alone stops too early whenever rho is close to 1:
-! the HII40 production input, run for 60 iterations, shows rho ~ 0.86-0.90,
-! so the remaining drift is 6-9 times the last step, and the step test
-! (gas_tol = 5e-3) stopped with the He I front 0.17 pc short of where it
-! settles.
+! rho is the least-squares slope of ln d over the last NWIN iterations, and
+! d_n in e_n is that fit's value at the latest iteration, so one noisy step
+! moves neither.  When the steps do not fall (rho >= RHO_FLOOR) the linear
+! model does not apply -- early on because the iteration is still in its
+! transient, late because the step has reached its Monte Carlo floor -- and
+! the estimate is reported as unavailable.
 !
-! rho is the median of the last three ratios d_k/d_(k-1), which rejects a
-! single noisy step.  When the changes do not fall (rho >= RHO_FLOOR) the
-! linear model does not apply -- early on because the iteration is still in
-! its transient, late because the measure has reached its Monte Carlo
-! floor -- and the estimate is reported as unavailable.
+! The two cases are told apart by s.  On the floor the leaf fractions
+! fluctuate about their fixed point, so the leaves' changes cancel in s: its
+! mean over the window is zero within its scatter, and that scatter is
+! smaller than d because d adds the same fluctuations without cancellation.
+! A front that is still moving, however slowly, changes the ionized volume
+! with one sign, iteration after iteration, and its mean over the window
+! stands out of the scatter.
 !
-! STOPPING TEST (fixed_point_converged, par%conv_crit = 'vol', 2026-09-25).
-! A measure has converged when
+! STOPPING TEST (fixed_point_converged, par%conv_crit = 'vol').  With at
+! least NWIN iterations of history, a measure has converged when
 !   rho < RHO_FLOOR  and  e_n < tol          (still decaying: extrapolate), or
-!   rho >= RHO_FLOOR and  d_n < tol  and one of the last three ratios >= 1
-!                                            (the Monte Carlo floor: changes
-!                                             that no longer fall monotonically).
-! The second branch separates a floor, where successive steps fluctuate up
-! and down, from a slow decay, where every ratio is below 1 but close to it
-! and the drift still to come is large; a slow decay never passes on its
-! step.  Calibrated on the HII40 production input run for 80 iterations
-! (results/continuous_energy/convergence/): x_HII decays with rho ~ 0.85-0.87
-! and reaches a ~1e-4 floor by iteration 60; the He0-He+ measure is ~5x
-! larger at the same iteration, decays with rho ~ 0.85-0.94 and reaches a
-! ~2e-3 floor near iteration 55.  With tol = 5e-3 the test stops at
-! iteration 58, where the state equals the 80-iteration state (He I front
-! within 0.0006 pc, <T[NpNe]> within 0.8 K); the step test it replaces
-! stopped at 37, 0.17 pc short, and the step test with helium added would
-! have stopped at 47.
+!   rho >= RHO_FLOOR and  d_n < tol  and  |mean s| < T_DRIFT sigma(s)/sqrt(NWIN)
+!                                            (the Monte Carlo floor: no net
+!                                             drift the window can resolve),
+! with mean and sigma(s) the sample mean and standard deviation of the last
+! NWIN values and T_DRIFT the two-sided 95% point of Student's t for NWIN - 1
+! degrees of freedom.
+!
+! Why (2026-09-26).  The test of 2026-09-25 took rho as the median of the
+! last three ratios d_k/d_(k-1) and read the floor from any of those ratios
+! reaching 1.  A slow decay under Monte Carlo noise satisfies both: the m9
+! restart of the HII40 benchmark (hydrogenic alpha_B, 1.1% lower than the
+! state it restarted from) stopped after 4 iterations, while 16 further
+! iterations moved the H front out by 0.011 pc and L(H beta) by +0.64% with
+! the step decaying 1.25e-3 -> 8.05e-4 (rho ~ 0.97): a front drift that the
+! old test could not see and the signed measure shows directly.  The test
+! it replaced was in turn calibrated on the HII40 production input run for
+! 80 iterations (results/continuous_energy/convergence/), where x_HII decays
+! with rho ~ 0.85-0.87 to a ~1e-4 floor by iteration 60 and the He0-He+
+! step, ~5x larger, with rho ~ 0.85-0.94 to a ~2e-3 floor near 55; the step
+! test before THAT one (gas_tol = 5e-3 on d_n) stopped at 37, with the He I
+! front 0.17 pc short.
 !---------------------------------------------------------------------------
   use define, only : wp
   implicit none
   private
 
   public :: iteration_history, history_push, fixed_point_distance, &
-            fixed_point_converged, history_reset
+            fixed_point_converged, history_reset, net_drift, NWIN
 
   integer, parameter :: NHIST = 512
+  !--- iterations in the window of the fits and of the drift test
+  integer, parameter :: NWIN = 8
   real(kind=wp), parameter :: RHO_FLOOR = 0.95_wp
+  !--- Student's t, two-sided 95%, NWIN - 1 = 7 degrees of freedom
+  real(kind=wp), parameter :: T_DRIFT = 2.365_wp
 
   type :: iteration_history
      integer :: n = 0
-     real(kind=wp) :: d(NHIST) = 0.0_wp
+     real(kind=wp) :: d(NHIST) = 0.0_wp     ! step, L1
+     real(kind=wp) :: s(NHIST) = 0.0_wp     ! signed step
   end type iteration_history
 
 contains
 
-  subroutine history_push(h, d)
+  subroutine history_push(h, d, s)
     type(iteration_history), intent(inout) :: h
-    real(kind=wp),           intent(in)    :: d
+    real(kind=wp),           intent(in)    :: d, s
     if (h%n < NHIST) then
        h%n = h%n + 1
     else
        h%d(1:NHIST-1) = h%d(2:NHIST)
+       h%s(1:NHIST-1) = h%s(2:NHIST)
     end if
     h%d(h%n) = d
+    h%s(h%n) = s
   end subroutine history_push
 
   subroutine history_reset(h)
@@ -78,44 +99,70 @@ contains
   logical function fixed_point_converged(h, tol) result(done)
     type(iteration_history), intent(in) :: h
     real(kind=wp),           intent(in) :: tol
-    real(kind=wp) :: rho, dist, rmax
+    real(kind=wp) :: rho, dist, smean, tstat
     logical :: available
-    integer :: k
     done = .false.
+    if (h%n < NWIN) return
     call fixed_point_distance(h, rho, dist, available)
     if (available) then
        done = dist < tol
-    else if (h%n >= 4 .and. rho >= RHO_FLOOR) then
-       rmax = 0.0_wp
-       do k = 1, 3
-          rmax = max(rmax, h%d(h%n-3+k)/h%d(h%n-4+k))
-       end do
-       done = rmax >= 1.0_wp .and. h%d(h%n) < tol
+    else
+       call net_drift(h, smean, tstat)
+       done = h%d(h%n) < tol .and. tstat < T_DRIFT
     end if
   end function fixed_point_converged
 
-  !--- rho and e_n of the latest entry.  available = .false. with fewer than
-  !--- four entries, a non-positive change, or rho >= RHO_FLOOR.
+  !--- rho and e_n of the latest entry, from the fit of ln d over the last
+  !--- min(n, NWIN) entries.  available = .false. with fewer than four
+  !--- entries, a non-positive step in the window, or rho >= RHO_FLOOR
+  !--- (rho is still returned in the last case).
   subroutine fixed_point_distance(h, rho, dist, available)
     type(iteration_history), intent(in)  :: h
     real(kind=wp),           intent(out) :: rho, dist
     logical,                 intent(out) :: available
-    real(kind=wp) :: r(3), t
-    integer :: k
+    real(kind=wp) :: xm, ym, sxx, sxy, slope, dfit
+    integer :: m, k, i0
     rho = 0.0_wp;  dist = 0.0_wp;  available = .false.
-    if (h%n < 4) return
-    if (any(h%d(h%n-3:h%n) <= 0.0_wp)) return
-    do k = 1, 3
-       r(k) = h%d(h%n-3+k)/h%d(h%n-4+k)
+    m = min(h%n, NWIN)
+    if (m < 4) return
+    i0 = h%n - m
+    if (any(h%d(i0+1:h%n) <= 0.0_wp)) return
+    !--- least squares, ln d_k = a + b k, k = 1..m
+    xm = 0.5_wp*real(m + 1, wp)
+    ym = sum(log(h%d(i0+1:h%n)))/real(m, wp)
+    sxx = 0.0_wp;  sxy = 0.0_wp
+    do k = 1, m
+       sxx = sxx + (real(k, wp) - xm)**2
+       sxy = sxy + (real(k, wp) - xm)*(log(h%d(i0+k)) - ym)
     end do
-    !--- median of three
-    if (r(1) > r(2)) then; t = r(1); r(1) = r(2); r(2) = t; end if
-    if (r(2) > r(3)) then; t = r(2); r(2) = r(3); r(3) = t; end if
-    if (r(1) > r(2)) then; t = r(1); r(1) = r(2); r(2) = t; end if
-    rho = r(2)
+    slope = sxy/sxx
+    rho = exp(slope)
     if (rho >= RHO_FLOOR) return
-    dist = h%d(h%n)*rho/(1.0_wp - rho)
+    dfit = exp(ym + slope*(real(m, wp) - xm))
+    dist = dfit*rho/(1.0_wp - rho)
     available = .true.
   end subroutine fixed_point_distance
+
+  !--- mean of the signed step over the last min(n, NWIN) entries and its
+  !--- Student statistic |mean| / (sigma/sqrt(m)); tstat = 0 with fewer than
+  !--- two entries or a zero mean, huge() for a nonzero mean with no scatter.
+  subroutine net_drift(h, smean, tstat)
+    type(iteration_history), intent(in)  :: h
+    real(kind=wp),           intent(out) :: smean, tstat
+    real(kind=wp) :: var
+    integer :: m, i0
+    smean = 0.0_wp;  tstat = 0.0_wp
+    m = min(h%n, NWIN)
+    if (m < 2) return
+    i0 = h%n - m
+    smean = sum(h%s(i0+1:h%n))/real(m, wp)
+    if (smean == 0.0_wp) return
+    var = sum((h%s(i0+1:h%n) - smean)**2)/real(m - 1, wp)
+    if (var > 0.0_wp) then
+       tstat = abs(smean)/sqrt(var/real(m, wp))
+    else
+       tstat = huge(1.0_wp)
+    end if
+  end subroutine net_drift
 
 end module fixed_point_distance_mod

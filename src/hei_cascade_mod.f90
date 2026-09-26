@@ -35,13 +35,17 @@ module hei_cascade_mod
 ! split.  That was wrong: 2.06e-14 + 4.17e-14 = 6.23e-14 exactly, so the
 ! coefficient is the singlet TOTAL, not the 2^1S branch.
 !
-! NOTE ON THE 2^3S COEFFICIENT.  hei_metastable_mod carries a different fit,
-! 2.10e-13 (T/1e4)^-0.778 (Oklopcic & Hirata 2018): the same prefactor with a
-! steeper exponent, 9% higher at 8000 K.  That one is an ABSOLUTE production
-! rate for the metastable population; this one is a member of a set whose
-! ratios are the branch fractions.  They serve different purposes and are
-! deliberately not shared, because mixing sources would break the internal
-! consistency the fractions depend on.
+! THE 2^3S PRODUCTION RATE.  hei_metastable_mod takes its recombination
+! source from these fractions, alpha_3 = f_3S alpha_B(He II): every triplet
+! recombination ends in 2^3S, and alpha_B(He II) is the rate the ionization
+! balance itself recombines with, so the absolute production of the
+! metastable is fixed once the balance and the branch fraction are.  It used
+! to carry its own fit, 2.10e-13 (T/1e4)^-0.778 (Oklopcic & Hirata 2018), a
+! second normalization of the same recombinations supplied beside the one the
+! balance already fixes (the lesson of the alpha_A - alpha_1 and two-photon
+! A_2q defects).  It sits 1.5% below f_3S alpha_B at 1e4 K, 0.6% below at
+! 8000 K and 8% above at 3000 K (tests/hei_metastable_coupling); it was
+! dropped on 2026-09-25.
 !---------------------------------------------------------------------------
   use define
   implicit none
@@ -82,20 +86,29 @@ contains
 
   !=========================================================================
   ! Fraction of 2^1P decays whose 584 A photon ends up photoionizing a
-  ! hydrogen atom, the rest being collisionally transferred 2^1P -> 2^1S and
-  ! re-emitted as the two-photon continuum.
+  ! hydrogen atom, the rest ending in 2^1S (the 2.06 micron 2^1P -> 2^1S
+  ! decay) and re-emitted as the two-photon continuum.
   !
   ! He I 584 A is a resonance line: the medium is optically thick to it in
   ! He^0, so the photon scatters many times before anything irreversible
   ! happens to it.  Two irreversible outcomes compete during that walk --
   ! absorption by H^0 (21.22 > 13.60 eV, so it photoionizes and deposits
-  ! 7.62 eV of heat) and collisional transfer to 2^1S in the He atom that
-  ! last absorbed it.  Which wins is set by the H^0 and He^0 opacities the
+  ! 7.62 eV of heat) and the 2.06 micron decay 2^1P -> 2^1S of the He atom
+  ! that last absorbed it (A ~ 2e6 s^-1 against 1.8e9 s^-1 for 584 A, so
+  ! about one scattering in a thousand ends that way; electron impact is
+  ! slower still at nebular densities).  Which wins is set by the H^0 and He^0 opacities the
   ! trapped photon sees, hence this escape-probability closure
   !
-  !     p = [1 + 77 x(He^0)/(sqrt(T) x(H^0))]^-1 ,
+  !     p = [1 + 77 (y_He/0.1) x(He^0)/(sqrt(T) x(H^0))]^-1 ,
   !
-  ! from Wood, Mathis & Ercolano (2004) sect. 3.3.  The same expression is in
+  ! from Wood, Mathis & Ercolano (2004) sect. 3.3, eq. 17 (read).  Their
+  ! derivation competes n(H0) a(H0) against n(He0) a(He0)/914 (914
+  ! scatterings per conversion); written in the neutral FRACTIONS it is
+  ! 1 + 0.77 f(He0)/[f(H0) (T/1e4 K)^1/2], and they state "He/H = 0.1 in
+  ! abundance has been assumed", so the 77 carries y_He = 0.1 and a nebula
+  ! with another helium abundance scales it by y_He/0.1 (par%abund_He; the
+  ! factor is exactly 1 at 0.1, so those runs are unchanged).  The same
+  ! expression, with the 0.1 built in, is in
   ! K. Wood's ionize (mcionize.f, h0find.f, written as
   ! 1/(1 + 0.77/(sqrt(T)/100) x(He^0)/x(H^0))) and in CMacIonize
   ! (PhysicalDiffuseReemissionHandler, written as
@@ -114,7 +127,7 @@ contains
   !=========================================================================
   real(kind=wp) function hei_584_ionizes_H(T, xHI, xHeI) result(p)
     real(kind=wp), intent(in) :: T, xHI, xHeI
-    p = 1.0_wp/(1.0_wp + 77.0_wp/sqrt(max(T, tinest)) &
+    p = 1.0_wp/(1.0_wp + 77.0_wp*(par%abund_He/0.1_wp)/sqrt(max(T, tinest)) &
                 *max(xHeI, 0.0_wp)/max(xHI, tinest))
   end function hei_584_ionizes_H
 

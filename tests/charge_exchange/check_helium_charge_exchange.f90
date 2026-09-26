@@ -33,10 +33,10 @@ program check_helium_charge_exchange
 
   call MPI_INIT(ierr);  mpar%p_rank = 0
   par%use_metals = .false.
-  par%case_ab    = 'B'
+  par%recombination_continuum = 'on_the_spot'
   par%abund_He   = 0.1_wp
   par%ci_model   = 'voronov'
-  par%recomb_model = 'badnell_milne'
+  par%recomb_model = 'detailed_balance'
   ok = .true.
 
   !--- (a) + (b)

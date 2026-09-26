@@ -1,4 +1,4 @@
-%% MoCHII — CHIANTI atomic-data fitting pipeline (cooling and n-level fits).
+%% MoCHII — CHIANTI atomic-data fitting procedure (cooling and n-level fits).
 %% Author: Kwang-Il Seon
 %% Written for my_memo.cls.
 \documentclass[english,a4paper]{my_memo}
@@ -13,16 +13,16 @@
 
 \begin{document}
 
-\title{The MoCHII Atomic-Data Fitting Pipeline:\\ CHIANTI Cooling and $n$-level Fits}
+\title{MoCHII Atomic-Data Fitting:\\ CHIANTI Cooling and $n$-level Fits}
 \author{Kwang-Il Seon}
 \date{2026-07-25}
 \maketitle
 
 \begin{abstract}
 MoCHII evaluates all metal-line atomic data from analytic fits; the raw
-CHIANTI database is never parsed at runtime.  The Python pipeline under
-\code{tools/fitting/} is the auditable source of every coefficient in
-\code{data/atomic/}.  This memo documents the pipeline and its two
+CHIANTI database is never parsed at runtime.  The Python fitting scripts under
+\code{tools/fitting/} are the auditable source of every coefficient in
+\code{data/atomic/}.  This memo documents the fitting procedure and its two
 products: the cooling-function fits that carry the thermal-loop line
 cooling in the $n_e \to 0$ limit, currently 28 ions of the eleven-element
 registry --- suppressed to the local electron density at run time by a
@@ -43,7 +43,7 @@ $A$-values, not to fit error.
 
 \section{Overview: two products, one design rule}
 The metal-line design requires that adding an ion be a data operation,
-not a code operation.  The pipeline therefore produces, for each
+not a code operation.  The fitting scripts therefore produce, for each
 registered ion, self-contained coefficient files with provenance headers
 (CHIANTI version, population model, fit range, fit form, maximum fit
 error), of two kinds:
@@ -65,7 +65,7 @@ error), of two kinds:
   ratios that the cooling fits cannot give.
 \end{itemize}
 
-The pipeline is seeded from EXHALE: \code{chianti\_cooling.py} (copied
+The fitting scripts are seeded from EXHALE: \code{chianti\_cooling.py} (copied
 from \code{EXHALE/cooling\_data/}) reads the raw CHIANTI ASCII ion files
 (\code{.elvlc}, \code{.wgfa}, \code{.scups}) directly, with no ChiantiPy
 dependency, and applies the Burgess--Tully (1992) descaling of the stored
@@ -91,7 +91,7 @@ the line cooling normalized by $n_e\,n_{\rm ion}$ is
   \label{eq:lambda}
 \end{equation}
 where $f_l(T)$ is the fractional population of the lower level.  The
-pipeline evaluates the \emph{$n_e \to 0$ limit of statistical
+fitting procedure evaluates the \emph{$n_e \to 0$ limit of statistical
 equilibrium}: at $n_e \ll n_{\rm crit}$ of the ground-term fine
 structure the metastable levels are drained radiatively faster than
 collisions populate them, so every ion sits in its lowest level
@@ -128,7 +128,7 @@ holds the maximum error below 1\%.  Ions with only a few excitation
 blocks (the Cl ions have four transitions out of the ground term) still
 need extra terms, because a single exponential has a fixed amplitude and
 the temperature dependence of $\Upsilon$ has to be carried by
-superposing neighbouring terms.  Table~\ref{tab:cool} lists the fit
+superposing neighboring terms.  Table~\ref{tab:cool} lists the fit
 quality; Figure~\ref{fig:cool} overlays the fits on the CHIANTI curves.
 The coefficients are written to \code{data/atomic/cooling\_<ion>.txt}.
 
@@ -216,7 +216,7 @@ and the descaling back to $\Upsilon$ is
   \frac{y}{e_t}~[5];\quad 10^{\,y}~[6],
 \end{equation}
 where $y(s)$ is the scaled value.  Instead of the spline-through-table
-evaluation used by CHIANTI itself, the pipeline fits $y(s)$ with a
+evaluation used by CHIANTI itself, the fitting scripts fit $y(s)$ with a
 Chebyshev series over the image of $T\in[10^3,10^5]$~K intersected with
 the tabulated range,
 \begin{equation}
@@ -361,7 +361,7 @@ $^2\!D$ levels, where the ratios become $A$-value-limited --- and the two
 codes take their $A$-values from different compilations (CHIANTI v11 vs.\
 Z82-WFD96 and RGJ19).  Since the fitted files reproduce raw CHIANTI to
 $\leq 0.5\%$ (previous subsection), this spread measures the state of the
-atomic data, not the pipeline; it should be kept in mind as the floor of
+atomic data, not the fitting procedure; it should be kept in mind as the floor of
 attainable agreement when the validation gates compare MoCHII line ratios
 with PyNeb-based references.
 

@@ -8,6 +8,17 @@ private
 public minloc1, gauleg, dot_product, cross_product, &
        locate, interp, interp_eq, &
        calc_Integral, calc_CDF
+public GAUSS_LAGUERRE4_X, GAUSS_LAGUERRE4_W
+
+!--- four-point Gauss-Laguerre rule, Int_0^inf e^-x f(x) dx ~ sum w_k f(x_k):
+!--- the roots of the Laguerre polynomial L_4(x) and their weights (agree
+!--- with numpy.polynomial.laguerre.laggauss(4) to 1e-15).  Used
+!--- for averages over a Milne free-bound spectrum,
+!--- E^2 sigma(E) exp[-(E - E_th)/kT], in x = (E - E_th)/kT.
+real(kind=wp), parameter :: GAUSS_LAGUERRE4_X(4) = [0.322547689619392_wp, &
+   1.745761101158347_wp, 4.536620296921128_wp, 9.395070912301133_wp]
+real(kind=wp), parameter :: GAUSS_LAGUERRE4_W(4) = [0.603154104341634_wp, &
+   0.357418692437800_wp, 0.038887908515005_wp, 0.000539294705561_wp]
 
 interface minloc1
    module procedure minloc_r32,minloc_r64,minloc_i32,minloc_i64

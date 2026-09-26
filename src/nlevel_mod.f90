@@ -47,6 +47,9 @@ module nlevel_mod
   !--- cooling Lambda_SE(T, ne) = sum_k n_u A dE, split by n_e-dependence so
   !--- the Upsilon work is done once for each T across the whole n_e column.
   public :: nlevel_cooling_prepT, nlevel_cooling_solve, nlevel_cooling_at
+  !--- the level populations themselves at (Rcoll, Rrad, ne): the term
+  !--- populations of a charge-exchange product ion (species_mod, form 9)
+  public :: nlevel_populations
   public :: MAXLEV
   !--- atomic-hydrogen impact: the increment of the line cooling over the
   !--- electron-only populations (species_mod::metal_cooling_H).
@@ -447,6 +450,22 @@ contains
     !--- here (the table floor is 1e-6 cm^-3).
     lam = lam/ne
   end function nlevel_cooling_solve
+
+  !=========================================================================
+  ! Level populations normalized to the ion (sum = 1) at the rate matrices of
+  ! nlevel_cooling_prepT and electron density ne, electrons only.
+  !=========================================================================
+  subroutine nlevel_populations(atom, Rcoll, Rrad, ne, pop)
+    implicit none
+    type(nlevel_atom_type), intent(in)  :: atom
+    real(kind=wp),          intent(in)  :: Rcoll(MAXLEV,MAXLEV)
+    real(kind=wp),          intent(in)  :: Rrad(MAXLEV,MAXLEV)
+    real(kind=wp),          intent(in)  :: ne
+    real(kind=wp),          intent(out) :: pop(MAXLEV)
+    real(kind=wp) :: R(MAXLEV,MAXLEV)
+    R = ne*Rcoll + Rrad
+    call level_populations(atom%nlev, R, pop)
+  end subroutine nlevel_populations
 
   !=========================================================================
   real(kind=wp) function nlevel_cooling_at(atom, T, ne) result(lam)

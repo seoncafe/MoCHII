@@ -29,12 +29,18 @@
  par%te_fixed      = 1.0e4
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0
- par%case_ab       = 'A'
- par%diffuse_field = .true.
+ par%recombination_continuum = 'transported'
  par%conv_crit     = 'vol'
  par%source_geometry = 'point'
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 202
  par%file_format     = 'hdf5'
  par%out_file        = 'dv_qmc_202.h5'
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%hei_diffuse = .false.   ! pinned: this input predates hei_diffuse following the transported continuum
+ par%heii_diffuse = .false.   ! pinned: this input predates heii_diffuse following the transported continuum
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
 /

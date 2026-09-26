@@ -101,6 +101,7 @@ OBJS	= \
 	milne_recomb_spectrum_mod.o \
 	hei_twophoton_mod.o \
 	hydrogenic_twophoton_mod.o \
+	hydrogenic_recombination_mod.o \
 	gaunt.o \
 	gaunt_vh14_mod.o \
 	recomb_continuum_mod.o \
@@ -123,6 +124,8 @@ OBJS	= \
 	dust_emis_transport_mod.o \
 	hei_cascade_mod.o \
 	heii_cascade_mod.o \
+	hei_recombination_photons_mod.o \
+	heii_recombination_photons_mod.o \
 	diffuse_mod.o \
 	nebcont_mod.o \
 	sh95_mod.o \
