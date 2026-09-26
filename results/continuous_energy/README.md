@@ -7,8 +7,8 @@ comparison scripts and their text and PDF summaries are tracked.
 - `m2_atomic/`: the 2^25-packet Sobol production outputs of 2026-09-24
   (after the atomic-data update), superseded by `m4_nitrogen/`,
   `m5_converged/`, `m8_defaults/` and `m10_drift_test/`; the paper
-  reads `m10_drift_test/` (since 2026-09-26) and `m9_hydrogenic_alpha/` for
-  `g2a_thermal` and the G1 figure.  With them are the figure runs of
+  reads `m10_drift_test/` (since 2026-09-26), including its `g1/` and
+  `g2a_thermal.*`, moved there from `m9_hydrogenic_alpha/`.  With them are the figure runs of
   that date
   (`pdr_L5_atomic`, `hei_high_density_atomic`, `g2a_thermal_atomic`) and the
   sensitivity runs (`*_nohecx`, `*_lowden`, `*_ots`); `run_lart3*.sh` are the
@@ -39,6 +39,11 @@ comparison scripts and their text and PDF summaries are tracked.
   sum V n_e +1.0%, `pdr_L5` <T> +5 K; HII20 +0.02% (m9 had converged).
   Paper-table values: <T[NpNe]> 8179.7 / 6940.1 K, L(Hbeta) 2.0226e37 /
   4.8456e36, <He+>/<H+> 0.7524 / 0.0472, R_out 1.4638e19 / 8.9875e18 cm.
+  `g1/` (`run_g1.sh`) and `g2a_thermal.*`: the three G1 runs of the paper
+  figure and the G2a run, made with the m9 binary and moved here from
+  `m9_hydrogenic_alpha/` (the G2a run as `g2a_thermal_m9`); both stop on
+  the cell test, which the 2026-09-26 revision of the stopping test does
+  not touch, so the m10 binary would make them the same.
   `g1_g4/` (`run_g1_g4.sh`): the level-7 G1 run and the two G4 runs
   (`tests/g4_refine/` inputs, with `helium_charge_exchange = .false.`
   pinned as in G1) with the same binary: R_eff 3.0578 (G1 level 7),
@@ -49,10 +54,11 @@ comparison scripts and their text and PDF summaries are tracked.
   (`hydrogenic_recombination_mod`, -1.13% for H II at 1e4 K), the joint
   H0/He0 solve of the He II on-the-spot cascade and the nebular-continuum
   table gaps filled; `run_m9.sh`, `compare_m9.py` / `compare_m9.txt` /
-  `m9_profiles.pdf` (m8 vs m9: HII40 -27.3 K, HII20 -17.8 K); `g1/` the
-  G1 Stromgren reruns and `hii40_long` HII40 continued for 16 fixed
-  iterations, which showed the stopping test of 2026-09-25 had stopped 8 of
-  these runs early.  `g2a_thermal_m9` is the run the G2a figure reads.
+  `m9_profiles.pdf` (m8 vs m9: HII40 -27.3 K, HII20 -17.8 K); `hii40_long`
+  HII40 continued for 16 fixed iterations, which showed the stopping test
+  of 2026-09-25 had stopped 8 of these runs early.  Its G1 Stromgren reruns
+  (`g1/`) and `g2a_thermal_m9` were moved to `m10_drift_test/` (as `g1/` and
+  `g2a_thermal.*`) the same day.
 - `g2a_current/` and `g2a_transported/` (2026-09-26): G2a with the
   on-the-spot and the transported recombination continuum, from the same
   state; in the optically thin He III core the on-the-spot cascade heat

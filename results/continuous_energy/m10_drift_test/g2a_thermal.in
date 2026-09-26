@@ -41,7 +41,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
- par%out_file = 'g2a_thermal_m9.h5'
+ par%out_file = 'g2a_thermal.h5'
 
  !--- G2a: thermal balance (H/He only; metals enter with G2c)
  par%solve_te      = .true.
