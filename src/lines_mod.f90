@@ -17,12 +17,13 @@ module lines_mod
 ! line set leaf by leaf as emissivity blocks emis_h (SH95 H I lines) and
 ! emis_<el>_<stage> [erg/s/cm^3; sum(emis*V) = L_line; row order matches
 ! the text table], wl_* wavelength arrays, and the state needed to build
-! maps without the rates file: LeafXYZ, n_H, n_e, T_e, x_HI/HeI/HeII,
+! maps without the rates file: LeafXYZ, n_H, n_e, T_e, x_HI/HII/HeI/HeII/HeIII,
 ! and the x_<el>_stages fraction blocks.
 !---------------------------------------------------------------------------
   use define
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, &
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                            gas_xHeIII, &
                             gas_ne, gas_Te, gas_nleaf
   use species_mod,   only : n_elements, elem_name, elem_nstage, elem_abund, &
                             species_fractions, species_write
@@ -95,7 +96,7 @@ contains
          T  = gas_Te(il);  ne = gas_ne(il)
          vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
          do kk = 1, nlh
-            emis(kk) = ne*nH*(1.0_wp - gas_xHI(il))*sh95_emis(kk, T, ne)
+            emis(kk) = ne*nH*gas_xHII(il)*sh95_emis(kk, T, ne)
             LH(kk)   = LH(kk) + emis(kk)*vol
          end do
          if (do_emis) em(1:nlh, il) = emis(1:nlh)
@@ -146,7 +147,7 @@ contains
          do il = 1, gas_nleaf
             nH = gas_nH(il)
             if (nH <= 0.0_wp) cycle
-            xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
+            xHeIII = gas_xHeIII(il)
             if (xHeIII <= 1.0e-30_wp) cycle
             T  = gas_Te(il);  ne = gas_ne(il)
             vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
@@ -316,7 +317,7 @@ contains
              nH = gas_nH(il)
              if (nH <= 0.0_wp) cycle
              T = gas_Te(il);  ne = gas_ne(il)
-             nHI = nH*gas_xHI(il);  nHII = nH - nHI
+             nHI = nH*gas_xHI(il);  nHII = nH*gas_xHII(il)
              call species_fractions(ie, il, T, ne, nHI, nHII, frac)
              nion = elem_abund(ie)*nH*frac(ist)
              if (nion <= 1.0e-30_wp) cycle
@@ -400,12 +401,18 @@ contains
     tmp = gas_xHI(1:gas_nleaf)
     call io_append_image(efile, tmp, status, bitpix=-64)
     call io_put_keyword(efile,'EXTNAME','x_HI','n_HI/n_H',status)
+    tmp = gas_xHII(1:gas_nleaf)
+    call io_append_image(efile, tmp, status, bitpix=-64)
+    call io_put_keyword(efile,'EXTNAME','x_HII','n_HII/n_H',status)
     tmp = gas_xHeI(1:gas_nleaf)
     call io_append_image(efile, tmp, status, bitpix=-64)
     call io_put_keyword(efile,'EXTNAME','x_HeI','n_HeI/n_He',status)
     tmp = gas_xHeII(1:gas_nleaf)
     call io_append_image(efile, tmp, status, bitpix=-64)
     call io_put_keyword(efile,'EXTNAME','x_HeII','n_HeII/n_He',status)
+    tmp = gas_xHeIII(1:gas_nleaf)
+    call io_append_image(efile, tmp, status, bitpix=-64)
+    call io_put_keyword(efile,'EXTNAME','x_HeIII','n_HeIII/n_He',status)
     deallocate(tmp)
 
     !--- metal stage fractions (same blocks as the rates file).

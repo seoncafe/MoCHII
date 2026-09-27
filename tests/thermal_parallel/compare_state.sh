@@ -14,7 +14,8 @@ command -v h5diff >/dev/null || {
 serial_file=$1
 parallel_file=$2
 
-for field in x_HI x_HeI x_HeII n_e T_e; do
+# x_HII is written since 2026-09-26, x_HeIII since 2026-09-27
+for field in x_HI x_HII x_HeI x_HeII x_HeIII n_e T_e; do
     h5diff "$serial_file" "$parallel_file" \
         "/${field}/data" "/${field}/data"
 done

@@ -61,8 +61,9 @@ program check_cell_convergence
      worst = max(worst, dev)
      write(*,'(es10.2,es16.6,es16.6,es14.3)') 1.0_wp-xr, 1.0_wp-x, 1.0_wp-xr, dev
      if (dev > TOL) ok = .false.
-     !--- the neutral fraction is bracketed in [0,1] by construction
-     !--- (hydrogen_neutral_fraction): assert it rather than trust it.
+     !--- the neutral fraction is in [0,1] by construction, 1/(1 + e^u) with
+     !--- u = ln(n_HII/n_HI) (hydrogen_ionization_balance): assert it rather
+     !--- than trust it.
      if (x < 0.0_wp .or. x > 1.0_wp) then
         write(*,'(a,es14.6)') '  FAIL: unphysical x_HI = ', x
         ok = .false.

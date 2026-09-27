@@ -10,6 +10,11 @@ from VFKY96.  This study used to evaluate H I from the VFKY96 fit instead,
 which is 0.775% high at the H I threshold, so the reference the variance is
 measured against was not the rate integral the runs computed.
 tests/rates/check_python_rates.py holds the module to the Fortran.
+
+A diagnostic, not a gate: the errors and the MC/RQMC variance ratios are
+printed without a pass criterion (none is set here or in tests/README.md),
+so the script exits 0 after printing.  Run from the repository root after
+tests/qmc/run_v3.sh; it exits 1 if tests/qmc/v3/ holds no rates file.
 """
 import glob, os, re, sys
 import numpy as np
@@ -70,6 +75,10 @@ def walltime(logf):
 
 
 # reference on the run geometry (all runs share LeafXYZ)
+if not glob.glob("tests/qmc/v3/*_rates.h5"):
+    print("missing tests/qmc/v3/*_rates.h5 (run tests/qmc/run_v3.sh from the "
+          "repository root first)")
+    sys.exit(1)
 f0 = h5py.File(sorted(glob.glob("tests/qmc/v3/*_rates.h5"))[0], "r")
 xyz = f0["LeafXYZ"]["data"][:]
 e_bin = f0["E_bin"]["data"][:]
@@ -121,3 +130,6 @@ for pt, nphot in (("p17", 2**17), ("p20", 2**20)):
         gain = (rmc / rqm)**2
         print(f"  >> {nm:14s} RMS: MC={rmc*100:6.3f}%  RQMC={rqm*100:6.3f}%  "
               f"variance ratio (eff. photon gain) = {gain:5.2f}x")
+
+print("\nDIAGNOSTIC (no pass criterion): read the variance ratios above")
+sys.exit(0)

@@ -12,7 +12,15 @@ truth, filled for BOTH the aligned and the log grid).
 (ii) ALIGNED grid: each ionization threshold must land in the bin ABOVE its
      edge (the bin whose LOWER edge is the threshold).  We reconstruct the true
      aligned edges from a metals run's rates file (E_bin + dE_bin) and check.
+
+Verdict: PASS when every log-grid mismatch in (i) lies within 1e-10 of a bin
+edge and every threshold in (ii) that is an aligned edge maps a photon a hair
+above it into the bin above; exit status 0 on PASS, 1 on FAIL or when the
+rates file of (ii) (first argument; default
+tests/qmc/v1/v1d_diff_aligned_new_rates.h5, relative to the repository root)
+is missing.
 """
+import os
 import sys
 import numpy as np
 import h5py
@@ -58,7 +66,7 @@ for nion in (16, 32, 64):
     # the criterion: every mismatch is glued to an edge (rel < 1e-12)
     if ndiff:
         allok &= worstrel < 1e-10
-print(f"  -> LOG grid: {'PASS (mismatches only AT edges = FP ties)' if allok else 'CHECK'}")
+print(f"  -> LOG grid: {'PASS (mismatches only AT edges = FP ties)' if allok else 'FAIL'}")
 
 
 # -------------------------------------------------------------- (ii) aligned
@@ -79,6 +87,10 @@ def edges_from_rates(fn):
 print("\n=== Task0(ii) ALIGNED grid: thresholds land in the bin ABOVE the edge ===")
 fn = sys.argv[1] if len(sys.argv) > 1 else \
     "tests/qmc/v1/v1d_diff_aligned_new_rates.h5"
+if not os.path.exists(fn):
+    print(f"  missing {fn}: (ii) cannot be checked")
+    print("\nTASK0 UNIT: FAIL (missing input)")
+    sys.exit(1)
 edges = edges_from_rates(fn)
 print(f"  edges reconstructed from {fn}  (nbin={len(edges)-1})")
 # The aligned builder pins H I / He I / He II onto bin edges.  A real diffuse
@@ -105,6 +117,7 @@ for name, Elit in thr.items():
     print(f"  {name:12s}: aligned edge={Eedge:.4f} (=edge idx {j})  "
           f"E+ -> bin {b_above} (lower edge {edges[b_above-1]:.4f}),  "
           f"E- -> bin {b_below}  {'-> photon lands in bin ABOVE edge (correct)' if ok else '-> WRONG'}")
-print(f"  -> ALIGNED grid: {'PASS (thresholds are edges; recomb photons bin ABOVE)' if aok else 'CHECK'}")
+print(f"  -> ALIGNED grid: {'PASS (thresholds are edges; recomb photons bin ABOVE)' if aok else 'FAIL'}")
 
-print("\nTASK0 UNIT:", "PASS" if (allok and aok) else "CHECK")
+print("\nTASK0 UNIT:", "PASS" if (allok and aok) else "FAIL")
+sys.exit(0 if (allok and aok) else 1)

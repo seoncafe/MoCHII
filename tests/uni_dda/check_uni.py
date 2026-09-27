@@ -16,12 +16,14 @@ def load(base):
     with h5py.File(f"{base}_rates.h5", "r") as f:
         xyz = f["LeafXYZ/data"][:]
         xhi = f["x_HI/data"][:]
+        # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+        xhii = f["x_HII/data"][:] if "x_HII" in f else 1.0 - xhi
         ne = f["n_e/data"][:]
-    return xyz, xhi, ne
+    return xyz, xhi, xhii, ne
 
 
-xyz_a, xhi_a, ne_a = load("uni_amr")
-xyz_d, xhi_d, ne_d = load("uni_dda")
+xyz_a, xhi_a, xhii_a, ne_a = load("uni_amr")
+xyz_d, xhi_d, xhii_d, ne_d = load("uni_dda")
 
 # match leaves by position (tree order vs raster order)
 def keys(xyz):
@@ -37,8 +39,8 @@ dx = np.abs(xhi_a[ka] - xhi_d[kd])
 print(f"leaf-matched |d x_HI|: max = {dx.max():.3e}, "
       f"median = {np.median(dx):.3e}")
 
-vion_a = (1.0 - xhi_a).sum()
-vion_d = (1.0 - xhi_d).sum()
+vion_a = xhii_a.sum()
+vion_d = xhii_d.sum()
 print(f"V_ion ratio (amr-walk/octree) = {vion_d/vion_a:.6f}")
 R_a = (3.0 * vion_a * (8.0**3 / xhi_a.size) / (4 * np.pi))**(1 / 3)
 R_d = (3.0 * vion_d * (8.0**3 / xhi_d.size) / (4 * np.pi))**(1 / 3)
@@ -68,12 +70,12 @@ import os
 #--- the dda comparison is genuinely optional: it needs a second run.
 ok_w = True
 if os.path.exists("uni_ddaw_rates.h5"):
-    xyz_w, xhi_w, ne_w = load("uni_ddaw")
+    xyz_w, xhi_w, xhii_w, ne_w = load("uni_ddaw")
     kw = np.argsort(keys(xyz_w))
     dxw = np.abs(xhi_d[kd] - xhi_w[kw])
     print(f"\ndda vs amr-walk |d x_HI|: max = {dxw.max():.3e}, "
           f"median = {np.median(dxw):.3e}")
-    vion_w = (1.0 - xhi_w).sum()
+    vion_w = xhii_w.sum()
     print(f"V_ion ratio (dda/amr-walk) = {vion_w/vion_d:.6f}")
     R_w = (3.0 * vion_w * (8.0**3 / xhi_w.size) / (4 * np.pi))**(1 / 3)
     print(f"R_eff: dda {R_w:.4f} pc")

@@ -5,7 +5,8 @@ Reuses the EXISTING gate checkers (tests/multi_src/check_multi.report_superpos
 and tests/ext_field/check_ext.report) on the sobol rates files, so the pass
 criteria are identical to the 'random' gates.  Also (d) MPI-count independence
 of the sobol launch: the same run at np=4 and np=8 must agree to the ALLREDUCE
-floor.
+floor (max relative difference < 1e-12).  Exit status 0 when all pass, 1 when
+one fails or a rates file is missing (gen_and_run.sh writes them).
 """
 import os, sys
 import numpy as np
@@ -19,6 +20,17 @@ import check_multi
 import check_ext
 
 R = lambda t: os.path.join(HERE, f"{t}_rates.h5")
+
+missing = [R(t) for t in ("v3s_twop", "v3s_extrec", "v3s_extsph", "v3s_mixed",
+                          "v3s_twop_np4", "v3s_twop_np8",
+                          "v3s_extrec_np4", "v3s_extrec_np8")]
+missing = [fn for fn in missing if not os.path.exists(fn)]
+if missing:
+    print("missing rates files (run gen_and_run.sh first):")
+    for fn in missing:
+        print("  " + fn)
+    print("\nV3 GATE: FAIL (missing input)")
+    sys.exit(1)
 
 print("=== V3(a) two-point superposition, launch='sobol' ===")
 print("    (criterion: median<3% and |mean-1|<0.02; recorded 'random': "
@@ -71,3 +83,4 @@ d2 = worst("external",  "v3s_extrec_np4", "v3s_extrec_np8")
 
 allok = a and b1 and b2 and c and d1 and d2
 print(f"\nV3 GATE: {'PASS' if allok else 'FAIL'}")
+sys.exit(0 if allok else 1)

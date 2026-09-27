@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Line-flux gate: MoCHII Tier-2 line ratios vs MOCASSIN lineFlux.out.
+"""Line-flux comparison: MoCHII Tier-2 line ratios vs MOCASSIN lineFlux.out.
 
 MoCHII '<case>_lines.txt' rows: elem stage lambda[A] L[erg/s] L/L(Hbeta).
 MOCASSIN CEL rows: elem ion lower upper lambda[A] ratio counter.
@@ -8,6 +8,11 @@ Lines are matched by (element Z, stage, wavelength within 0.5%).
 Both are ratios to Hbeta; MOCASSIN's Hbeta is its full transfer, ours the
 case-B effective-recombination fit — a few-% systematic on all ratios.
 Report the classic diagnostics and the full matched set.
+
+A diagnostic, not a gate: no tolerance on the ratios is set here or in
+tests/README.md, so the script exits 0 after printing.  Run it in the
+directory that holds hii20_dif_lines.txt / hii40_dif_lines.txt; a missing
+file is reported and skipped.
 """
 import sys
 import numpy as np
@@ -109,3 +114,6 @@ for label, ours_f, ref_f in CASES:
         rr = f"{r_us/r_mc:8.2f}" if (r_us and r_mc) else "       -"
         print(f"{name:16s} {su} {sm} {rr}")
     print()
+
+print("DIAGNOSTIC (no pass criterion): read the ratios above")
+sys.exit(0)

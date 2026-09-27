@@ -1,9 +1,14 @@
 """Check the SEDust smoke output: energy consistency against Heat_dust*V
 in the rates file, PAH features, and a figure for the docs.
 
-Run:  python3 check_sedust.py
+A diagnostic, not a gate: the ratios of the SED integral and of the grid sum
+to the header value are printed without a tolerance (none is set here or in
+tests/README.md), so the script exits 0 whenever it could read its inputs.
+
+Run:  python3 check_sedust.py   (in tests/d_dusty, which holds the outputs)
 """
 
+import sys
 import numpy as np
 import h5py
 import matplotlib
@@ -65,3 +70,5 @@ ax.set_title(r"MoCHII + SEDust: stochastic dust SED (smoke test)")
 fig.tight_layout()
 fig.savefig("sedust_smoke_sed.png", dpi=200)
 print("figure written: sedust_smoke_sed.png")
+print("DIAGNOSTIC (no pass criterion): read the numbers above")
+sys.exit(0)

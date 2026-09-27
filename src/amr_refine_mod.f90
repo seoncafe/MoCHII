@@ -50,13 +50,14 @@ contains
     use ion_score_mod,   only : ion_score_resize
     use species_mod,     only : species_resize
     use gas_state_mod,   only : gas_nH_p => gas_nH, gas_xHI_p => gas_xHI, &
-                                gas_xHeI_p => gas_xHeI, &
+                                gas_xHII_p => gas_xHII, gas_xHeI_p => gas_xHeI, &
                                 gas_xHeII_p => gas_xHeII, &
+                                gas_xHeIII_p => gas_xHeIII, &
                                 gas_ne_p => gas_ne, gas_Te_p => gas_Te
     use memory_mod,      only : destroy_shared_mem
     implicit none
-    real(kind=wp), allocatable :: s_nH(:), s_x1(:), s_x2(:), s_x3(:), &
-                                  s_ne(:), s_te(:), s_rk(:)
+    real(kind=wp), allocatable :: s_nH(:), s_x1(:), s_x1p(:), s_x2(:), &
+                                  s_x3(:), s_x4(:), s_ne(:), s_te(:), s_rk(:)
     real(kind=wp) :: half, xr, dx
     integer :: il, jl, icell, jcell, iface, nold, nfront, ierr
 
@@ -115,19 +116,19 @@ contains
     !--- dust extinction integral would all jump.  That matters exactly at
     !--- the discontinuities re-refinement exists to resolve.  remap_leaf
     !--- collapses to the old behavior under pure refinement.
-    allocate(s_nH(nnew), s_x1(nnew), s_x2(nnew), s_x3(nnew), &
-             s_ne(nnew), s_te(nnew), s_rk(nnew))
+    allocate(s_nH(nnew), s_x1(nnew), s_x1p(nnew), s_x2(nnew), s_x3(nnew), &
+             s_x4(nnew), s_ne(nnew), s_te(nnew), s_rk(nnew))
     do il = 1, nnew
        call remap_leaf(nx_(il), ny_(il), nz_(il), half/2.0_wp**nlev_(il), &
-                       s_nH(il), s_x1(il), s_x2(il), s_x3(il), &
-                       s_ne(il), s_te(il), s_rk(il))
+                       s_nH(il), s_x1(il), s_x1p(il), s_x2(il), s_x3(il), &
+                       s_x4(il), s_ne(il), s_te(il), s_rk(il))
     end do
 
     !--- 4a. conservation report.  These are integrals over the whole box
     !--- and are preserved exactly by the overlap weights, so anything above
     !--- roundoff is a coding error rather than a modeling choice.
-    call conservation_report(nold, half, s_nH, s_x1, s_x2, s_x3, &
-                             s_ne, s_te, s_rk)
+    call conservation_report(nold, half, s_nH, s_x1, s_x1p, s_x2, s_x3, &
+                             s_x4, s_ne, s_te, s_rk)
 
     !--- 4b. recycle the OLD grid's shared-memory windows: nothing below
     !--- reads the old tree or state (everything needed is in the local
@@ -149,8 +150,10 @@ contains
     call destroy_shared_mem(amr_grid%rhokap)
     call destroy_shared_mem(gas_nH_p)
     call destroy_shared_mem(gas_xHI_p)
+    call destroy_shared_mem(gas_xHII_p)
     call destroy_shared_mem(gas_xHeI_p)
     call destroy_shared_mem(gas_xHeII_p)
+    call destroy_shared_mem(gas_xHeIII_p)
     call destroy_shared_mem(gas_ne_p)
     call destroy_shared_mem(gas_Te_p)
     if (mpar%p_rank == 0) write(*,'(a)') &
@@ -166,7 +169,8 @@ contains
     call MPI_BARRIER(mpar%hostcomm, ierr)
 
     !--- 6. recreate the gas state and dependent arrays
-    call gas_state_recreate(nnew, s_nH, s_x1, s_x2, s_x3, s_ne, s_te)
+    call gas_state_recreate(nnew, s_nH, s_x1, s_x1p, s_x2, s_x3, s_x4, &
+                            s_ne, s_te)
     !--- species BEFORE opacity: the stage-fraction refresh inside
     !--- gas_opacity_fill reads the Gamma blocks at the NEW leaf count.
     if (par%use_metals) call species_resize(nnew)
@@ -179,7 +183,8 @@ contains
        ' leaves (', nfront, ' front cells, lmax = ', par%refine_lmax, ')'
 
     deallocate(front, old_cx, old_cy, old_cz, old_ch, old_children, &
-               old_ileaf, nx_, ny_, nz_, nlev_, s_nH, s_x1, s_x2, s_x3, &
+               old_ileaf, nx_, ny_, nz_, nlev_, s_nH, s_x1, s_x1p, s_x2, s_x3, &
+               s_x4, &
                s_ne, s_te, s_rk)
 
   end subroutine amr_refine_front
@@ -212,23 +217,25 @@ contains
   ! content, and the plain volume average is used so the value stays inside
   ! the range of the old leaves instead of being invented.
   !=========================================================================
-  subroutine remap_leaf(x, y, z, h, nH, x1, x2, x3, ne, te, rk)
+  subroutine remap_leaf(x, y, z, h, nH, x1, x1p, x2, x3, x4, ne, te, rk)
     use mpi
     implicit none
     real(kind=wp), intent(in)  :: x, y, z, h
-    real(kind=wp), intent(out) :: nH, x1, x2, x3, ne, te, rk
+    real(kind=wp), intent(out) :: nH, x1, x1p, x2, x3, x4, ne, te, rk
     integer, parameter :: MAXSTK = 512
     integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl, ierr
     real(kind=wp) :: ov, hw, wm, wt, vol
     real(kind=wp) :: sv, snh, sne, srk                  ! volume weighted
-    real(kind=wp) :: sm, smx1, smx2, smx3               ! nH V weighted
+    real(kind=wp) :: sm, smx1, smx1p, smx2, smx3, smx4  ! nH V weighted
     real(kind=wp) :: st, ste                            ! n_tot V weighted
-    real(kind=wp) :: svx1, svx2, svx3, svte             ! volume fallback
+    real(kind=wp) :: svx1, svx1p, svx2, svx3, svx4, svte ! volume fallback
 
     sv = 0.0_wp;  snh = 0.0_wp;  sne = 0.0_wp;  srk = 0.0_wp
-    sm = 0.0_wp;  smx1 = 0.0_wp; smx2 = 0.0_wp; smx3 = 0.0_wp
+    sm = 0.0_wp;  smx1 = 0.0_wp; smx1p = 0.0_wp; smx2 = 0.0_wp; smx3 = 0.0_wp
+    smx4 = 0.0_wp
     st = 0.0_wp;  ste = 0.0_wp
-    svx1 = 0.0_wp; svx2 = 0.0_wp; svx3 = 0.0_wp; svte = 0.0_wp
+    svx1 = 0.0_wp; svx1p = 0.0_wp; svx2 = 0.0_wp; svx3 = 0.0_wp; svx4 = 0.0_wp
+    svte = 0.0_wp
 
     nstk = 1;  stack(1) = 1
     do while (nstk > 0)
@@ -250,14 +257,18 @@ contains
           wm   = gas_nH(jl)*ov
           sm   = sm   + wm
           smx1 = smx1 + wm*gas_xHI(jl)
+          smx1p = smx1p + wm*gas_xHII(jl)
           smx2 = smx2 + wm*gas_xHeI(jl)
           smx3 = smx3 + wm*gas_xHeII(jl)
+          smx4 = smx4 + wm*gas_xHeIII(jl)
           wt   = (gas_nH(jl)*(1.0_wp + par%abund_He) + gas_ne(jl))*ov
           st   = st   + wt
           ste  = ste  + wt*gas_Te(jl)
           svx1 = svx1 + ov*gas_xHI(jl)
+          svx1p = svx1p + ov*gas_xHII(jl)
           svx2 = svx2 + ov*gas_xHeI(jl)
           svx3 = svx3 + ov*gas_xHeII(jl)
+          svx4 = svx4 + ov*gas_xHeIII(jl)
           svte = svte + ov*gas_Te(jl)
           cycle
        end if
@@ -280,11 +291,13 @@ contains
     ne = sne/vol
     rk = srk/vol
     if (sm > 0.0_wp) then
-       x1 = smx1/sm;  x2 = smx2/sm;  x3 = smx3/sm
+       x1 = smx1/sm;  x1p = smx1p/sm;  x2 = smx2/sm;  x3 = smx3/sm
+       x4 = smx4/sm
     else if (sv > 0.0_wp) then
-       x1 = svx1/sv;  x2 = svx2/sv;  x3 = svx3/sv
+       x1 = svx1/sv;  x1p = svx1p/sv;  x2 = svx2/sv;  x3 = svx3/sv
+       x4 = svx4/sv
     else
-       x1 = 1.0_wp;  x2 = 1.0_wp;  x3 = 0.0_wp
+       x1 = 1.0_wp;  x1p = 0.0_wp;  x2 = 1.0_wp;  x3 = 0.0_wp;  x4 = 0.0_wp
     end if
     if (st > 0.0_wp) then
        te = ste/st
@@ -300,19 +313,19 @@ contains
   ! each of these exact, so a deviation above roundoff means the remap is
   ! wrong, not that the model changed.
   !=========================================================================
-  subroutine conservation_report(nold, half, s_nH, s_x1, s_x2, s_x3, &
-                                 s_ne, s_te, s_rk)
+  subroutine conservation_report(nold, half, s_nH, s_x1, s_x1p, s_x2, s_x3, &
+                                 s_x4, s_ne, s_te, s_rk)
     use mpi
     use octree_mod, only : leaf_half
     implicit none
     integer,       intent(in) :: nold
     real(kind=wp), intent(in) :: half
-    real(kind=wp), intent(in) :: s_nH(:), s_x1(:), s_x2(:), s_x3(:), &
-                                 s_ne(:), s_te(:), s_rk(:)
-    integer, parameter :: NQ = 7
+    real(kind=wp), intent(in) :: s_nH(:), s_x1(:), s_x1p(:), s_x2(:), &
+                                 s_x3(:), s_x4(:), s_ne(:), s_te(:), s_rk(:)
+    integer, parameter :: NQ = 9
     character(len=12), parameter :: qname(NQ) = [character(len=12) :: &
        'H nuclei', 'H I', 'He I', 'He II', 'electrons', 'extinction', &
-       'thermal']
+       'thermal', 'H II', 'He III']
     real(kind=wp) :: a(NQ), b(NQ), vol, dev, worst
     integer :: il, ierr
 
@@ -327,6 +340,8 @@ contains
        a(6) = a(6) + amr_grid%rhokap(il)*vol
        a(7) = a(7) + (gas_nH(il)*(1.0_wp + par%abund_He) + gas_ne(il)) &
                      *gas_Te(il)*vol
+       a(8) = a(8) + gas_nH(il)*gas_xHII(il)*vol
+       a(9) = a(9) + gas_nH(il)*par%abund_He*gas_xHeIII(il)*vol
     end do
 
     b = 0.0_wp
@@ -340,6 +355,8 @@ contains
        b(6) = b(6) + s_rk(il)*vol
        b(7) = b(7) + (s_nH(il)*(1.0_wp + par%abund_He) + s_ne(il)) &
                      *s_te(il)*vol
+       b(8) = b(8) + s_nH(il)*s_x1p(il)*vol
+       b(9) = b(9) + s_nH(il)*par%abund_He*s_x4(il)*vol
     end do
 
     worst = 0.0_wp

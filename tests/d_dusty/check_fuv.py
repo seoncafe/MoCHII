@@ -4,6 +4,10 @@ beyond the front recombine toward neutral; with add_fuv the FUV photons
 (dust extinction only) keep them singly ionized there (PDR-side C II and
 Mg II).
 
+A diagnostic, not a gate: neither this docstring nor tests/README.md sets a
+tolerance on the front radius or the PDR-side ion fractions, so the script
+prints them for reading and exits 0 whenever it could read the file.
+
 Run:  python3 check_fuv.py d_fuv_opt_rates.h5
 """
 
@@ -16,6 +20,8 @@ fname = sys.argv[1] if len(sys.argv) > 1 else "d_fuv_opt_rates.h5"
 with h5py.File(fname, "r") as f:
     xyz = f["LeafXYZ/data"][:]           # (3, nleaf), pc
     xHI = f["x_HI/data"][:]
+    # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+    xHII = f["x_HII/data"][:] if "x_HII" in f else 1.0 - xHI
     xc = f["x_c_stages/data"][:]         # (nleaf, nstage)
     xmg = f["x_mg_stages/data"][:]
 r = np.sqrt((xyz**2).sum(axis=0))
@@ -28,14 +34,13 @@ for i in range(len(mid)):
     m = (r >= edges[i]) & (r < edges[i + 1])
     if not m.any():
         continue
-    print(f"{mid[i]:6.2f} {1-xHI[m].mean():8.4f}"
+    print(f"{mid[i]:6.2f} {xHII[m].mean():8.4f}"
           f" {xc[m, 0].mean():8.4f} {xc[m, 1].mean():8.4f}"
           f" {xc[m, 2].mean():8.4f}"
           f" {xmg[m, 0].mean():8.4f} {xmg[m, 1].mean():8.4f}"
           f" {xmg[m, 2].mean():8.4f}")
 
 # headline numbers: front radius and the PDR-side C II / Mg II
-xHII = 1.0 - xHI
 vion = (xHII > 0.5)
 # R_eff from the ionized volume (uniform leaves at level 6: equal volumes)
 R_eff = (3.0 * xHII.sum() * (8.0 / xHI.size * 8.0**2) / (4.0 * np.pi))**(1/3)
@@ -46,3 +51,5 @@ print(f"  C  I/II/III = {xc[pdr,0].mean():.3f} {xc[pdr,1].mean():.3f} "
       f"{xc[pdr,2].mean():.3f}")
 print(f"  Mg I/II/III = {xmg[pdr,0].mean():.3f} {xmg[pdr,1].mean():.3f} "
       f"{xmg[pdr,2].mean():.3f}")
+print("\nDIAGNOSTIC (no pass criterion): read the numbers above")
+sys.exit(0)

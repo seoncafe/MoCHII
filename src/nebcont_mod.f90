@@ -242,8 +242,8 @@ contains
   !=========================================================================
   subroutine nebcont_write()
     use octree_mod, only : amr_grid, leaf_half
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                              gas_Te, gas_nleaf
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                              gas_xHeIII, gas_ne, gas_Te, gas_nleaf
     use photo_xsec,    only : sigma_HI, sigma_HeI, sigma_HeII
     use utility,       only : get_base_name
     use hei_recombination_photons_mod, only : hei_twophoton_decays
@@ -265,8 +265,8 @@ contains
        if (nH <= 0.0_wp) cycle
        T  = gas_Te(il);  ne = gas_ne(il)
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
-       xHeIII  = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
-       nHII    = nH*(1.0_wp - gas_xHI(il))
+       xHeIII  = gas_xHeIII(il)
+       nHII    = nH*gas_xHII(il)
        nHeII_n = nH*par%abund_He*gas_xHeII(il)
        nHeIII  = nH*par%abund_He*xHeIII
        dq      = h2s_quench_denominator(T, ne, nHII, nHeII_n, nHeIII)

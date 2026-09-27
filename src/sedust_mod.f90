@@ -124,11 +124,11 @@ contains
     use octree_mod,    only : leaf_half
     use jtally_mod,    only : jt_ion
     use ion_band_mod,  only : ion_dnu, nnu_band
-    use gas_state_mod, only : gas_xHI
+    use gas_state_mod, only : gas_xHI, gas_xHII
     implicit none
     integer,       intent(in)  :: il
     real(kind=wp), intent(out) :: pdf(:), esum
-    real(kind=wp) :: vol, extra, xh, wd, wpah
+    real(kind=wp) :: vol, extra, xh, xhp, wd, wpah
     integer :: b, k
 
     pdf  = 0.0_wp
@@ -168,11 +168,11 @@ contains
        if (.not. allocated(lamI_ch)) &
           allocate(lamI_ch(nl_sed, dmodel%n_channel))
        call dust_emission(dmodel, Jsed, lamI, lamI_ch)
-       xh   = gas_xHI(il)
-       wpah = xh + par%f_ion_pah*(1.0_wp - xh)
+       xh   = gas_xHI(il);  xhp = gas_xHII(il)
+       wpah = xh + par%f_ion_pah*xhp
        wd   = 1.0_wp
        if (trim(par%dust_density_law) == 'laursen09_live') &
-          wd = max(xh + par%f_ion_dust*(1.0_wp - xh), tinest)
+          wd = max(xh + par%f_ion_dust*xhp, tinest)
        lamI = lamI + (wpah/wd - 1.0_wp)*lamI_ch(:, ipah_chan)
     else
        call dust_emission(dmodel, Jsed, lamI)

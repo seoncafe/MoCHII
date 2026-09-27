@@ -11,6 +11,7 @@ module iofile_mod
 !
   use, intrinsic :: iso_fortran_env, only: real32, real64, int32, int64
   use define, only : PATH_LEN
+  use utility, only : fatal_error
   use fitsio_mod
   use hdf5io_mod
   implicit none
@@ -142,13 +143,13 @@ contains
   ! If `filename` already carries an extension (a dot after the final path
   ! separator), it is returned trimmed unchanged. Otherwise, the extensions
   ! `.h5`, `.fits.gz`, `.fits`, `.dat` are appended in that order and the
-  ! first existing candidate is returned. If none exists, the routine stops
-  ! with an error listing the attempted names.
+  ! first existing candidate is returned. If none exists, the routine lists
+  ! the attempted names and ends the run (utility::fatal_error, exit
+  ! status 1).
   !
   ! Used by inputs that may legitimately be served from any of the supported
-  ! file formats (e.g. the AMR grid file). Inputs whose extension
-  ! changes the *meaning* of the data (e.g. par%dens_file: .fits → 3D cube,
-  ! .dat → 1D radial profile) must NOT use this resolver.
+  ! file formats (e.g. the AMR grid file). An input whose extension would
+  ! change the *meaning* of the data must NOT use this resolver.
   !---------------------------------------------------------------------------
   function io_resolve_filename(filename) result(resolved)
     character(len=*), intent(in)  :: filename
@@ -183,7 +184,7 @@ contains
     do i = 1, size(exts)
       write(6,'(a,a)') '  ', trim(filename) // trim(exts(i))
     end do
-    stop 'io_resolve_filename: file not found'
+    call fatal_error('io_resolve_filename: file not found: '//trim(filename))
   end function io_resolve_filename
 
 !=============================================================================

@@ -17,7 +17,7 @@ module gas_opacity_mod
 !---------------------------------------------------------------------------
   use define
   use octree_mod,    only : amr_grid
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_nleaf
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_nleaf
   implicit none
   private
 
@@ -359,11 +359,11 @@ contains
        !--- the realized tau then follows the grain survival factor freely.
        if (trim(par%dust_density_law) == 'laursen09_live') then
           block
-            real(kind=wp) :: xh, fac
+            real(kind=wp) :: xh, xhp, fac
             do il = 1, gas_nleaf
-               xh  = gas_xHI(il)
-               fac = (1.0_wp - par%f_pah)*(xh + par%f_ion_dust*(1.0_wp - xh)) &
-                     + par%f_pah*(xh + par%f_ion_pah*(1.0_wp - xh))
+               xh  = gas_xHI(il);  xhp = gas_xHII(il)
+               fac = (1.0_wp - par%f_pah)*(xh + par%f_ion_dust*xhp) &
+                     + par%f_pah*(xh + par%f_ion_pah*xhp)
                amr_grid%rhokap(il) = (par%Z_global/max(par%Z_ref,1.0e-30_wp)) &
                   * gas_nH(il)*fac * par%cext_dust * par%DGR * par%distance2cm &
                   * dust_opac_norm

@@ -42,13 +42,7 @@ contains
   character(len=128) :: saved_distance_unit
   real(wp) :: saved_distance2cm
 
-  if (trim(par%amr_type) == 'ramses') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: amr_type = ''ramses'' is not read directly; convert with '// &
-        'python/AMR_grid/convert_ramses_to_generic.py first.'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  end if
-
+  !--- par%amr_type is 'generic' here: setup_mod::read_input refuses the rest.
   if (len_trim(par%amr_file) > 0) then
      !--- read leaf data from a file (every rank; identical read-only data).
      call generic_amr_read(trim(par%amr_file), xleaf, yleaf, zleaf, lev, &
@@ -242,11 +236,11 @@ contains
            !--- gas_opacity_fill (with the PAH survival split there).
            !--- Uses par%Z_global (no live Z column).
            block
-             use gas_state_mod, only : gas_xHI
-             real(wp) :: xh, fac
-             xh  = gas_xHI(il)
-             fac = (1.0_wp - par%f_pah)*(xh + par%f_ion_dust*(1.0_wp - xh)) &
-                   + par%f_pah*(xh + par%f_ion_pah*(1.0_wp - xh))
+             use gas_state_mod, only : gas_xHI, gas_xHII
+             real(wp) :: xh, xhp, fac
+             xh  = gas_xHI(il);  xhp = gas_xHII(il)
+             fac = (1.0_wp - par%f_pah)*(xh + par%f_ion_dust*xhp) &
+                   + par%f_pah*(xh + par%f_ion_pah*xhp)
              rho = (par%Z_global/max(par%Z_ref,1.0e-30_wp))*nH(il)*fac &
                    * par%cext_dust * par%DGR * par%distance2cm
            end block

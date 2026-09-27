@@ -302,12 +302,15 @@ Lucy-style random optical depth, discrete absorption, and immediate local
 re-emission. \\
 
 Diffuse field & Explicit selected H/He recombination channels rebuilt from
-the current state; case B OTS remains available. & Local continuum and line
+the current state and transported (the default since 2026-09-26); on-the-spot
+remains available. & Local continuum and line
 emissivity PDF sampled immediately after gas absorption; isotropic
 re-emission. \\
 
-Frequency treatment & Dynamically allocated FUV and EUV segments, normally
-tens of rate-optimized bins with threshold alignment. & Up to 10,240 bins;
+Frequency treatment & Continuous photon energies drawn from the source and
+diffuse spectra, cross sections evaluated at each packet's energy; the FUV
+extension has its own packet budget, and the threshold-aligned bins are a
+diagnostic $J_\nu$ tally only. & Up to 10,240 bins;
 a fixed number of packets is launched at every frequency and packet energy
 follows the source spectrum. \\
 
@@ -316,8 +319,9 @@ full grid copy per node. & Spatial domain decomposition; packets crossing
 blocks are synchronized through MPI. \\
 
 Gas microphysics & Modern, provenance-bearing fitted data for an
-H\,\textsc{ii}-region/PDR-centered registry; low-density cooling fits in
-the thermal loop. & Broad MAPPINGS ion network and multilevel line cooling
+H\,\textsc{ii}-region/PDR-centered registry; line cooling in the thermal
+loop suppressed to the local $\nelec$ through $\Lambda(T,\nelec)$ tables
+built from its own $n$-level solve. & Broad MAPPINGS ion network and multilevel line cooling
 inside the thermal loop; older but extensively exercised atomic-data
 compilation. \\
 
@@ -348,7 +352,8 @@ The concise verdict is:
 \MoCHII{} is presently the stronger three-dimensional transport, dust, AMR,
 and synthetic-observation framework.  \Mthree{} is presently the stronger
 broad-spectrum nebular microphysics framework, especially when many ion
-stages or density-dependent line cooling determine the solution.
+stages, or level populations solved inside the thermal iteration for every
+ion, determine the solution.
 \end{quote}
 
 \begin{longtable}{P{0.24\textwidth}P{0.34\textwidth}P{0.32\textwidth}}
@@ -433,8 +438,13 @@ accumulator for each species it knows about, \code{jmeanH},
 no $J_\nu(\nu,\mathrm{cell})$ array anywhere in the code.  The consequence
 is structural rather than numerical: a rate integral for any species not in
 that hardcoded list cannot be recovered after the run, so adding an ion is a
-code operation.  \MoCHII{}'s \code{jt\_ion(nnu,nleaf)} band tally is the
-opposite choice, and it is what makes its registry a data operation.
+code operation.  \MoCHII{} also accumulates the rate integrals directly ---
+each path segment is scored against the cross sections at the packet's own
+photon energy (\code{src/ion\_score\_mod.f90}, \code{score\_ion\_path}) ---
+but it loops over whatever stages the registry holds, so adding an ion stays a
+data operation; its band tally \code{jt\_ion(nnu,nleaf)} is a diagnostic
+spectrum, kept only when $J_\nu$ is written (\code{par\%jnu\_output}) or the
+SEDust emission reads it, and no rate is taken from it.
 
 The opacity is hydrogen and helium only
 (\code{tauint.f}:159--161); the metals are tallied but never attenuate.  The
@@ -490,10 +500,11 @@ line coefficients are numerically identical to \Wood{}'s
 
 Frequencies are continuous: a packet's cross sections are evaluated once at
 emission (\code{src/PhotonSource.cpp}:230--244) and there is no band grid in
-transport at all.  This removes the discretization question that
-Section~\ref{sec:specdisc} shows to be the largest single lever on \MoCHII{}'s
-helium and metal ionization, and replaces it with sampling noise in the rate
-integrals.  Three grid types are offered --- uniform Cartesian (the
+transport at all.  This removes the band-discretization question --- which
+biased \MoCHII{}'s helium and metal ionization while it transported
+band-averaged energies, and which \MoCHII{} has since removed the same way
+(Section~\ref{sec:specdisc}) --- and replaces it with sampling noise in the
+rate integrals.  Three grid types are offered --- uniform Cartesian (the
 default), an octree AMR with Morton-style keys, and a Voronoi mesh that can
 move with the fluid --- plus a fourth structure, a subgrid decomposition used
 by the task-based mode.  Refinement can be static or solution-driven, on
@@ -613,10 +624,13 @@ no grain photoelectric heating in this balance.  Recombination data are
 Verner \& Ferland for H and He and Pequignot et al.\ (1991) plus Nussbaumer
 \& Storey (1983) for the metals --- \emph{the \Mocassin{} set}, so the
 in-code swap experiment reported in Section~\ref{sec:recombdata} transfers to
-\Torus{} unchanged.  Its H$^+$ and He$^{++}$ coefficients agree with
-\MoCHII{}'s default $\alpha_A$ to four digits; only He$^+ + e$ differs, and
-there \Torus{} sits $4.7\%$ \emph{above} \MoCHII{}, the opposite side from
-\Mocassin{}'s low value.  One provenance curiosity: the free-bound $\gamma$
+\Torus{} unchanged.  Its H$^+$ and He$^{++}$ coefficients (Verner \&
+Ferland, \code{photoion\_utils\_mod.F90}:304--335) sit $0.72\%$ and
+$0.27\%$ above \MoCHII{}'s default $\alpha_A$ at $10^4$~K, which since
+2026-09-26 is the Storey \& Hummer (1991) cascade $\alpha_B$ plus the Milne
+$\alpha_1$ (they agreed to four digits with the Badnell total \MoCHII{} used
+before); He$^+ + e$ differs most, \Torus{} sitting $4.7\%$ \emph{above}
+\MoCHII{}'s Badnell total, the opposite side from \Mocassin{}'s low value.  One provenance curiosity: the free-bound $\gamma$
 tables \Torus{} reads are byte-identical to \Mocassin{}'s and \MoCHII{}'s
 copies, but its own comment attributes them to Ferland (1980) where the other
 two carry the Ercolano \& Storey compact format.  The numbers are not in
@@ -662,8 +676,8 @@ Topic & \Wood{} & \CMI{} & \Torus{} & \MoCHII{} \\
 \endfoot
 Estimator & Lucy path length, rate integrals accumulated directly; no
 $J_\nu$ stored & Lucy path length, continuous frequency & Lucy path length,
-1000-bin grid & Analytic edge walk without scattering, band-resolved
-$J_\nu$ tally \\
+1000-bin grid & Analytic edge walk without scattering, continuous photon
+energy, rates scored at the packet energy; $J_\nu$ tally on request \\
 
 Grid & Uniform Cartesian, size compiled in; analytic density only & Cartesian
 / octree AMR / Voronoi / subgrid & AMR in 1D, 2D or 3D, cylindrical option &
@@ -679,17 +693,18 @@ packets, shared-memory grid per node \\
 
 Diffuse field & explicit, case A, four He channels & the same scheme,
 opt-in, default off & transported by default; \code{caseB} is a constant
-coefficient & explicit H/He channels plus the \HeI{} excited channel; case-B
-OTS available \\
+coefficient & explicit H/He ground continua plus the \HeI{} and \HeIII{}
+excited cascades, transported by default; on-the-spot available \\
 
 Global convergence & none (compare iterations by eye) & none (fixed
 iteration count) & cell-maximum $\Delta\Te$, packet doubling on undersampling
-& cell-maximum or volume-integrated, tolerance-gated \\
+& cell-maximum or volume-integrated; the volume test extrapolates the decay
+(rate fitted over 8 iterations) or requires no resolvable signed drift \\
 
 Metals & tallied, no opacity, no electrons & tallied, no opacity, no
 electrons; no collisional ionization & 22 ions, no opacity, electrons
 counted, charge exchange data for five ions only, no collisional ionization &
-registry with opacity, optional electrons and heating, two
+registry with opacity, electrons and heating (on by default), two
 collisional-ionization models \\
 
 Dust & none & none on this path & absorption, Mie scattering, equilibrium
@@ -820,16 +835,22 @@ $2.5918{\times}10^{-13}$ at $10^4$~K, on the canonical value to $0.07\%$.
 $\alpha_{\rm B}(\HeI{})$ is the companion power law
 $1.26{\times}10^{-14}\lambda^{0.75}$ (\code{:118}) plus a dielectronic term
 that is negligible below $10^5$~K; together they give
-$2.616{\times}10^{-13}$ at $10^4$~K, which is $\mathbf{0.60}$ times the
-$4.3719{\times}10^{-13}$ \MoCHII{} takes from Badnell and the
-$4.3583{\times}10^{-13}$ \Cloudy{} derives level by level from the Milne
-relation.  This memo already carries the warning that \Mocassin{}'s
+$2.616{\times}10^{-13}$ at $10^4$~K, which is $\mathbf{0.947}$ times
+\MoCHII{}'s case-B $\alpha_{\rm B}(\HeI{}) = 2.763{\times}10^{-13}$ (the
+Badnell total $4.3719{\times}10^{-13}$ less the Milne $\alpha_1$), $0.938$ at
+8000~K and $1.001$ at $2{\times}10^4$~K.  An earlier version of this paragraph
+set the same $2.616{\times}10^{-13}$ against the case-\emph{A} totals ---
+\MoCHII{}'s $4.3719{\times}10^{-13}$ and the $4.3583{\times}10^{-13}$
+\Cloudy{} derives level by level from the Milne relation --- and called it
+$0.60$; that compared a case-B coefficient with case-A ones, and the factor
+does not exist.  This memo carries the warning that \Mocassin{}'s
 $\alpha_{\rm A}(\HeI{})$ is $11\%$ high because it is Verner \& Ferland
-(1996) applied with no special case for helium; the same warning applies
-here with the opposite sign and six times the size.  It is the expected
-consequence of a fit built for intergalactic reionization bookkeeping, and
-it means \Colt{} helium fractions are not a reference for an \HII{} region
-without that factor subtracted.  Metal recombination is by contrast
+(1996) applied with no special case for helium; \Colt{}'s case-B helium
+coefficient departs the other way, by $5$--$6\%$ at nebular temperatures, half
+that size, which is what a single power law fitted for intergalactic
+reionization bookkeeping leaves.  It is worth subtracting before \Colt{}
+helium fractions are compared with an \HII{} region model, but it is not a
+large factor.  Metal recombination is by contrast
 current: radiative plus dielectronic from Badnell, stated at
 \code{ionization/\allowbreak ionization.cc}:1962 and evaluated ion by ion in
 \code{rates.h}.
@@ -961,16 +982,20 @@ general and treats diffuse radiation naturally.
 For the absorption-only ionizing band, \MoCHII{} instead integrates the
 attenuated packet weight analytically through every crossed leaf:
 \begin{equation}
- \Delta J_b({\rm leaf}) = w L_{\rm pkt}
-   \frac{e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}}}{\kappa_b} .
+ \Delta J_E({\rm leaf}) = w L_{\rm pkt}
+   \frac{e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}}}{\kappa(E)} ,
  \label{eq:edge}
 \end{equation}
+with $\kappa(E)$ the leaf opacity at the packet's own photon energy $E$; the
+photoionization and photoheating integrals of every species are scored from
+this path at that energy (\code{src/raytrace\_amr.f90},
+\code{src/ion\_score\_mod.f90}).
 The packet is followed to the domain edge and contributes the expectation
 value of the absorbed path in each leaf.  There is no sampled absorption
-location; statistical noise comes only from direction and bin sampling.
-The analytic attenuation gate measured a mean photo-rate bias of
-$+0.004\%$.  An optional Owen-scrambled Sobol launch
-(\code{launch\_sequence='sobol'}) stratifies exactly those remaining
+location; statistical noise comes only from direction and photon-energy
+sampling.  The analytic attenuation gate measured a mean photo-rate bias of
+$+0.004\%$.  The Owen-scrambled Sobol launch (\code{launch\_sequence='sobol'},
+the default since 2026-09-25) stratifies exactly those remaining
 launch variables: on the same gate the cell-wise photo-rate error then
 scales as $\sim 1/N$ rather than $1/\sqrt{N}$, with measured effective
 photon gains of $29\times$ at $2^{17}$ packets and $222\times$ at
@@ -1027,13 +1052,20 @@ attractive for detailed continua.  Its cost scales approximately with
 $N_\nu N$ rather than with one total packet budget, and its large
 $J_\nu(x,y,z)$ and opacity arrays are major memory consumers.
 
-\MoCHII{} samples a frequency bin from the luminosity CDF and assigns every
-packet the same band luminosity.  Its bins are designed around rate
-integrals rather than spectral oversampling.  The ionizing grid can align
-edges with H, He, and active metal thresholds, while an independent FUV
-segment preserves the EUV resolution.  This is efficient for ionization
-and thermal balance, but a fine line-rich diffuse spectrum would require
-many more bins and packets than the normal 32--64-bin production setup.
+\MoCHII{} samples each packet's photon energy continuously from the source
+spectrum (\code{src/energy\_sampler\_mod.f90}: a piecewise-linear density
+with an exactly inverted CDF, adaptively refined for a Planck function), and
+the diffuse packets from their emission spectra, so the cross sections are
+evaluated at the packet's own energy and no band average enters the rates.
+Every packet of the ionizing band carries the same luminosity, and with
+\code{par\%fuv\_sampling = 'separate'} (the default) the FUV extension below
+13.6~eV has its own packet budget on its own Sobol stream.  The ionizing bins,
+still aligned on the H, He and active metal thresholds, now only resolve the
+diagnostic $J_\nu$ tally.  Until the move to continuous energies the rates
+were taken from band-averaged bins, and the band discretization was a real
+lever on the helium and metal ionization.  A line-rich diffuse spectrum is
+therefore no longer limited by a bin grid but by the channels the diffuse
+emitter carries.
 
 \subsection{Velocity fields and line transport}
 
@@ -1073,7 +1105,7 @@ initial solution.  A leaf is refined when it lies in the I-front or sees a
 large face-neighbor ionization jump.  In the recorded gate, refinement
 from a level-5 start to level 7 produced 467,272 leaves instead of the
 2,097,152 cells of a complete level-7 grid; the effective ionized radius
-agreed with the native level-7 result by $0.006\%$ (2026-09-26).  The refinement follows
+agreed with the native level-7 result by $0.012\%$ (2026-09-27, both runs stopped on the drift test).  The refinement follows
 clump skins and distributed fronts in turbulent media, not merely the
 source position.
 
@@ -1145,15 +1177,23 @@ metals Verner's \code{phfit2} prescription in full: the outer-shell fit
 below the first inner-shell edge and the sum of the Verner \& Yakovlev
 (1995) subshell fits above it, which brings the Mg $2p$, Ca $3p$ and
 Fe $3p$ edges into the 13.6--100~eV band (since 2026-09-24).
-Hydrogen and helium recombination defaults to the Badnell (2023) radiative
-total minus a ground-state coefficient obtained from the Milne relation on
-the transport cross sections (case B), with the Hui--Gnedin fits retained as
-an option; metal RR and DR are derived primarily from Badnell/CHIANTI
-v11.0.2 data.  Charge exchange uses the modern first-stage rates of Huang et
-al., the Barragan et al.\ (2006) tables for N$^{2+}$ and O$^{2+}$, and the
-Kingdon--Ferland compilation for the other higher stages; He--H charge
-exchange enters the H/He balance (\code{par\%helium\_charge\_exchange},
-default on since 2026-09-24).  Each generated file records its source,
+Hydrogen and helium recombination (\code{par\%recomb\_model =
+'detailed\_balance'}, the default) takes the ground-state coefficient
+$\alpha_1$ from the Milne relation on the transport cross sections for all
+three ions; the case-B coefficient of H$^+$ and He$^{2+}$ comes from a
+zero-density $nl$-resolved cascade on the Storey \& Hummer (1991) hydrogenic
+routines, with $\alpha_A=\alpha_B+\alpha_1$ (since 2026-09-26), and that of
+He$^+$ is the Badnell (2023) total minus $\alpha_1$; the Hui--Gnedin fits are
+retained as an option.  Metal RR and DR are derived primarily from
+Badnell/CHIANTI v11.0.2 data.  Charge exchange uses the modern first-stage
+rates of Huang et al.\ (with N$^0$/N$^+$ from Kingdon \& Ferland 1996 and
+S$^+$ resolved by product term from Zhao et al.\ 2005), the Barragan et
+al.\ (2006) tables for N$^{2+}$ and O$^{2+}$, and the Kingdon--Ferland
+compilation for the other higher stages; He--H charge exchange enters the H/He
+balance (\code{par\%helium\_charge\_exchange}, default on since 2026-09-24),
+with He$^+$ + H taken since 2026-09-27 from Loreau et al.\ (2014) by
+reciprocity (non-radiative) and Stancil, Lepp \& Dalgarno (1998)
+(radiative).  Each generated file records its source,
 fit range, formula, and maximum fit error.
 
 \Mthree{} uses the established MAPPINGS compilation.  The published code
@@ -1225,7 +1265,7 @@ all --- one pass for each cell in each Monte Carlo iteration.  Its only
 matrix, \code{SIMQ} in \code{SIMQ2.f}, again belongs to the five-level bound
 populations of the cooling function (\code{linecool1.f}:110).  \MoCHII{} does
 exactly what those four do: \code{species\_fractions}
-(\code{src/species\_\allowbreak mod.f90}:810--840) takes $\Te$, $\nelec$, $n_{\rm HI}$
+(\code{src/species\_\allowbreak mod.f90}:1363--1393) takes $\Te$, $\nelec$, $n_{\rm HI}$
 and $n_{\rm HII}$ as inputs and returns the chain product for one element.
 
 \begingroup\footnotesize\setlength{\tabcolsep}{3pt}
@@ -1272,8 +1312,9 @@ separate & no; four partners, all one-way & yes, summed into $x_{\rm e}$ &
 yes, every active ion & no metal channel; H/He free--free, free--bound and
 two-photon, opt-in & none in this tree; $\Te$ from the internal energy \\
 
-\MoCHII{} & chain, but solved for its root at each $\nelec$ rather than
-substituted into & separate & \textbf{yes}, metal--H and He--H & yes, default on, damped fixed
+\MoCHII{} & chain for the metals; hydrogen's balance solved for its root in
+$u=\ln(n_{\rm HII}/n_{\rm HI})$ at each $\nelec$ rather than substituted
+into & separate & \textbf{yes}, metal--H and He--H & yes, default on, damped fixed
 point & yes, default on & H/He channels only & outer bisection in
 $\log\Te$ \\
 \end{longtable}
@@ -1463,9 +1504,10 @@ residuals re-solves the ionization of every element through
 \code{ConvIoniz()} (\code{:283--288}).
 
 \MoCHII{}'s metal contribution to $\nelec$ is optional
-(\code{par\%metal\_ne}, on by default since 2026-07-31), and it is solved as a
-scalar fixed point rather than evaluated once:
-\code{charge\_\allowbreak neutrality\_\allowbreak ne} (\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:98--123)
+(\code{par\%metal\_ne}, on by default since 2026-07-31, and since
+2026-09-25 on whenever the input sets a metal abundance and leaves it out), and
+it is solved as a scalar fixed point rather than evaluated once:
+\code{charge\_\allowbreak neutrality\_\allowbreak ne} (\code{src/ion\_\allowbreak balance\_\allowbreak mod.f90}:968--986)
 solves
 \begin{equation}
  \nelec = \nelec({\rm H,He}) + n_{\rm H}\sum_{\rm el} A_{\rm el}
@@ -1473,7 +1515,7 @@ solves
  \label{eq:metalne}
 \end{equation}
 with the same damped iteration and tolerance as the H/He closure.  The reason
-is recorded at \code{:105--108} and is worth restating, because the cheaper
+is recorded at \code{:950--953} and is worth restating, because the cheaper
 choice is wrong for a specific physical reason rather than merely
 inaccurate: evaluating the metal sum once at the H/He-only electron density
 is the $\nelec\to0$ limit beyond the front, where the H/He term vanishes,
@@ -1571,8 +1613,9 @@ found; it should not be counted as active physics without a dedicated test.
 \subsection{The critical difference: density-dependent metal cooling}
 \label{sec:densitycool}
 
-This is the most important gas-physics advantage of both MAPPINGS-derived
-codes over \MoCHII{}.  Their thermal solvers call fine-structure,
+This was the most important gas-physics advantage of both MAPPINGS-derived
+codes over \MoCHII{} until 2026-07-26, and what remains of it is narrow (end of
+this subsection).  Their thermal solvers call fine-structure,
 intercombination, multilevel, and iron line
 modules during every evaluation of the net cooling function.  Level
 populations and collisional de-excitation therefore affect the equilibrium
@@ -1610,10 +1653,14 @@ $\log \Te$ and re-solves the H/He and metal ionization at every trial
 temperature.  Its current budget includes photoionization heating,
 H/He recombination and collisional losses, free-free emission with a
 tabulated Gaunt integral (H/He and, by default, the trace metals with
-their net ion charge), metal-line cooling, metal photoheating (on by
-default), atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and
-O\,\textsc{i} fine-structure lines (always on with the metals), and optionally secondary
-ionization and the grain photoelectric and recombination terms.
+their net ion charge), metal-line cooling, metal photoheating with metal
+recombination and collisional-ionization losses (on by default,
+\code{par\%metal\_heat}), charge-exchange heating (on by default),
+atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and
+O\,\textsc{i} fine-structure lines (always on with the metals), the
+He\,\textsc{i} $2^3$S energy exchanges (on by default), and optionally
+secondary ionization and the grain photoelectric and recombination terms
+(\code{src/thermal\_mod.f90}, \code{src/cooling\_mod.f90}).
 
 The MAPPINGS thermal solver used by \Mappings{} and inherited by \Mthree{}
 includes a broader traditional plasma budget:
@@ -1670,8 +1717,8 @@ stochastic emission, and observer maps.
 gas state:
 
 \begin{enumerate}[leftmargin=2em]
-\item Gas and dust compete for ionizing photons using bin-dependent
-  absorption cross sections.  The dusty Str\"omgren gate reproduces the
+\item Gas and dust compete for ionizing photons using absorption cross
+  sections evaluated at each packet's photon energy.  The dusty Str\"omgren gate reproduces the
   one-dimensional radius to $+0.69\%$ and the classic radius reduction
   $R/R_0=0.735$.
 \item With scattering enabled, the extinction includes the dust scattering
@@ -1683,7 +1730,8 @@ gas state:
   inside ionized gas and produces a PAH-bright I-front ring.
 \item The absorbed FUV/EUV power gives a leaf equilibrium mixture
   temperature and an energy-conserving IR spectrum.
-\item SEDust supplies astrodust, DL07, or Zubko stochastic emission.  The
+\item SEDust supplies astrodust, DL07, MRN, or Zubko stochastic emission
+  (MRN has no PAH component).  The
   final normalization enforces
   $\int L_\lambda\,d\lambda=\sum_{\rm leaf}H_{\rm dust}V$; the smoke test
   closes at unity and resolves the usual PAH bands.
@@ -1871,7 +1919,7 @@ artifact rather than physics.  Line \emph{ratios} are immune, because
 its nodes is not the same as agreeing between them, and the three codes that
 interpolate the Storey--Hummer grid do it three different ways.  \MoCHII{} is
 bilinear in $(\log \Te, \log \nelec)$ on $\log j$, i.e.\ a power law within
-each cell (\code{sh95\_mod.f90}:162--175).  \Mappings{} and \Mthree{} take a
+each cell (\code{sh95\_mod.f90}:161--174).  \Mappings{} and \Mthree{} take a
 natural cubic spline in $\log_{10}\Te$ of $\log_{10} j$ and interpolate
 linearly in $\log \nelec$ (\code{hydro.f}:255--265, 435--459).  \Mocassin{}'s
 output path uses a five-point Lagrange polynomial in $\sqrt{\Te}$ and
@@ -1892,9 +1940,14 @@ $0.4$--$3.6\%$ of the analytic fits.  But the error of the low-order scheme is
 curve, so \MoCHII{}'s bilinear form is low at every off-node point rather than
 scattering about zero, and integrating over a model cannot average it away.
 
-Because \MoCHII{}'s $L(\mathrm{H}\beta)$ sits below the published benchmark
-values, that bias is the natural suspect, and it can be measured on the
-converged models rather than estimated.  Re-evaluating the same converged state
+Because \MoCHII{}'s $L(\mathrm{H}\beta)$ then sat below the published
+benchmark values, that bias was the natural suspect, and it was measured on the
+converged models of that time rather than estimated (the numbers of this
+paragraph and the next are from those runs, before 2026-09-25, and were not
+re-measured; on the current run \code{m11} of 2026-09-27
+$L(\mathrm{H}\beta)$ is $2.02\times10^{37}$ and
+$4.85\times10^{36}$~erg\,s$^{-1}$, inside the published $2.01$--$2.10$ and
+$4.83$--$5.04$, at their low ends).  Re-evaluating the same converged state
 --- leaf by leaf, at each leaf's own $(\Te,\nelec)$ --- with the two
 higher-order schemes in place of the bilinear one changes the
 volume-integrated $L(\mathrm{H}\beta)$ by
@@ -1912,8 +1965,8 @@ chord error is largest.  The Balmer decrement is less sensitive still,
 $\le 0.05\%$, since the bias is common to the two lines and divides out of the
 ratio.
 
-Set against a deficit of $3$--$5\%$ (Section~\ref{sec:validation}), the
-interpolation algorithm therefore accounts for one part in fifty at HII40 and
+Set against the $3$--$5\%$ deficit those runs had, the
+interpolation algorithm therefore accounted for one part in fifty at HII40 and
 one part in thirty at HII20.  The remainder is the photon budget: the
 converged models return $0.950$ and $0.970$ of $\QH$ as hydrogen
 recombinations, with helium taking $0.112\,\QH$ at HII40, and
@@ -1930,7 +1983,8 @@ the three $j(\mathrm{H}\beta)$ values divided by the smallest, in percent, on
 the Storey \& Hummer (1995) case-B table.  Rows at 5\,000, 10\,000 and
 20\,000~K and the column at $\nelec = 10^2\,\mathrm{cm^{-3}}$ are grid nodes,
 where all three schemes return the tabulated number and the spread vanishes by
-construction.  7024 and 8211~K are the converged benchmark temperatures.}
+construction.  7024 and 8211~K were the converged benchmark temperatures of
+2026-07-26 (6940 and 8180~K in the current run \code{m11}).}
 \label{tab:interp}
 \begin{tabular}{lcccc}
 \toprule
@@ -2005,10 +2059,11 @@ out one line below (\code{calpdf.f}:45--46, 54--55), so the connected path is
 pure case B everywhere and the Lyman series above Ly$\alpha$ is identically
 zero even in optically thin gas.  \MoCHII{} sits between the two: two
 explicit parameters, \code{par\%recombination\_continuum} for the ground
-continua and \code{par\%lyman\_lines} for the line tables, both defaulting to
-\code{'on\_the\_spot'} (case B), with the second kept separate precisely
-because tying them together silently loaded case-A line tables whenever the
-diffuse field was switched on.
+continua (default \code{'transported'} since 2026-09-26, case A with the
+diffuse field transported; \code{'on\_the\_spot'} is case B) and
+\code{par\%lyman\_lines} for the line tables (default \code{'on\_the\_spot'},
+case B), with the second kept separate precisely because tying them together
+silently loaded case-A line tables whenever the diffuse field was switched on.
 
 The other three each conflate the two questions in a different way.  \Wood{}
 has it right by convention and says nothing about it: its lines are case B
@@ -2053,7 +2108,7 @@ for: the Storey--Hummer grids begin at
 $\nelec = 10^{2}\,\mathrm{cm^{-3}}$ (the original CDS files as well as the
 repackaged ones), so every code that reads them needs a rule below that
 density, and \MoCHII{}'s rule is to clamp
-(\code{sh95\_mod.f90}:163).  Two measurements bound what the clamp costs.
+(\code{sh95\_mod.f90}:162).  Two measurements bound what the clamp costs.
 From the bottom slope of the table itself, extrapolating the collisional term
 linearly in $\nelec$, the $\nelec \rightarrow 0$ error is $\le 0.08\%$ for
 every H\,\textsc{i} and He\,\textsc{ii} line in it.  Independently,
@@ -2085,7 +2140,7 @@ Code & Emissivity source & Case mechanism & $\nelec$ depend. & H collis.\ term &
 \bottomrule
 \endfoot
 \MoCHII{} & SH95 case-A/B tables, bilinear in $(\log\Te,\log\nelec)$ &
-\code{lyman\_lines}, separate from the continuum \code{recombination\_continuum} & yes &
+\code{lyman\_lines}, separate from the continuum \code{recombination\_\allowbreak continuum} & yes &
 optional, 25-level atom & no \\
 
 \Mappings{} & SH95 absolute H$\beta$ + 90 ratios, spline in $\log\Te$ &
@@ -2221,9 +2276,9 @@ observer peel-off.  Stellar and diffuse emission contribute direct
 $e^{-\tau}$ terms, every dust interaction contributes an HG-weighted
 scattered term, and the optical-depth walk uses the same gas and dust
 opacity as the rate calculation.  Multiple observers, unattenuated direct
-images, and bin-resolved cubes are available.  The direct thin-medium gate
-matches the analytic image-integrated flux by $+0.15\%$ under the current
-defaults (exact hydrogenic cross sections, threshold-aligned bins).
+images, and bin-resolved cubes are available.  The recorded direct
+thin-medium gate matches the analytic image-integrated flux by $+0.15\%$
+(exact hydrogenic cross sections; the gate was not rerun for this memo).
 
 \Mthree{} outputs cell-resolved physical quantities and line emissivities,
 and its published applications construct spatial line maps from them.
@@ -2263,7 +2318,16 @@ the volume measures reached stable Monte Carlo floors of
 $2.7\times10^{-3}$ and $6.6\times10^{-3}$.  Thirty further iterations
 changed the ionized volume by only 0.014\%.  This is a stronger convergence
 diagnostic for turbulent, clumpy grids, provided the tolerance is set just
-above the packet-noise floor.
+above the packet-noise floor.  Since 2026-09-26 the volume test
+(\code{par\%conv\_crit = 'vol'}) no longer relies on that choice alone
+(\code{src/fixed\_point\_distance\_mod.f90}): the decay rate $\rho$ is fitted
+over the last 8 iterations and, while the step still decays ($\rho < 0.95$),
+the remaining distance $d_n\rho/(1-\rho)$ must fall below the tolerance; once it
+no longer decays, the step must be below the tolerance \emph{and} the signed
+change of the ionized volume must show no mean drift resolvable by a
+two-sided 95\% Student $t$ test over the same 8 iterations.  An earlier test
+on the step alone had stopped the HII40 benchmark at 37 iterations with the
+\HeI{} front 0.17~pc short.
 
 \subsection{Validation evidence}
 \label{sec:validation}
@@ -2318,8 +2382,12 @@ comparison can be made from the two papers without running either.
 Jin et al.\ (2022) Tables~2 and~3 give \Mthree{} at $33^3$ and $55^3$ cells
 beside MAPPINGS, \Cloudy{}, \Mocassin{}3D, RR and PH, with the median and
 $1\sigma$ spread of those five \cite{jin2022}.  \MoCHII{}'s column is
-\code{results/continuous\_energy/m1\_oxfix}, the production inputs under
-the current defaults; its composition matches Jin Table~1 entry for entry
+\code{results/\allowbreak continuous\_energy/\allowbreak m11\_hecx\_solver/\allowbreak hii\{40,20\}\_converged}
+(2026-09-27), the production inputs under the defaults of that date, run to the
+converged stopping test, with the blends summed as in the paper's table script
+(an earlier version of this section read \code{m1\_oxfix} of 2026-07-31, a run
+that the old stopping test had ended early); its composition matches Jin
+Table~1 entry for entry
 (He $0.1$, C $2.2{\times}10^{-4}$, N $4.0{\times}10^{-5}$,
 O $3.3{\times}10^{-4}$, Ne $5.0{\times}10^{-5}$,
 S $9.0{\times}10^{-6}$), so nothing has to be corrected for abundance.
@@ -2343,41 +2411,43 @@ Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
 \endhead
 \bottomrule
 \endfoot
-H$\beta$ [$10^{37}$ erg\,s$^{-1}$] & 1.98 & 2.05 & 0.03 & 1.930 & 0.975 \\
-\HeI{} 5876              & 0.115   & 0.116   & 0.047   & 0.1067  & 0.928 \\
-C\,\textsc{ii}] 2325+    & 0.164   & 0.164   & 0.027   & 0.1696  & 1.034 \\
-C\,\textsc{iii}] 1907+1909 & 0.076 & 0.071   & 0.013   & 0.0554  & 0.729 \\
-{}[N\,\textsc{ii}] 122 $\mu$m & 0.029 & 0.030 & 0.003   & 0.0319  & 1.099 \\
-{}[N\,\textsc{ii}] 6584+6548 & 0.632 & 0.723 & 0.082   & 0.6855  & 1.085 \\
-{}[N\,\textsc{ii}] 5755  & 0.0053  & 0.0053  & 0.0007  & 0.00583 & 1.099 \\
-{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.297 & 0.294 & 0.029 & 0.2904 & 0.978 \\
-{}[O\,\textsc{i}] 6300+6363 & 0.0290 & 0.0094 & 0.0150 & 0.02409 & 0.831 \\
-{}[O\,\textsc{ii}] 7320+7330 & 0.027 & 0.027  & 0.005   & 0.03405 & 1.261 \\
-{}[O\,\textsc{ii}] 3726+3729 & 2.05  & 2.05   & 0.14    & 2.247   & 1.096 \\
-{}[O\,\textsc{iii}] 52+88 $\mu$m & 2.55 & 2.34 & 0.11   & 2.445   & 0.959 \\
-{}[O\,\textsc{iii}] 5007+4959 & 2.37 & 2.17   & 0.26    & 2.354   & 0.993 \\
-{}[O\,\textsc{iii}] 4363 & 0.00421 & 0.0035  & 0.0008  & 0.00431 & 1.023 \\
-{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.199 & 0.199 & 0.015 & 0.2045  & 1.028 \\
-{}[Ne\,\textsc{iii}] 15.5 $\mu$m & 0.290 & 0.294 & 0.066 & 0.2859 & 0.986 \\
-{}[Ne\,\textsc{iii}] 3869+3968 & 0.069 & 0.083 & 0.013  & 0.0710  & 1.029 \\
-{}[S\,\textsc{ii}] 6716+6731 & 0.194 & 0.141  & 0.045   & 0.3205  & 1.652 \\
-{}[S\,\textsc{ii}] 4068+4076 & 0.0086 & 0.0070 & 0.0021 & 0.01382 & 1.607 \\
-{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.534 & 0.567 & 0.033 & 0.5076  & 0.950 \\
-{}[S\,\textsc{iii}] 9532+9069 & 1.04  & 1.21   & 0.10    & 0.9986  & 0.960 \\
+H$\beta$ [$10^{37}$ erg\,s$^{-1}$] & 1.98 & 2.05 & 0.03 & 2.023 & 1.022 \\
+\HeI{} 5876              & 0.115   & 0.116   & 0.047   & 0.1120 & 0.974 \\
+C\,\textsc{ii}] 2325+    & 0.164   & 0.164   & 0.027   & 0.1761 & 1.074 \\
+C\,\textsc{iii}] 1907+1909 & 0.076 & 0.071   & 0.013   & 0.0556 & 0.732 \\
+{}[N\,\textsc{ii}] 122 $\mu$m & 0.029 & 0.030 & 0.003   & 0.0319 & 1.099 \\
+{}[N\,\textsc{ii}] 6584+6548 & 0.632 & 0.723 & 0.082   & 0.6908 & 1.093 \\
+{}[N\,\textsc{ii}] 5755  & 0.0053  & 0.0053  & 0.0007  & 0.00588 & 1.109 \\
+{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.297 & 0.294 & 0.029 & 0.2882 & 0.970 \\
+{}[O\,\textsc{i}] 6300+6363 & 0.0290 & 0.0094 & 0.0150 & 0.02812 & 0.970 \\
+{}[O\,\textsc{ii}] 7320+7330 & 0.027 & 0.027  & 0.005   & 0.03433 & 1.271 \\
+{}[O\,\textsc{ii}] 3726+3729 & 2.05  & 2.05   & 0.14    & 2.261 & 1.103 \\
+{}[O\,\textsc{iii}] 52+88 $\mu$m & 2.55 & 2.34 & 0.11   & 2.446 & 0.959 \\
+{}[O\,\textsc{iii}] 5007+4959 & 2.37 & 2.17   & 0.26    & 2.364 & 0.997 \\
+{}[O\,\textsc{iii}] 4363 & 0.00421 & 0.0035  & 0.0008  & 0.00437 & 1.039 \\
+{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.199 & 0.199 & 0.015 & 0.2062 & 1.036 \\
+{}[Ne\,\textsc{iii}] 15.5 $\mu$m & 0.290 & 0.294 & 0.066 & 0.2818 & 0.972 \\
+{}[Ne\,\textsc{iii}] 3869+3968 & 0.069 & 0.083 & 0.013  & 0.0703 & 1.018 \\
+{}[S\,\textsc{ii}] 6716+6731 & 0.194 & 0.141  & 0.045   & 0.3599 & 1.855 \\
+{}[S\,\textsc{ii}] 4068+4076 & 0.0086 & 0.0070 & 0.0021 & 0.01547 & 1.799 \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.534 & 0.567 & 0.033 & 0.5021 & 0.940 \\
+{}[S\,\textsc{iii}] 9532+9069 & 1.04  & 1.21   & 0.10    & 0.9876 & 0.950 \\
 \end{longtable}
 \endgroup
 
-At HII40 the two codes agree within $10\%$ on 16 of the 21 entries and the
+At HII40 the two codes agree within $10\%$ on 15 of the 21 entries and the
 median ratio is $1.02$.  More usefully, they leave the 1995-era median in
-the same direction wherever either of them leaves it: H$\beta$ low,
-[O\,\textsc{i}] 6300+6363 far high ($3.1\times$ the median for \Mthree{},
-$2.6\times$ for \MoCHII{}), [O\,\textsc{iii}] 4363 high ($1.20$, $1.23$),
-[O\,\textsc{iii}] 52+88 $\mu$m high ($1.09$, $1.05$), both [S\,\textsc{ii}]
-doublets high, both [S\,\textsc{iii}] diagnostics low, [Ne\,\textsc{iii}]
-3869+3968 low.  The five entries outside $10\%$ are
-C\,\textsc{iii}] 1907+1909 ($0.73$), [O\,\textsc{i}] ($0.83$),
-[O\,\textsc{ii}] 7320+7330 ($1.26$), and the two [S\,\textsc{ii}] doublets
-($1.65$, $1.61$).
+the same direction wherever either of them leaves it: H$\beta$ low ($0.97$,
+$0.99$ of the median), [O\,\textsc{i}] 6300+6363 far high ($3.1\times$ the
+median for \Mthree{}, $3.0\times$ for \MoCHII{}), [O\,\textsc{iii}] 4363
+high ($1.20$, $1.25$), [O\,\textsc{iii}] 52+88 $\mu$m high ($1.09$,
+$1.05$), both [S\,\textsc{ii}] doublets high, both [S\,\textsc{iii}]
+diagnostics low, [Ne\,\textsc{iii}] 3869+3968 low.  The six entries outside
+$10\%$ are C\,\textsc{iii}] 1907+1909 ($0.73$), [N\,\textsc{ii}] 5755
+($1.11$), [O\,\textsc{ii}] 7320+7330 ($1.27$), [O\,\textsc{ii}] 3726+3729
+($1.10$), and the two [S\,\textsc{ii}] doublets ($1.86$, $1.80$);
+[O\,\textsc{i}] 6300+6363, outside at $0.83$ on the early-stopped run, agrees to
+$0.97$ on the converged one.
 
 That agreement is weaker evidence than it looks, and Jin et al.\ supply the
 reason themselves.  Their Section~8 measures the resolution sensitivity of
@@ -2392,15 +2462,16 @@ agreeing because they share a method is not independent confirmation of the
 physics --- the same trap that cost a retracted conclusion in
 \code{md/HII40\_CLOUDY\_RESIDUAL\_INVESTIGATION.md}.
 
-Two entries are informative in the other direction.  \HeI{} 5876 is the one
-line where \Mthree{} sits on the median ($0.115$ against $0.116$) and
-\MoCHII{} does not ($0.1067$, $7\%$ low): the \HeI{} deficit is
-\MoCHII{}'s alone among these codes, it appears at HII40 and not at HII20
-(Table~\ref{tab:m3hii20}, ratio $0.982$), and HII40 is the benchmark with a
-He$^+$ zone deep enough for a front offset to accumulate.  That is a new
-constraint for the open residual investigation, not an explanation of it.
+Two entries are informative in the other direction.  \HeI{} 5876 was the one
+line where \Mthree{} sat on the median ($0.115$ against $0.116$) and the
+early-stopped \MoCHII{} run did not ($0.1067$, $7\%$ low, at HII40 and not at
+HII20).  Converged, it is $0.1120$, $0.97$ of \Mthree{} and inside the
+published $0.112$--$0.119$.  The deficit was the premature stop that also held
+back the HII40 helium front, not a helium-physics difference between the codes:
+on the same physics, \code{m4\_nitrogen} gives $0.1051$ where the old test
+stopped it (37 iterations) and $0.1130$ after 60.
 And [O\,\textsc{iii}] 5007+4959, 4363 and 52+88 $\mu$m all agree with
-\Mthree{} to $1$--$4\%$ while sitting $5$--$23\%$ above the median, which
+\Mthree{} to $0.3$--$4\%$ while sitting $4.5$--$25\%$ above the median, which
 says the oxygen result is a two-code statement rather than a \MoCHII{} one.
 
 \subsubsection*{The sulfur result, and where it comes from}
@@ -2422,39 +2493,39 @@ Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
 \endhead
 \bottomrule
 \endfoot
-H$\beta$ [$10^{36}$ erg\,s$^{-1}$] & 4.81 & 4.89 & 0.09 & 4.684 & 0.974 \\
-\HeI{} 5876              & 0.0071  & 0.0072  & 0.0016  & 0.00697 & 0.982 \\
-C\,\textsc{ii}] 2325+    & 0.059   & 0.059   & 0.010   & 0.0694  & 1.177 \\
-{}[N\,\textsc{ii}] 122 $\mu$m & 0.072 & 0.071 & 0.001   & 0.0731  & 1.016 \\
-{}[N\,\textsc{ii}] 6584+6548 & 0.783 & 0.803 & 0.056   & 0.8447  & 1.079 \\
-{}[N\,\textsc{ii}] 5755  & 0.0028  & 0.0028  & 0.0003  & 0.00325 & 1.162 \\
-{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.0027 & 0.0027 & 0.0007 & 0.00394 & 1.457 \\
-{}[O\,\textsc{i}] 6300+6363 & 0.0241 & 0.0088 & 0.0091 & 0.01576 & 0.654 \\
-{}[O\,\textsc{ii}] 7320+7330 & 0.0064 & 0.0080 & 0.0017 & 0.01225 & 1.913 \\
-{}[O\,\textsc{ii}] 3726+3729 & 1.24  & 1.17    & 0.13    & 1.409   & 1.136 \\
-{}[O\,\textsc{iii}] 52+88 $\mu$m & 0.0029 & 0.0029 & 0.0007 & 0.00338 & 1.165 \\
-{}[O\,\textsc{iii}] 5007+4959 & 0.0019 & 0.0014 & 0.0005 & 0.00215 & 1.129 \\
-{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.296 & 0.290 & 0.013 & 0.3038  & 1.026 \\
-{}[S\,\textsc{ii}] 6716+6731 & 0.529 & 0.499   & 0.039   & 0.781   & 1.476 \\
-{}[S\,\textsc{ii}] 4068+4076 & 0.016 & 0.015   & 0.003   & 0.02293 & 1.433 \\
-{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.324 & 0.371 & 0.042  & 0.2159  & 0.666 \\
-{}[S\,\textsc{iii}] 9532+9069 & 0.441 & 0.526  & 0.060   & 0.3044  & 0.690 \\
+H$\beta$ [$10^{36}$ erg\,s$^{-1}$] & 4.81 & 4.89 & 0.09 & 4.846 & 1.007 \\
+\HeI{} 5876              & 0.0071  & 0.0072  & 0.0016  & 0.00702 & 0.989 \\
+C\,\textsc{ii}] 2325+    & 0.059   & 0.059   & 0.010   & 0.0732 & 1.241 \\
+{}[N\,\textsc{ii}] 122 $\mu$m & 0.072 & 0.071 & 0.001   & 0.0729 & 1.012 \\
+{}[N\,\textsc{ii}] 6584+6548 & 0.783 & 0.803 & 0.056   & 0.8473 & 1.082 \\
+{}[N\,\textsc{ii}] 5755  & 0.0028  & 0.0028  & 0.0003  & 0.00330 & 1.177 \\
+{}[N\,\textsc{iii}] 57.3 $\mu$m & 0.0027 & 0.0027 & 0.0007 & 0.00391 & 1.448 \\
+{}[O\,\textsc{i}] 6300+6363 & 0.0241 & 0.0088 & 0.0091 & 0.01828 & 0.759 \\
+{}[O\,\textsc{ii}] 7320+7330 & 0.0064 & 0.0080 & 0.0017 & 0.01252 & 1.957 \\
+{}[O\,\textsc{ii}] 3726+3729 & 1.24  & 1.17    & 0.13    & 1.427 & 1.151 \\
+{}[O\,\textsc{iii}] 52+88 $\mu$m & 0.0029 & 0.0029 & 0.0007 & 0.00341 & 1.177 \\
+{}[O\,\textsc{iii}] 5007+4959 & 0.0019 & 0.0014 & 0.0005 & 0.00218 & 1.145 \\
+{}[Ne\,\textsc{ii}] 12.8 $\mu$m & 0.296 & 0.290 & 0.013 & 0.3030 & 1.024 \\
+{}[S\,\textsc{ii}] 6716+6731 & 0.529 & 0.499   & 0.039   & 0.806 & 1.524 \\
+{}[S\,\textsc{ii}] 4068+4076 & 0.016 & 0.015   & 0.003   & 0.02388 & 1.493 \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.324 & 0.371 & 0.042  & 0.2120 & 0.654 \\
+{}[S\,\textsc{iii}] 9532+9069 & 0.441 & 0.526  & 0.060   & 0.2987 & 0.677 \\
 \end{longtable}
 \endgroup
 
-\MoCHII{}'s two S$^+$ diagnostics are high by $1.57$ and $1.53$ against the
-median and its two S$^{2+}$ diagnostics low by $0.582$ and $0.579$.  Each
+\MoCHII{}'s two S$^+$ diagnostics are high by $1.62$ and $1.59$ against the
+median and its two S$^{2+}$ diagnostics low by $0.571$ and $0.568$.  Each
 pair moves by one factor, and each pair contains one infrared
 fine-structure line whose emissivity barely depends on $\Te$ and one
 temperature-sensitive optical line: a $\Te$ error or a level-population
 error would separate the members of a pair, and a shift in the ion fraction
-would not.  Weighted by emission measure, \MoCHII{}'s HII20 sulfur is
-S$^+$ $0.609$ / S$^{2+}$ $0.387$ / S$^{3+}$ $0.000$; carrying both pairs
-onto the median needs about $0.39$ / $0.62$, that is an S$^+$/S$^{2+}$
-ratio too high by a factor near $2.5$.  HII40 carries the same sign at
-about a third of the size (S$^+$ $0.131$ / S$^{2+}$ $0.821$ / S$^{3+}$
-$0.046$; [S\,\textsc{ii}] $2.27$ and $1.98$ times the median,
-[S\,\textsc{iii}] $0.90$ and $0.83$).
+would not.  Weighted by emission measure ($n_{\rm e}n_{\rm p}\,dV$),
+\MoCHII{}'s HII20 sulfur is S$^+$ $0.613$ / S$^{2+}$ $0.387$ / S$^{3+}$
+$0.000$; carrying both pairs onto the median needs about $0.39$ / $0.62$,
+that is an S$^+$/S$^{2+}$ ratio too high by a factor near $2.5$.  HII40
+carries the same sign (S$^+$ $0.133$ / S$^{2+}$ $0.822$ / S$^{3+}$ $0.045$;
+[S\,\textsc{ii}] $2.55$ and $2.21$ times the median, [S\,\textsc{iii}]
+$0.89$ and $0.82$).
 
 The cause is in the atomic data, and both trees can be read directly.
 
@@ -2541,14 +2612,14 @@ iterations, 55~s, all 30 monitors passing).  Set beside the same median:
 \toprule
 & Med & \Mthree{} & \Cloudy{} c25.00 & \MoCHII{} \\
 \midrule
-{}[S\,\textsc{ii}] 6716+6731  & 0.499  & 0.529  & 0.7441 & 0.781 \\
-\quad ratio to median         &        & 1.06   & \textbf{1.49}   & \textbf{1.57} \\
-{}[S\,\textsc{ii}] 4068+4076  & 0.015  & 0.016  & 0.0226 & 0.0229 \\
-\quad ratio to median         &        & 1.07   & \textbf{1.51}   & \textbf{1.53} \\
-{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.371 & 0.324 & 0.2090 & 0.2159 \\
-\quad ratio to median         &        & 0.87   & \textbf{0.56}   & \textbf{0.58} \\
-{}[S\,\textsc{iii}] 9532+9069 & 0.526  & 0.441  & 0.2933 & 0.3044 \\
-\quad ratio to median         &        & 0.84   & \textbf{0.56}   & \textbf{0.58} \\
+{}[S\,\textsc{ii}] 6716+6731  & 0.499  & 0.529  & 0.7441 & 0.8063 \\
+\quad ratio to median         &        & 1.06   & \textbf{1.49}   & \textbf{1.62} \\
+{}[S\,\textsc{ii}] 4068+4076  & 0.015  & 0.016  & 0.0226 & 0.0239 \\
+\quad ratio to median         &        & 1.07   & \textbf{1.51}   & \textbf{1.59} \\
+{}[S\,\textsc{iii}] 18.7 $\mu$m & 0.371 & 0.324 & 0.2090 & 0.2120 \\
+\quad ratio to median         &        & 0.87   & \textbf{0.56}   & \textbf{0.57} \\
+{}[S\,\textsc{iii}] 9532+9069 & 0.526  & 0.441  & 0.2933 & 0.2987 \\
+\quad ratio to median         &        & 0.84   & \textbf{0.56}   & \textbf{0.57} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -2556,13 +2627,15 @@ iterations, 55~s, all 30 monitors passing).  Set beside the same median:
 
 \noindent
 \Cloudy{} c25.00 reproduces \MoCHII{}'s excess and deficit on all four
-diagnostics to $1.5$--$5\%$ ($\MoCHII{}/\Cloudy{} = 1.050$, $1.015$,
-$1.033$, $1.038$), and both sit at $\sim\!1.5\times$ the 1995-era median on
-S$^+$ and $\sim\!0.57\times$ on S$^{2+}$ while \Mthree{} stays near it.
-Over the seventeen entries of Table~\ref{tab:m3hii20} the two agree to a
-median ratio of $1.033$, fifteen of them within $10\%$, and the
-volume-weighted $\Te({\rm H^+})$ agrees to $0.05\%$ --- $6923.1$~K against
-$6926.4$~K.  \textbf{The [S\,\textsc{ii}] excess and the
+diagnostics to $1.4$--$8.4\%$ ($\MoCHII{}/\Cloudy{} = 1.084$, $1.058$,
+$1.014$, $1.018$), and both sit at $\sim\!1.5$--$1.6\times$ the 1995-era
+median on S$^+$ and $\sim\!0.57\times$ on S$^{2+}$ while \Mthree{} stays near
+it.  Over the seventeen entries of Table~\ref{tab:m3hii20} the two agree to a
+median ratio of $1.031$, fourteen of them within $10\%$ (on the early-stopped
+\code{m1\_oxfix} run, $1.033$ and fifteen), and the volume-weighted
+$\Te({\rm H^+})$ agrees to $0.3\%$ --- $6923.1$~K against \MoCHII{}'s
+$6944.7$~K ($\int \Te n_{\rm p}\,dV / \int n_{\rm p}\,dV$ on the
+current run; $6926$~K on \code{m1\_oxfix}).  \textbf{The [S\,\textsc{ii}] excess and the
 [S\,\textsc{iii}] deficit are what modern low-temperature dielectronic
 recombination of S$^{2+}$ does to the sulfur balance, and the Lexington
 median encodes the older data.  They are not a \MoCHII{} defect.}
@@ -2588,13 +2661,13 @@ agree with each other and disagree with the benchmark.
 
 \emph{[O\,\textsc{i}] is a different question and the same run separates
 it.}  \Cloudy{} c25.00 gives [O\,\textsc{i}] 6300+6363 $= 0.0084$, sitting
-on the median $0.0088$, against \MoCHII{}'s $0.0158$ and \Mthree{}'s
-$0.0241$.  No data-vintage argument covers that: it separates the two
+on the median $0.0088$, against \MoCHII{}'s $0.0183$ ($0.0158$ on the
+early-stopped run) and \Mthree{}'s $0.0241$.  No data-vintage argument covers that: it separates the two
 three-dimensional Monte Carlo codes from both one-dimensional references
 together, which is the front-resolution reading of the paragraphs above and
 not an atomic-data one.  The same holds at a smaller size for
 [O\,\textsc{ii}] 7320+7330, where \Cloudy{} ($1.41\times$ the median) sits
-with \MoCHII{} ($1.53$) rather than with \Mthree{} ($0.80$) --- so that one
+with \MoCHII{} ($1.57$) rather than with \Mthree{} ($0.80$) --- so that one
 is \emph{not} front resolution, and it is unexplained.
 
 This has the same shape as the $\alpha_{\rm A}(\HeI{})$ caution already
@@ -2716,10 +2789,13 @@ The comparison suggests a focused roadmap rather than wholesale
 replacement of either code.
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{Put density dependence into the thermal cooling.}  Reuse the
-  generic $n$-level solver in the thermal loop for dominant coolants, or fit
-  a suppression factor versus $(\Te,\nelec)$ around each critical density.
-  This closes the most consequential gap relative to MAPPINGS.
+\item \textbf{Put density dependence into the thermal cooling.}  Done
+  2026-07-26 (\code{par\%cooling\_model = 'local\_ne'}, the default): the
+  generic $n$-level solver builds a $\Lambda(\Te,\nelec)$ suppression table
+  for every ion at setup (\code{src/\allowbreak nlevel\_cooling\_mod.f90}), which the
+  thermal loop reads.  It closed the most consequential gap relative to
+  MAPPINGS; an in-loop solve for every ion remains the MAPPINGS
+  arrangement.
 \item \textbf{Extend the registry upward in ion stage.}  Add the ions needed
   for PN and hard-field applications before adding marginal new low stages.
   The existing data-operation design is well suited to this.
@@ -2728,8 +2804,8 @@ replacement of either code.
   the \MoCHII{} data files should retain explicit provenance and ion-by-ion
   gates.
 \item \textbf{Retain the present transport architecture.}  The octree,
-  analytic estimator, Cartesian DDA, threshold-aligned bins, and peel-off
-  layer are major advantages and should not be replaced by the legacy
+  analytic estimator, Cartesian DDA, continuous photon-energy sampling, and
+  peel-off layer are major advantages and should not be replaced by the legacy
   \Mthree{} packet synchronization model.
 \item \textbf{Use \Mappings{} as the differential microphysics oracle.}
   Construct one-zone tests at fixed $(\Te,\nelec,J_\nu)$ and compare ion
@@ -2743,9 +2819,10 @@ replacement of either code.
   total runtime and MPI scaling.
 \end{enumerate}
 
-The most valuable hybrid would combine \Mappings{}-like density-dependent
-microphysics with the current \MoCHII{} geometry, transport, dust, and
-observer layers.  This would preserve the strongest feature of each code
+The most valuable hybrid would combine \Mappings{}-like breadth of
+microphysics --- more ion stages and elements; the density-dependent line
+cooling is already in \MoCHII{} through its table --- with the current
+\MoCHII{} geometry, transport, dust, and observer layers.  This would preserve the strongest feature of each code
 without inheriting the principal numerical and software limitations of the
 other.
 
@@ -2763,7 +2840,7 @@ Dust scattering and IR/PAH observables & \MoCHII{} & High \\
 Observer imaging and data products & \MoCHII{} & High \\
 Atomic-data provenance and fit auditability & \MoCHII{} & High \\
 Element and ion-stage breadth & \Mappings{} & High \\
-Density-dependent thermal line cooling & \Mappings{}/\Mthree{} & High \\
+Density-dependent thermal line cooling & Comparable (\MoCHII{} by table) & High \\
 Hard PN/general plasma coverage & \Mappings{} & High \\
 Finite-age 1D photoionization & \Mappings{} & High \\
 Radiative MHD shock and precursor & \Mappings{} & High \\
@@ -2794,8 +2871,20 @@ breadth is the controlling requirement.
 \label{sec:hardplan}
 
 This section records the staged plan that follows from the comparison
-(kept as \code{docs/HARD\_SPECTRUM\_PLAN.md}, drafted 2026-07-18, not yet
-started).  It uses the same staged-gate discipline as \code{docs/PLAN.md}.
+(kept as \code{md/HARD\_SPECTRUM\_PLAN.md}, drafted 2026-07-18).  It uses
+the same staged-gate discipline as \code{md/PLAN.md}.
+
+\emph{Status 2026-09-27.}  Three pieces have been done since the draft, each
+recorded where it belongs below: the \HeII{} excited-channel diffuse photons
+of HS3 (the \HeIII{} case-B cascade, \code{par\%heii\_diffuse},
+2026-08-09), the density-dependent cooling of HS7 (as
+\code{par\%cooling\_model = 'local\_ne'}, 2026-07-26, in a different form
+from the one drafted), and the shell-resolved opacity of HS6 part~1
+(2026-09-24).  The stellar and diffuse photon energies are now sampled
+continuously, so the plan's items about the aligned-edge band builder,
+\code{nnu\_ion}, and \code{ion\_bin\_of} concern the diagnostic $J_\nu$
+tally only; and \code{launch\_sequence='sobol'} has been the default since
+2026-09-25.  HS1, HS2, HS4, HS5, and HS6 parts~2--4 are open.
 
 \subsection{Scope and the two tracks}
 
@@ -3050,6 +3139,17 @@ becomes a first-order energy-budget term.
 luminosity equals the case-B $n\geq2$ recombination power of the
 \HeIII{} zone); the PN150 He structure and $\Te$ recorded with the
 channel off/on, attributed as one lever.
+
+\emph{Update:} done 2026-08-09 as the fifth diffuse channel
+(\code{src/heii\_cascade\_mod.f90}, \code{par\%heii\_diffuse}, on by default
+with the transported continuum when \code{eion\_max} $\ge 40.813$~eV; gate
+\code{tests/heii\_cascade/}).  Two points differ from the draft above: the
+Balmer (free--bound into $n\ge2$) continuum is taken from the same
+free-bound plus free-free tables as the written nebular continuum rather than
+from a threshold-plus-exponential form, and since 2026-09-26 the $n=2$
+branching comes from the zero-density cascade of the \HII{}/\HeIII{} case-B
+coefficients (Section~\ref{sec:recombdata}); the PN150 measurement of the
+gate is still open.
 
 \subsection{HS4: PN validation gates}
 
@@ -3330,6 +3430,19 @@ high-density zone against the exact $n$-level cooling); PN150 $\Te$
 with the tables off/on (the residual measured at HS4 must shrink
 accordingly); HII20/HII40 unchanged to $<0.1\%$.
 
+\emph{Update:} done 2026-07-26, ahead of HS2--HS4 and in a different form:
+\code{par\%cooling\_model = 'local\_ne'} (the default) builds the
+$\Lambda(\Te,\nelec)$ suppression table at setup from the $n$-level atoms
+(\code{src/nlevel\_cooling\_mod.f90}, $\log_{10}\Te = 2$--6 and
+$\log_{10}\nelec = -6$--10) instead of appending it to the cooling files, and
+the zero-density fits remain as \code{'low\_density'}.  The expectation of
+item~3 did not hold: the Lexington benchmarks at $n_{\rm H} = 100$ moved by
+$+316$~K (HII40, 7894 to 8210~K) and $+648$~K (HII20, 6376 to 7024~K), because
+[C\,\textsc{ii}] 158~$\mu$m and the [O\,\textsc{iii}] far-infrared lines are
+already partly quenched there (\code{docs/MoCHII\_cooling\_analysis.pdf}).  The
+PN150 part of the gate is open, and the HS4 residual can no longer be
+measured before HS7.
+
 \subsection{Deferred items}
 \label{sec:harddeferred}
 
@@ -3366,7 +3479,10 @@ Order & Stage & Framework risk & Blocking \\
 HS7 can run in parallel with HS2--HS4 (independent code paths); the
 first PN150 pass deliberately precedes HS7, so it measures how much of
 the PN residual the density-dependent cooling must explain --- the same
-one-lever-at-a-time attribution that worked for HII40.
+one-lever-at-a-time attribution that worked for HII40.  (As drafted; HS7 and
+HS3 have since been done, so that PN150 pass now runs with
+\code{par\%cooling\_model = 'low\_density'} if the attribution is still
+wanted.)
 
 %==============================================================================
 \section{Feasibility: time dependence, cooling flows, and shocks in
@@ -3439,10 +3555,11 @@ time-dependent solver of the previous subsection exists, this is a modest
 addition, because the cooling terms it needs --- recombination,
 free--free, and the metal-line coolants through the Tier-1 fits and the
 Tier-2 $n$-level solve --- are already present.  Its one real prerequisite
-is the density-dependent cooling flagged as HS7 and in
+was the density-dependent cooling flagged as HS7 and in
 \S\ref{sec:densitycool}: a cooling flow crosses coolant critical
 densities, so a $\Lambda(\Te,\nelec)$ that suppresses forbidden lines
-correctly is required for it to be quantitative.
+correctly is required for it to be quantitative; that table exists since
+2026-07-26 (\code{'local\_ne'}).
 
 In the cluster or galaxy sense --- a self-consistent inflow driven by its
 own radiative losses, with gravity and hydrodynamics --- a cooling flow is
@@ -3488,7 +3605,7 @@ Time-dependent ionization & Moderate &
   one-transport-for-each-iteration loop. \\
 Cooling flow (\Mappings{} sense) & Moderate &
   A prescribed-trajectory special case of the time-dependent solver;
-  needs the density-dependent $\Lambda(\Te,\nelec)$ of HS7. \\
+  uses the density-dependent $\Lambda(\Te,\nelec)$ of HS7 (in place). \\
 Cooling flow (cluster sense) & Out of scope &
   Requires gravity and hydrodynamics. \\
 Radiative shock (S5) & Hard &
@@ -3501,9 +3618,10 @@ Radiative shock (S5) & Hard &
 \noindent A sensible order is: (1)~time-dependent ionization first, as the
 most natural addition and the foundation for the rest; (2)~the
 density-dependent cooling of HS7, needed for both PN accuracy and cooling
-flows; (3)~the \Mappings{}-sense cooling flow as a thin layer on top of
-(1) and~(2); and (4)~a decoupled 1D radiative-shock module last, and only
-if a shock diagnostic is actually required.  The first three share the
+flows (done, 2026-07-26); (3)~the \Mappings{}-sense cooling flow as a thin
+layer on top of (1) and~(2); and (4)~a decoupled 1D radiative-shock module
+last, and only if a shock diagnostic is actually required.  The first three
+share the
 same time-integration and cooling infrastructure and reinforce the PN and
 hard-spectrum work of \S\ref{sec:hardplan}; the fourth stands apart.
 
@@ -3513,7 +3631,7 @@ hard-spectrum work of \S\ref{sec:hardplan}; the fourth stands apart.
 The principal local sources used for this audit were:
 
 \begin{itemize}[leftmargin=2em]
-\item \MoCHII{}: \code{docs/PLAN.md}, \code{docs/MoCHII\_physics.tex},
+\item \MoCHII{}: \code{md/PLAN.md}, \code{docs/MoCHII\_physics.tex},
   \code{docs/MoCHII\_UserGuide.tex}, the transport/grid modules under
   \code{src/}, and the quantitative gates under \code{tests/}.
 \item \Mthree{}: \code{README.md}, \code{lab/data/ATDAT.txt},

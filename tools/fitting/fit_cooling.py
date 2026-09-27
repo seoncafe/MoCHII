@@ -164,7 +164,7 @@ def ground_excitation_ladder(elem, stage, nterm):
     # Ions with only a few excitation blocks (e.g. the Cl ions have four
     # transitions out of the ground term) still need extra terms: a single
     # exponential has a fixed A, so the temperature dependence of Upsilon has
-    # to be carried by superposing neighbouring terms.  Pad by splitting the
+    # to be carried by superposing neighboring terms.  Pad by splitting the
     # widest gaps, then by bracketing the ladder.
     cen = list(np.sort(cen))
     while len(cen) < nterm:

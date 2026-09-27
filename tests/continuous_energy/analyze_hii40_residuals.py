@@ -17,7 +17,7 @@ import numpy as np
 PC = 3.085677581491367e18
 RIN = 0.97223
 SHELL_EDGES = np.arange(0.98, 4.73 + 0.01, 0.01)
-SHELL_CENTRES = 0.5 * (SHELL_EDGES[:-1] + SHELL_EDGES[1:])
+SHELL_CENTERS = 0.5 * (SHELL_EDGES[:-1] + SHELL_EDGES[1:])
 
 
 def read_mochii(path):
@@ -38,7 +38,7 @@ def read_mochii(path):
     profiles = {}
     index = np.digitize(radius, SHELL_EDGES) - 1
     for name, values in fields.items():
-        result = np.full(SHELL_CENTRES.size, np.nan)
+        result = np.full(SHELL_CENTERS.size, np.nan)
         for ibin in range(result.size):
             select = index == ibin
             if np.any(select):
@@ -55,14 +55,14 @@ def read_cloudy(prefix):
                                  ("ele_c", "C2", "C2")):
         table = np.genfromtxt(str(prefix) + "." + suffix, names=True)
         radius = (3.0e18 + table["depth"]) / PC
-        profiles[name] = np.interp(SHELL_CENTRES, radius, table[column],
+        profiles[name] = np.interp(SHELL_CENTERS, radius, table[column],
                                    left=np.nan, right=np.nan)
     return profiles
 
 
 def outward_crossing(profile, level):
     valid = np.isfinite(profile)
-    r, x = SHELL_CENTRES[valid], profile[valid]
+    r, x = SHELL_CENTERS[valid], profile[valid]
     # H and He neutral fractions increase outward, whereas C2 declines.
     # A sign change handles both conventions without redefining the front.
     hits = np.where((x[:-1] - level) * (x[1:] - level) <= 0.0)[0]
@@ -74,7 +74,7 @@ def outward_crossing(profile, level):
 
 
 def at_radius(profile, radius):
-    return np.interp(radius, SHELL_CENTRES, profile)
+    return np.interp(radius, SHELL_CENTERS, profile)
 
 
 def summarize(label, profiles):

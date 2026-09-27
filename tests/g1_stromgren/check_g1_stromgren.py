@@ -13,8 +13,9 @@ Gate criteria:
       x_HII * V_cell) within 1% of the 1D reference R_eff, evaluated on the
       uniform level-7 grid.  Level 6 is reported alongside it and is not the
       criterion: its cell is 0.125 pc against a front at 3.04 pc, and the
-      finite front width biases R_eff outward by +1.05%, which level 7 reduces
-      to +0.73% (2026-09-26; +1.00% and +0.68% with the alpha_B before).  The criterion sat on level 6 while the 1D reference used a
+      finite front width biases R_eff outward by +1.01%, which level 7 reduces
+      to +0.69% (2026-09-27, runs stopped on the drift test; +1.00% and
+      +0.68% with the alpha_B before 2026-09-26).  The criterion sat on level 6 while the 1D reference used a
       different recombination set, and the two errors canceled to +0.60%;
       with the reference aligned the level-6 bias stands alone and exceeds 1%,
       so the criterion moved to the grid that resolves the front;
@@ -104,7 +105,7 @@ def equilibrium(gH, gHe1, gHe2, T=TE, nH=NH, yHe=YHE):
         xHeII = xHeI*r1
         xHeIII = xHeII*r2
         ne = nH*((1.0 - xHI) + yHe*(xHeII + 2.0*xHeIII))
-        ne = np.maximum(0.5*(ne + ne_old), 1e-12*nH)
+        ne = np.maximum(0.5*(ne + ne_old), 1e-30*nH)
         if np.abs(ne/ne_old - 1.0).max() < 1e-12:
             break
     return xHI, xHeI, xHeII
@@ -156,7 +157,11 @@ def load_run(fname):
     xyz = f["LeafXYZ"]["data"][:]
     return dict(
         r=np.sqrt((xyz**2).sum(axis=0)),
-        xHI=f["x_HI"]["data"][:], xHeI=f["x_HeI"]["data"][:],
+        xHI=f["x_HI"]["data"][:],
+        # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+        xHII=(f["x_HII"]["data"][:] if "x_HII" in f
+              else 1.0 - f["x_HI"]["data"][:]),
+        xHeI=f["x_HeI"]["data"][:],
         xHeII=f["x_HeII"]["data"][:], ne=f["n_e"]["data"][:],
         nleaf=xyz.shape[1])
 
@@ -166,7 +171,7 @@ def r_eff(run, half_cell_arr):
     gas (nH > 0 within the sphere)."""
     vol = (2.0*half_cell_arr)**3
     inside = run["ne"] > 0            # leaves with gas
-    vion = np.sum((1.0 - run["xHI"][inside])*vol[inside])
+    vion = np.sum(run["xHII"][inside]*vol[inside])
     return (3.0*vion/(4.0*np.pi))**(1.0/3.0)
 
 

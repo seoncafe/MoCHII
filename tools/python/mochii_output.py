@@ -133,6 +133,8 @@ class _LeafSliceable:
         "n_e":    r"$n_e$ [cm$^{-3}$]",
         "n_H":    r"$n_H$ [cm$^{-3}$]",
         "x_HI":   r"$x_{\rm HI}$",
+        "x_HII":  r"$x_{\rm HII}$",
+        "x_HeIII": r"$x_{\rm HeIII}$",
         "T_dust": r"$T_{\rm dust}$ [K]",
     }
 

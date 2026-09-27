@@ -17,10 +17,13 @@ infrared dust/PAH spectrum.
   sampled from a Planck or tabulated-spectrum CDF, with cross sections
   evaluated at each sampled energy.  Ionizing bins are diagnostic spectral
   tallies only; their count and edges do not enter the transport.  The band is
-  extendable into the FUV down to ~6 eV as a separate segment, with an
-  analytic zero-variance estimator
-  for the direct field, explicit diffuse recombination packets (case A) or
-  on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
+  extendable into the FUV as a separate segment with its own packets (by
+  default from 6 eV; with helium present the He I 2^3S coupling, on by
+  default, extends it to the 4.78 eV 2^3S edge unless the input sets
+  `add_fuv`), with an analytic zero-variance estimator
+  for the direct field, explicit diffuse recombination packets (case A,
+  `recombination_continuum='transported'`, the default) or on-the-spot
+  (case B), dust absorption and Henyey–Greenstein scattering
   in the band.  The three ground recombination continua are sampled from
   their detailed-balance Milne free-bound spectra
   (`diffuse_energy_model='milne'`), using the same cross sections transport
@@ -37,7 +40,7 @@ infrared dust/PAH spectrum.
   the two-photon continuum, with the escape-probability closure of Wood, Mathis
   & Ercolano (2004), and the nebular continuum uses the same split, so the
   transported packets and the written continuum describe one nebula.
-  Optional quasi-random launch (`launch_sequence='sobol'`,
+  Quasi-random launch (`launch_sequence='sobol'`, the default;
   Owen-scrambled Sobol) for the stellar and diffuse packets — the
   launch set is independent of the MPI task count and the direct-field
   error scales as 1/N (effective photon gains of 29–222x measured on the
@@ -55,14 +58,16 @@ infrared dust/PAH spectrum.
   rates are fitted offline from CHIANTI and evaluated as closed forms at
   run time.  Adding an ion is a data operation, not a code operation.
   Optional Shull & van Steenberg (1985) secondary ionization by fast
-  photoelectrons (`use_sec_ion`, for hard fields and partially neutral gas),
+  photoelectrons, scaled in energy after Dalgarno, Yan & Liu (1999)
+  (`use_sec_ion`, for hard fields and partially neutral gas),
   and net-charge-weighted metal free-free cooling (`metal_freefree`, on by
   default).  The thermal-balance line cooling is suppressed to the local
   electron density from the same n-level populations that emit the diagnostic
   lines (`cooling_model='local_ne'`, the default, matching the modern
   reference codes).
 - **Diagnostics**: collisional line luminosities from n-level statistical
-  equilibrium, Storey & Hummer (1995) H I recombination lines, the nebular
+  equilibrium, Storey & Hummer (1995) H I / He II and Porter et al. He I
+  recombination lines, the nebular
   continuum (free–bound, free–free, two-photon), the He I 2^3S metastable
   population with the 10833 A absorption opacity and column-density maps
   (`hei_metastable`), and leaf-by-leaf line emissivity output for map making.
@@ -177,4 +182,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-09-26 21:26 KST
+Last updated: 2026-09-27 13:08 KST

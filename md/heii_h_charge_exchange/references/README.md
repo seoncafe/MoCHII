@@ -1,6 +1,6 @@
 # Published Sources
 
-The ten PDFs below are external scientific sources preserved without
+The eleven PDFs below (ten articles and one supplement) are external scientific sources preserved without
 changes for comparison with the original publications. They are final
 journal versions or ADS scans of the published pages. Publication details
 were checked through NASA ADS during the review. The
@@ -15,7 +15,7 @@ when recorded, page counts, and SHA-256 checksums.
 | [Kingdon & Ferland (1996), ApJS 106, 205](Kingdon_Ferland_1996_ApJS_106_205.pdf) | [10.1086/192335](https://doi.org/10.1086/192335) | Section 3.1, equation (7), and Table 1 give the fit convention, the He+ row, the 6000-100000 K interval, and the reference to Zygelman. No explicit He+ normalization correction was found in these passages. |
 | [Stancil & Zygelman (1996), ApJ 472, 102](Stancil_Zygelman_1996_ApJ_472_102.pdf) | [10.1086/178044](https://doi.org/10.1086/178044) | Page 107, footnote 1, explicitly corrects the He radiative transfer and association rates by 1/4. The paper's main collision system is Li + H+; it is included for this footnote. The footnote was checked visually in the published scan. |
 | [Stancil, Lepp & Dalgarno (1998), ApJ 509, 1](Stancil_Lepp_Dalgarno_1998_ApJ_509_1.pdf) | [10.1086/306473](https://doi.org/10.1086/306473) | Table 1, reaction (19), gives the radiative He+ + H rate. Reference (10) in the table notes explicitly applies the approach probability correction. The title is *The Deuterium Chemistry of the Early Universe*. |
-| [Glover & Jappsen (2007), ApJ 666, 1](Glover_Jappsen_2007_ApJ_666_1.pdf) | [10.1086/519445](https://doi.org/10.1086/519445) | Table 1, R26, supplies the `1.25e-15 * (T/300)^0.25` expression currently used in MoCHII. R27 is the older fit for the collisional reverse. |
+| [Glover & Jappsen (2007), ApJ 666, 1](Glover_Jappsen_2007_ApJ_666_1.pdf) | [10.1086/519445](https://doi.org/10.1086/519445) | Table 1, R26, supplies the `1.25e-15 * (T/300)^0.25` expression MoCHII used until 2026-09-26, when it moved to SLD98 reaction (19), `1.20e-15 * (T/300)^0.25`. R27 is the older fit for the collisional reverse. |
 | [Courtney et al. (2021), ApJ 919, 70](Courtney_2021_ApJ_919_70.pdf) | [10.3847/1538-4357/ac0f57](https://doi.org/10.3847/1538-4357/ac0f57) | Section 2.1, equations (4)-(6), define the approach probability. Section 2.2 describes radiative charge transfer. The radiative calculations do not adjudicate the KF96 nonradiative normalization. |
 
 ## Independent comparisons and supporting context

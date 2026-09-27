@@ -1011,13 +1011,13 @@ contains
   end subroutine attr_open
 
   !---------------------------------------------------------------------------
-  ! try_naxis_fallback: when a FITS keyword query asks for NAXIS / NAXIS1 /
+  ! naxis_from_dataset_shape: when a FITS keyword query asks for NAXIS / NAXIS1 /
   ! NAXIS2 / NAXIS3 / NAXIS4 and there is no such attribute on the current
   ! group, infer the answer from the 'data' dataset's shape.  This lets the
   ! existing read_fits_data code work unchanged when fed an HDF5 input file.
   ! Returns .true. if the name matched and dim_out was populated.
   !---------------------------------------------------------------------------
-  function try_naxis_fallback(state, name, dim_out) result(handled)
+  function naxis_from_dataset_shape(state, name, dim_out) result(handled)
     type(hdf5_state_type), intent(in)  :: state
     character(len=*),      intent(in)  :: name
     integer(int64),        intent(out) :: dim_out
@@ -1074,7 +1074,7 @@ contains
        dim_out = int(dims(axis), int64)
        handled = .true.
     endif
-  end function try_naxis_fallback
+  end function naxis_from_dataset_shape
 
   subroutine hdf5_get_key_logical(state, name, value, status, comment)
     type(hdf5_state_type),      intent(in)    :: state
@@ -1149,15 +1149,15 @@ contains
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
     integer :: ierr, ierr_close
-    integer(int64) :: fallback_val
+    integer(int64) :: naxis_val
     value = 0_int32
     if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
     if (ierr /= 0) then
-       ! Fall back to dataset-shape lookup for NAXIS-style queries.
-       if (try_naxis_fallback(state, name, fallback_val)) then
-          value  = int(fallback_val, int32)
+       ! NAXIS-style queries: the dataset shape answers them.
+       if (naxis_from_dataset_shape(state, name, naxis_val)) then
+          value  = int(naxis_val, int32)
           status = 0
           if (present(comment)) comment = ''
           return
@@ -1181,14 +1181,14 @@ contains
     integer(hid_t) :: aid
     integer(hsize_t) :: dims(1)
     integer :: ierr, ierr_close
-    integer(int64) :: fallback_val
+    integer(int64) :: naxis_val
     value = 0_int64
     if (status /= 0) return
     dims(1) = 1
     call attr_open(int(state%cur_group, hid_t), trim(name), aid, ierr)
     if (ierr /= 0) then
-       if (try_naxis_fallback(state, name, fallback_val)) then
-          value  = fallback_val
+       if (naxis_from_dataset_shape(state, name, naxis_val)) then
+          value  = naxis_val
           status = 0
           if (present(comment)) comment = ''
           return

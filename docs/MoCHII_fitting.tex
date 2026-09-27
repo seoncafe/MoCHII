@@ -15,7 +15,7 @@
 
 \title{MoCHII Atomic-Data Fitting:\\ CHIANTI Cooling and $n$-level Fits}
 \author{Kwang-Il Seon}
-\date{2026-07-25}
+\date{2026-07-25, updated 2026-09-27}
 \maketitle
 
 \begin{abstract}
@@ -24,8 +24,8 @@ CHIANTI database is never parsed at runtime.  The Python fitting scripts under
 \code{tools/fitting/} are the auditable source of every coefficient in
 \code{data/atomic/}.  This memo documents the fitting procedure and its two
 products: the cooling-function fits that carry the thermal-loop line
-cooling in the $n_e \to 0$ limit, currently 28 ions of the eleven-element
-registry --- suppressed to the local electron density at run time by a
+cooling in the $n_e \to 0$ limit, currently 28 ions (H\,\textsc{i} and
+27 ions of the eleven-element metal registry) --- suppressed to the local electron density at run time by a
 $(T, n_e)$ table built from the $n$-level solve --- and the $n$-level
 data files (level energies, $A$-values, and Chebyshev fits of the
 effective collision strengths in Burgess--Tully scaled space) that supply
@@ -50,8 +50,8 @@ error), of two kinds:
 
 \begin{itemize}
 \item \textbf{Cooling fits (thermal balance).}  A smooth closed-form
-  cooling function $\Lam_{\rm ion}(T)$, cheap and Newton-friendly inside
-  the thermal-balance iteration, in the $n_e \to 0$ limit of statistical
+  cooling function $\Lam_{\rm ion}(T)$, cheap and smooth inside
+  the thermal-balance bisection on $\log T$, in the $n_e \to 0$ limit of statistical
   equilibrium.  This is the low-density \emph{carrier}: at run time the
   thermal loop suppresses it to the local electron density with a
   $(T, n_e)$ table built from the same $n$-level solve
@@ -59,10 +59,12 @@ error), of two kinds:
   balance and the diagnostic line list are one physics.
 \item \textbf{$n$-level data (diagnostics).}  Level energies,
   statistical weights, radiative $A$-values, and fitted effective
-  collision strengths $\Upsilon(T)$ feeding the generic $n$-level solver,
-  evaluated only at output time on the converged state.  These
-  supply the density-dependent emissivities and the diagnostic line
-  ratios that the cooling fits cannot give.
+  collision strengths $\Upsilon(T)$ feeding the generic $n$-level solver
+  (\code{nlevel\_mod}), evaluated on the converged state for the line
+  output and, at setup, to build the $(T, n_e)$ suppression table of the
+  thermal balance (\code{nlevel\_cooling\_mod}).  These supply the
+  density-dependent emissivities and the diagnostic line ratios that the
+  cooling fits cannot give.
 \end{itemize}
 
 The fitting scripts are seeded from EXHALE: \code{chianti\_cooling.py} (copied
@@ -123,39 +125,53 @@ excitation-weighted strengths.  The starting ladder is therefore built
 from the level energies themselves --- the transitions out of the ground
 level are clustered in $\log(\Delta E_{1u}/k)$, weighted by the share of
 the cooling each carries across the fit range --- and the fitter sweeps
-$N = 2\ldots8$ with perturbed restarts, stopping at the first $N$ that
-holds the maximum error below 1\%.  Ions with only a few excitation
-blocks (the Cl ions have four transitions out of the ground term) still
-need extra terms, because a single exponential has a fixed amplitude and
+$N = 2\ldots8$ with six perturbed restarts at each $N$, stopping at the
+first $N$ that holds the maximum error below 1\%; where no $N$ reaches
+it, the best fit found over all $N$ is kept (\code{fit\_cooling.py}).
+Nine of the 28 ions end above 1\%.  Ions with only a few excitation
+blocks (the Cl ions have four transitions out of the ground term) are
+the hardest case, because a single exponential has a fixed amplitude and
 the temperature dependence of $\Upsilon$ has to be carried by
-superposing neighboring terms.  Table~\ref{tab:cool} lists the fit
+superposing neighboring terms; the three Cl ions end at 7--9\%.  Table~\ref{tab:cool} lists the fit
 quality; Figure~\ref{fig:cool} overlays the fits on the CHIANTI curves.
-The coefficients are written to \code{data/atomic/cooling\_<ion>.txt}.
+The coefficients are written to \code{data/atomic/cooling\_<el>\_<stage>.txt}.
 
 \begin{table}[htb]
 \centering
-\caption{Cooling fits, $10^3\mbox{--}10^5$~K.  The maximum relative error
-is against the direct CHIANTI evaluation of Eq.~(\ref{eq:lambda}).}
+\caption{Cooling fits, $10^3\mbox{--}10^5$~K, as recorded in the headers of
+\code{data/atomic/cooling\_<el>\_<stage>.txt} (generated 2026-07-25).  The
+maximum relative error is against the direct CHIANTI evaluation of
+Eq.~(\ref{eq:lambda}); ``all $T$'' is over the whole range, ``$\Lam >
+10^{-3}\Lam_{\max}$'' only where the cooling is above that fraction of its
+maximum.}
 \label{tab:cool}
-\begin{tabular}{lccl}
+\small
+\begin{tabular}{lccc@{\hspace{2.5em}}lccc}
 \hline
-Ion & $N$ & max error & output file \\
+Ion & $N$ & all $T$ & $\Lam > 10^{-3}\Lam_{\max}$ &
+Ion & $N$ & all $T$ & $\Lam > 10^{-3}\Lam_{\max}$ \\
 \hline
-O\,\textsc{ii}   & 4 & 0.27\% & \code{cooling\_o\_2.txt} \\
-O\,\textsc{iii}  & 5 & 0.32\% & \code{cooling\_o\_3.txt} \\
-N\,\textsc{ii}   & 5 & 0.66\% & \code{cooling\_n\_2.txt} \\
-S\,\textsc{ii}   & 3 & 2.23\% & \code{cooling\_s\_2.txt} \\
-S\,\textsc{iii}  & 5 & 0.23\% & \code{cooling\_s\_3.txt} \\
-S\,\textsc{iv}   & 3 & 0.61\% & \code{cooling\_s\_4.txt} \\
-Ne\,\textsc{ii}  & 5 & 0.40\% & \code{cooling\_ne\_2.txt} \\
-Ne\,\textsc{iii} & 5 & 0.34\% & \code{cooling\_ne\_3.txt} \\
+H\,\textsc{i} & 4 & 0.52\% & 0.52\% & S\,\textsc{iv} & 3 & 0.61\% & 0.61\% \\
+C\,\textsc{i} & 6 & 0.27\% & 0.27\% & Ar\,\textsc{iii} & 2 & 3.90\% & 3.90\% \\
+C\,\textsc{ii} & 5 & 0.35\% & 0.35\% & Ar\,\textsc{iv} & 4 & 0.27\% & 0.27\% \\
+C\,\textsc{iii} & 6 & 5.48\% & 0.50\% & Mg\,\textsc{ii} & 4 & 0.22\% & 0.12\% \\
+N\,\textsc{i} & 5 & 0.58\% & 0.34\% & Fe\,\textsc{ii} & 5 & 0.56\% & 0.56\% \\
+N\,\textsc{ii} & 5 & 0.66\% & 0.66\% & Fe\,\textsc{iii} & 5 & 0.48\% & 0.48\% \\
+N\,\textsc{iii} & 5 & 0.70\% & 0.70\% & Si\,\textsc{ii} & 6 & 0.91\% & 0.91\% \\
+O\,\textsc{i} & 6 & 0.20\% & 0.20\% & Si\,\textsc{iii} & 6 & 27.70\% & 11.29\% \\
+O\,\textsc{ii} & 4 & 0.27\% & 0.15\% & Si\,\textsc{iv} & 2 & 0.90\% & 0.90\% \\
+O\,\textsc{iii} & 5 & 0.32\% & 0.32\% & Cl\,\textsc{ii} & 3 & 8.05\% & 8.05\% \\
+Ne\,\textsc{ii} & 5 & 0.40\% & 0.40\% & Cl\,\textsc{iii} & 6 & 9.15\% & 9.15\% \\
+Ne\,\textsc{iii} & 5 & 0.34\% & 0.34\% & Cl\,\textsc{iv} & 2 & 7.30\% & 7.30\% \\
+S\,\textsc{ii} & 3 & 2.23\% & 2.16\% & Ca\,\textsc{ii} & 4 & 1.03\% & 0.42\% \\
+S\,\textsc{iii} & 5 & 0.23\% & 0.23\% & Ca\,\textsc{v} & 2 & 4.34\% & 4.34\% \\
 \hline
 \end{tabular}
 \end{table}
 
 \begin{figure}[!b]
 \centering
-\includegraphics[width=0.92\textwidth]{figures/cooling_fits.png}
+\includegraphics[width=0.92\textwidth,height=0.82\textheight,keepaspectratio]{figures/cooling_fits.png}
 \caption{Cooling fits (red dashed) over the direct CHIANTI curves
 (black), $10^3\mbox{--}10^5$~K, in the $n_e \to 0$ limit of statistical
 equilibrium.}
@@ -171,7 +187,8 @@ $52,88\,\mu$m pair; [O\,\textsc{ii}] $\lambda\lambda 3726,3729$;
 $n_{\rm crit}$, where the fit overestimates the cooling.  The thermal
 loop therefore treats Eq.~(\ref{eq:cool}) as the $n_e \to 0$ carrier and
 suppresses it to the local density: on the Cloudy c25.00 state of the
-HII40 benchmark ($n_e \simeq 110$~cm$^{-3}$) the fitted line cooling
+HII40 benchmark ($n_e \simeq 110$~cm$^{-3}$; the fixed-state comparison of
+\code{MoCHII\_cooling\_analysis.pdf}, measured 2026-07-25) the fitted line cooling
 exceeds the Cloudy inventory by 11.6\%, of which $+5.1$ points come from
 [O\,\textsc{iii}] and $+3.9$ from [C\,\textsc{ii}], while the same ions
 evaluated with the $n$-level solve at the local $n_e$ land within 2.4\%
@@ -186,7 +203,7 @@ $n$-level data.
 \label{sec:nlevel}
 For each ion the lowest $n$ levels are exported --- enough for the
 optical/IR diagnostics (Table~\ref{tab:nlev}); extra levels are harmless
-to the solver.  The file \code{data/atomic/nlevel\_<ion>.txt} contains
+to the solver.  The file \code{data/atomic/nlevel\_<el>\_<stage>.txt} contains
 three blocks:
 \begin{itemize}
 \item \code{NLEV}: level index, statistical weight $g$, energy in
@@ -198,6 +215,13 @@ three blocks:
   the fitted domain $[s_{\rm lo}, s_{\rm hi}]$, a log flag, and the
   Chebyshev coefficients, followed by the recorded maximum fit error.
 \end{itemize}
+For C\,\textsc{i}, C\,\textsc{ii} and O\,\textsc{i} a separate file
+\code{data/atomic/hcoll\_<el>\_<stage>.txt}
+(\code{make\_hcoll\_fine\_structure.py}) adds atomic-hydrogen impact rates
+on the ground-term fine structure; \code{nlevel\_load} reads it when it
+exists.  Fe\,\textsc{ii} and Fe\,\textsc{iii} also have expanded models
+(\code{nlevel\_fe\_<stage>\_full.txt}, 16 and 34 levels), used under
+\code{par\%fe\_levels\_full}.
 
 \subsection{Burgess--Tully scaling and Chebyshev fits}
 CHIANTI stores $\Upsilon$ on the Burgess--Tully (1992) scaled temperature
@@ -230,27 +254,39 @@ transitions whose tables span decades (e.g.\ O\,\textsc{iii}
 $^1\!D_2,^1\!S_0 \rightarrow {}^5\!S_2$) defeat a linear-space fit; for
 those the series stores $\log_{10} y$ instead, marked by the log flag
 (\code{logf=1}, apply $10^{y}$ before descaling).  The Fortran
-\code{nlevel\_mod} must evaluate exactly this recipe; it is replicated in
-\code{verify\_nlevel\_pyneb.py} as the reference implementation.
+\code{nlevel\_mod} evaluates exactly this recipe (Clenshaw summation of
+the series); \code{verify\_nlevel\_pyneb.py} replicates it in Python.
 
 \begin{table}[htb]
 \centering
-\caption{$n$-level exports.  ``worst $\Upsilon$ error'' is the largest
-maximum relative error among the fitted transitions of that ion,
-measured on the descaled $\Upsilon(T)$ against the direct spline
-evaluation over $10^3\mbox{--}10^5$~K.}
+\caption{$n$-level exports, as recorded in the headers of
+\code{data/atomic/nlevel\_<el>\_<stage>.txt} (generated 2026-07-26).
+``worst $\Upsilon$'' is the largest maximum relative error among the
+fitted transitions of that ion, measured on the descaled $\Upsilon(T)$
+against the direct spline evaluation over $10^3\mbox{--}10^5$~K.  The
+expanded Fe models reach 0.20\% (Fe\,\textsc{ii}, 16 levels) and 0.93\%
+(Fe\,\textsc{iii}, 34 levels).}
 \label{tab:nlev}
-\begin{tabular}{lcccc}
+\small
+\begin{tabular}{lcccc@{\hspace{2.5em}}lcccc}
 \hline
-Ion & levels & $A$-values & $\Upsilon$ fits & worst $\Upsilon$ error \\
+Ion & levels & $A$ & $\Upsilon$ fits & worst $\Upsilon$ &
+Ion & levels & $A$ & $\Upsilon$ fits & worst $\Upsilon$ \\
 \hline
-O\,\textsc{ii}   & 5 &  9 & 10 & 0.28\% \\
-O\,\textsc{iii}  & 6 & 10 & 15 & 1.68\% \\
-N\,\textsc{ii}   & 5 &  8 & 10 & 0.17\% \\
-S\,\textsc{ii}   & 5 &  9 & 10 & 1.25\% \\
-S\,\textsc{iii}  & 6 & 12 & 15 & 0.29\% \\
-Ne\,\textsc{ii}  & 2 &  1 &  1 & 0.16\% \\
-Ne\,\textsc{iii} & 5 &  9 & 10 & 0.19\% \\
+H\,\textsc{i} & 25 & 75 & 45 & 0.20\% & S\,\textsc{iv} & 5 & 6 & 10 & 0.18\% \\
+C\,\textsc{i} & 5 & 8 & 10 & 0.52\% & Ar\,\textsc{iii} & 5 & 9 & 10 & 0.19\% \\
+C\,\textsc{ii} & 5 & 7 & 10 & 0.56\% & Ar\,\textsc{iv} & 5 & 10 & 10 & 0.20\% \\
+C\,\textsc{iii} & 5 & 4 & 10 & 0.35\% & Mg\,\textsc{ii} & 3 & 2 & 3 & 0.15\% \\
+N\,\textsc{i} & 5 & 9 & 10 & 0.78\% & Fe\,\textsc{ii} & 13 & 40 & 78 & 0.20\% \\
+N\,\textsc{ii} & 5 & 8 & 10 & 0.17\% & Fe\,\textsc{iii} & 14 & 38 & 91 & 0.20\% \\
+N\,\textsc{iii} & 5 & 6 & 10 & 0.45\% & Si\,\textsc{ii} & 5 & 6 & 10 & 0.19\% \\
+O\,\textsc{i} & 5 & 9 & 10 & 0.17\% & Si\,\textsc{iii} & 5 & 4 & 10 & 0.65\% \\
+O\,\textsc{ii} & 5 & 9 & 10 & 0.27\% & Si\,\textsc{iv} & 3 & 2 & 3 & 0.54\% \\
+O\,\textsc{iii} & 6 & 10 & 15 & 1.68\% & Cl\,\textsc{ii} & 5 & 9 & 10 & 0.17\% \\
+Ne\,\textsc{ii} & 2 & 1 & 1 & 0.16\% & Cl\,\textsc{iii} & 5 & 10 & 10 & 0.19\% \\
+Ne\,\textsc{iii} & 5 & 9 & 10 & 0.19\% & Cl\,\textsc{iv} & 5 & 9 & 10 & 0.19\% \\
+S\,\textsc{ii} & 5 & 9 & 10 & 1.25\% & Ca\,\textsc{ii} & 5 & 7 & 10 & 0.19\% \\
+S\,\textsc{iii} & 6 & 12 & 15 & 0.29\% & Ca\,\textsc{v} & 5 & 9 & 10 & 0.19\% \\
 \hline
 \end{tabular}
 \end{table}
@@ -264,7 +300,9 @@ of the resolution of the source data itself.
 
 \subsection{Statistical equilibrium and emissivities}
 Given $(T_e, n_e)$, the solver builds the rate matrix from the file
-contents alone: collisional rates from Eq.~(\ref{eq:qlu}) with
+contents alone (plus the atomic-hydrogen rates where an \code{hcoll}
+file exists, entering as $n_{\rm HI} q^{\rm H}$ beside $n_e q$):
+collisional rates from Eq.~(\ref{eq:qlu}) with
 de-excitation by detailed balance,
 $q_{ul} = 8.629\times10^{-6}\,\Upsilon/(g_u\sqrt{T})$ and
 $q_{lu} = (g_u/g_l)\,q_{ul}\,e^{-\Delta E/kT}$, plus the radiative
@@ -278,7 +316,10 @@ Running the same statistical-equilibrium solver twice --- once reading the
 fitted \code{nlevel} files, once evaluating the raw CHIANTI splines and
 \code{.wgfa} rates directly --- isolates the error contributed by the fits
 and the file format.  Over the grid $T_e \in \{5,10,20\}\times10^3$~K,
-$n_e \in \{10^2,10^3,10^4\}$~cm$^{-3}$:
+$n_e \in \{10^2,10^3,10^4\}$~cm$^{-3}$ (measured 2026-07-25, on the
+\code{nlevel} files before their regeneration of 2026-07-26; the script
+that made this comparison is not among \code{tools/fitting/}, so it was
+not repeated on the current files):
 \begin{center}
 \begin{tabular}{lc}
 \hline
@@ -289,7 +330,7 @@ $[$S\,\textsc{ii}$]$ $\lambda6717/\lambda6731$ & 0.52\% \\
 \hline
 \end{tabular}
 \end{center}
-The fitted files are faithful to CHIANTI v11.0.2.
+The fitted files were faithful to CHIANTI v11.0.2 at that date.
 
 \subsection{Cross-check against PyNeb}
 PyNeb (v1.1.31) carries its own atomic data --- for these ions the
@@ -298,7 +339,11 @@ Kal09 (O\,\textsc{ii}), TZ10 (S\,\textsc{ii}) with $A$-values
 FFT04-SZ00, FFT04, Z82-WFD96, RGJ19 respectively --- so this comparison is
 a cross-calibration against an independent reference, not a fit-residual
 test.  Tables~\ref{tab:pyneb_te} and \ref{tab:pyneb_ne} give the classic
-temperature and density diagnostics.
+temperature and density diagnostics, rerun on the current files with
+\code{verify\_nlevel\_pyneb.py} on 2026-09-27: the [O\,\textsc{iii}],
+[N\,\textsc{ii}] and [S\,\textsc{ii}] columns reproduce the 2026-07-25
+values exactly, and the [O\,\textsc{ii}] column is the rerun (it moved by
+up to 0.9\% with the 2026-07-26 regeneration of \code{nlevel\_o\_2.txt}).
 
 \begin{table}[p]
 \centering
@@ -338,18 +383,18 @@ $T_e$ [K] & $n_e$ [cm$^{-3}$] & MoCHII & PyNeb & diff
 $T_e$ [K] & $n_e$ [cm$^{-3}$] & MoCHII & PyNeb & diff
                               & MoCHII & PyNeb & diff \\
 \hline
- 5000 & $10^2$ & 0.8045 & 0.7641 & $+5.3\%$ & 1.298  & 1.333  & $-2.6\%$ \\
- 5000 & $10^3$ & 1.436  & 1.383  & $+3.9\%$ & 0.8223 & 0.8396 & $-2.1\%$ \\
- 5000 & $10^4$ & 2.364  & 2.491  & $-5.1\%$ & 0.5577 & 0.5052 & $+10.4\%$ \\
-10000 & $10^2$ & 0.7697 & 0.7411 & $+3.9\%$ & 1.309  & 1.351  & $-3.1\%$ \\
-10000 & $10^3$ & 1.260  & 1.241  & $+1.5\%$ & 0.8810 & 0.9139 & $-3.6\%$ \\
-10000 & $10^4$ & 2.267  & 2.397  & $-5.4\%$ & 0.5655 & 0.5203 & $+8.7\%$ \\
-15000 & $10^2$ & 0.7566 & 0.7341 & $+3.1\%$ & 1.320  & 1.349  & $-2.1\%$ \\
-15000 & $10^3$ & 1.180  & 1.179  & $+0.2\%$ & 0.9185 & 0.9520 & $-3.5\%$ \\
-15000 & $10^4$ & 2.209  & 2.345  & $-5.8\%$ & 0.5704 & 0.5294 & $+7.7\%$ \\
-20000 & $10^2$ & 0.7502 & 0.7319 & $+2.5\%$ & 1.343  & 1.347  & $-0.3\%$ \\
-20000 & $10^3$ & 1.136  & 1.144  & $-0.7\%$ & 0.9543 & 0.9786 & $-2.5\%$ \\
-20000 & $10^4$ & 2.170  & 2.311  & $-6.1\%$ & 0.5766 & 0.5373 & $+7.3\%$ \\
+ 5000 & $10^2$ & 0.7979 & 0.7641 & $+4.4\%$ & 1.298  & 1.333  & $-2.6\%$ \\
+ 5000 & $10^3$ & 1.430  & 1.383  & $+3.4\%$ & 0.8223 & 0.8396 & $-2.1\%$ \\
+ 5000 & $10^4$ & 2.362  & 2.491  & $-5.2\%$ & 0.5577 & 0.5052 & $+10.4\%$ \\
+10000 & $10^2$ & 0.7634 & 0.7411 & $+3.0\%$ & 1.309  & 1.351  & $-3.1\%$ \\
+10000 & $10^3$ & 1.254  & 1.241  & $+1.1\%$ & 0.8810 & 0.9139 & $-3.6\%$ \\
+10000 & $10^4$ & 2.265  & 2.397  & $-5.5\%$ & 0.5655 & 0.5203 & $+8.7\%$ \\
+15000 & $10^2$ & 0.7502 & 0.7341 & $+2.2\%$ & 1.320  & 1.349  & $-2.1\%$ \\
+15000 & $10^3$ & 1.175  & 1.179  & $-0.3\%$ & 0.9185 & 0.9520 & $-3.5\%$ \\
+15000 & $10^4$ & 2.206  & 2.345  & $-5.9\%$ & 0.5704 & 0.5294 & $+7.7\%$ \\
+20000 & $10^2$ & 0.7439 & 0.7319 & $+1.6\%$ & 1.343  & 1.347  & $-0.3\%$ \\
+20000 & $10^3$ & 1.130  & 1.144  & $-1.2\%$ & 0.9543 & 0.9786 & $-2.5\%$ \\
+20000 & $10^4$ & 2.168  & 2.311  & $-6.2\%$ & 0.5766 & 0.5373 & $+7.3\%$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -365,18 +410,37 @@ atomic data, not the fitting procedure; it should be kept in mind as the floor o
 attainable agreement when the validation gates compare MoCHII line ratios
 with PyNeb-based references.
 
+The same script now also covers seven further ratios, with worst
+differences over the same $(T_e, n_e)$ grid (rerun 2026-09-27):
+[S\,\textsc{iv}] $10.51\,\mu$m/1406 $9.1\%$, [Ar\,\textsc{iii}] 7136/7751
+$0.7\%$, [Ar\,\textsc{iv}] 4740/4711 $4.0\%$, [Fe\,\textsc{iii}] 4658/4702
+$16.0\%$, Si\,\textsc{iii}] 1892/1883 $6.9\%$, [Cl\,\textsc{iii}]
+5518/5538 $6.6\%$, [Cl\,\textsc{ii}] 8579/9124 $1.5\%$.  The
+[Fe\,\textsc{iii}] offset (MoCHII 9--16\% below PyNeb's BB14 data at every
+point) has not been traced to a particular $A$-value or collision
+strength.
+
 \section{Adding an ion}
 The procedure is a data operation:
 \begin{enumerate}
-\item add one entry (element, stage, level-energy guesses / level count)
-  to the \code{IONS} dictionary of \code{fit\_cooling.py} and of
-  \code{fit\_nlevel.py};
+\item add one entry to the \code{IONS} dictionary of \code{fit\_cooling.py}
+  (element, stage; the starting ladder comes from the level energies) and
+  of \code{fit\_nlevel.py} (element, stage, number of levels);
 \item run both scripts; check the reported maximum fit errors and the
   overlay figure;
 \item extend \code{verify\_nlevel\_pyneb.py} with the diagnostic ratios
   of the new ion where PyNeb has data, and record the comparison.
 \end{enumerate}
-The suggested order of addition (cooling importance plus diagnostics)
-continues with C, Ar, and Fe.
+A further stage of a registered element, within the stages its
+\code{element\_<el>.txt} carries, needs nothing more: at setup
+\code{species\_mod} loads \code{cooling\_<el>\_<stage>.txt} for every
+such stage where it exists, and \code{lines\_mod} solves every stage that has
+an \code{nlevel} file.  A new element is not only data: it also needs its
+\code{data/atomic/element\_<el>.txt} (\code{make\_element\_data.py}), an
+\code{abund\_<El>} parameter in \code{define.f90}, and an entry in the
+element list of \code{species\_mod}.  C, Ar and Fe, which this memo
+named as the next additions, have been added, and so have Mg, Si, Cl and
+Ca; the registry is the eleven elements C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl,
+Ca.
 
 \end{document}

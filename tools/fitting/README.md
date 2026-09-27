@@ -17,16 +17,19 @@ at runtime.
 | `make_hydrogenic_recombination.py` | `src/hydrogenic_recombination_data.inc` | H II -> H I and He III -> He II from one zero-density nl-resolved radiative cascade on Storey & Hummer's (1991) CPC routines ACOFZ1/PIXZ1 (compiled from `~/RT_Codes/Storey_Hummer/CPC_code/abzs_v1_0`, unmodified): alpha_B, the 2s share in case A and case B, and the He II case-A Lyman-line shares, log T = 1.5-7.0; validated against the SH95 alpha-tot, O&F Table 4.11 and the SH95 H-beta emissivities (printed). Replaces `make_heii_cascade.py` (2026-09-26). Gate `tests/hydrogenic_recombination/` |
 | `make_element_data.py` | `data/atomic/element_<el>.txt` | photoionization (VFKY96 outer shell, VY95 subshells as `phfit2`), Badnell RR+DR (CHIANTI forms outside Badnell's coverage), collisional ionization, charge exchange (with the product-term form for sulfur) and its heat, for the 11 registry elements |
 | `make_hcoll_fine_structure.py` | `data/atomic/hcoll_<el>_<stage>.txt` | atomic-hydrogen impact rates on the C I, C II and O I ground terms, added to the n-level statistical equilibrium |
+| `make_heii_h_charge_exchange.py` | `src/heii_h_charge_exchange_data.inc` | non-radiative He+ + H -> He + H+ from the reverse calculation of Loreau, Ryabchenko & Vaeck (2014, J. Phys. B 47, 135204; eq. 3, Table 2 process 1) by microscopic reversibility (weights 1/4), with sigma_r ~ (x - x_th)^(1/2) below 15 eV/u where the quantal data stop, Maxwell-averaged, log T = 3.0-6.0 at 0.02 dex; prints the near-threshold bracket, the frame sensitivity and the reciprocity check. Replaces the KF96 He+ row (2026-09-26). Gate `tests/charge_exchange/check_helium_charge_exchange.f90` |
 | `make_h2s_collisional_mixing.py` | `data/atomic/h_2s_2p_mixing.txt` | collisional H(2s) -> H(2p) rate coefficients by collider (e, p, He+, He2+) and A_2s, for the H I two-photon quenching |
 | `make_hei_lines.py` | `data/atomic/hei_porter_caseB.txt` | He I case-B collisional-radiative line emissivities of Porter et al. (2012, 2013) |
 | `make_hei_metastable.py` | `data/atomic/hei_metastable.txt` | He I 2^3S coefficients (every term of its balance except the recombination source) |
 | `make_sh95_lines.py` | `data/atomic/sh95_{hi,heii}_case{A,B}.txt` | Storey & Hummer (1995) H I and He II recombination-line emissivities from the CDS files |
+| `reference_cno_coefficients_exhale.txt` | (reference) | EXHALE's ground-term-Boltzmann coronal C/N/O cooling fits, kept for comparison; superseded by the n_e -> 0 fits of `fit_cooling.py` |
 | `verify_nlevel_pyneb.py` | (report) | end-to-end check: reads the fitted files, solves statistical equilibrium as the Fortran will, compares diagnostic ratios against PyNeb |
 
-## Current ion set (2026-07-26)
+## Current ion set (counted 2026-09-27)
 
-28 Tier-1 cooling ions and 28 Tier-2 n-level models across the 11-element
-registry (H, C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) — every cooling ion has
+28 Tier-1 cooling ions and 28 Tier-2 n-level models (plus the two
+`nlevel_fe_{2,3}_full.txt` variants) across hydrogen and the 11-element
+metal registry (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) — every cooling ion has
 a model, so the runtime density suppression covers all of them.
 Adding an ion = add one entry to the `IONS` dict of each fit script and rerun.
 

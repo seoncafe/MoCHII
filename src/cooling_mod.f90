@@ -256,18 +256,20 @@ implicit none
 
   !=========================================================================
   ! Total H/He cooling per unit volume [erg cm^-3 s^-1] at temperature T.
-  ! Metal line cooling is added by the registry hook.
+  ! Metal line cooling is added by the registry hook.  x_HII and x_HeIII
+  ! are passed beside x_HI and x_HeI, x_HeII (gas_state_mod): beyond the
+  ! ionization fronts 1 - x_HI and 1 - x_HeI - x_HeII do not represent them.
   !=========================================================================
-  real(kind=wp) function cooling_total(T, nH, ne, xHI, xHeI, xHeII) result(cool)
+  real(kind=wp) function cooling_total(T, nH, ne, xHI, xHII, xHeI, xHeII, &
+                                       xHeIII) result(cool)
     implicit none
-    real(kind=wp), intent(in) :: T, nH, ne, xHI, xHeI, xHeII
-    real(kind=wp) :: nHI, nHII, nHeI, nHeII_n, nHeIII, xHeIII
+    real(kind=wp), intent(in) :: T, nH, ne, xHI, xHII, xHeI, xHeII, xHeIII
+    real(kind=wp) :: nHI, nHII, nHeI, nHeII_n, nHeIII
     logical :: caseA
 
     caseA  = trim(par%recombination_continuum) /= 'on_the_spot'
-    xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
     nHI    = nH*xHI
-    nHII   = nH*(1.0_wp - xHI)
+    nHII   = nH*xHII
     nHeI   = nH*par%abund_He*xHeI
     nHeII_n= nH*par%abund_He*xHeII
     nHeIII = nH*par%abund_He*xHeIII

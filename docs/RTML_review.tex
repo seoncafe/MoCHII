@@ -25,7 +25,7 @@ gas mix, pass through the efficient-cooling temperature range, and radiate the
 enthalpy supplied by the hot phase.  This note separates two related but
 distinct calculations: a bolometric cooling loss and an observable spectrum.
 It reviews the physical controls on RTMLs and presents an implementable
-post-processing workflow: obtain the time-dependent thermodynamic history,
+post-processing procedure: obtain the time-dependent thermodynamic history,
 solve non-equilibrium ionization (NEI) where required, evaluate line and
 continuum emissivities from an atomic database, integrate them over volume or
 ray, and finally apply transfer and instrumental response.  The central
@@ -248,7 +248,7 @@ For cosmological cold streams, Mandelker et al. found that the analogous ratio
 of the mixed-gas cooling time to the shear-layer growth time controls whether a
 stream is disrupted or gains mass \cite{Mandelker2020}.  Their follow-up
 radiation model showed that KHI-induced dissipation could reach the luminosity
-scale of observed Ly$\alpha$ blobs in massive high-redshift haloes
+scale of observed Ly$\alpha$ blobs in massive high-redshift halos
 \cite{MandelkerLya2020}.  That comparison remains model-dependent because
 Ly$\alpha$ requires self-shielding, resonant transfer, dust, and the external
 UV field; bolometric RTML power cannot be equated directly to escaping
@@ -330,7 +330,7 @@ CIE in relevant RTML regimes \cite{Kwak2010,Ji2019}.  A spectrum intended for
 O\,VI, N\,V, C\,IV, Si\,IV, or soft-X-ray diagnostics should therefore report
 whether it is CIE, NEI, or photoionization+NEI.
 
-\section{Recommended calculation workflow}
+\section{Recommended calculation procedure}
 
 \begin{enumerate}[leftmargin=*,label=\textbf{Step \arabic*.}]
 \item \textbf{Specify the physical experiment.}  Record $T_c,T_h$, pressure
@@ -569,7 +569,8 @@ radiation field, and atomic-data version.  A separate background metal
 cooling term must not be added on top of the \textsc{Mappings} loss, because
 that would double count radiative channels.
 
-At the time of inspection the local source tree contained no built
+At the time of inspection (and again on 2026-09-27) the local source tree
+(\texttt{\string~/RT\_Codes/MAPPINGS/mappings\_V-521}) contained no built
 \texttt{map52} executable.  Its documented build target is
 \texttt{make build}, with a default installation under
 \texttt{\string~/mappings520}.  Before scientific use, build it in an
@@ -702,7 +703,7 @@ ablation, and emitting-area closures with the local RTML calculation; and
 the required ion fractions and intrinsic emissivities have been supplied.
 \end{enumerate}
 
-Thus the most realistic near-term stack for the available local codes is
+Thus the most realistic near-term combination of the available local codes is
 \[
 \begin{aligned}
  \textsc{Pluto/Flash}\;(\text{RTML dynamics})

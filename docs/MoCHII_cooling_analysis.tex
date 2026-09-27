@@ -108,13 +108,15 @@ from the same $n$-level solve --- now the default,
 overestimate, brings the fixed-state line total from $1.116\times$ to
 $1.01\times$ \Cloudy{}'s, and superseded the two zero-density temperatures at
 once by 8211 and 7025~K, matching \Cloudy{} c25.00 (8210, 6910~K); the
-zero-density fits are retained as the \code{low\_density} option.  Corrections
-to the diffuse field made after that carried the production figures to
-\textbf{8169~K} at HII40 --- inside the published $7720$--$8199$~K range and
-$0.50\%$ below \Cloudy{}'s 8210~K --- and \textbf{6925~K} at HII20, which sits
-above the published $6402$--$6749$~K range but within $0.10\%$ of \Cloudy{}
-c25.00's 6910~K, itself above that range: both current-generation codes now
-run hotter than the 1995-era HII20 spread, and they agree with each other.
+zero-density fits are retained as the \code{low\_density} option.  Later
+changes to the radiation field, the atomic data and the stopping test, none of
+them in the cooling function, carry the current figures (run \code{m11},
+2026-09-27) to \textbf{8180~K} at HII40 --- inside the published
+$7720$--$8199$~K range and $0.37\%$ below \Cloudy{}'s 8210~K --- and
+\textbf{6940~K} at HII20, which sits above the published $6402$--$6749$~K range
+but within $0.43\%$ of \Cloudy{} c25.00's 6910~K, itself above that range: both
+current-generation codes run hotter than the 1995-era HII20 spread, and they
+agree with each other.
 A comparison of the cooling
 inventories of the other Monte Carlo photoionization codes is included; it
 turned up defects on their side as well, and one omission common to all five
@@ -614,16 +616,17 @@ These are the zero-density-limit (\code{low\_density}) temperatures, which the
 density-suppressed default of Section~\ref{sec:limit} superseded one day later;
 they are kept in the table because they are what the repair of the two defects
 by itself is worth, and the audit trail of this memo is the point.  The
-\emph{current} figures, in the last column of the table, are $8169$~K at HII40
-and $6925$~K at HII20, and they change the HII20 verdict:
+\emph{current} figures, in the ``current'' column of the table (run \code{m11},
+2026-09-27), are $8180$~K at HII40 and $6940$~K at HII20, and they change the
+HII20 verdict:
 
 \begin{center}
 \begin{tabular}{lcccl}
 \toprule
  & published (nine codes) & \Cloudy{} c25.00 & \MoCHII{} & verdict \\
 \midrule
-HII40 & 7720--8199 & 8210 & \textbf{8169} & inside published; $0.50\%$ below \Cloudy{} \\
-HII20 & 6402--6749 & 6910 & \textbf{6925} & above published; $0.22\%$ above \Cloudy{} \\
+HII40 & 7720--8199 & 8210 & \textbf{8180} & inside published; $0.37\%$ below \Cloudy{} \\
+HII20 & 6402--6749 & 6910 & \textbf{6940} & above published; $0.43\%$ above \Cloudy{} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -631,7 +634,7 @@ HII20 & 6402--6749 & 6910 & \textbf{6925} & above published; $0.22\%$ above \Clo
 \noindent
 At HII20 it is not \MoCHII{} alone that exceeds the published range: \Cloudy{}
 c25.00 exceeds it too, by $2.4\%$, and \MoCHII{} agrees with that
-current-generation reference to $0.10\%$.  The published HII20 range is a
+current-generation reference to $0.43\%$.  The published HII20 range is a
 1995-era spread of nine codes, and both codes written since sit above it.  The
 earlier reading of this section --- ``$0.4\%$ below the published floor'' ---
 belonged to the zero-density fits and inverted the sign of the present
@@ -646,32 +649,35 @@ on its own unmodified test-suite deck.  The $\nel \to 0$ column is the state
 directly after the fit repair --- the zero-density (\code{low\_density})
 cooling, threshold-aligned 32 ionizing bins, the explicit Monte Carlo diffuse
 field with the \HeI{} channels, case-B recombination-line tables.  The
-``current'' column is the production default: the density-suppressed
-\code{local\_ne} cooling of Section~\ref{sec:limit}, continuous stellar photon
-energies, Milne ground continua and the resolved \HeI{} diffuse cascade.  It
-first raised $\langle T\rangle$ to 8211 and 7025~K and then settled at 8169 and
-6925~K; Section~\ref{sec:limit} lists the intermediate steps.  The
-recombination fraction was a diagnostic of the photon-budget argument and was
-not re-measured for the current default.}
+``current'' column is run \code{m11} of 2026-09-27
+(\code{results/\allowbreak continuous\_energy/\allowbreak m11\_hecx\_solver},
+the production defaults of that date, read by the table script named at the end
+of this memo): the density-suppressed \code{local\_ne} cooling of
+Section~\ref{sec:limit}, continuous stellar photon energies, Milne ground
+continua, the resolved \HeI{} and \HeIII{} diffuse cascades, and every later
+default.  The \code{local\_ne} default first raised $\langle T\rangle$ to 8211
+and 7025~K; Section~\ref{sec:limit} lists the steps to the current 8180 and
+6940~K.  The recombination fraction was a diagnostic of the photon-budget
+argument and was not re-measured for the current default.}
 \label{tab:bench}
 \begin{tabular}{lccccc}
 \toprule
  & before & $\nel \to 0$ & current & C25 & published \\
 \midrule
 \multicolumn{6}{l}{\textbf{HII40}} \\
-$L({\rm H}\beta)/10^{37}$ erg\,s$^{-1}$ & --- & 1.95 & 1.94 & 2.06 & 2.01--2.10 \\
-$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & 7894 & \textbf{8169} & 8210 & 7720--8199 \\
-$T_{\rm inner}$ / K                     & ---  & 7270 & 7535 & 7812 & 7370--8318 \\
-$R_{\rm out}/10^{19}$ cm                & not predicted & 1.43 & 1.44 & 1.47 & 1.45--1.47 \\
-$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.667 & 0.715 & 0.706 & 0.741 & 0.715--0.829 \\
+$L({\rm H}\beta)/10^{37}$ erg\,s$^{-1}$ & --- & 1.95 & 2.02 & 2.06 & 2.01--2.10 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 9159 & 7894 & \textbf{8180} & 8210 & 7720--8199 \\
+$T_{\rm inner}$ / K                     & ---  & 7270 & 7525 & 7812 & 7370--8318 \\
+$R_{\rm out}/10^{19}$ cm                & not predicted & 1.43 & 1.46 & 1.47 & 1.45--1.47 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.667 & 0.715 & 0.752 & 0.741 & 0.715--0.829 \\
 recombinations / $Q_{\rm H}$            & 0.888 & 0.953 & --- & --- & --- \\
 \midrule
 \multicolumn{6}{l}{\textbf{HII20}} \\
-$L({\rm H}\beta)/10^{36}$ erg\,s$^{-1}$ & --- & 4.70 & 4.70 & 4.99 & 4.83--5.04 \\
-$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & 6376 & \textbf{6925} & 6910 & 6402--6749 \\
-$T_{\rm inner}$ / K                     & --- & 6752 & 6936 & 7155 & 6562--7224 \\
-$R_{\rm out}/10^{18}$ cm                & --- & 8.69 & 8.89 & 8.97 & 8.70--9.01 \\
-$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.047 & 0.047 & 0.046 & 0.043 & 0.034--0.077 \\
+$L({\rm H}\beta)/10^{36}$ erg\,s$^{-1}$ & --- & 4.70 & 4.85 & 4.99 & 4.83--5.04 \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ / K & 7370 & 6376 & \textbf{6940} & 6910 & 6402--6749 \\
+$T_{\rm inner}$ / K                     & --- & 6752 & 6947 & 7155 & 6562--7224 \\
+$R_{\rm out}/10^{18}$ cm                & --- & 8.69 & 8.99 & 8.97 & 8.70--9.01 \\
+$\langle {\rm He^+}\rangle/\langle {\rm H^+}\rangle$ & 0.047 & 0.047 & 0.047 & 0.043 & 0.034--0.077 \\
 recombinations / $Q_{\rm H}$            & --- & 0.971 & --- & --- & --- \\
 \bottomrule
 \end{tabular}
@@ -793,25 +799,29 @@ totals --- is what carries the converged temperature the remaining distance to
 the current-generation reference.  \NeIII{} remains the one channel still $30\%$
 above \Cloudy{}, a collision-data difference rather than a density effect.
 
-\paragraph{From 8211/7025 to the current 8169/6925~K.}  The two temperatures
+\paragraph{From 8211/7025 to the current 8180/6940~K.}  The two temperatures
 above are those measured when \code{local\_ne} became the default; they are not
-the current ones, and the difference is not in the cooling.  Three later
-changes to the stellar and diffuse radiation field moved them, each recorded
-with its own gate:
+the current ones, and the difference is not in the cooling.  Three changes to
+the stellar and diffuse radiation field moved them first, each recorded with its
+own gate, and later changes the last row names moved them again:
 
 \begin{center}
 \footnotesize
 \begin{tabular}{llcc}
 \toprule
-Change & Plan document in \code{docs/} & HII40 & HII20 \\
+Change & Plan document in \code{md/} & HII40 & HII20 \\
 \midrule
 zero-density fits (\code{low\_density})   & this memo & 7894 & 6376 \\
 \code{local\_ne} default                  & \code{COOLING\_LOCAL\_NE\_PLAN.md} & 8210 & 7024 \\
 \CI{}/\NI{} $n$-level, energy order       & (same) & 8211 & 7025 \\
 continuous stellar photon energies        & \code{CONTINUOUS\_ENERGY\_PHOTON\_PLAN.md} & 8194 & 6916 \\
 Milne ground continua                     & \code{MILNE\_DIFFUSE\_LYC\_IMPLEMENTATION\_PLAN.md} & 8202 & 6922 \\
-resolved \HeI{} diffuse cascade           & \code{HEI\_CASCADE\_DIFFUSE\_PLAN.md}, & \textbf{8169} & \textbf{6925} \\
+resolved \HeI{} diffuse cascade           & \code{HEI\_CASCADE\_DIFFUSE\_PLAN.md}, & 8200 & 6922 \\
                                           & \code{HEI\_584\_CONVERSION\_PLAN.md} & & \\
+Milne-derived $\alpha_1$                  & \code{results/\allowbreak continuous\_energy/alpha1\_milne} & 8169 & 6925 \\
+two-way charge exchange,                  & \code{results/\allowbreak continuous\_energy/} & \textbf{8180} & \textbf{6940} \\
+\quad atomic data, converged stopping test, & \quad\code{README.md} & & \\
+\quad 2026-09-25/26 defaults: run \code{m11} & & & \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -831,9 +841,12 @@ probability one --- by effective recombination coefficients and the
 Drake--Victor--Dalgarno $2^1S$ spectrum, which lowers the effective ionizing
 content of the helium cascade and so lowers HII40 by $40$~K.  None of this
 touches the cooling function, and none of it disturbs the conclusion of this
-memo: HII40 stays inside the published range throughout, and HII20 stays above
-it --- within $1.7\%$ of \Cloudy{} c25.00 at the \code{local\_ne} default and
-within $0.2\%$ from the continuous-energy step onward.
+memo: HII40 stays at the top edge of the published range throughout ---
+just above its 8199~K top at the \code{local\_ne} and Milne rows (8202--8211~K)
+and in an intermediate converged run of 2026-09-26 (\code{m8\_defaults},
+8207~K), inside it at 8194, 8169 and the current 8180~K --- and HII20 stays above it --- within $1.7\%$ of
+\Cloudy{} c25.00 at the \code{local\_ne} default, within $0.2\%$ over the three
+radiation-field steps, and $0.43\%$ on the current run.
 
 \paragraph{The H-collider term is still low-density (needs re-baselining).}
 One line-cooling term is not yet density-suppressed: the H-impact $[\CII{}]$
@@ -1227,23 +1240,30 @@ attributed to Hummer \& Storey 1998, Table~6).  The He$^{+}$ \emph{recombination
 cooling, however, is the H$^{+}$ polynomial copied coefficient for coefficient:
 compare :1059--1062 with :989--991, all five constants identical, while the
 comment above it cites the helium source.  At $10^4$~K it gives
-$2.40\times10^{-25}$~erg\,cm$^3$\,s$^{-1}$ against $3.88\times10^{-25}$ for
-\MoCHII{}'s $k_{\rm B}T\alpha_{\rm B}({\rm He\,\textsc{ii}})$,
+$2.40\times10^{-25}$~erg\,cm$^3$\,s$^{-1}$ against $2.67\times10^{-25}$ for
+\MoCHII{}'s case-B $\beta({\rm He\,\textsc{ii}}) = kT[(3/2)\alpha_{\rm B} +
+d\alpha_{\rm B}/d\ln T]$ (the exact Maxwellian mean on its own $\alpha_{\rm B}$,
+since 2026-09-24; this comparison was first made against
+$k_{\rm B}T\alpha_{\rm B}$, then $3.88\times10^{-25}$),
 $4.95\times10^{-25}$ for Wood's Black-1981 coefficient and
-$4.46\times10^{-25}$ for \CMI{}'s, so it is low by a factor $1.6$--$2.1$
-against all three.  Only part of that is the copy:
+$4.46\times10^{-25}$ for \CMI{}'s: $0.90$ of \MoCHII{}'s and a factor
+$1.9$--$2.1$ below the two Black-1981 values, which are themselves $1.67$ and
+$1.85$ times \MoCHII{}'s.  The copy is the smaller part:
 $\alpha_{\rm B}({\rm He\,\textsc{ii}})$ exceeds
-$\alpha_{\rm B}({\rm H\,\textsc{ii}})$ by $8\%$ at this temperature, so the
-substitution itself is a small error and the remainder is which mean energy per
-recombination the various coefficients represent.  The channel is worth of
-order $1\%$ of the HII40 budget.
+$\alpha_{\rm B}({\rm H\,\textsc{ii}})$ by $7\%$ at this temperature, so the
+substitution itself costs about $10\%$, and the remainder of the spread is which
+mean energy per recombination the various coefficients represent.  The channel
+is worth of order $1\%$ of the HII40 budget.
 
 \paragraph{Recombination and free-free elsewhere agree well.}  \Mocassin{}'s
-H$^{+}$ recombination cooling equals \MoCHII{}'s Hui \& Gnedin \emph{case-B}
-coefficient to $0.1\%$ at 8000~K and $1.1\%$ at $10^4$~K ($2.346$ against
-$2.343\times10^{-25}$, and $2.403$ against $2.376\times10^{-25}$), and its
-He$^{++}$ term is $0.97\times$ the case-B \HeIII{} coefficient, so its
-recombination cooling is case-B bookkeeping.  Its free-free fits correspond to
+H$^{+}$ recombination cooling equals \MoCHII{}'s \emph{case-B} $\beta_{\rm
+B}({\rm H\,\textsc{ii}})$ to $0.4\%$ at 8000~K and $0.3\%$ at $10^4$~K
+($2.346$ against $2.356\times10^{-25}$, and $2.403$ against
+$2.396\times10^{-25}$; against the Hui \& Gnedin case-B fit \MoCHII{} used
+before 2026-09-24 it was $0.1\%$ and $1.1\%$), and its He$^{++}$ term is
+$0.98\times$ \MoCHII{}'s case-B \HeIII{} coefficient at both temperatures
+($0.63$--$0.64\times$ the case-A one), so its recombination cooling is case-B
+bookkeeping.  Its free-free fits correspond to
 thermally averaged Gaunt factors of $1.259$ and $1.272$ at $Z = 1$ (8000 and
 $10^4$~K) and $1.179$, $1.191$ at $Z = 2$, against $1.252$, $1.266$ and
 $1.176$, $1.187$ from the van Hoof et al.\ (2014) table \MoCHII{} can select:
@@ -1251,7 +1271,9 @@ agreement better than $1\%$.  What is missing is the metals.  Free-free is
 summed over H$^{+}$, He$^{+}$ and He$^{++}$ only, with no net-charge term for
 the metal ions (\MoCHII{} adds one, worth $\sim2\times10^{-4}$ of the H/He
 term), and there is no metal recombination cooling ($0.05\%$ of the \Cloudy{}
-budget, Table~\ref{tab:budget}; \MoCHII{} omits it too).
+budget, Table~\ref{tab:budget}; \MoCHII{} carries it since 2026-09-24, with the
+metal collisional-ionization loss, under \code{par\%metal\_heat}, on by
+default --- \code{species\_mod::\allowbreak metal\_ionization\_cooling}).
 
 \paragraph{Collisional ionization is not in the budget.}  \code{collIon}
 (:1378, Drake \& Ulrich 1980) is computed for hydrogen only, explicitly zeroed
@@ -1286,9 +1308,9 @@ removes at $\nH = 100$~cm$^{-3}$ is common to both.  What remains is that
 on three of the four largest metal coolants, which adds cooling, while
 \MoCHII{} carries the current CHIANTI~v11 strengths.  Neither code's temperature
 can therefore be attributed to a single data difference.  On channels rather
-than data, \MoCHII{} carries three that \Mocassin{} does not ---
-collisional-ionization cooling, metal free-free with the net ion charge, and
-atomic-hydrogen impact on the \CI{}, \CII{} and \OI{} fine-structure lines
+than data, \MoCHII{} carries four that \Mocassin{} does not ---
+collisional-ionization cooling, metal free-free with the net ion charge, metal
+recombination cooling, and atomic-hydrogen impact on the \CI{}, \CII{} and \OI{} fine-structure lines
 for neutral gas (\Mocassin{}'s $\Upsilon$ tables are electron-impact only) --- and \Mocassin{}
 carries one that \MoCHII{} does not, the gas--grain collisional term.
 
@@ -1402,14 +1424,18 @@ $\log_{10}T$ and set to zero above the helium table's end (:6426--6435,
 :6544--6569).  Neither table carries a provenance comment.  Numerically the
 hydrogen one is case-B recombination cooling: $kT\beta_{\rm H} =
 2.360\times10^{-25}$ at 8000~K and $2.397\times10^{-25}$ at $10^4$~K, which is
-$1.007$ and $1.009$ times \MoCHII{}'s Hui \& Gnedin case-B coefficient and
-$1.006$ and $0.997$ times \Mocassin{}'s.  The helium table is a genuinely
-separate table, not the hydrogen one reused --- which is the defect recorded
-on \Mocassin{}'s side above --- and it gives $2.619\times10^{-25}$ at 8000~K
-and $2.706\times10^{-25}$ at $10^4$~K.  At $10^4$~K that is $1.13$ times
-\Mocassin{}'s copied value and $0.70$ times \MoCHII{}'s
-$kT\alpha_{\rm B}({\rm He\,\textsc{ii}})$, so it sits at the low end of the
-spread but not at \Mocassin{}'s extreme.
+$1.002$ and $1.001$ times \MoCHII{}'s case-B $\beta_{\rm B}({\rm
+H\,\textsc{ii}})$ ($1.007$ and $1.009$ times the Hui \& Gnedin case-B fit
+\MoCHII{} used before 2026-09-24) and $1.006$ and $0.997$ times \Mocassin{}'s.
+The helium table is a genuinely separate table, not the hydrogen one reused
+--- which is the defect recorded on \Mocassin{}'s side above --- and it gives
+$2.619\times10^{-25}$ at 8000~K and $2.706\times10^{-25}$ at $10^4$~K.  That
+is $1.005$ and $1.014$ times \MoCHII{}'s case-B $\beta({\rm He\,\textsc{ii}})$
+($2.605$ and $2.670\times10^{-25}$) and, at $10^4$~K, $1.13$ times
+\Mocassin{}'s copied value: of the helium coefficients compared here it is the
+one that agrees with the exact Maxwellian mean.  (Against the
+$kT\alpha_{\rm B}({\rm He\,\textsc{ii}})$ \MoCHII{} used before 2026-09-24 it
+read $0.70$.)
 
 \paragraph{Dust enters as two terms.}  With
 \code{decouplegasdust} false, which is the default
@@ -1576,7 +1602,8 @@ invoked from the photoionization loop under \code{pdrcalc}
 with its own inventory and is outside this comparison.  One point in
 \Torus{}'s favor on the electron side: metal electrons are always in $\nel$,
 since \code{returnNe} (\code{ion\_mod.F90}:1410--1433) sums $Z - N$ over the
-whole registry, where \MoCHII{} needs \code{par\%metal\_ne}.
+whole registry, where \MoCHII{} counts them under \code{par\%metal\_ne}
+(on by default, and on whenever the input sets a metal abundance).
 
 \paragraph{The benchmark directory.}  A Lexington HII40 model is shipped with
 the code.  \code{benchmarks/HII\_region/} and \code{benchmarks/HII\_regionMPI/}
@@ -1607,9 +1634,9 @@ used.  The dump starts at 1~pc, so the innermost parsec is not in the average;
 and it is a single stored run at whatever packet and iteration count produced
 it, not a converged reference in the sense of Section~\ref{sec:bench}.  Taken
 at face value it sits at the top of the $7720$--$8199$~K published range of
-Table~\ref{tab:bench}, $0.4\%$ above \MoCHII{}'s current $8169$~K and $0.2\%$
-below \Cloudy{} c25.00's $8210$~K (and above \MoCHII{}'s zero-density
-$7894$~K).  \code{benchmarks/HII\_region/} also holds a
+Table~\ref{tab:bench}, $0.2\%$ above \MoCHII{}'s current $8180$~K and $0.2\%$
+below \Cloudy{} c25.00's $8210$~K (and above the $7877$~K of \MoCHII{}'s
+current zero-density \code{low\_density} run in the same set).  \code{benchmarks/HII\_region/} also holds a
 \code{lexington\_cloudy.txt} comparison profile.  Nothing here was re-run.
 
 \paragraph{Net comparison with \MoCHII{}.}  On channels \Torus{} is the closest
@@ -1636,7 +1663,8 @@ coolants does not carry over to \Torus{} unexamined.
 \begin{table}[htbp]
 \centering
 \caption{Cooling terms of the five Monte Carlo codes.  \MoCHII{}'s H/He
-inventory is \code{src/cooling\_mod.f90}:225--258.  Ion counts: Wood, \CMI{}
+inventory is \code{src/cooling\_mod.f90}:263--299 (\code{cooling\_total});
+its metal terms are added in \code{src/thermal\_mod.f90}:76--103.  Ion counts: Wood, \CMI{}
 and \Torus{} are fixed lists compiled into the source; the \Mocassin{} entry is
 what its data files supply for
 the HII40 composition (C, N, O, Ne, S) at the default \code{nstages = 7},
@@ -1659,6 +1687,7 @@ Cl, Ar line cooling      & data unread & no & yes & no & yes \\
 \SIV{} line cooling      & no  & yes & yes & yes & yes (added here) \\
 \HI{} collisional excitation & no & no & yes & yes & yes \\
 collisional-ionization cooling & no & no & no & no & yes \\
+metal recombination cooling & no & no & no & no & yes \\
 \HeIII{} recombination cooling & no & no & yes & no & yes \\
 free-free at $Z = 2$ (\HeIII{}) & no & no & yes & no & yes \\
 free-free from the metal ions & no & no & no & no & yes \\
@@ -1716,11 +1745,12 @@ the same $n$-level solve --- now the default,
 \code{par\%cooling\_model = local\_ne} --- removes the far-infrared overestimate
 and raised the converged benchmarks at once to 8211 and 7025~K, matching
 \Cloudy{} c25.00 (8210, 6910~K); the zero-density fits are kept as the
-\code{low\_density} option.  Later corrections to the stellar and diffuse
-radiation field, none of them in the cooling, brought the production figures to
-their current values: $8169$~K at HII40, inside the published
-$7720$--$8199$~K range and $0.50\%$ below \Cloudy{}; and $6925$~K at HII20,
-above the published $6402$--$6749$~K range but within $0.22\%$ of \Cloudy{}
+\code{low\_density} option.  Later changes to the stellar and diffuse
+radiation field, the atomic data and the stopping test, none of them in the
+cooling function, brought the production figures to their current values (run
+\code{m11}, 2026-09-27): $8180$~K at HII40, inside the published
+$7720$--$8199$~K range and $0.37\%$ below \Cloudy{}; and $6940$~K at HII20,
+above the published $6402$--$6749$~K range but within $0.43\%$ of \Cloudy{}
 c25.00's $6910$~K, which is itself $2.4\%$ above that range.  The HII20 range is
 a 1995-era nine-code spread that both current-generation codes exceed, so the
 verdict there is agreement with \Cloudy{}, not a shortfall against the
@@ -1752,14 +1782,19 @@ $\NII{}$ $^1S_0$ statistical weight as $5$ instead of $1$.
 \paragraph{Where the numbers come from.}  The \Cloudy{} reference runs and
 their output files are in \code{tests/cloudy\_c25/} (\code{hii40\_cool.in} for
 the cooling inventory, \code{hii\{40,20\}\_c25.in} for the line lists and
-structure); the benchmark runs after the fix are
-\code{tests/g2\_hii/hii\{40,20\}\_bench.in} with their \code{\_rates.h5} and
-\code{\_lines.txt} output; the coefficient files are
+structure); the benchmark runs of 2026-07-26, when \code{local\_ne} became the
+default, are \code{tests/g2\_hii/hii\{40,20\}\_bench.in} with their
+\code{\_rates.h5} and \code{\_lines.txt} output, and the current column of
+Table~\ref{tab:bench} is \code{results/\allowbreak continuous\_energy/\allowbreak
+m11\_hecx\_solver/\allowbreak hii\{40,20\}\_converged}; the coefficient files are
 \code{data/atomic/cooling\_<ion>.txt} and \code{nlevel\_<ion>.txt}, each with
 its own provenance header; the fitting code is
-\code{tools/fitting/\{chianti\_cooling,fit\_cooling,fit\_nlevel\}.py}; and the
-benchmark table columns are assembled by
-\code{paper/tables/make\_wood\_tables.py}.  The channel-by-channel budget, the
+\code{tools/\allowbreak fitting/\allowbreak \{chianti\_cooling,\allowbreak fit\_cooling,\allowbreak fit\_nlevel\}.py}; and the
+benchmark table columns are assembled by \code{tables/make\_wood\_tables.py}
+of the paper tree (\code{MoCHII\_paper/}, beside this repository).  The
+channel-by-channel budget of Table~\ref{tab:budget} can be rerun with
+\code{tests/\allowbreak cloudy\_c25/\allowbreak run\_fixed\_state.sh}
+(\code{fixed\_state\_cooling.py}, \code{fixed\_state\_nlevel.f90}); the
 defect isolation and the temperature closure were computed by analysis scripts
 kept in the working session rather than committed, since each of them is a
 one-off reading of the files listed above.

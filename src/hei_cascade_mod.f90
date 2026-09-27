@@ -20,8 +20,9 @@ module hei_cascade_mod
 !
 ! Normalizing by their SUM rather than against an external alpha_B is Wood's
 ! own choice, made for the reason its source states -- "different
-! T-dependences in fitting formulae".  The three fits account for 97% of
-! MoCHII's alpha_B(He II) at 10^4 K and 90% at 8000 K, and forcing them onto
+! T-dependences in fitting formulae".  The three fits account for 98.5% of
+! MoCHII's alpha_B(He II) at 10^4 K and 91.0% at 8000 K (the HECAS table at
+! setup, 2026-09-27; 78% at 5000 K, 115% at 1.5e4 K), and forcing them onto
 ! alpha_B would dump that mismatch into whichever branch was solved for last.
 ! The shortfall is reported at setup instead.
 !

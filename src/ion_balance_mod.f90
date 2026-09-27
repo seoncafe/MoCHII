@@ -2,30 +2,32 @@ module ion_balance_mod
 !---------------------------------------------------------------------------
 ! MoCHII: H/He photoionization equilibrium at fixed T_e.
 !
-! Per leaf, given the rate integrals Gamma_i from the ionizing-band J tally
-! and T_e = par%te_fixed, solve
+! In each leaf, given the rate integrals Gamma_i (path estimators of the
+! transported packets) and T_e = par%te_fixed, solve
 !     n_HI  (Gamma_HI  + n_e C_HI )  = alpha_[AB](H II)   n_e n_HII
 !     n_HeI (Gamma_HeI + n_e C_HeI)  = alpha_[AB](He II)  n_e n_HeII
 !     n_HeII(Gamma_HeII+ n_e C_HeII) = alpha_[AB](He III) n_e n_HeIII
 ! with the closure  n_e = nH [ x_HII + y_He (x_HeII + 2 x_HeIII) ]
 ! by damped fixed-point iteration on n_e.
 ! alpha_B when the ground-recombination photons are absorbed on the spot
-! (par%recombination_continuum = 'on_the_spot', the default), alpha_A
-! when they are transported or escape.
+! (par%recombination_continuum = 'on_the_spot'), alpha_A when they are
+! transported (the default) or escape.
 ! With par%helium_charge_exchange (default on) the He-H charge-exchange
 ! reactions join both balances (cx_HeII_H and its companions below).
 !
 ! The converged fractions are written to the shared gas-state arrays with
 ! under-relaxation par%ion_relax (1 = none; < 1 damps oscillation at sharp
 ! I-fronts, a known failure mode).
-! Only the node-local rank 0 runs the solve (the inputs are ALLREDUCEd
-! tallies, so every node's rank 0 is identical); it writes the shared
-! arrays directly and broadcasts max|delta x_HII| to the other node ranks,
-! which skip that work entirely.
+! The leaves are divided over all ranks of MPI_COMM_WORLD (gas_state_mod,
+! gas_leaf_owner_first/stride); each rank solves its own from the reduced
+! tallies, gas_state_publish sums the solved leaves into every node's shared
+! state, and the change measures are reduced over all ranks and broadcast
+! from rank 0 so that every rank takes the same exit decision.
 !---------------------------------------------------------------------------
   use define
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                            gas_Te, gas_nleaf, gas_state_publish, &
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                            gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
+                            gas_state_publish, &
                             gas_leaf_owner_first, gas_leaf_owner_stride
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             secondary_ionization
@@ -39,12 +41,32 @@ module ion_balance_mod
   public :: hydrogen_balance_residual, hydrogen_balance_residual_grid
   public :: cx_HeII_H, cx_HeI_Hp, cx_HeIII_H, cx_HeII_Hp
   public :: helium_charge_exchange_heating, nonradiative_HeII_H
+  public :: NE_FLOOR_PER_H
+
+  !--- Lower bound on n_e/n_H in the cell solve and the charge-neutrality
+  !--- closure: a guard against n_e = 0, not a physical floor.  n_e is the
+  !--- charge-neutral root wherever that root lies above it.  Numerically,
+  !--- every rate that multiplies n_e (alpha n_e, C n_e, the metal
+  !--- recombinations) stays >= ~1e-43 s^-1 at n_H >= 1 cm^-3 and 3000 K,
+  !--- far from underflow, so the stage ratios (capped at 1e150), the
+  !--- logarithms of hydrogen_ionization_balance and n_e itself are finite
+  !--- (with no ionizing photons and no collisional ionization the root is
+  !--- n_e = 0, and the solve then stops here).  Physically, n_e/n_H = 1e-30
+  !--- is far below any ionization neutral gas keeps: cosmic rays alone,
+  !--- which MoCHII does not carry, give x_e >~ 1e-8.  Until 2026-09-26 the
+  !--- bound was 1e-12, above the charge-neutral n_e of radiation-starved
+  !--- leaves beyond the ionization front (1e-17 .. 1e-13 n_H measured), so
+  !--- charge neutrality was not imposed there.
+  real(kind=wp), parameter :: NE_FLOOR_PER_H = 1.0e-30_wp
 
   !--- ionization-potential differences for the detailed-balance reverses
   !--- [eV] (NIST ASD: H 13.598434, He 24.587387, He+ 54.417765):
   !--- He + H+ -> He+ + H and He+ + H+ -> He++ + H
   real(kind=wp), parameter :: DE_HEI_H  = 24.587387_wp - 13.598434_wp
   real(kind=wp), parameter :: DE_HEII_H = 54.417765_wp - 13.598434_wp
+
+  !--- non-radiative He+ + H -> He + H+ (nonradiative_HeII_H), tabulated
+  include 'heii_h_charge_exchange_data.inc'
 
 contains
 
@@ -62,9 +84,10 @@ contains
   !     X^(i+1) + H^0 -> X^i + H^+        (rate R_cx_out per H^0)
   ! enter hydrogen's balance as well as the metal cascade's, so the charge
   ! they move is conserved in the reacting pair:
-  !     n_HI (Gamma_H + C_H n_e + R_cx_out) = (alpha_H n_e + R_cx_in) n_HII.
-  ! Eliminating n_HII = n_H (1 - x_HI) keeps the closed form; BOTH terms
-  ! appear in the denominator, R_cx_in for the same reason alpha_H n_e does.
+  !     n_HI (Gamma_H + C_H n_e + R_cx_out) = (alpha_H n_e + R_cx_in) n_HII,
+  ! solved for n_HII/n_HI with the exchange sums at each trial state
+  ! (hydrogen_ionization_balance); x_HII is carried beside x_HI (yH), since
+  ! beyond the ionization front 1 - x_HI cannot represent it.
   !
   ! With par%helium_charge_exchange the He-H reactions (rate coefficients
   ! k21 = cx_HeII_H, k12 = cx_HeI_Hp, k32 = cx_HeIII_H, k23 = cx_HeII_Hp)
@@ -97,7 +120,7 @@ contains
   !    helium fractions (the lag rhe_* already carry), so the exit test then
   !    also requires x_HI and x_HeII to have stopped moving.
   subroutine solve_ion_cell(gH, gHe1, gHe2, nH, T, caseA, &
-                            xHI, xHeI, xHeII, ne, il, f_h_only)
+                            xHI, xHeI, xHeII, ne, il, f_h_only, xHII, xHeIII)
     use species_mod, only : species_ne_prepare, species_metal_sums, n_elements
     use hei_metastable_mod, only : hei_triplet_rates_type, hei_triplet_rates, &
                                    hei_triplet_destruction, &
@@ -115,18 +138,30 @@ contains
     !--- excited cascade, the He II cascade below the He0 edge) that H0 did
     !--- absorb: 1 unless they outnumber hydrogen's recombinations
     real(kind=wp), intent(out), optional :: f_h_only
+    !--- x_HII, to its own relative precision: beyond the ionization front
+    !--- (x_HII ~ 1e-10 .. 1e-17) 1 - x_HI does not carry it.  In: the start
+    !--- state beside x_HI (the stored gas_xHII); out: the solved state.
+    !--- Left out, the solve starts from 1 - x_HI.
+    real(kind=wp), intent(inout), optional :: xHII
+    !--- x_HeIII likewise (the stored gas_xHeIII): the solve forms the three
+    !--- helium fractions from the stage ratios r1 = n(He+)/n(He0) and
+    !--- r2 = n(He2+)/n(He+), each to full relative precision, where
+    !--- 1 - x_HeI - x_HeII is rounding once He2+ is scarce.  Left out, the
+    !--- solve starts from max(0, 1 - x_HeI - x_HeII).
+    real(kind=wp), intent(inout), optional :: xHeIII
     real(kind=wp) :: aH, aHe2, aHe3, cH, cHe1, cHe2, yHe
-    real(kind=wp) :: ne_old, xHeIII, r1, r2, denH
+    real(kind=wp) :: ne_old, xHe3, r1, r2
     real(kind=wp) :: nem, r_cx_in, r_cx_out
     real(kind=wp) :: k21, k12, k32, k23, rhe_in, rhe_out, xHI_old, xHeII_old
+    real(kind=wp) :: xHe3_old
     real(kind=wp) :: gHt, gHe1t, dgHI, dgHeI, dh1, dh2, dh3
     logical :: with_metal_ne, with_metal_cx, with_he_cx, with_sec, settled
     logical :: with_meta, with_ots, with_heii_ots
     type(hei_triplet_rates_type) :: hr
     type(hei_ground_nodes_type)  :: gnodes
     type(heii_ots_nodes_type)    :: hnodes
-    real(kind=wp) :: aHe3B, yH3, yHe3, sH3, sHe3, num2, den2, sH3o, sfix, afix
-    real(kind=wp) :: aHb, bHb, s0fix, sabs, supply
+    real(kind=wp) :: aHe3B, yH3, yHe3, sH3, sHe3, num2, den2, sH3o, sfix
+    real(kind=wp) :: recH, ionH, yH, yH_old, sabs, supply, u_prev
     real(kind=wp) :: aHe2B, a1He, y_ots, s_gnd, s_exc
     real(kind=wp) :: phi3, r_pen, u3, num1, den1, gHe1b
     logical :: joint
@@ -210,14 +245,28 @@ contains
        aHe3B  = aHe3
     end if
 
-    xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
-    ne = nH * ((1.0_wp - xHI) + yHe*(xHeII + 2.0_wp*xHeIII))
-    ne = max(ne, 1.0e-12_wp*nH)
+    if (present(xHeIII)) then
+       xHe3 = xHeIII
+    else
+       xHe3 = max(0.0_wp, 1.0_wp - xHeI - xHeII)
+    end if
+    !--- x_HII from here on is carried as its own variable (yH): beyond the
+    !--- ionization front 1 - x_HI cannot represent it
+    if (present(xHII)) then
+       yH = xHII
+    else
+       yH = 1.0_wp - xHI
+    end if
+    ne = nH * (yH + yHe*(xHeII + 2.0_wp*xHe3))
+    ne = max(ne, NE_FLOOR_PER_H*nH)
     nem = 0.0_wp;  r_cx_in = 0.0_wp;  r_cx_out = 0.0_wp
-    sfix = 0.0_wp;  afix = 0.0_wp;  s0fix = 0.0_wp
+    sfix = 0.0_wp
     do it = 1, 200
        ne_old = ne
-       xHI_old = xHI;  xHeII_old = xHeII
+       xHI_old = xHI;  yH_old = yH;  xHeII_old = xHeII;  xHe3_old = xHe3
+       !--- ln(n_HII/n_HI) of the previous iterate, where the root search of
+       !--- hydrogen_ionization_balance starts (-700 / 700 bound it)
+       u_prev = log(max(yH, 1.0e-300_wp)) - log(max(xHI, 1.0e-300_wp))
        if (with_sec) then
           call secondary_ionization(il, ionized_fraction_svs(ne, nH, yHe*nH), &
                nH*xHI, nH*yHe*xHeI, nH*yHe*xHeII, dgHI, dgHeI, dh1, dh2, dh3)
@@ -234,7 +283,7 @@ contains
        joint = .false.
        if (with_heii_ots) then
           call heii_on_the_spot_sources(hnodes, ne, nH*xHI, yHe*nH*xHeI, &
-               yHe*nH*xHeII, yHe*nH*xHeIII, yH3, yHe3, sH3, sHe3, sH3o)
+               yHe*nH*xHeII, yHe*nH*xHe3, yH3, yHe3, sH3, sHe3, sH3o)
           if (.not. (with_sec .or. with_ots)) gHt = gH
           if (.not. with_sec) gHe1t = gHe1
           gHe1b = gHe1t
@@ -244,10 +293,10 @@ contains
           !--- in the He2+ zone H0 and He0 are both trace absorbers of the
           !--- same cascade, and their shares are solved together
           !--- (joint_neutral_fractions) instead of He0's being lagged
-          joint = xHeIII > 1.0e-3_wp
+          joint = xHe3 > 1.0e-3_wp
        end if
        if (with_he_cx) then
-          rhe_out = yHe*nH*(xHeII*k21 + xHeIII*k32)
+          rhe_out = yHe*nH*(xHeII*k21 + xHe3*k32)
           rhe_in  = yHe*nH*(xHeI*k12  + xHeII*k23)
        end if
        !--- the stage densities the two charge-exchange sums need depend on
@@ -261,13 +310,13 @@ contains
        !--- gas, so the exit test below was met only after 124 passes at
        !--- x_HII = 0.18, 239 at 0.10 and 1285 at 0.021 against the 200-pass
        !--- cap, and such a cell left this loop with x_HII high by ~8%.
-       !--- hydrogen_neutral_fraction removes that by solving the balance at
+       !--- hydrogen_ionization_balance removes that by solving the balance at
        !--- this n_e rather than substituting into it: one call now reaches the
        !--- converged state to 3.6e-11 at every x_HII down to 0.02.  What
        !--- remains lagged is only nem, whose own map is a long way from
        !--- marginal (md/ION_BALANCE_CONVERGENCE_PLAN.md, S1 to S3).
        if (with_metal_ne .or. with_metal_cx) then
-          call species_metal_sums(nH, ne_old, nH*xHI, nH*(1.0_wp - xHI), &
+          call species_metal_sums(nH, ne_old, nH*xHI, nH*yH, &
                                   nem, r_cx_in, r_cx_out)
           if (.not. with_metal_cx) then
              r_cx_in  = 0.0_wp
@@ -282,75 +331,33 @@ contains
           r_pen = hr%pen*hei_triplet_population(hr, ne, nH*xHI, &
                      yHe*nH*xHeI, yHe*nH*xHeII, phi3)
        end if
-       if (with_ots .or. with_heii_ots) then
-          !--- the on-the-spot excited cascades as an absolute source: the
-          !--- same balance as the branches below, x B = A - s(x), with H0's
-          !--- share of the He II cascade evaluated at every trial x
-          !--- (hydrogen_fraction_with_cascade)
-          if (with_meta .and. with_metal_cx) then
-             aHb = aH*ne + rhe_in
-             bHb = gHt + (cH + aH)*ne + rhe_in + rhe_out + r_pen
-          else if (with_meta) then
-             aHb = aH*ne + r_cx_in + rhe_in
-             bHb = gHt + (cH + aH)*ne + r_cx_in + r_cx_out + rhe_in &
-                   + rhe_out + r_pen
-          else if (with_metal_cx .and. with_he_cx) then
-             aHb = aH*ne + rhe_in
-             bHb = gHt + (cH + aH)*ne + rhe_in + rhe_out
-          else if (with_metal_cx) then
-             aHb = aH*ne
-             bHb = gHt + (cH + aH)*ne
-          else if (with_he_cx) then
-             aHb = aH*ne + r_cx_in + rhe_in
-             bHb = gHt + (cH + aH)*ne + r_cx_in + r_cx_out + rhe_in + rhe_out
-          else
-             aHb = aH*ne + r_cx_in
-             bHb = gHt + (cH + aH)*ne + r_cx_in + r_cx_out
-          end if
-          if (joint) then
-             call joint_neutral_fractions()
-          else
-             xHI = hydrogen_fraction_with_cascade(nH, ne, aHb, bHb, sfix, &
-                      with_heii_ots, hnodes, yHe*nH*xHeI, yHe*nH*xHeIII, &
-                      with_metal_cx, afix, s0fix)
-          end if
-       else if (with_meta) then
-          if (with_metal_cx) then
-             xHI = hydrogen_neutral_fraction(nH, ne, aH*ne + rhe_in, &
-                      gHt + (cH + aH)*ne + rhe_in + rhe_out + r_pen)
-          else
-             denH = gHt + (cH + aH)*ne + r_cx_in + r_cx_out + rhe_in &
-                    + rhe_out + r_pen
-             xHI = (aH*ne + r_cx_in + rhe_in) / denH    ! denH >= aH ne > 0
-          end if
-       else if (with_metal_cx .and. with_he_cx) then
-          !--- the He terms are constants of this root find (lagged)
-          xHI = hydrogen_neutral_fraction(nH, ne, aH*ne + rhe_in, &
-                                          gHt + (cH + aH)*ne + rhe_in + rhe_out)
-       else if (with_metal_cx) then
-          !--- solve the balance at this n_e instead of substituting into it:
-          !--- the charge-exchange terms make the substitution map marginally
-          !--- stable in partially neutral gas (see hydrogen_neutral_fraction).
-          xHI = hydrogen_neutral_fraction(nH, ne, aH*ne, gHt + (cH + aH)*ne)
-       else if (with_he_cx) then
-          denH = gHt + (cH + aH)*ne + r_cx_in + r_cx_out + rhe_in + rhe_out
-          if (denH > 0.0_wp) then
-             xHI = (aH*ne + r_cx_in + rhe_in) / denH
-          else
-             xHI = 1.0_wp
-          end if
+       !--- hydrogen's balance at this n_e (hydrogen_ionization_balance):
+       !--- recombinations per H+ and ionizations per H0 other than the
+       !--- metal charge exchange, which the root evaluates at each trial
+       !--- state when it is two-way and which otherwise enters here at the
+       !--- previous iterate (zero with metal_ne alone); the helium and
+       !--- Penning terms are lagged (zero when their options are off), and
+       !--- the on-the-spot cascades enter as the absolute source sfix plus
+       !--- H0's share of the He II cascade at each trial.  Solved in the
+       !--- ratio n_HII/n_HI, so x_HII keeps its relative precision beyond
+       !--- the ionization front, where it is ~1e-10 .. 1e-17.
+       recH = aH*ne + rhe_in
+       ionH = gHt + cH*ne + rhe_out + r_pen
+       if (.not. with_metal_cx) then
+          recH = recH + r_cx_in
+          ionH = ionH + r_cx_out
+       end if
+       if (joint) then
+          call joint_neutral_fractions()
+       else if (with_metal_cx .or. with_ots .or. with_heii_ots) then
+          call hydrogen_ionization_balance(nH, ne, recH, ionH, sfix, &
+                  with_heii_ots, hnodes, yHe*nH*xHeI, yHe*nH*xHe3, &
+                  with_metal_cx, xHI, yH, u_prev)
+       else if (recH + ionH > 0.0_wp) then
+          xHI = recH/(recH + ionH)
+          yH  = ionH/(recH + ionH)
        else
-          !--- kept verbatim, including the two terms that are zero on this
-          !--- branch, so the generated arithmetic is unchanged and
-          !--- 'metal_only' stays bit-identical to the pre-M1 code: under
-          !--- -fp-model fast=2 even dropping an exact +0.0 lets the compiler
-          !--- reassociate and move x_HeII by one ulp.
-          denH = gHt + (cH + aH)*ne + r_cx_in + r_cx_out
-          if (denH > 0.0_wp) then
-             xHI = (aH*ne + r_cx_in) / denH
-          else
-             xHI = 1.0_wp
-          end if
+          xHI = 1.0_wp;  yH = 0.0_wp
        end if
        !--- r1 = He+/He0, r2 = He++/He+.  Cap at 1e150 (physical values stay
        !--- below ~1e15 given the ne floor) so r1*r2 cannot overflow to Inf
@@ -369,9 +376,9 @@ contains
              den1 = den1 - u3*hr%alpha3*ne
           end if
           if (with_he_cx) then
-             num1 = num1 + k12*nH*(1.0_wp - xHI)
+             num1 = num1 + k12*nH*yH
              den1 = den1 + k21*nH*xHI
-             num2 = num2 + k23*nH*(1.0_wp - xHI)
+             num2 = num2 + k23*nH*yH
              den2 = den2 + k32*nH*xHI
           end if
           r1 = min(num1/den1, 1.0e150_wp)
@@ -382,18 +389,18 @@ contains
           num1 = gHe1t + cHe1*ne + u3*(hr%q13 + hr%qfeed)*ne
           den1 = (aHe2 - u3*hr%alpha3)*ne
           if (with_he_cx) then
-             num1 = num1 + k12*nH*(1.0_wp - xHI)
+             num1 = num1 + k12*nH*yH
              den1 = den1 + k21*nH*xHI
-             r2 = min((gHe2 + cHe2*ne + k23*nH*(1.0_wp - xHI)) &
+             r2 = min((gHe2 + cHe2*ne + k23*nH*yH) &
                       / (aHe3*ne + k32*nH*xHI), 1.0e150_wp)
           else
              r2 = min((gHe2 + cHe2*ne) / (aHe3*ne), 1.0e150_wp)
           end if
           r1 = min(num1/den1, 1.0e150_wp)
        else if (with_he_cx) then
-          r1 = min((gHe1t + cHe1*ne + k12*nH*(1.0_wp - xHI)) &
+          r1 = min((gHe1t + cHe1*ne + k12*nH*yH) &
                    / (aHe2*ne + k21*nH*xHI), 1.0e150_wp)
-          r2 = min((gHe2 + cHe2*ne + k23*nH*(1.0_wp - xHI)) &
+          r2 = min((gHe2 + cHe2*ne + k23*nH*yH) &
                    / (aHe3*ne + k32*nH*xHI), 1.0e150_wp)
        else
           r1 = min((gHe1t + cHe1*ne) / (aHe2*ne), 1.0e150_wp)
@@ -402,16 +409,17 @@ contains
        if (.not. joint) then
           xHeI   = 1.0_wp / (1.0_wp + r1 + r1*r2)
           xHeII  = xHeI * r1
-          xHeIII = xHeII * r2
+          xHe3 = xHeII * r2
        end if
-       ne = nH * ((1.0_wp - xHI) + yHe*(xHeII + 2.0_wp*xHeIII))
+       ne = nH * (yH + yHe*(xHeII + 2.0_wp*xHe3))
        if (with_metal_ne) ne = ne + nem
-       ne = max(0.5_wp*(ne + ne_old), 1.0e-12_wp*nH)
+       ne = max(0.5_wp*(ne + ne_old), NE_FLOOR_PER_H*nH)
        settled = .true.
        if (with_he_cx .or. with_sec .or. with_meta .or. with_ots &
            .or. with_heii_ots) settled = &
-          abs(xHI - xHI_old) <= 1.0e-10_wp*min(xHI, 1.0_wp - xHI) + 1.0e-15_wp &
-          .and. abs(xHeII - xHeII_old) <= 1.0e-10_wp*xHeII + 1.0e-15_wp
+          hydrogen_settled() &
+          .and. abs(xHeII - xHeII_old) <= 1.0e-10_wp*xHeII + tiny(1.0_wp) &
+          .and. abs(xHe3 - xHe3_old) <= 1.0e-10_wp*xHe3 + tiny(1.0_wp)
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne .and. settled) exit
     end do
     !--- the share of the on-the-spot photons given to H0 that it can absorb
@@ -430,17 +438,29 @@ contains
              sabs = s_gnd + s_exc
           end if
           if (with_heii_ots) then
-             xHeIII = max(0.0_wp, 1.0_wp - xHeI - xHeII)
              call heii_on_the_spot_sources(hnodes, ne, nH*xHI, yHe*nH*xHeI, &
-                  yHe*nH*xHeII, yHe*nH*xHeIII, yH3, yHe3, sH3, sHe3, sH3o)
+                  yHe*nH*xHeII, yHe*nH*xHe3, yH3, yHe3, sH3, sHe3, sH3o)
              sabs = sabs + sH3 + sH3o
           end if
-          supply = (aH*ne + r_cx_in + rhe_in)*nH*(1.0_wp - xHI)
+          supply = (aH*ne + r_cx_in + rhe_in)*nH*yH
           if (sabs > supply) f_h_only = max(supply, 0.0_wp)/sabs
        end if
     end if
+    if (present(xHII)) xHII = yH
+    if (present(xHeIII)) xHeIII = xHe3
 
   contains
+
+    !--- hydrogen has stopped moving: the smaller of x_HI and x_HII, which
+    !--- the balance resolves to its own relative precision, changed by no
+    !--- more than 1e-10 of itself (the larger one is its complement)
+    logical function hydrogen_settled()
+      if (xHI <= yH) then
+         hydrogen_settled = abs(xHI - xHI_old) <= 1.0e-10_wp*xHI + tiny(1.0_wp)
+      else
+         hydrogen_settled = abs(yH - yH_old) <= 1.0e-10_wp*yH + tiny(1.0_wp)
+      end if
+    end function hydrogen_settled
 
     !=======================================================================
     ! H0 and He0 in the He2+ zone, where both are trace absorbers of the
@@ -458,10 +478,12 @@ contains
     ! N1 the ionization rate of He0 per He0 without the He II photons, D1
     ! the recombination rate of He+ per He+, s_He the He0 share of the He II
     ! photons at the trial state, and x_HI(x) hydrogen's own root at that
-    ! n(He0) (hydrogen_fraction_with_cascade).  F(0) < 0 because the He0
-    ! share vanishes with n(He0), and F rises with x (He0's share grows,
-    ! H0's falls), so the root is unique; Illinois in ln x, which can be
-    ! 1e-12.  The charge-exchange and 2^3S terms of N1 and D1 are taken at
+    ! n(He0) (hydrogen_ionization_balance).  F(0) < 0 while hydrogen's root
+    ! stays finite as n(He0) -> 0, because the He0 share then vanishes with
+    ! n(He0); F rises with x (He0's share grows, H0's falls), so the root
+    ! is unique; Illinois in ln x, which can be 1e-12.  Where the cascades
+    ! outnumber both recombination supplies, hydrogen's root falls with
+    ! n(He0), He0's share stays finite and F(0) > 0: helium_supply_limit.  The charge-exchange and 2^3S terms of N1 and D1 are taken at
     ! the trial x_HI, the He2+/He+ ratio at the pass's (lagged) state.
     !=======================================================================
     subroutine joint_neutral_fractions()
@@ -472,6 +494,9 @@ contains
       tb = 0.0_wp;           Fb = helium_residual(tb)
       if (Fb <= 0.0_wp) then
          tx = tb
+      else if (Fa >= 0.0_wp) then
+         call helium_supply_limit(ta)
+         return
       else
          scale = abs(Fa) + abs(Fb)
          tx = tb
@@ -493,26 +518,70 @@ contains
       Fx = helium_residual(tx)        ! leaves x_HI and helium at the root
     end subroutine joint_neutral_fractions
 
+    !--- Both neutrals absorption-limited: even at x_HeI = e^lnx (1e-30),
+    !--- with x_HI at hydrogen's own root, He0 would absorb more He II
+    !--- photons than He+ -> He0 recombinations supply, which happens when
+    !--- the cascades outnumber hydrogen's and helium's recombinations
+    !--- together.  No local balance exists for both; He0 is given exactly
+    !--- its supply (F = 0) by raising H0's share, i.e. x_HI above
+    !--- hydrogen's root at fixed x_HeI, and hydrogen's excess is what
+    !--- f_h_only then drops from the heat and the H0 absorptions.  Only the
+    !--- ratio n_HI/n_HeI matters here; F falls with x_HI (H0's share
+    !--- grows) and is negative at x_HI = 1, so Illinois in ln x_HI.
+    subroutine helium_supply_limit(lnx)
+      real(kind=wp), intent(in) :: lnx
+      real(kind=wp) :: ha, hb, hx, Fa, Fb, Fx
+      integer :: k
+      Fa = helium_residual(lnx)
+      ha = log(max(xHI, 1.0e-300_wp))
+      hb = 0.0_wp;  Fb = helium_residual(lnx, hb)
+      hx = hb
+      if (Fb < 0.0_wp) then
+         do k = 1, 200
+            if (Fb == Fa) exit
+            hx = hb - Fb*(hb - ha)/(Fb - Fa)
+            hx = min(max(hx, min(ha, hb)), max(ha, hb))
+            Fx = helium_residual(lnx, hx)
+            if (abs(Fx) <= 1.0e-14_wp*(abs(Fa) + abs(Fb))) exit
+            if (abs(hb - ha) <= 1.0e-13_wp*max(1.0_wp, abs(hx))) exit
+            if (Fx*Fb < 0.0_wp) then
+               ha = hb;  Fa = Fb
+            else
+               Fa = 0.5_wp*Fa         ! Illinois
+            end if
+            hb = hx;  Fb = Fx
+         end do
+      end if
+      Fx = helium_residual(lnx, hx)   ! leaves the state at the root
+    end subroutine helium_supply_limit
+
     !--- He2+/He+ at the pass's state (the same terms as the r2 of the
     !--- closed forms below)
     real(kind=wp) function helium_upper_ratio() result(r)
       r = (gHe2 + cHe2*ne)/(aHe3*ne)
-      if (with_he_cx) r = (gHe2 + cHe2*ne + k23*nH*(1.0_wp - xHI)) &
+      if (with_he_cx) r = (gHe2 + cHe2*ne + k23*nH*yH) &
                           /(aHe3*ne + k32*nH*xHI)
     end function helium_upper_ratio
 
-    !--- F at x_HeI = exp(lnx); sets xHI, xHeI, xHeII, xHeIII to that state
-    real(kind=wp) function helium_residual(lnx) result(F)
+    !--- F at x_HeI = exp(lnx); sets xHI, xHeI, xHeII, xHeIII to that state.
+    !--- x_HI is hydrogen's root there, or exp(lnxh) where given
+    !--- (helium_supply_limit, hydrogen's balance left open)
+    real(kind=wp) function helium_residual(lnx, lnxh) result(F)
       real(kind=wp), intent(in) :: lnx
+      real(kind=wp), intent(in), optional :: lnxh
       real(kind=wp) :: n1, d1, y_h, y_he, s_h, s_he, s_ho
       xHeI   = exp(lnx)
       xHeII  = (1.0_wp - xHeI)/(1.0_wp + r2)
-      xHeIII = xHeII*r2
-      xHI = hydrogen_fraction_with_cascade(nH, ne, aHb, bHb, sfix, &
-               .true., hnodes, yHe*nH*xHeI, yHe*nH*xHeIII, &
-               with_metal_cx, afix, s0fix)
+      xHe3 = xHeII*r2
+      if (present(lnxh)) then
+         xHI = exp(lnxh);  yH = 1.0_wp - xHI
+      else
+         call hydrogen_ionization_balance(nH, ne, recH, ionH, sfix, &
+                 .true., hnodes, yHe*nH*xHeI, yHe*nH*xHe3, &
+                 with_metal_cx, xHI, yH, u_prev)
+      end if
       call heii_on_the_spot_sources(hnodes, ne, nH*xHI, yHe*nH*xHeI, &
-           yHe*nH*xHeII, yHe*nH*xHeIII, y_h, y_he, s_h, s_he, s_ho)
+           yHe*nH*xHeII, yHe*nH*xHe3, y_h, y_he, s_h, s_he, s_ho)
       n1 = gHe1b + cHe1*ne
       d1 = aHe2*ne
       if (with_meta) then
@@ -521,7 +590,7 @@ contains
          d1 = d1 - u3*hr%alpha3*ne
       end if
       if (with_he_cx) then
-         n1 = n1 + k12*nH*(1.0_wp - xHI)
+         n1 = n1 + k12*nH*yH
          d1 = d1 + k21*nH*xHI
       end if
       F = n1*xHeI + s_he/(yHe*nH) - d1*xHeII
@@ -532,31 +601,46 @@ contains
   !=========================================================================
   ! He-H charge-exchange rate coefficients [cm^3 s^-1]
   ! (par%helium_charge_exchange).  The Kingdon & Ferland (1996, ApJS 106,
-  ! 205; KF96) Table 1 fits are their eq. (7),
+  ! 205; KF96) Table 1 fits used for He++ + H (and, before 2026-09-26, for
+  ! the non-radiative He+ + H) are their eq. (7),
   !   k = a 1e-9 t4^b [1 + c exp(d t4)],  t4 = T/1e4.
   !
   ! cx_HeII_H: He+ + H -> He + H+, the sum of two channels that the common
   ! calculation (Zygelman, Dalgarno, Kimura & Lane 1989, PRA 40, 2340) keeps
   ! apart:
   !  - radiative, He+ + H -> He + H+ + photon, through the A 1Sigma+ ->
-  !    X 1Sigma+ transition: 1.25e-15 (T/300)^0.25 (Glover & Jappsen 2007,
-  !    ApJ 666, 1, Table 1 R26, citing Zygelman et al. 1989).  That fit is
-  !    one quarter of Zygelman's "Direct" column (5.36, 4.21, 4.41, 4.50,
-  !    4.83, 5.99e-15 at 1, 10, 100, 200, 400, 1000 K; the fit is 0.86x the
-  !    quarter at 100 K and 1.13x at 1000 K), the quarter being the
+  !    X 1Sigma+ transition: 1.20e-15 (T/300)^0.25 (Stancil, Lepp &
+  !    Dalgarno 1998, ApJ 509, 1, Table 1 reaction 19; read: "Zygelman et
+  !    al. 1989, multiplied by 0.25 to account for approach probability
+  !    factor").  That fit is one quarter of Zygelman's "Direct" column
+  !    (5.36, 4.21, 4.41, 4.50, 4.83, 5.99e-15 at 1, 10, 100, 200, 400,
+  !    1000 K; the fit is 0.83x the quarter at 100 K and 1.08x at 1000 K;
+  !    the "Total" column adds radiative association to HeH+), the quarter
+  !    being the
   !    probability of approach in the singlet,
   !    (2S+1)(2-delta_0Lambda) / [(2L_a+1)(2S_a+1)(2L_b+1)(2S_b+1)] = 1/4
   !    for He+(2S) + H(2S) (Courtney et al. 2021, ApJ 919, 70, eqs. 4-6).
   !    Zygelman tabulates only to 1000 K, so above that the T^0.25 is an
-  !    extrapolation; Courtney et al. recompute the process and find the
-  !    smooth background in agreement with Zygelman.
-  !  - non-radiative: KF96 He+ row, a = 7.47e-6, b = 2.06, c = 9.93,
-  !    d = -3.89, fitted over 6e3-1e5 K to Zygelman's calculation.  Below
-  !    6000 K the fit is evaluated as written: it falls as t4^2.06, as a
-  !    curve-crossing channel must at low collision energy, whereas holding
-  !    the 6000 K value would overstate it (10x at 1000 K).  Above 1e5 K the
-  !    fit grows without bound and T is held at 1e5 K.
-  !   At 8000 K the two give 2.84e-15 and 6.8e-15 cm^3 s^-1.
+  !    extrapolation.  Courtney et al. recompute the process to 1e6 K (their
+  !    Fig. 3; md/heii_h_charge_exchange/RADIATIVE_CHANNEL_2026-09-26.md):
+  !    the fit is within 2% of it over 1e3-1e4 K, 7-13% high at 1.5e4-3e4 K
+  !    and 2-3x low below 1000 K.  Until 2026-09-26 MoCHII used Glover &
+  !    Jappsen (2007) R26, 1.25e-15 (T/300)^0.25, the same data with a 4%
+  !    higher normalization (3-6% above Courtney over 1e3-1e4 K); EXHALE
+  !    carries the same SLD98 row.
+  !  - non-radiative, He+ + H -> He(1s2) + H+: nonradiative_HeII_H, from
+  !    the reverse calculation of Loreau, Ryabchenko & Vaeck (2014, J. Phys.
+  !    B 47, 135204; read) by microscopic reversibility, unpolarized (the
+  !    statistical weights give the singlet 1/4); tabulated offline by
+  !    tools/fitting/make_heii_h_charge_exchange.py (validity there and at
+  !    the function).  It replaced (2026-09-26) the KF96 He+ row, a = 7.47e-6,
+  !    b = 2.06, c = 9.93, d = -3.89, which at 5e4-1e5 K reproduces
+  !    Zygelman's singlet-conditional rate without the 1/4, and below 2e4 K
+  !    exceeds the bound Zygelman's own Figure 8 sets (>= 11x at 1e4 K), so
+  !    no constant factor could have mended it; it was 93x this rate at
+  !    1e4 K (md/heii_h_charge_exchange/).
+  !   At 8000 K the two give 2.73e-15 and 9.7e-17 cm^3 s^-1: the radiative
+  !   channel carries He+ + H at nebular temperatures.
   ! cx_HeI_Hp: He + H+ -> He+ + H, the detailed-balance reverse of the
   ! non-radiative channel alone (the radiative channel has no collisional
   ! reverse):
@@ -582,7 +666,7 @@ contains
   !=========================================================================
   real(kind=wp) function cx_HeII_H(T) result(k)
     real(kind=wp), intent(in) :: T
-    k = 1.25e-15_wp*(T/300.0_wp)**0.25_wp + nonradiative_HeII_H(T)
+    k = 1.20e-15_wp*(T/300.0_wp)**0.25_wp + nonradiative_HeII_H(T)
   end function cx_HeII_H
 
   real(kind=wp) function cx_HeI_Hp(T) result(k)
@@ -600,11 +684,35 @@ contains
     k = exp(-DE_HEII_H*ev2erg/(kboltz_cgs*T))*cx_HeIII_H(T)
   end function cx_HeII_Hp
 
+  !--- Non-radiative He+ + H -> He + H+ [cm^3 s^-1], linear in log k vs
+  !--- log T on the generated table (1e3-1e6 K, 0.02 dex), held outside it.
+  !--- Validity (Loreau et al. 2014 through reciprocity):
+  !---  - 2e4-5e4 K: set by their quantal cross sections, within the
+  !---    energy-frame reading (eV/u taken as the proton's laboratory energy
+  !---    per nucleon; the center-of-mass reading is 35-48% lower) and the
+  !---    fit accuracy (< 25% at 100-400 eV/u, < 5% elsewhere).
+  !---  - below ~2e4 K: increasingly set by the cross section between the
+  !---    reverse threshold (13.66 eV/u) and 15 eV/u, where there are no
+  !---    quantal data.  There sigma_r ~ (x - x_th)^(1/2) joined to the fit at
+  !---    15 eV/u, i.e. sigma_f v constant at low forward energy (ion-atom
+  !---    capture with an energy-independent transfer probability, an
+  !---    assumption no calculation tests).  The fit carried through the
+  !---    threshold and sigma_r = 0 there bracket it: 1.32x and 0.46x at
+  !---    1e4 K, 3.6x and 1.5e-5x at 1000 K.  Held below 1000 K.
+  !---  - above ~3e4 K: Loreau et al. and Zygelman et al. (1989), the
+  !---    calculation behind the KF96 fit used before, disagree by up to 1e3
+  !---    in the cross section above ~5 eV; the Loreau value is used because
+  !---    its two quantal methods and the Latypov & Shaporenko measurement
+  !---    agree with it, and the rate there is uncertain by that conflict.
   real(kind=wp) function nonradiative_HeII_H(T) result(k)
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: t4
-    t4 = min(T, 1.0e5_wp)/1.0e4_wp
-    k = 7.47e-15_wp*t4**2.06_wp*(1.0_wp + 9.93_wp*exp(-3.89_wp*t4))
+    real(kind=wp) :: x, w
+    integer :: i
+    x = (min(max(log10(T), heii_h_cx_logT(1)), heii_h_cx_logT(HEII_H_CX_NT)) &
+         - heii_h_cx_logT(1)) / (heii_h_cx_logT(2) - heii_h_cx_logT(1))
+    i = min(int(x) + 1, HEII_H_CX_NT - 1)
+    w = x - real(i - 1, wp)
+    k = 10.0_wp**((1.0_wp - w)*heii_h_cx_logk(i) + w*heii_h_cx_logk(i+1))
   end function nonradiative_HeII_H
 
   !=========================================================================
@@ -612,11 +720,12 @@ contains
   ! (par%charge_exchange_heating with par%helium_charge_exchange): each
   ! reaction's rate times the kinetic energy one event gives the gas, the
   ! ionization-potential difference less what leaves as radiation.
-  !  - He+ + H -> He + H+, non-radiative: Zygelman et al. (1989, PRA 40,
-  !    2340; read) couple only the A 1Sigma+ entrance and X 1Sigma+ exit
-  !    states, which separate to He(1s2 1S) + H+, so the whole
-  !    IP(He) - IP(H) = 10.989 eV goes to the gas (He 2 3S at 19.82 eV is
-  !    out of reach).
+  !  - He+ + H -> He + H+, non-radiative: the rate is the ground-to-ground
+  !    channel He+(1s) + H(1s) <-> He(1s2 1S) + H+ (Loreau et al. 2014,
+  !    their process 1 reversed; Zygelman et al. 1989, PRA 40, 2340, read,
+  !    likewise couple only the A 1Sigma+ entrance and X 1Sigma+ exit), so
+  !    the whole IP(He) - IP(H) = 10.989 eV goes to the gas (He 2 3S at
+  !    19.82 eV is out of reach).
   !  - He+ + H -> He + H+ + photon, radiative: the photon carries the
   !    defect (Zygelman et al.: emission peaked near 113 nm, the A-X
   !    separation at large R); nothing to the gas.
@@ -658,132 +767,179 @@ contains
   end function helium_charge_exchange_heating
 
   !=========================================================================
-  ! Neutral hydrogen fraction that balances ionization against recombination
-  ! at fixed n_e, WITH the charge-exchange terms, whose rates depend on x_HI
-  ! themselves through the metal cascade.  Writing that balance as a residual,
+  ! Hydrogen's ionization balance at fixed n_e, per n_H:
   !
-  !     R(x) = x [B + R_in(x) + R_out(x)] - [A + R_in(x)]
-  !     A = alpha_H n_e ,  B = Gamma_H + (C_H + alpha_H) n_e
+  !     x_HII (rec + R_in) = x_HI (ion + R_out) + s ,
   !
-  ! the root is bracketed in [0,1] BY CONSTRUCTION, with no clamp needed:
-  ! R(0) = -(A + R_in(0)) < 0 because A > 0, and R(1) = B + R_out(1) > 0
-  ! because B > 0.  Illinois (modified false position) therefore keeps the
-  ! bracket at every step while converging superlinearly, so this cannot
-  ! return an unphysical fraction — the property plain substitution has and a
-  ! bare secant would forfeit.
+  !   rec    recombinations per H+ other than the metal charge exchange:
+  !          alpha_H n_e + R_he_in (+ the lagged R_cx_in when not metal_cx)
+  !   ion    ionizations per H0 other than it: Gamma_H + C_H n_e + R_he_out
+  !          + Penning (+ the lagged R_cx_out when not metal_cx)
+  !   R_in, R_out   the metal charge-exchange sums at the trial n_HI, n_HII
+  !          (species_metal_sums) when metal_cx, else zero
+  !   s      the on-the-spot excited cascades that only H0 absorbs:
+  !          s1 (the He I cascade) plus, with with_heii, H0's share of the
+  !          He II cascade at the trial n_HI, which turns on steeply as n(H0)
+  !          passes n(He0) in the He2+ zone, where a lagged share oscillates
+  !          (heii_recombination_photons_mod, "Absorption limit").
   !
-  ! Why a root find rather than substituting.  Where the near-resonant
-  ! O0 + H+ pair locks oxygen to hydrogen the two charge-exchange terms cancel
-  ! identically in this balance, so the substitution map has slope
-  ! R_in/(R_in + alpha_H n_e), which tends to 1 in partially neutral gas: it
-  ! converges, but takes 1285 passes at x_HII = 0.021 against a 200-pass cap.
-  ! Every trial x here re-evaluates the whole cascade at that x, so unlike an
-  ! extrapolator it never leaves the state off the slow manifold — which is why
-  ! Aitken on n_e made the pass count worse and this does not
-  ! (md/ION_BALANCE_CONVERGENCE_PLAN.md, S1 to S3).
+  ! The unknown is the ratio u = ln(n_HII/n_HI), from which BOTH fractions
+  ! follow to full relative precision,
+  !     x_HI = 1/(1 + e^u),   x_HII = 1/(1 + e^-u),
+  ! and the residual compares the two sides as the logarithm of their ratio,
+  !     G(u) = ln[x_HII (rec + R_in)] - ln[x_HI (ion + R_out) + s] ,
+  ! which is u - u* for constant rates, so a unit-slope step from the
+  ! previous iterate's u lands on the root, and Illinois keeps the bracket
+  ! once one is found.
+  !
+  ! Why not x_HI on [0,1], as until 2026-09-26.  That residual,
+  ! x (ion + rec + R_in + R_out) - (rec + R_in) + s, has terms of size R_in
+  ! while the balance itself is x_HII R_in.  Beyond the ionization front,
+  ! where R_in ~ 3e-11 s^-1 and x_HII ~ 1e-11 .. 1e-17, the balance sits 10
+  ! to 16 digits below the terms, and there the near-resonant exchange
+  ! X + H+ <-> X+ + H runs close to its own balance (x_HII R_in = x_HI R_out
+  ! to 1e-4), costing four more.  Measured in the 1e5 K blackbody HII40 run
+  ! at te_min: 1 - x_HI came out with a 1-2% rounding scatter at
+  ! x_HII ~ 1e-10 and as exactly 0 or ~1e-12 at x_HII ~ 1e-16, the damped
+  ! n_e loop of solve_ion_cell never settled (200-pass cap, |dn_e|/n_e up
+  ! to 1 at exit), and n_e and the metal stages of those leaves changed by
+  ! up to 97% with the rank count.  In u nothing cancels against the terms:
+  ! the residual loses only the four digits of the exchange balance.
+  !
+  ! Bracket and limits.  G rises with u (x_HII rises, and s and R_out fall
+  ! with n_HI); on [U_LO, U_HI] = [-700, 700] (x_HII or x_HI down to 1e-304):
+  !   ion + R_out + s = 0 at U_LO   nothing ionizes H: x_HI = 1, x_HII = 0;
+  !   G(U_LO) >= 0                  x_HII below 1e-304: that bound is kept;
+  !   G(U_HI) <= 0                  the cascades outnumber every
+  !                                 recombination: x_HI = 0, the absorption
+  !                                 limit (heii_recombination_photons_mod).
+  !
+  ! A root find rather than substitution, because where the near-resonant
+  ! O0 + H+ pair locks oxygen to hydrogen the two exchange terms cancel in
+  ! this balance and the substitution map has slope R_in/(R_in + alpha_H n_e)
+  ! -> 1 in partially neutral gas (1285 passes at x_HII = 0.021 against a
+  ! 200-pass cap); every trial here re-evaluates the whole cascade at that
+  ! state (md/ION_BALANCE_CONVERGENCE_PLAN.md, S1 to S3).
   !=========================================================================
-  !=========================================================================
-  ! Hydrogen's neutral fraction with the on-the-spot excited cascades as an
-  ! absolute source (solve_ion_cell):
-  !    x B + x (rin + rout) = A + rin - s(x),     s = s1 + s2(x),
-  ! per n_H, where s1 is the He I cascade (lagged: it moves only through
-  ! p_584) and s2(x) = H0's share of the He II cascade at n(H0) = n_H x,
-  ! evaluated at every trial because that share turns on steeply as n(H0)
-  ! passes n(He0) in the He2+ zone, where a lagged share oscillates.  rin
-  ! and rout are the metal charge-exchange sums at the trial x when
-  ! metal_cx (as hydrogen_neutral_fraction), else zero (the closed-form
-  ! branches carry them in A and B).  The residual rises monotonically in
-  ! x (s2 does), so the root is unique; where the source exceeds the H0
-  ! supply of a fully ionized cell, F(0) >= 0, there is none in (0,1] and
-  ! x = 0: the absorption limit (heii_recombination_photons_mod).  supply0
-  ! is A + rin at x = 0 and s0 the source there, for the absorbed fraction.
-  !=========================================================================
-  real(kind=wp) function hydrogen_fraction_with_cascade(nH, ne, A, B, s1, &
-       with_heii, g, nHeI, nHeIII, metal_cx, supply0, s0) result(x)
+  subroutine hydrogen_ionization_balance(nH, ne, rec, ion, s1, with_heii, g, &
+       nHeI, nHeIII, metal_cx, xHI, xHII, u_start)
     use species_mod, only : species_metal_sums
     use heii_recombination_photons_mod, only : heii_ots_nodes_type, &
                                                heii_cascade_to_H
-    real(kind=wp),             intent(in)  :: nH, ne, A, B, s1, nHeI, nHeIII
+    real(kind=wp),             intent(in)  :: nH, ne, rec, ion, s1, nHeI, nHeIII
     logical,                   intent(in)  :: with_heii, metal_cx
     type(heii_ots_nodes_type), intent(in)  :: g
-    real(kind=wp),             intent(out) :: supply0, s0
-    real(kind=wp) :: xa, xb, Ra, Rb, Rx, scale
+    real(kind=wp),             intent(out) :: xHI, xHII
+    !--- ln(n_HII/n_HI) of the previous iterate: the bracket is searched
+    !--- outward from it instead of spanning [U_LO, U_HI]
+    real(kind=wp),             intent(in), optional :: u_start
+    real(kind=wp), parameter :: U_LO = -700.0_wp, U_HI = 700.0_wp
+    real(kind=wp), parameter :: TOL_G = 1.0e-14_wp
+    real(kind=wp) :: ua, ub, ux, Ga, Gb, Gx, h
     integer :: k
+    logical :: bracketed
 
-    xa = 0.0_wp
-    Ra = residual(xa, supply0, s0)
-    if (Ra >= 0.0_wp) then
-       x = 0.0_wp
+    bracketed = .false.
+    if (present(u_start)) then
+       !--- from the previous iterate: a unit-slope step (G = u - u* for
+       !--- constant rates), then secant extrapolation, growing at least 2x
+       !--- and at most 100x a step, until G changes sign
+       ua = min(max(u_start, U_LO), U_HI)
+       Ga = residual(ua)
+       if (abs(Ga) <= TOL_G) then
+          call fractions(ua)
+          return
+       end if
+       h = -Ga
+       do k = 1, 40
+          ub = min(max(ua + h, U_LO), U_HI)
+          Gb = residual(ub)
+          if (Ga*Gb <= 0.0_wp) then
+             bracketed = .true.
+             exit
+          end if
+          if (ub == U_LO .or. ub == U_HI) exit
+          if (Gb /= Ga) then
+             h = -Gb*(ub - ua)/(Gb - Ga)
+             h = sign(min(max(abs(h), 2.0_wp*abs(ub - ua)), &
+                          100.0_wp*abs(ub - ua)), h)
+          else
+             h = 2.0_wp*(ub - ua)
+          end if
+          ua = ub;  Ga = Gb
+       end do
+    end if
+    if (.not. bracketed) then
+       ua = U_LO;  Ga = residual(ua)
+       if (Ga >= 0.0_wp) then       ! x_HII below 1e-304
+          call fractions(U_LO)
+          return
+       end if
+       ub = U_HI;  Gb = residual(ub)
+       if (Gb <= 0.0_wp) then       ! the absorption limit
+          xHI = 0.0_wp;  xHII = 1.0_wp
+          return
+       end if
+    end if
+    if (Gb == 0.0_wp) then
+       call fractions(ub)
        return
     end if
-    xb = 1.0_wp
-    Rb = residual(xb)
-    scale = A + B + abs(Ra) + abs(Rb)
-    x = xb
-    do k = 1, 100
-       if (Rb == Ra) exit
-       x = xb - Rb*(xb - xa)/(Rb - Ra)
-       x = min(max(x, min(xa, xb)), max(xa, xb))
-       Rx = residual(x)
-       if (abs(Rx) <= 1.0e-15_wp*scale) exit
-       if (abs(xb - xa) <= 1.0e-15_wp) exit
-       if (Rx*Rb < 0.0_wp) then
-          xa = xb;  Ra = Rb
+    ux = ub
+    do k = 1, 200
+       if (Gb == Ga) exit
+       ux = ub - Gb*(ub - ua)/(Gb - Ga)
+       ux = min(max(ux, min(ua, ub)), max(ua, ub))
+       Gx = residual(ux)
+       if (abs(Gx) <= TOL_G) exit
+       if (abs(ub - ua) <= 1.0e-13_wp*max(1.0_wp, abs(ux))) exit
+       if (Gx*Gb < 0.0_wp) then
+          ua = ub;  Ga = Gb
        else
-          Ra = 0.5_wp*Ra          ! Illinois: halve the stale endpoint
+          Ga = 0.5_wp*Ga          ! Illinois: halve the stale endpoint
        end if
-       xb = x;  Rb = Rx
+       ub = ux;  Gb = Gx
     end do
+    call fractions(ux)
 
   contains
 
-    real(kind=wp) function residual(xt, sup, sx) result(r)
-      real(kind=wp), intent(in)            :: xt
-      real(kind=wp), intent(out), optional :: sup, sx
-      real(kind=wp) :: nem, rin, rout, s
+    !--- x_HI and x_HII at u, each to full relative precision
+    subroutine fractions(u)
+      real(kind=wp), intent(in) :: u
+      real(kind=wp) :: e
+      e = exp(-abs(u))
+      if (u >= 0.0_wp) then
+         xHII = 1.0_wp/(1.0_wp + e);  xHI = e/(1.0_wp + e)
+      else
+         xHI = 1.0_wp/(1.0_wp + e);  xHII = e/(1.0_wp + e)
+      end if
+    end subroutine fractions
+
+    !--- G(u); the logarithms of x_HI and x_HII are taken from u itself, so
+    !--- neither side underflows at the ends of the bracket (rec + R_in >=
+    !--- alpha_H n_e > 0 by the n_e floor)
+    real(kind=wp) function residual(u) result(r)
+      real(kind=wp), intent(in) :: u
+      real(kind=wp) :: nem, rin, rout, s, l1, lnHI, lnHII
+      call fractions(u)
+      l1    = log(1.0_wp + exp(-abs(u)))
+      lnHII = min(u, 0.0_wp) - l1
+      lnHI  = min(-u, 0.0_wp) - l1
       rin = 0.0_wp;  rout = 0.0_wp
-      if (metal_cx) call species_metal_sums(nH, ne, nH*xt, nH*(1.0_wp - xt), &
+      if (metal_cx) call species_metal_sums(nH, ne, nH*xHI, nH*xHII, &
                                             nem, rin, rout)
       s = s1
-      if (with_heii) s = s + heii_cascade_to_H(g, ne, nH*xt, nHeI, nHeIII)/nH
-      r = xt*(B + rin + rout) - (A + rin) + s
-      if (present(sup)) sup = A + rin
-      if (present(sx))  sx  = s
+      if (with_heii) s = s + heii_cascade_to_H(g, ne, nH*xHI, nHeI, nHeIII)/nH
+      if (s > 0.0_wp) then
+         r = lnHII + log(rec + rin) - log(xHI*(ion + rout) + s)
+      else if (ion + rout > 0.0_wp) then
+         r = lnHII + log(rec + rin) - (lnHI + log(ion + rout))
+      else
+         r = huge(1.0_wp)          ! nothing ionizes H
+      end if
     end function residual
-  end function hydrogen_fraction_with_cascade
-
-  real(kind=wp) function hydrogen_neutral_fraction(nH, ne, A, B) result(x)
-    use species_mod, only : species_metal_sums
-    real(kind=wp), intent(in) :: nH, ne, A, B
-    real(kind=wp) :: xa, xb, Ra, Rb, Rx, nem, rin, rout, scale
-    integer :: k
-
-    xa = 0.0_wp
-    call species_metal_sums(nH, ne, 0.0_wp, nH, nem, rin, rout)
-    Ra = -(A + rin)
-    xb = 1.0_wp
-    call species_metal_sums(nH, ne, nH, 0.0_wp, nem, rin, rout)
-    Rb = B + rout
-    scale = A + B + abs(Ra) + abs(Rb)
-
-    x = xb
-    do k = 1, 80
-       if (Rb == Ra) exit
-       x = xb - Rb*(xb - xa)/(Rb - Ra)
-       !--- keep the trial strictly inside the bracket
-       x = min(max(x, min(xa, xb)), max(xa, xb))
-       call species_metal_sums(nH, ne, nH*x, nH*(1.0_wp - x), nem, rin, rout)
-       Rx = x*(B + rin + rout) - (A + rin)
-       if (abs(Rx) <= 1.0e-15_wp*scale) exit
-       if (abs(xb - xa) <= 1.0e-15_wp) exit
-       if (Rx*Rb < 0.0_wp) then
-          xa = xb;  Ra = Rb
-       else
-          Ra = 0.5_wp*Ra          ! Illinois: halve the stale endpoint
-       end if
-       xb = x;  Rb = Rx
-    end do
-  end function hydrogen_neutral_fraction
+  end subroutine hydrogen_ionization_balance
 
   !=========================================================================
   ! Electron density of a state whose H/He fractions are already fixed, from
@@ -810,22 +966,22 @@ contains
   ! of the thermal bisection, so the (leaf, T) rate cache is refilled here
   ! rather than inherited.
   !=========================================================================
-  real(kind=wp) function charge_neutrality_ne(il, T, nH, ne_HHe, xHI, ne_seed) &
-                                             result(ne)
+  real(kind=wp) function charge_neutrality_ne(il, T, nH, ne_HHe, xHI, xHII, &
+                                             ne_seed) result(ne)
     use species_mod, only : species_ne_prepare, species_ne_cached
     integer,       intent(in) :: il
-    real(kind=wp), intent(in) :: T, nH, ne_HHe, xHI, ne_seed
+    real(kind=wp), intent(in) :: T, nH, ne_HHe, xHI, xHII, ne_seed
     real(kind=wp) :: ne_old, nHI, nHII
     integer :: it
 
     call species_ne_prepare(il, T)
     nHI  = nH*xHI
-    nHII = nH*(1.0_wp - xHI)
-    ne   = max(ne_seed, 1.0e-12_wp*nH)
+    nHII = nH*xHII
+    ne   = max(ne_seed, NE_FLOOR_PER_H*nH)
     do it = 1, 200
        ne_old = ne
        ne = ne_HHe + species_ne_cached(nH, ne_old, nHI, nHII)
-       ne = max(0.5_wp*(ne + ne_old), 1.0e-12_wp*nH)
+       ne = max(0.5_wp*(ne + ne_old), NE_FLOOR_PER_H*nH)
        if (abs(ne - ne_old) <= 1.0e-10_wp*ne) exit
     end do
   end function charge_neutrality_ne
@@ -849,26 +1005,26 @@ contains
   ! Penning term n_3 Q_31 follows par%hei_metastable_coupling, so the
   ! residual always measures the equation the run actually solves.
   !
-  ! Domain of validity: the state carries x_HI, so n_HII = n_H (1 - x_HI) has
-  ! the relative precision eps/(1 - x_HI) and the residual cannot resolve
-  ! anything below that.  In a fully neutral leaf 1 - x_HI rounds to zero and
-  ! eps saturates at 1 whatever the physics does; such leaves are excluded
-  ! from the reported maximum and mean by XHII_FLOOR below rather than being
-  ! allowed to set them.
+  ! Both hydrogen fractions are the stored ones (gas_xHI, gas_xHII), each to
+  ! its own relative precision, so the residual resolves the balance beyond
+  ! the ionization front too; until 2026-09-26 the state carried x_HI alone,
+  ! n_HII = n_H (1 - x_HI) had the relative precision eps/(1 - x_HI) there,
+  ! and leaves with 1 - x_HI < 1e-10 had to be left out.
   !=========================================================================
-  real(kind=wp) function hydrogen_balance_residual(il, T, nH, xHI, ne) result(eps)
+  real(kind=wp) function hydrogen_balance_residual(il, T, nH, xHI, xHII, ne) &
+                                                  result(eps)
     use species_mod, only : species_ne_prepare, species_metal_sums, n_elements
     integer,       intent(in) :: il
-    real(kind=wp), intent(in) :: T, nH, xHI, ne
+    real(kind=wp), intent(in) :: T, nH, xHI, xHII, ne
     real(kind=wp) :: aH, cH, nHI, nHII, nem, r_cx_in, r_cx_out, loss, gain
-    real(kind=wp) :: xHeIII, dgHI, dgHeI, dh1, dh2, dh3, s_only
+    real(kind=wp) :: dgHI, dgHeI, dh1, dh2, dh3, s_only
 
     r_cx_in  = 0.0_wp
     r_cx_out = 0.0_wp
     if (par%use_metals .and. n_elements > 0 .and. &
         trim(par%charge_exchange) == 'two_way') then
        call species_ne_prepare(il, T)
-       call species_metal_sums(nH, ne, nH*xHI, nH*(1.0_wp - xHI), &
+       call species_metal_sums(nH, ne, nH*xHI, nH*xHII, &
                                nem, r_cx_in, r_cx_out)
     end if
     if (trim(par%recombination_continuum) /= 'on_the_spot') then
@@ -878,12 +1034,11 @@ contains
     end if
     cH   = ci_HI(T)
     nHI  = nH*xHI
-    nHII = nH*(1.0_wp - xHI)
+    nHII = nH*xHII
     !--- He-H charge exchange on the written He fractions
     if (par%helium_charge_exchange .and. par%abund_He > 0.0_wp) then
-       xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
        r_cx_out = r_cx_out + par%abund_He*nH*(gas_xHeII(il)*cx_HeII_H(T) &
-                                              + xHeIII*cx_HeIII_H(T))
+                                              + gas_xHeIII(il)*cx_HeIII_H(T))
        r_cx_in  = r_cx_in  + par%abund_He*nH*(gas_xHeI(il)*cx_HeI_Hp(T) &
                                               + gas_xHeII(il)*cx_HeII_Hp(T))
     end if
@@ -934,7 +1089,7 @@ contains
          nHe = par%abund_He*nH
          call heii_on_the_spot_sources(heii_ots_nodes(T), ne, nHI, &
               nHe*gas_xHeI(il), nHe*gas_xHeII(il), &
-              nHe*max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il)), &
+              nHe*gas_xHeIII(il), &
               yH3, yHe3, sH3, sHe3, sH3o)
          loss = loss + sH3
          s_only = s_only + sH3o
@@ -950,16 +1105,15 @@ contains
 
   !=========================================================================
   ! The same residual over the grid: its maximum over leaves and its
-  ! volume-weighted mean, over the leaves where it resolves anything
-  ! (x_HII above XHII_FLOOR, so n_HII = n_H (1 - x_HI) keeps at least six
-  ! significant digits).  Diagnostic only — it is printed, not acted on.
+  ! volume-weighted mean, over every gas leaf with x_HII > 0 (a leaf whose
+  ! solve found nothing ionizing hydrogen carries x_HII = 0 and no balance).
+  ! Diagnostic only — it is printed, not acted on.
   !=========================================================================
   subroutine hydrogen_balance_residual_grid(eps_max, eps_vol)
     use mpi
     use octree_mod, only : leaf_half
     implicit none
     real(kind=wp), intent(out) :: eps_max, eps_vol
-    real(kind=wp), parameter :: XHII_FLOOR = 1.0e-10_wp
     real(kind=wp) :: eps, vol, sums(2)
     integer :: il, ierr
 
@@ -970,9 +1124,9 @@ contains
     sums = 0.0_wp
     do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
        if (gas_nH(il) <= 0.0_wp) cycle
-       if (1.0_wp - gas_xHI(il) < XHII_FLOOR) cycle
+       if (gas_xHII(il) <= 0.0_wp) cycle
        eps = hydrogen_balance_residual(il, gas_Te(il), gas_nH(il), &
-                                       gas_xHI(il), gas_ne(il))
+                                       gas_xHI(il), gas_xHII(il), gas_ne(il))
        eps_max = max(eps_max, eps)
        vol = (2.0_wp*leaf_half(il))**3
        sums(1) = sums(1) + vol*eps
@@ -1003,9 +1157,10 @@ contains
     implicit none
     real(kind=wp), intent(out) :: max_dx, dx_vol, dhe_vol(2), drift_vol(3)
 
-    real(kind=wp), allocatable :: xHI_new(:), xHeI_new(:), xHeII_new(:), ne_new(:)
-    real(kind=wp) :: T, yHe, w, vol, sums(9), xHeIII_old
-    real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII
+    real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
+                                  xHeII_new(:), xHeIII_new(:), ne_new(:)
+    real(kind=wp) :: T, yHe, w, vol, sums(9)
+    real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, xHII
     logical :: caseA
     integer :: il, ierr
 
@@ -1018,31 +1173,36 @@ contains
     !--- solves run"; until 2026-09-26 each node's rank 0 solved all of them
     !--- alone), into arrays that are zero elsewhere, and gas_state_publish
     !--- sums them over MPI_COMM_WORLD into every node's shared state
-    allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &
-             ne_new(gas_nleaf))
-    xHI_new = 0.0_wp;  xHeI_new = 0.0_wp;  xHeII_new = 0.0_wp;  ne_new = 0.0_wp
+    allocate(xHI_new(gas_nleaf), xHII_new(gas_nleaf), xHeI_new(gas_nleaf), &
+             xHeII_new(gas_nleaf), xHeIII_new(gas_nleaf), ne_new(gas_nleaf))
+    xHI_new = 0.0_wp;  xHII_new = 0.0_wp;  xHeI_new = 0.0_wp
+    xHeII_new = 0.0_wp;  xHeIII_new = 0.0_wp;  ne_new = 0.0_wp
 
     max_dx  = 0.0_wp
     sums    = 0.0_wp
     do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
        nH = gas_nH(il)
        if (nH <= 0.0_wp) then
-          xHI_new(il) = gas_xHI(il);  xHeI_new(il) = gas_xHeI(il)
-          xHeII_new(il) = gas_xHeII(il);  ne_new(il) = 0.0_wp
+          xHI_new(il) = gas_xHI(il);  xHII_new(il) = gas_xHII(il)
+          xHeI_new(il) = gas_xHeI(il);  xHeII_new(il) = gas_xHeII(il)
+          xHeIII_new(il) = gas_xHeIII(il);  ne_new(il) = 0.0_wp
           cycle
        end if
 
-       xHI = gas_xHI(il);  xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il)
+       xHI = gas_xHI(il);  xHII = gas_xHII(il)
+       xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il);  xHeIII = gas_xHeIII(il)
        call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
-                           nH, T, caseA, xHI, xHeI, xHeII, ne, il)
+                           nH, T, caseA, xHI, xHeI, xHeII, ne, il, &
+                           xHII=xHII, xHeIII=xHeIII)
 
-       !--- under-relaxation toward the solved state.
-       xHI_new(il)   = (1.0_wp - w)*gas_xHI(il)   + w*xHI
-       xHeI_new(il)  = (1.0_wp - w)*gas_xHeI(il)  + w*xHeI
-       xHeII_new(il) = (1.0_wp - w)*gas_xHeII(il) + w*xHeII
-       xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
-       ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
-                    + yHe*(xHeII_new(il) + 2.0_wp*xHeIII))
+       !--- under-relaxation toward the solved state (every fraction, each to
+       !--- its own precision).
+       xHI_new(il)    = (1.0_wp - w)*gas_xHI(il)    + w*xHI
+       xHII_new(il)   = (1.0_wp - w)*gas_xHII(il)   + w*xHII
+       xHeI_new(il)   = (1.0_wp - w)*gas_xHeI(il)   + w*xHeI
+       xHeII_new(il)  = (1.0_wp - w)*gas_xHeII(il)  + w*xHeII
+       xHeIII_new(il) = (1.0_wp - w)*gas_xHeIII(il) + w*xHeIII
+       ne_new(il) = nH * (xHII_new(il) + yHe*(xHeII_new(il) + 2.0_wp*xHeIII_new(il)))
        !--- metal electrons in the written state (par%metal_ne), solved
        !--- self-consistently: the stage fractions depend on n_e, so the
        !--- closure has to be iterated at the under-relaxed H/He state, not
@@ -1051,21 +1211,21 @@ contains
           block
             use species_mod, only : n_elements
             if (n_elements > 0) ne_new(il) = &
-               charge_neutrality_ne(il, T, nH, ne_new(il), xHI_new(il), ne)
+               charge_neutrality_ne(il, T, nH, ne_new(il), xHI_new(il), &
+                                    xHII_new(il), ne)
           end block
        end if
-       max_dx = max(max_dx, abs(xHI_new(il) - gas_xHI(il)))
+       max_dx = max(max_dx, abs(xHII_new(il) - gas_xHII(il)))
        vol = (2.0_wp*leaf_half(il))**3
-       sums(1) = sums(1) + vol*abs(xHI_new(il) - gas_xHI(il))
-       sums(2) = sums(2) + vol*(1.0_wp - xHI_new(il))
+       sums(1) = sums(1) + vol*abs(xHII_new(il) - gas_xHII(il))
+       sums(2) = sums(2) + vol*xHII_new(il)
        sums(3) = sums(3) + vol*abs(xHeI_new(il) - gas_xHeI(il))
-       sums(4) = sums(4) + vol*(1.0_wp - xHeI_new(il))
-       xHeIII_old = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
-       sums(5) = sums(5) + vol*abs(xHeIII - xHeIII_old)
-       sums(6) = sums(6) + vol*xHeIII
-       sums(7) = sums(7) + vol*(gas_xHI(il) - xHI_new(il))
+       sums(4) = sums(4) + vol*(xHeII_new(il) + xHeIII_new(il))
+       sums(5) = sums(5) + vol*abs(xHeIII_new(il) - gas_xHeIII(il))
+       sums(6) = sums(6) + vol*xHeIII_new(il)
+       sums(7) = sums(7) + vol*(xHII_new(il) - gas_xHII(il))
        sums(8) = sums(8) + vol*(gas_xHeI(il) - xHeI_new(il))
-       sums(9) = sums(9) + vol*(xHeIII - xHeIII_old)
+       sums(9) = sums(9) + vol*(xHeIII_new(il) - gas_xHeIII(il))
     end do
     !--- the metrics compare with the state before this update, so they are
     !--- reduced before the new state goes into the shared arrays
@@ -1073,8 +1233,9 @@ contains
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, sums, 9, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
-    call gas_state_publish(xHI_new, xHeI_new, xHeII_new, ne_new)
-    deallocate(xHI_new, xHeI_new, xHeII_new, ne_new)
+    call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
+                           ne_new)
+    deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new)
     dx_vol  = sums(1) / max(sums(2), tinest)
     dhe_vol = helium_change_measures(sums(3:6))
     drift_vol = signed_change_measures(sums([7, 2, 8, 4, 9, 6]), dhe_vol)
@@ -1089,7 +1250,7 @@ contains
   !=========================================================================
   ! Volume-integrated change of the helium state over one iteration, the
   ! helium counterpart of dx_vol, from the sums
-  !   s = [sum V |d x_HeI|, sum V (1 - x_HeI), sum V |d x_HeIII|,
+  !   s = [sum V |d x_HeI|, sum V (x_HeII + x_HeIII), sum V |d x_HeIII|,
   !        sum V x_HeIII]
   ! (x at the new state):
   !   d(1) = s1/s2, the He0 <-> He+ front, normalized on ionized helium so
@@ -1117,7 +1278,7 @@ contains
   !=========================================================================
   ! Signed counterparts of dx_vol and helium_change_measures, from
   !   s = [sum V (x_HII,new - x_HII,old), sum V x_HII,
-  !        sum V (x_HeI,old - x_HeI,new), sum V (1 - x_HeI),
+  !        sum V (x_HeI,old - x_HeI,new), sum V (x_HeII + x_HeIII),
   !        sum V (x_HeIII,new - x_HeIII,old), sum V x_HeIII]
   ! (denominators at the new state, as there): the net change of the
   ! ionized volume of each front over one iteration, positive when it

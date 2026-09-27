@@ -25,6 +25,9 @@ def load(fname):
     xyz = f["LeafXYZ"]["data"][:]
     return dict(r=np.sqrt((xyz**2).sum(axis=0)), xyz=xyz,
                 xHI=f["x_HI"]["data"][:], ne=f["n_e"]["data"][:],
+                # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+                xHII=(f["x_HII"]["data"][:] if "x_HII" in f
+                      else 1.0 - f["x_HI"]["data"][:]),
                 nleaf=xyz.shape[1])
 
 
@@ -42,7 +45,7 @@ def half_cells(xyz, levels=(7, 6, 5), boxlen=8.0):
 def r_eff(run, half):
     vol = (2.0*half)**3
     gas = run["ne"] > 0
-    vion = np.sum((1.0 - run["xHI"][gas])*vol[gas])
+    vion = np.sum(run["xHII"][gas]*vol[gas])
     return (3.0*vion/(4.0*np.pi))**(1.0/3.0)
 
 

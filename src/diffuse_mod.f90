@@ -26,15 +26,16 @@ module diffuse_mod
 ! Each iteration the emission table is rebuilt from the current state:
 ! L_ch(leaf) = n_e n_recomb alpha_1(T) <E_ch> V_cm3, with <E_ch> the mean
 ! of the same energy distribution (ground_mean_energy).
-! Packets carry the Lpacket of one ionizing source packet (the argument of
-! diffuse_build: ion_band_mod::ionizing_packet_luminosity), so the diffuse
-! packet count is n_diff = L_diffuse / Lpacket (rounded); sampling: leaf CDF over
+! The diffuse packet count is n_diff = max(1, nint(L_diffuse / Lpacket)),
+! Lpacket that of one ionizing source packet (the argument of diffuse_build:
+! ion_band_mod::ionizing_packet_luminosity), and every diffuse packet carries
+! L_diffuse / n_diff, so they carry exactly L_diffuse; sampling: leaf CDF over
 ! total leaf luminosity, then a channel CDF within the leaf.
 !---------------------------------------------------------------------------
   use define
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                            gas_Te, gas_nleaf
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                            gas_xHeIII, gas_ne, gas_Te, gas_nleaf
   use recomb_mod
   use milne_recomb_spectrum_mod, only : milne_setup, milne_sample_energy, &
                                         milne_energy_per_recomb, milne_is_ready
@@ -122,8 +123,8 @@ contains
        ne = gas_ne(il)
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        kT_eV  = kboltz_cgs*T/ev2erg
-       xHeIII = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
-       nHII    = nH*(1.0_wp - gas_xHI(il))
+       xHeIII = gas_xHeIII(il)
+       nHII    = nH*gas_xHII(il)
        nHeII_n = nH*par%abund_He*gas_xHeII(il)
        nHeIII  = nH*par%abund_He*xHeIII
        !--- channel energy luminosities [erg/s]

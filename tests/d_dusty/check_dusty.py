@@ -3,7 +3,7 @@
 
 Same G1 configuration (nH = 100, Q_H = 1e49, case B, Te = 1e4 K) plus MW
 dust (WD01/D03 R_V=3.1 EUV extinction, absorption only,
-C_abs(13.6 eV)/H = 1.83e-21): dust competes for Lyman-continuum photons
+C_abs(13.6 eV)/H = 1.75e-21): dust competes for Lyman-continuum photons
 and shrinks the Stromgren sphere.  The exact reference is the 1D
 Gauss-Seidel marching with the identical dust absorption in each bin; the
 classic sharp-edge reduction (photon balance
@@ -17,7 +17,7 @@ dev = R_eff(MC)/R_eff(1D) - 1 of each dusty run, less the same deviation of
 the dust-free run on the same level-6 grid
 (tests/g1_stromgren/g1_stromgren_rates.h5), must be below 1% in magnitude.
 The dust-free deviation is the finite front width on a 0.125 pc cell,
-+1.05% at level 6 and +0.73% at level 7 (2026-09-26); a gate on dev alone
++1.01-1.02% at level 6 and +0.69% at level 7 (2026-09-27); a gate on dev alone
 (as until 2026-09-26) measured that resolution bias along with the dust,
 and failed the nearly dust-free laursen09_live run at +1.03%.  Scattering (d_dust_scat, par%ion_dust_scatter): the full-dust run
 with the scattering on must fall between two bounds, the 1D reference with
@@ -123,7 +123,7 @@ def solve_ion(gH, gHe1, gHe2, xs):
     cH, cHe1, cHe2 = ci_HI(TE), ci_HeI(TE), ci_HeII(TE)
     xHI, xHeI, xHeII = xs
     xHeIII = max(0.0, 1.0 - xHeI - xHeII)
-    ne = max(NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeIII)), 1e-12*NH)
+    ne = max(NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeIII)), 1e-30*NH)
     for _ in range(200):
         ne_old = ne
         den = gH + (cH + aH)*ne
@@ -133,7 +133,7 @@ def solve_ion(gH, gHe1, gHe2, xs):
         xHeI = 1.0/(1.0 + r1 + r1*r2)
         xHeII = xHeI*r1
         ne = NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeII*r2))
-        ne = max(0.5*(ne + ne_old), 1e-12*NH)
+        ne = max(0.5*(ne + ne_old), 1e-30*NH)
         if abs(ne - ne_old) <= 1e-12*ne:
             break
     return xHI, xHeI, xHeII
@@ -186,10 +186,12 @@ def reference_1d(dust="full", nr=8000, nsweep=3):
 def r_eff_mc(fname):
     f = h5py.File(fname, "r")
     xyz = f["LeafXYZ"]["data"][:]
-    xhi = f["x_HI"]["data"][:]
+    # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+    xhii = (f["x_HII"]["data"][:] if "x_HII" in f
+            else 1.0 - f["x_HI"]["data"][:])
     ne = f["n_e"]["data"][:]
     half = 4.0/64
-    vion = np.sum((1.0 - xhi[ne > 0])*(2*half)**3)
+    vion = np.sum(xhii[ne > 0]*(2*half)**3)
     return (3.0*vion/(4.0*np.pi))**(1.0/3.0)
 
 

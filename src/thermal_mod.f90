@@ -17,14 +17,15 @@ module thermal_mod
 ! max |delta x_HII| and max |delta T_e|/T_e.
 !---------------------------------------------------------------------------
   use define
-  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                            gas_Te, gas_nleaf, gas_state_sync, &
+  use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                            gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
+                            gas_state_sync, &
                             gas_state_publish, gas_leaf_owner_first, &
                             gas_leaf_owner_stride
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             heat_HI, heat_HeI, heat_HeII, secondary_ionization
   use photoelectron_degradation_mod, only : ionized_fraction_svs
-  use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne, &
+  use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne, NE_FLOOR_PER_H, &
                               helium_change_measures, signed_change_measures, &
                               helium_charge_exchange_heating
   use cooling_mod,     only : cooling_total
@@ -39,12 +40,15 @@ contains
   ! Net heating - cooling [erg cm^-3 s^-1] at trial temperature T for one
   ! leaf; the ionization state at T is solved self-consistently.
   !=========================================================================
-  subroutine net_rate(il, T, caseA, xHI, xHeI, xHeII, ne, net, &
+  subroutine net_rate(il, T, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net, &
                       heat_star, heat_heii_ots)
     integer,       intent(in)    :: il
     real(kind=wp), intent(in)    :: T
     logical,       intent(in)    :: caseA
-    real(kind=wp), intent(inout) :: xHI, xHeI, xHeII
+    !--- x_HII and x_HeIII are carried beside x_HI and x_HeI, x_HeII
+    !--- (solve_ion_cell): beyond the ionization fronts 1 - x_HI and
+    !--- 1 - x_HeI - x_HeII do not represent them
+    real(kind=wp), intent(inout) :: xHI, xHII, xHeI, xHeII, xHeIII
     real(kind=wp), intent(out)   :: ne, net
     !--- two terms of the heating, for gas_thermal_update's on-the-spot
     !--- validity count: the photoheating by the transported field and the
@@ -55,7 +59,8 @@ contains
     nH = gas_nH(il)
     yHe = par%abund_He
     call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
-                        nH, T, caseA, xHI, xHeI, xHeII, ne, il, f_h_only)
+                        nH, T, caseA, xHI, xHeI, xHeII, ne, il, f_h_only, xHII, &
+                        xHeIII)
     !--- photoheating; with par%use_sec_ion the part of each fast
     !--- photoelectron's energy that ionizes or excites instead of heating is
     !--- taken off, at the state the solve just reached.
@@ -65,7 +70,7 @@ contains
          nH*yHe*xHeII, dgHI, dgHeI, dhHI, dhHeI, dhHeII)
     heat = nH*( xHI*(heat_HI(il) - dhHI) &
            + yHe*(xHeI*(heat_HeI(il) - dhHeI) + xHeII*(heat_HeII(il) - dhHeII)) )
-    net = heat - cooling_total(T, nH, ne, xHI, xHeI, xHeII)
+    net = heat - cooling_total(T, nH, ne, xHI, xHII, xHeI, xHeII, xHeIII)
     if (present(heat_star)) heat_star = heat
     if (present(heat_heii_ots)) heat_heii_ots = 0.0_wp
     !--- trace-metal line cooling (registry)
@@ -74,33 +79,33 @@ contains
          use species_mod, only : metal_cooling, metal_heating, metal_freefree, &
                                  metal_cooling_H, metal_ionization_cooling, &
                                  metal_charge_exchange_heating
-         net = net - metal_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+         net = net - metal_cooling(il, T, nH, ne, nH*xHI, nH*xHII)
          !--- atomic-hydrogen impact on the C I / C II / O I ground-term
          !--- fine structure: the increment over the electron-only
          !--- populations of the table above, from one statistical
          !--- equilibrium with both colliders; the dominant coolant wherever
          !--- the gas is neutral, whatever heats it.
-         net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+         net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*xHII)
          !--- metal free-free cooling, net-charge weighted (par%metal_freefree)
          if (par%metal_freefree) &
-            net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+            net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*xHII)
          !--- metal ionization energy budget (par%metal_heat): photoheating
          !--- in; recombination kinetic energy and collisional-ionization
          !--- energy out.
          if (par%metal_heat) &
-            net = net + metal_heating(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI)) &
-                  - metal_ionization_cooling(il, T, nH, ne, nH*xHI, nH*(1.0_wp-xHI))
+            net = net + metal_heating(il, T, nH, ne, nH*xHI, nH*xHII) &
+                  - metal_ionization_cooling(il, T, nH, ne, nH*xHI, nH*xHII)
          !--- kinetic energy exchanged by the metal-H charge-exchange
          !--- reactions (par%charge_exchange_heating)
          if (par%charge_exchange_heating) &
             net = net + metal_charge_exchange_heating(il, T, nH, ne, &
-                                                      nH*xHI, nH*(1.0_wp-xHI))
+                                                      nH*xHI, nH*xHII)
        end block
     end if
     !--- the same for the He-H reactions of par%helium_charge_exchange
     if (par%charge_exchange_heating .and. par%helium_charge_exchange &
         .and. yHe > 0.0_wp) &
-       net = net + helium_charge_exchange_heating(T, nH*xHI, nH*(1.0_wp-xHI), &
+       net = net + helium_charge_exchange_heating(T, nH*xHI, nH*xHII, &
                                                   yHe*nH*xHeI, yHe*nH*xHeII)
     !--- He I 2^3S processes (par%hei_metastable_coupling): excitation into
     !--- the triplets, the collisional transfers out of 2^3S, its electron-
@@ -144,7 +149,7 @@ contains
          real(kind=wp) :: h2
          h2 = heii_on_the_spot_heating(heii_ots_nodes(T), ne, nH*xHI, &
                      yHe*nH*xHeI, yHe*nH*xHeII, &
-                     yHe*nH*max(0.0_wp, 1.0_wp - xHeI - xHeII), f_h_only)
+                     yHe*nH*xHeIII, f_h_only)
          net = net + h2
          if (present(heat_heii_ots)) heat_heii_ots = h2
        end block
@@ -182,7 +187,7 @@ contains
                      * (amr_grid%rhokap(il)/par%distance2cm) &
                      / (max(nH, tinest)*CEXT_MW_V)
             Tpe = min(T, 1.0e4_wp)
-            xpe = g0*sqrt(Tpe)/max(ne, 1.0e-12_wp*nH)
+            xpe = g0*sqrt(Tpe)/max(ne, NE_FLOOR_PER_H*nH)
             eps = 4.87e-2_wp/(1.0_wp + 4.0e-3_wp*xpe**0.73_wp) &
                 + 3.65e-2_wp*(Tpe/1.0e4_wp)**0.7_wp/(1.0_wp + 2.0e-4_wp*xpe)
             net = net + 1.3e-24_wp*eps*g0*nH*dscale
@@ -202,7 +207,7 @@ contains
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
   ! dhe_vol(2), the same measure for helium, which enters the 'vol'
   ! stopping test beside dx_vol (main.f90::composition_converged):
-  !   dhe_vol(1) = sum V |delta x_HeI| / sum V (1 - x_HeI)    He0 <-> He+
+  !   dhe_vol(1) = sum V |delta x_HeI| / sum V (x_HeII + x_HeIII)  He0 <-> He+
   !   dhe_vol(2) = sum V |delta x_HeIII| / sum V x_HeIII      He+ <-> He2+
   ! (ion_balance_mod::helium_change_measures; dhe_vol(2) = -1 where He2+
   ! fills a negligible share of the volume).  drift_vol(3) are the signed
@@ -233,11 +238,12 @@ contains
     real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
     real(kind=wp), intent(out) :: drift_vol(3)
 
-    real(kind=wp), allocatable :: xHI_new(:), xHeI_new(:), xHeII_new(:), &
-                                  ne_new(:), te_new(:)
-    real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol
+    real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
+                                  xHeII_new(:), xHeIII_new(:), ne_new(:), &
+                                  te_new(:)
+    real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol, xHII
     real(kind=wp) :: max_local(2), max_host(2)
-    real(kind=wp) :: sum_local(11), sum_host(11), metrics(9), xHeIII_old
+    real(kind=wp) :: sum_local(11), sum_host(11), metrics(9)
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(5), flag_host(5)
     real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp, TAU_THIN = 1.0e-2_wp
@@ -246,10 +252,12 @@ contains
 
     caseA = trim(par%recombination_continuum) /= 'on_the_spot'
     w     = par%ion_relax
-    allocate(xHI_new(gas_nleaf), xHeI_new(gas_nleaf), xHeII_new(gas_nleaf), &
-             ne_new(gas_nleaf), te_new(gas_nleaf))
+    allocate(xHI_new(gas_nleaf), xHII_new(gas_nleaf), xHeI_new(gas_nleaf), &
+             xHeII_new(gas_nleaf), xHeIII_new(gas_nleaf), ne_new(gas_nleaf), &
+             te_new(gas_nleaf))
     !--- zero off this rank's leaves: gas_state_publish sums over the ranks
-    xHI_new = 0.0_wp;  xHeI_new = 0.0_wp;  xHeII_new = 0.0_wp
+    xHI_new = 0.0_wp;  xHII_new = 0.0_wp;  xHeI_new = 0.0_wp;  xHeII_new = 0.0_wp
+    xHeIII_new = 0.0_wp
     ne_new  = 0.0_wp;  te_new   = 0.0_wp
 
     max_local = 0.0_wp
@@ -264,17 +272,19 @@ contains
     do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
        nH = gas_nH(il)
        if (nH <= 0.0_wp) then
-          xHI_new(il) = gas_xHI(il);  xHeI_new(il) = gas_xHeI(il)
-          xHeII_new(il) = gas_xHeII(il);  ne_new(il) = 0.0_wp
-          te_new(il) = gas_Te(il)
+          xHI_new(il) = gas_xHI(il);  xHII_new(il) = gas_xHII(il)
+          xHeI_new(il) = gas_xHeI(il);  xHeII_new(il) = gas_xHeII(il)
+          xHeIII_new(il) = gas_xHeIII(il)
+          ne_new(il) = 0.0_wp;  te_new(il) = gas_Te(il)
           cycle
        end if
 
        !--- bisection on log T; ionization re-solved at each trial T.
-       xHI = gas_xHI(il);  xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il)
+       xHI = gas_xHI(il);  xHII = gas_xHII(il)
+       xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il);  xHeIII = gas_xHeIII(il)
        tlo = par%te_min;  thi = par%te_max
-       call net_rate(il, tlo, caseA, xHI, xHeI, xHeII, ne, net_lo)
-       call net_rate(il, thi, caseA, xHI, xHeI, xHeII, ne, net_hi)
+       call net_rate(il, tlo, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_lo)
+       call net_rate(il, thi, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_hi)
        at_te_max = .false.
        if (net_lo <= 0.0_wp) then
           te = tlo               ! cooling wins even at te_min (no heating)
@@ -284,7 +294,8 @@ contains
        else
           do it = 1, 60
              tmid = sqrt(tlo*thi)
-             call net_rate(il, tmid, caseA, xHI, xHeI, xHeII, ne, net_mid)
+             call net_rate(il, tmid, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, &
+                           net_mid)
              if (net_mid > 0.0_wp) then
                 tlo = tmid
              else
@@ -295,7 +306,7 @@ contains
           te = sqrt(tlo*thi)
        end if
        !--- final consistent state at te.
-       call net_rate(il, te, caseA, xHI, xHeI, xHeII, ne, net_mid, &
+       call net_rate(il, te, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_mid, &
                      h_star, h_ots)
        vol = (2.0_wp*leaf_half(il))**3
        flag_local(1) = flag_local(1) + vol
@@ -313,13 +324,15 @@ contains
           end if
        end if
 
-       !--- under-relaxation on x; te taken directly.
+       !--- under-relaxation on x (both hydrogen fractions, each to its own
+       !--- precision); te taken directly.
        xHI_new(il)   = (1.0_wp - w)*gas_xHI(il)   + w*xHI
+       xHII_new(il)  = (1.0_wp - w)*gas_xHII(il)  + w*xHII
        xHeI_new(il)  = (1.0_wp - w)*gas_xHeI(il)  + w*xHeI
        xHeII_new(il) = (1.0_wp - w)*gas_xHeII(il) + w*xHeII
-       xHeIII = max(0.0_wp, 1.0_wp - xHeI_new(il) - xHeII_new(il))
-       ne_new(il) = nH * ((1.0_wp - xHI_new(il)) &
-                    + par%abund_He*(xHeII_new(il) + 2.0_wp*xHeIII))
+       xHeIII_new(il) = (1.0_wp - w)*gas_xHeIII(il) + w*xHeIII
+       ne_new(il) = nH * (xHII_new(il) &
+                    + par%abund_He*(xHeII_new(il) + 2.0_wp*xHeIII_new(il)))
        !--- metal electrons in the WRITTEN state too (the solve already
        !--- had them in its closure; the state n_e drives the n-level
        !--- excitation and the outputs — in the PDR zone it IS the
@@ -331,26 +344,26 @@ contains
           block
             use species_mod, only : n_elements
             if (n_elements > 0) ne_new(il) = &
-               charge_neutrality_ne(il, te, nH, ne_new(il), xHI_new(il), ne)
+               charge_neutrality_ne(il, te, nH, ne_new(il), xHI_new(il), &
+                                    xHII_new(il), ne)
           end block
        end if
        te_new(il) = te
-       max_local(1) = max(max_local(1), abs(xHI_new(il) - gas_xHI(il)))
+       max_local(1) = max(max_local(1), abs(xHII_new(il) - gas_xHII(il)))
        max_local(2) = max(max_local(2), &
                           abs(te_new(il) - gas_Te(il))/gas_Te(il))
-       sum_local(1) = sum_local(1) + vol*abs(xHI_new(il) - gas_xHI(il))
-       sum_local(2) = sum_local(2) + vol*(1.0_wp - xHI_new(il))
+       sum_local(1) = sum_local(1) + vol*abs(xHII_new(il) - gas_xHII(il))
+       sum_local(2) = sum_local(2) + vol*xHII_new(il)
        sum_local(3) = sum_local(3) &
                     + vol*ne_new(il)*abs(te_new(il) - gas_Te(il))
        sum_local(4) = sum_local(4) + vol*ne_new(il)*te_new(il)
        sum_local(5) = sum_local(5) + vol*abs(xHeI_new(il) - gas_xHeI(il))
-       sum_local(6) = sum_local(6) + vol*(1.0_wp - xHeI_new(il))
-       xHeIII_old = max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))
-       sum_local(7) = sum_local(7) + vol*abs(xHeIII - xHeIII_old)
-       sum_local(8) = sum_local(8) + vol*xHeIII
-       sum_local(9)  = sum_local(9)  + vol*(gas_xHI(il) - xHI_new(il))
+       sum_local(6) = sum_local(6) + vol*(xHeII_new(il) + xHeIII_new(il))
+       sum_local(7) = sum_local(7) + vol*abs(xHeIII_new(il) - gas_xHeIII(il))
+       sum_local(8) = sum_local(8) + vol*xHeIII_new(il)
+       sum_local(9)  = sum_local(9)  + vol*(xHII_new(il) - gas_xHII(il))
        sum_local(10) = sum_local(10) + vol*(gas_xHeI(il) - xHeI_new(il))
-       sum_local(11) = sum_local(11) + vol*(xHeIII - xHeIII_old)
+       sum_local(11) = sum_local(11) + vol*(xHeIII_new(il) - gas_xHeIII(il))
     end do
 
     call MPI_ALLREDUCE(max_local, max_host, 2, MPI_DOUBLE_PRECISION, MPI_MAX, &
@@ -390,8 +403,9 @@ contains
     drift_vol = signed_change_measures(sum_host([9, 2, 10, 6, 11, 8]), dhe_vol)
 
     !--- every rank's leaves into every node's shared state
-    call gas_state_publish(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
-    deallocate(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
+    call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
+                           ne_new, te_new)
+    deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new, te_new)
 
     !--- The metrics are reduced over MPI_COMM_WORLD; global rank 0's copy is
     !--- broadcast so that every rank makes the same loop-exit decision

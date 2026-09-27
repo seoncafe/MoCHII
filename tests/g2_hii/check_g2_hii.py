@@ -52,10 +52,12 @@ for label, fname, mdir in CASES:
     te = f["T_e"]["data"][:]
     ne = f["n_e"]["data"][:]
     xhi = f["x_HI"]["data"][:]
+    # x_HII as stored (rates files since 2026-09-26), else 1 - x_HI
+    xhii = f["x_HII"]["data"][:] if "x_HII" in f else 1.0 - xhi
     # nH from x/ne closure is awkward; gas cells have nH=100 by construction
     nH = np.where(ne > 0, 100.0, 0.0)
     gas = nH > 0
-    nHI, nHII = nH*xhi, nH*(1.0 - xhi)
+    nHI, nHII = nH*xhi, nH*xhii
 
     mt = read_mocassin_table(f"{mdir}/temperature.out")
     mi = read_mocassin_table(f"{mdir}/ionratio.out")

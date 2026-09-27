@@ -67,7 +67,7 @@ module heii_recombination_photons_mod
 ! no other absorber, and above it He0 is as scarce as H0 in the He2+ zone --
 ! so solve_ion_cell takes it as an absolute source in hydrogen's balance,
 ! with the share evaluated at every trial x_HI
-! (ion_balance_mod::hydrogen_fraction_with_cascade); the ground captures
+! (ion_balance_mod::hydrogen_ionization_balance); the ground captures
 ! stay a rate per H0, since He+ competes for them.  VALIDITY: a local
 ! balance exists only while the cascades H0 and He0 are given stay below
 ! the recombinations that make them.  At He/H = 0.1 the H0 source reaches
@@ -216,7 +216,7 @@ contains
   !=========================================================================
   ! H0's share of the excited cascade [cm^-3 s^-1] at n(H0) = nHI: the
   ! s_H_exc of heii_on_the_spot_sources alone, for the root find of
-  ! hydrogen's balance (ion_balance_mod::hydrogen_fraction_with_cascade),
+  ! hydrogen's balance (ion_balance_mod::hydrogen_ionization_balance),
   ! which evaluates it at every trial x_HI.
   !=========================================================================
   real(kind=wp) function heii_cascade_to_H(g, ne, nHI, nHeI, nHeIII) result(s)

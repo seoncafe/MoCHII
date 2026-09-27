@@ -21,9 +21,10 @@
 \maketitle
 
 \begin{abstract}
-MoCHII gains an optional randomized quasi-Monte Carlo (RQMC) photon launch:
+MoCHII has a randomized quasi-Monte Carlo (RQMC) photon launch, the default
+since 2026-09-25 (\code{par\%launch\_sequence = 'sobol'}):
 Owen-scrambled Sobol coordinates replace the Mersenne Twister draws used to
-select a packet's source component, frequency bin, direction, and entry
+select a packet's source component, photon energy, direction, and entry
 surface, while every post-launch transport event (forced interaction,
 Henyey--Greenstein scattering, Russian roulette) stays pseudo-random.  The
 Sobol point is addressed by the \emph{global} photon number, so the launch set
@@ -31,7 +32,8 @@ is independent of the MPI task count.  On the fixed-state analytic attenuation
 gate the cell-wise $\Gamma_{\rm HI}$ error scales as $\sim 1/N$ rather than the
 Monte Carlo $1/\sqrt{N}$, giving effective photon gains of $29\times$ at
 $2^{17}$ packets and $222\times$ at $2^{20}$, at unchanged wall time and with no
-significant bias.  The stage-2 source gates (multiple point sources, external
+significant bias (measured 2026-07-18, when the launch was added and the
+frequency was still sampled and transported as a discrete bin).  The stage-2 source gates (multiple point sources, external
 field) improve in step, and a diffuse-field variant reduces the replicate
 scatter of the ionized volume by $1.73\times$.  This work also uncovered and
 fixed an unrelated defect in the diffuse-field energy-to-bin mapping that had
@@ -41,18 +43,20 @@ photons emitted at an ionization threshold, sending He\,\textsc{i}
 ground-recombination photons into the bin below the He\,\textsc{i} edge; the
 corrected binary-search mapping lowers the mean neutral-helium fraction on a
 diffuse Str\"omgren sphere by $50.5\%$.  The design rationale is recorded in
-\code{docs/QUASI\_RANDOM\_LAUNCH.md}.
+\code{md/QUASI\_RANDOM\_LAUNCH.md}.
 \end{abstract}
 
 \tableofcontents
 
 %==========================================================================
 \section{Motivation and design}
-MoCHII's ionizing band has no scattering: given a packet's launch frequency,
+Unless dust scattering is switched on (\code{par\%ion\_dust\_scatter},
+default \code{.false.}), MoCHII's ionizing band has no scattering: given a
+packet's launch energy,
 position, and direction, the attenuation along its ray is integrated
 \emph{analytically} (the zero-variance edge walk).  Consequently the residual
 noise in the stellar radiation field comes almost entirely from the sampling of
-the launch variables --- which source component, which frequency bin, and which
+the launch variables --- which source component, which photon energy, and which
 direction each packet takes --- and \emph{not} from the transport estimator.
 This is exactly the situation an RQMC launch is built for: a low-dimensional
 integral with a deterministic post-launch response, so a low-discrepancy launch
@@ -69,12 +73,15 @@ and high-dimensional.  Keeping them pseudo-random preserves the unbiased
 scattered field and confines the low-discrepancy structure to the launch cube,
 where it helps most.
 
-Two properties of MoCHII make the launch cube favorable.  First, the frequency
-variable is a \emph{discrete bin index}: inverting a stratified Sobol coordinate
-through the band luminosity CDF automatically delivers near-proportional packet
-counts in every bin (for $N = 2^m$ a bin of probability $p$ deviates from $pN$
-by order one), removing the binomial bin-count noise that plain Monte Carlo
-inherits.  Second, the launch is at most seven-dimensional (nine for the diffuse
+Two properties of MoCHII make the launch cube favorable.  First, the photon
+energy is the inverse of the source's continuous spectral CDF
+(\code{energy\_sampler\_mod}) at one stratified Sobol coordinate, so every
+energy interval --- in particular every tally bin --- of probability $p$
+receives $pN$ packets to order one for $N = 2^m$, removing the binomial
+bin-count noise that plain Monte Carlo inherits.  (When the launch was added
+the energy was a discrete bin index drawn from the band luminosity CDF; the
+continuous sampling replaced it on 2026-07-28, and the stratification argument
+is the same.)  Second, the launch is at most seven-dimensional (nine for the diffuse
 field), well within the range where scrambled Sobol nets retain useful variance
 reduction even though AMR cell boundaries and ionization fronts make the
 integrand only piecewise smooth.  No ideal $N^{-1}(\log N)^d$ rate is assumed;
@@ -140,8 +147,9 @@ surface dimensions unused; unused-but-fixed dimensions are harmless because the
 projections onto the consumed subset remain those of the scrambled net.
 
 A single internal point source (stage~1) uses the three-dimensional layout of
-Table~\ref{tab:dim1}; every other source configuration uses the seven-dimension
-superset of Table~\ref{tab:dim7}; diffuse recombination packets use the
+Table~\ref{tab:dim1}; a single plane-parallel slab source uses six dimensions
+(energy, entry face, two in-face coordinates, $\mu$, $\phi$); every other
+source configuration uses the seven-dimension superset of Table~\ref{tab:dim7}; diffuse recombination packets use the
 nine-dimension layout of Table~\ref{tab:dim9} on the separate diffuse stream.
 
 \begin{table}[htbp]
@@ -153,7 +161,7 @@ nine-dimension layout of Table~\ref{tab:dim9} on the separate diffuse stream.
 \toprule
 dim & variable & mapping \\
 \midrule
-1 & frequency bin & discrete band luminosity CDF \\
+1 & photon energy & inverse of the continuous spectral CDF \\
 2 & polar direction & $\mu = 2u-1$ \\
 3 & azimuth & $\phi = 2\pi u$ \\
 \bottomrule
@@ -163,15 +171,16 @@ dim & variable & mapping \\
 \begin{table}[htbp]
 \centering
 \small
-\caption{Superset layout for every non-single-point configuration
-(multiple point sources, external field, or a mixed set).}
+\caption{Superset layout for every configuration other than a single point
+or a single slab source (multiple point sources, external field, or a mixed
+set).}
 \label{tab:dim7}
 \begin{tabular}{cll}
 \toprule
 dim & variable & mapping \\
 \midrule
 1 & source component & component luminosity CDF \\
-2 & frequency bin & that component's spectrum CDF \\
+2 & photon energy & that component's continuous spectral CDF \\
 3 & polar / incidence & point: $\mu = 2u-1$; \ external: Lambert $\mu = \sqrt{u}$ \\
 4 & azimuth & $\phi = 2\pi u$ \\
 5 & entry surface & rectangular entry face / sphere entry $\cos\theta$ \\
@@ -195,12 +204,24 @@ dim & variable & mapping \\
 2--4 & position in leaf & uniform, $2u-1$ per axis \\
 5 & polar direction & $\mu = 2u-1$ \\
 6 & azimuth & $\phi = 2\pi u$ \\
-7 & emission channel & channel CDF (H\,\textsc{ii}/He\,\textsc{ii}/He\,\textsc{iii}/He\,\textsc{i}) \\
-8 & first energy variate & ${\rm Exp}(1)$ for the ground channels; He\,\textsc{i} branch pick \\
-9 & second energy variate & He\,\textsc{i} two-photon flat energy (unused otherwise) \\
+7 & emission channel & channel CDF over the five channels (see text) \\
+8 & first energy variate & ground-continuum energy; He\,\textsc{i} or He\,\textsc{iii} cascade path pick \\
+9 & second energy variate & He\,\textsc{i} two-photon or He\,\textsc{iii} cascade energy (else unused) \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The five diffuse channels are the ground captures onto H\,\textsc{i},
+He\,\textsc{i} and He\,\textsc{ii}, the He\,\textsc{i} excited cascade, and the
+He\,\textsc{iii} cascade (\code{gen\_diffuse\_photon\_qmc}).  For the three
+ground channels dimension~8 inverts the energy distribution of
+\code{par\%diffuse\_energy\_model} (default \code{'milne'}, the Milne
+free-bound spectrum; \code{'exponential'} is the $E_{\rm th} + kT\,{\rm
+Exp}(1)$ draw the launch used when it was added); for the He\,\textsc{i}
+cascade it picks the decay branch and dimension~9 draws the two-photon energy
+from the tabulated Drake shape; the He\,\textsc{iii} cascade reuses dimensions
+8 and 9 for its path pick (free-bound, Ly$\alpha$, two-photon) and energy, so it
+adds no dimension.
 
 \subsection{Common random numbers and replicates}
 Using the same scrambled launch set at every ionization/thermal iteration is a
@@ -224,8 +245,9 @@ its coordinates are \code{gen\_ion\_photon\_qmc} in \code{src/ion\_band\_mod.f90
 (stellar) and \code{gen\_diffuse\_photon\_qmc} in \code{src/diffuse\_mod.f90}
 (diffuse).  Two parameters control the option:
 \begin{itemize}
-\item \code{par\%launch\_sequence} = \code{'random'} (default; the Mersenne
-  Twister MT19937-64 path, arithmetically unchanged) or \code{'sobol'};
+\item \code{par\%launch\_sequence} = \code{'sobol'} (the default since
+  2026-09-25) or \code{'random'} (the Mersenne Twister MT19937-64 path, the
+  default before then and pinned by the inputs written before then);
 \item \code{par\%qmc\_seed} (default \code{12345}) --- the scramble/replicate
   key, fixed across the gas iterations.
 \end{itemize}
@@ -244,7 +266,7 @@ Bitwise MPI-count independence of a \emph{full} run is therefore obtained only
 in absorption-only transport, where the post-launch path is deterministic; with
 dust scattering enabled the launch set is still reproducible but the scattered
 histories are not.  The multi-wavelength dust/SED launch (\code{src/sed\_mod.f90})
-is not exercised by the ionizing workflow and is left on its alias sampler; its
+is not exercised by the ionizing calculation and is left on its alias sampler; its
 inverse-CDF conversion is documented as unnecessary for now.
 
 %==========================================================================
@@ -268,10 +290,15 @@ the bin by binary search: \code{ion\_eedge}$(b) \le E_{\rm ph} <
 {}$\code{ion\_eedge}$(b{+}1)$, so an energy exactly on a threshold edge falls in
 the bin \emph{above} it --- the physically correct side for a recombination
 photon emitted at threshold${}+\delta$.  Both the pseudo-random and the QMC
-diffuse generators call \code{ion\_bin\_of}.
+diffuse generators call \code{ion\_bin\_of}.  Since the continuous-energy
+transport of 2026-07-28 a packet carries the energy it was drawn with
+(\code{photon\%energy\_eV}), and its cross sections are evaluated there
+(\code{ion\_packet\_mod}); the bin is only the tally index it lands in, so the
+mis-binning described here could no longer keep a photon from ionizing helium.
 
-\paragraph{Measured impact.}  On a converged diffuse-field Str\"omgren sphere on
-the aligned (default) grid, buggy versus fixed: the mean $x_{\rm HeI}$ drops
+\paragraph{Measured impact} (2026-07-18, binned transport).  On a converged
+diffuse-field Str\"omgren sphere on the aligned (default) grid, buggy versus
+fixed: the mean $x_{\rm HeI}$ drops
 $50.5\%$ ($0.0147 \to 0.0073$), the mean $x_{\rm HeII}$ rises $0.75\%$, and
 $V_{\rm ion}$/$R_{\rm eff}$ are unchanged (hydrogen is stellar-dominated).  Unit
 checks: on the legacy log grid the binary search reproduces the closed form over
@@ -285,7 +312,12 @@ bug had contaminated no recorded gate.
 %==========================================================================
 \section{Validation}
 \label{sec:val}
-Every number below is measured and independently verified.
+Every number below was measured and independently verified on 2026-07-18,
+when the launch was added: \code{'random'} was then the default, the photon
+frequency was sampled and transported as a discrete bin (the continuous
+photon-energy sampling came on 2026-07-28), and the diffuse ground continua used
+the exponential energy draw.  They have not been remeasured on the current
+code.
 
 \subsection{Generator gates (Q0/Q2)}
 The unscrambled Sobol coordinates for dimensions 1--12 match
@@ -294,11 +326,11 @@ lattices, maximum code difference 0).  The Owen-scrambled sets are strictly
 interior; the one-dimensional dyadic counts are exact at every level; the
 dimension-$(1,2)$ $(0,m,2)$-net and the elementary-interval occupancy are
 preserved under scrambling, for seeds \code{12345}/\code{777}/\code{2024} and
-both streams.  Different seeds give different but individually balanced nets
+both streams (stellar and diffuse; the FUV stream came later).  Different seeds give different but individually balanced nets
 (maximum coordinate shift $|\Delta u| = 0.84$--$0.98$), and the stellar and
 diffuse streams differ like independent replicates.
 
-\subsection{Default-path regression}
+\subsection{Regression of the Mersenne Twister path}
 With \code{launch\_sequence='random'}, at one MPI task under
 \code{-fp-model precise}, the pre-change and post-change builds are
 \emph{bit-identical} for single-source, multi-source, and external inputs
@@ -394,12 +426,13 @@ diffuse cube is higher-dimensional.
 
 %==========================================================================
 \section{Usage guidance and limitations}
-Set \code{par\%launch\_sequence = 'sobol'} to enable the RQMC launch and prefer a
-power-of-two photon count, \code{nphotons}${} = 2^m$, where the Sobol net has its
+\code{par\%launch\_sequence = 'sobol'} (the default) selects the RQMC launch; prefer a
+power-of-two photon count, \code{par\%no\_photons}${} = 2^m$, where the Sobol net has its
 cleanest balance.  Keep \code{par\%qmc\_seed} fixed across the nonlinear
 iterations of one solve (common random numbers), and change it only to generate
 independent replicates; take the scatter of at least four replicates as the RQMC
-error estimate.  The default remains \code{'random'} so recorded gates reproduce.
+error estimate.  The inputs recorded before 2026-09-25 pin \code{'random'}, so
+their gates reproduce.
 
 The gains follow the design expectation.  The largest reductions are for global,
 direct-field quantities: direct stellar photoionization rates, integrated
@@ -430,7 +463,7 @@ maximum-order dimension policy and a separate validation campaign.
       Graphics} (stratified sampling for stochastic transparency).
 \item Burley, B. 2020, ``Practical Hash-based Owen Scrambling,''
       \textit{J.\ Comput.\ Graph.\ Tech.}, 9, 1.
-\item Seon, K.-I. 2026, \code{docs/QUASI\_RANDOM\_LAUNCH.md} (MoCHII design
+\item Seon, K.-I. 2026, \code{md/QUASI\_RANDOM\_LAUNCH.md} (MoCHII design
       document).
 \end{itemize}
 

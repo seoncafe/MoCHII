@@ -261,18 +261,29 @@ contains
 
     !--- ionization structure (fixed initialization when gas_niter = 0).
     block
-      use gas_state_mod, only : gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_Te
+      use gas_state_mod, only : gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                                gas_xHeIII, gas_ne, gas_Te
       real(kind=wp), allocatable :: tmp(:)
       allocate(tmp(nleaf))
       tmp = gas_xHI(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','x_HI','n_HI/n_H per leaf',status)
+      !--- x_HII beside x_HI, to its own relative precision (beyond the
+      !--- ionization front 1 - x_HI does not represent it)
+      tmp = gas_xHII(1:nleaf)
+      call io_append_image(file, tmp, status, bitpix=-64)
+      call io_put_keyword(file,'EXTNAME','x_HII','n_HII/n_H per leaf',status)
       tmp = gas_xHeI(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','x_HeI','n_HeI/n_He per leaf',status)
       tmp = gas_xHeII(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','x_HeII','n_HeII/n_He per leaf',status)
+      !--- x_HeIII to its own relative precision (1 - x_HeI - x_HeII is
+      !--- rounding where He2+ is scarce)
+      tmp = gas_xHeIII(1:nleaf)
+      call io_append_image(file, tmp, status, bitpix=-64)
+      call io_put_keyword(file,'EXTNAME','x_HeIII','n_HeIII/n_He per leaf',status)
       tmp = gas_ne(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','n_e','electron density [cm^-3]',status)

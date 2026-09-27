@@ -269,7 +269,7 @@ contains
        do il = mpar%p_rank+1, nleaf, mpar%nproc
           !--- packets k whose stratified position (k-1+xi)/N falls in this
           !--- leaf's share [C(il-1), C(il)]/L_tot of the cumulative emission.
-          !--- The endpoint expressions are shared with the neighbouring
+          !--- The endpoint expressions are shared with the neighboring
           !--- leaves, so the counts telescope to exactly N over the grid.
           k_lo = ceiling(real(npacket,wp)*(lcum(il-1)/L_tot) - xi, int64) + 1_int64
           k_hi = ceiling(real(npacket,wp)*(lcum(il  )/L_tot) - xi, int64)

@@ -194,7 +194,7 @@ contains
   !---------------------------------------------------------------
   !--- MoCHII: ionizing-band tally setup/reduce.  The conversion to J_nu and
   !--- the rate integrals live in gas_rates_mod (they need the gas state).
-  !--- whether anything reads the per-bin tally: the J_nu output
+  !--- whether anything reads the binned tally: the J_nu output
   !--- (par%jnu_output) or the SEDust leaf spectrum (par%dust_sed with dust)
   logical function jtally_ion_needed() result(need)
   need = par%jnu_output .or. (par%ion_add_dust .and. par%dust_sed)

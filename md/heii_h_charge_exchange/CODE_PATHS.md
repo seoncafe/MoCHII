@@ -4,6 +4,19 @@ These notes describe the source inspected for the review. Follow the live
 source when checking later behavior; documentation and comments are not
 evidence that a particular implementation remains in use.
 
+> **Superseded (2026-09-26); the tables below are as of 2026-09-25.** Since
+> then `cx_HeII_H` adds the Stancil, Lepp & Dalgarno (1998) radiative rate
+> `1.20e-15 (T/300)^0.25` to `nonradiative_HeII_H`, which interpolates the
+> Loreau et al. (2014) reciprocity table `src/heii_h_charge_exchange_data.inc`
+> (1e3-1e6 K, held outside) in place of the KF96 expression; its comment block
+> now states the validity range and no longer ties `T^2.06` to curve crossing
+> (it describes the KF96 fit it replaced).  The line numbers below no longer
+> hold (on 2026-09-27: `solve_ion_cell` line 121, `cx_HeII_H` 666,
+> `cx_HeI_Hp` 671, `nonradiative_HeII_H` about 706; `thermal_mod::net_rate` 43).
+> The gate `check_helium_charge_exchange.f90` now holds the rate to
+> `make_heii_h_charge_exchange.py`'s direct Maxwell averages, not to the KF96
+> formula.
+
 ## MoCHII rates and callers
 
 | Source | Routine or setting | Observed behavior |

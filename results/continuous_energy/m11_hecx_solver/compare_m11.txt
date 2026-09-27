@@ -1,0 +1,20 @@
+=== HII40 ===
+  converged         iterations  24 ->  10
+                    <T[NpNe]>  8179.72 ->  8179.70 K (  -0.02)  L(Hb) 2.0226e+37 -> 2.0227e+37 ( +0.00%)  <He+>/<H+> 0.7209 -> 0.7209  H front 4.7476 -> 4.7476  He front 4.2688 -> 4.2688 pc
+  ots_converged     iterations   8 ->   8
+                    <T[NpNe]>  8127.81 ->  8129.44 K (  +1.62)  L(Hb) 2.0211e+37 -> 2.0223e+37 ( +0.06%)  <He+>/<H+> 0.7301 -> 0.7294  H front 4.7320 -> 4.7329  He front 4.2710 -> 4.2710 pc
+  lowden_converged  iterations  36 ->  10
+                    <T[NpNe]>  7877.28 ->  7877.32 K (  +0.04)  L(Hb) 2.0247e+37 -> 2.0247e+37 ( +0.00%)  <He+>/<H+> 0.7220 -> 0.7221  H front 4.6990 -> 4.6990  He front 4.2308 -> 4.2307 pc
+  nohecx_converged  iterations  43 ->  10
+                    <T[NpNe]>  8179.68 ->  8179.68 K (  -0.00)  L(Hb) 2.0226e+37 -> 2.0227e+37 ( +0.00%)  <He+>/<H+> 0.7209 -> 0.7209  H front 4.7476 -> 4.7476  He front 4.2688 -> 4.2689 pc
+  production lines (rel. Hb > 1e-3) moving > 0.5%, m10 -> m11:
+=== HII20 ===
+  converged         iterations  15 ->  10
+                    <T[NpNe]>  6940.13 ->  6940.14 K (  +0.01)  L(Hb) 4.8456e+36 -> 4.8457e+36 ( +0.00%)  <He+>/<H+> 0.0425 -> 0.0425  H front 2.9125 -> 2.9125  He front 1.2491 -> 1.2490 pc
+  ots_converged     iterations   8 ->   8
+                    <T[NpNe]>  6913.75 ->  6914.73 K (  +0.98)  L(Hb) 4.8437e+36 -> 4.8461e+36 ( +0.05%)  <He+>/<H+> 0.0427 -> 0.0426  H front 2.9074 -> 2.9078  He front 1.2478 -> 1.2478 pc
+  lowden_converged  iterations  10 ->  10
+                    <T[NpNe]>  6282.17 ->  6282.18 K (  +0.01)  L(Hb) 4.8564e+36 -> 4.8565e+36 ( +0.00%)  <He+>/<H+> 0.0440 -> 0.0440  H front 2.8378 -> 2.8378  He front 1.2394 -> 1.2394 pc
+  nohecx_converged  iterations  14 ->  10
+                    <T[NpNe]>  6940.14 ->  6940.15 K (  +0.00)  L(Hb) 4.8456e+36 -> 4.8457e+36 ( +0.00%)  <He+>/<H+> 0.0425 -> 0.0425  H front 2.9125 -> 2.9125  He front 1.2491 -> 1.2491 pc
+  production lines (rel. Hb > 1e-3) moving > 0.5%, m10 -> m11:

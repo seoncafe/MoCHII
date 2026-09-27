@@ -6,9 +6,11 @@ comparison scripts and their text and PDF summaries are tracked.
 
 - `m2_atomic/`: the 2^25-packet Sobol production outputs of 2026-09-24
   (after the atomic-data update), superseded by `m4_nitrogen/`,
-  `m5_converged/`, `m8_defaults/` and `m10_drift_test/`; the paper
-  reads `m10_drift_test/` (since 2026-09-26), including its `g1/` and
-  `g2a_thermal.*`, moved there from `m9_hydrogenic_alpha/`.  With them are the figure runs of
+  `m5_converged/`, `m8_defaults/`, `m10_drift_test/`, `m11_hecx_solver/`
+  and `m12_vol_stop/`; the paper reads `m11_hecx_solver/` (since
+  2026-09-27) for the Lexington tables and figures and the PDR and He I
+  10833 figures, `m12_vol_stop/` for the G2a figure, and
+  `tests/g1_stromgren/` and `tests/g4_refine/` for G1 and G4.  With them are the figure runs of
   that date
   (`pdr_L5_atomic`, `hei_high_density_atomic`, `g2a_thermal_atomic`) and the
   sensitivity runs (`*_nohecx`, `*_lowden`, `*_ots`); `run_lart3*.sh` are the
@@ -20,6 +22,41 @@ comparison scripts and their text and PDF summaries are tracked.
   sat at a He noise floor above gas_tol and is kept as
   `pdr_L5_converged_random.*`); `g2a_thermal` uses the cell test and is not
   rerun here (`m4_nitrogen/`).  The paper read this set until 2026-09-26.
+- `m12_vol_stop/` (2026-09-27): the runs that had stopped on the cell
+  test, which none of them ever met (each ran to its iteration cap), rerun
+  to the drift test (`conv_crit = 'vol'`) with the binary of the
+  `m11_hecx_solver` set (`../../../MoCHII_m12run.x`, a copy kept at the
+  repository root): the four G1 runs and the dusty trio (outputs in
+  `tests/g1_stromgren/`, `tests/d_dusty/`), the G4 pair (`tests/g4_refine/`)
+  and `g2a_thermal` here, restarted from the m11 state (gas_niter 100,
+  gas_tol_te 5e-3; the vol dTe/Te floor is ~2.2e-3).  `run_m12.sh` used
+  gas_tol = 2e-3, which the He0-He+ Monte Carlo floor (2.5-3.4e-3 at 4e7
+  packets) kept L7, G4 and two dusty runs from reaching; `run_m12b.sh`
+  (lart1, lart2) and `run_m12b_mocafe.sh` (mocafe, 88 ranks) reran them at
+  gas_tol = 5e-3, the value now in their inputs.  All converged, in 33-81
+  iterations (G2a 10).  Against the 1D reference (3.0355 pc): G1 level 6
+  +1.01%, front-refined +1.03%, center-refined +2.80%, level 7 +0.69%; G4
+  re-refined 3.0562 vs native level 7 3.0559 pc (+0.012%); dusty full
+  -0.31%, laursen09_live +0.02% (less the dust-free level-6 run), scattering
+  2.057 < 2.203 <= 2.212 pc.  G2a gate: median 0.119%, mean -0.004%, max
+  3.39%.  Every gate passes.
+- `m11_hecx_solver/` (2026-09-27): the `m10_drift_test` set (with its
+  `g2a_thermal`) restarted with He+ + H charge exchange from Loreau et al.
+  (2014) by reciprocity (non-radiative, was KF96) and Stancil, Lepp &
+  Dalgarno (1998) (radiative, was GJ07 R26), the hydrogen balance solved for
+  u = ln(n_HII/n_HI), x_HII and x_HeIII stored as their own state, and the
+  n_e guard lowered to 1e-30 n_H.  `run_m11.sh` (lart1 and lart2, 72 ranks,
+  shared queue), `compare_m11.py` / `compare_m11.txt` / `m11_profiles.pdf`.
+  8-10 iterations each (`g2a_thermal`, on the cell test, 40 iterations to
+  its cap without meeting it: max|dx_HII| 3.0e-2, max|dTe|/Te 0.29 at the
+  end, as in m10; rerun to the drift test in `m12_vol_stop/`).  <T[NpNe]> moved by at most 0.04 K and L(Hbeta) by
+  < 1e-4 in the transported runs; the on-the-spot runs +1.6 K (HII40) and
+  +1.0 K (HII20), L(Hbeta) +0.06% / +0.05% (they had stopped in m10 on a
+  clean rho ~ 0.8 decay); no line rel. Hbeta > 1e-3 moved by more than
+  0.5%.  G2a gate on this run: median 0.118%, mean -0.008%, max 2.84%.
+  The paper-table values of `m10_drift_test/` below hold for this set at
+  the digits quoted there (HII40 8179.70 K, L(Hbeta) 2.0227e37; HII20
+  6940.14 K, 4.8457e36 in `compare_m11.txt`).
 - `m10_drift_test/` (2026-09-26): the `m9_hydrogenic_alpha` set
   (`g2a_thermal` excepted, which uses the cell test) continued to
   convergence under the revised stopping test (`fixed_point_distance_mod`:
@@ -41,9 +78,13 @@ comparison scripts and their text and PDF summaries are tracked.
   4.8456e36, <He+>/<H+> 0.7524 / 0.0472, R_out 1.4638e19 / 8.9875e18 cm.
   `g1/` (`run_g1.sh`) and `g2a_thermal.*`: the three G1 runs of the paper
   figure and the G2a run, made with the m9 binary and moved here from
-  `m9_hydrogenic_alpha/` (the G2a run as `g2a_thermal_m9`); both stop on
-  the cell test, which the 2026-09-26 revision of the stopping test does
-  not touch, so the m10 binary would make them the same.
+  `m9_hydrogenic_alpha/` (the G2a run as `g2a_thermal_m9`); both use the
+  cell test, which the 2026-09-26 revision of the stopping test does not
+  touch, so the m10 binary would make them the same.  None of them meets
+  it: every one runs to its iteration cap (G1 100, G2a 40), as do the
+  `g1_g4/` runs (100, 60, 60), ending at max|dx_HII| 3e-3 to 8e-2.
+  The paper still reads `g1/` and `g1_g4/`; the rest of this set it read
+  on 2026-09-26 only (superseded by `m11_hecx_solver/`).
   `g1_g4/` (`run_g1_g4.sh`): the level-7 G1 run and the two G4 runs
   (`tests/g4_refine/` inputs, with `helium_charge_exchange = .false.`
   pinned as in G1) with the same binary: R_eff 3.0578 (G1 level 7),
@@ -71,8 +112,8 @@ comparison scripts and their text and PDF summaries are tracked.
   two-photon quenching, He I/He II on-the-spot photons, the He II diffuse
   channel with the transported continuum, the Mg + H+ temperature-dependent
   defect, and the diffuse packet normalization.  `run_m8.sh` is the driver
-  (24 ranks, three at a time).  **This is the set the paper reads**
-  (superseded by `m10_drift_test/`)
+  (24 ranks, three at a time).  The paper read this set until 2026-09-26
+  (superseded by `m10_drift_test/`, then `m11_hecx_solver/`)
   (`g2a_thermal` excepted, below).  `compare_defaults.py` writes
   `compare_defaults.txt` and `defaults_profiles.pdf` (m5 vs m8, transported
   and on-the-spot, Cloudy overlaid); `front_zoom.py` writes `front_zoom.pdf`
@@ -195,5 +236,13 @@ comparison scripts and their text and PDF summaries are tracked.
 - `rqmc_ensemble/`: independent scrambled-Sobol production ensemble.
 - `mpi_scaling/` and `mpi_multinode/`: MPI agreement and timing runs.
 - `smoke/` and `misc/`: short diagnostic outputs and logs.
+- Directories not described above (`alpha1_milne/`, `hei_2ph_step1/`,
+  `hei_sensitivity/`, `hei_step2*/`, `hei_step3_584/`, `m1_s3/`,
+  `m1_twoway/`, `metal_*/`, `milne_acceptance/`, `production_*/`,
+  `residual_investigation/`, `superseded_*/`, `_reruns/`) hold the runs of
+  earlier investigations, all superseded; where a record exists it is
+  `md/HII40_CLOUDY_RESIDUAL_INVESTIGATION.md` (`alpha1_milne`,
+  `hei_sensitivity`, `residual_investigation`, `superseded_step3`) or
+  `md/METAL_COUPLING_PLAN.md` (`m1_s3`, `m1_twoway`, `metal_*`).
 
 Run scripts under `tests/continuous_energy/` write to the matching directory.

@@ -356,7 +356,7 @@ contains
   !--- accumulated optical depth NaN and made the energy ledger book every
   !--- packet through a hollow as escaped (97% at HII20).
   subroutine species_stage_cache_refresh()
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_ne, gas_Te
     implicit none
     real(kind=wp) :: frac(MAX_ST), nHI, nHII
     integer :: ie, il
@@ -364,7 +364,7 @@ contains
        do il = 1, size(stage_frac(ie)%g,2)
           if (gas_nH(il) > 0.0_wp) then
              nHI = gas_nH(il)*gas_xHI(il)
-             nHII = gas_nH(il)*(1.0_wp-gas_xHI(il))
+             nHII = gas_nH(il)*gas_xHII(il)
              call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
                                     nHI, nHII, frac)
           else
@@ -1454,7 +1454,7 @@ contains
   subroutine species_write(file, status)
     use iofile_mod
     use octree_mod,    only : amr_grid
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_ne, gas_Te
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_ne, gas_Te
     implicit none
     type(io_file_type), intent(inout) :: file
     integer, intent(inout) :: status
@@ -1469,7 +1469,7 @@ contains
        allocate(fr(elems(ie)%nstage, nleaf))
        do il = 1, nleaf
           nHI  = gas_nH(il)*gas_xHI(il)
-          nHII = gas_nH(il)*(1.0_wp - gas_xHI(il))
+          nHII = gas_nH(il)*gas_xHII(il)
           if (gas_nH(il) > 0.0_wp) then
              call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
                                     nHI, nHII, frac)

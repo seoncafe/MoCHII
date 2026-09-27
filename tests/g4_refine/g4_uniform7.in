@@ -30,7 +30,8 @@
 
  !--- G1 iteration (case B on-the-spot, fixed Te)
  par%gas_niter     = 60
- par%gas_tol       = 2.0e-3
+ par%gas_tol       = 5.0e-3   ! above the He0-He+ Monte Carlo floor of the drift test (2.5-3.4e-3 at 4e7 packets; 2e-3 was never reached, 2026-09-27)
+ par%conv_crit     = 'vol'   ! drift test: under 'cell' the run always hit gas_niter (2026-09-27)
  par%te_fixed      = 1.0e4
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
  par%ion_relax     = 1.0

@@ -378,8 +378,8 @@ public
      logical       :: use_master_slave   = .false.
      logical       :: use_reduced_wgt    = .true.
      !--- Dust-related parameters
-     real(kind=wp) :: hgg           = 0.6761
-     real(kind=wp) :: albedo        = 0.3253
+     real(kind=wp) :: hgg           = 0.6761_wp
+     real(kind=wp) :: albedo        = 0.3253_wp
      !--- Reference extinction of the run's grains, C_ext/H at lambda_ref
      !--- [cm^2 per H].  Every leaf's grey opacity is n_dust times this per
      !--- code length, so it is a property of the grains named by dust_model
@@ -836,10 +836,10 @@ public
      !--- emis_h (SH95 H I lines) and emis_<el>_<stage> blocks
      !--- [erg/s/cm^3; sum(emis*V) = L_line, rows match <base>_lines.txt]
      !--- with wl_* wavelength arrays, plus the state needed for maps
-     !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HeI/HeII, x_<el>_stages).
+     !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HII/HeI/HeII, x_<el>_stages).
      logical            :: emis_output  = .false.
      !--- write the ionizing-band mean intensity J_nu(nu, leaf) into
-     !--- '<base>_rates' (dataset J_nu).  The per-bin tally behind it,
+     !--- '<base>_rates' (dataset J_nu).  The binned tally behind it,
      !--- jt_ion (nnu_band x nleaf values on EVERY rank), is kept only when
      !--- something needs it: this output, or the SEDust emission
      !--- (ion_add_dust with dust_sed), whose leaf spectrum reads it.  The
@@ -877,10 +877,13 @@ public
      !--- diagnostic par%hei_metastable uses the same population either way).
      logical            :: hei_metastable_coupling = .true.
      !--- start the gas iteration from a previous run's <base>_rates file
-     !--- (HDF5 or FITS): x_HI, x_HeI, x_HeII, T_e, n_e and the metal
-     !--- photoionization rates, leaf by leaf, matched by position so the
-     !--- grid may differ; leaves with no previous counterpart keep the
-     !--- *_init values below (previous_state_mod).  Blank = a fresh start.
+     !--- (HDF5 or FITS): x_HI, x_HII, x_HeI, x_HeII, x_HeIII, T_e, n_e and the
+     !--- metal photoionization rates, leaf by leaf, matched by position so
+     !--- the grid may differ (a file without x_HII or x_HeIII, written before
+     !--- 2026-09-26/27, restarts from x_HII = 1 - x_HI and x_HeIII =
+     !--- max(0, 1 - x_HeI - x_HeII), with a note); leaves with no
+     !--- previous counterpart keep the *_init values below
+     !--- (previous_state_mod).  Blank = a fresh start.
      character(len=PATH_LEN) :: restart_file = ''
      !--- gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
@@ -1017,9 +1020,12 @@ public
      !--- published benchmark numbers, and is NOT a physics option.
      character(len=16)  :: charge_exchange = 'two_way'
      !--- He-H charge exchange in the H/He balance (ion_balance_mod):
-     !---   He+  + H  -> He  + H+   radiative (Glover & Jappsen 2007 R26, the
-     !---                           Zygelman et al. 1989 calculation) plus
-     !---                           non-radiative (Kingdon & Ferland 1996),
+     !---   He+  + H  -> He  + H+   radiative (Stancil, Lepp & Dalgarno 1998
+     !---                           (19), the Zygelman et al. 1989
+     !---                           calculation times 1/4) plus
+     !---                           non-radiative (Loreau et al. 2014 by
+     !---                           reciprocity; Kingdon & Ferland 1996
+     !---                           until 2026-09-26),
      !---   He++ + H  -> He+ + H+   (Kingdon & Ferland 1996),
      !---   He   + H+ -> He+ + H    (detailed balance on the non-radiative
      !---                           channel; Kimura et al. 1993 not used,

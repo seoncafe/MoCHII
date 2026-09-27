@@ -208,7 +208,7 @@ contains
     outname = trim(get_base_name(par%out_file))//'_dustir.txt'
     open(newunit=unit, file=trim(outname), status='replace')
     write(unit,'(a)') '# MoCHII equilibrium-mixture dust IR spectrum '// &
-       '(single T_d per leaf; SEDust stochastic/PAH bands are the next stage)'
+       '(single T_d per leaf; the SEDust stochastic/PAH emission is <base>_dustsed.txt)'
     write(unit,'(a,es14.6,a,es14.6,a,f7.3)') '# L_abs(dust) = ', Labs, &
        ' erg/s;  integral L_nu dnu = ', Lir, ';  ratio = ', Lir/max(Labs,tinest)
     write(unit,'(a)') '# lambda[um]   L_nu[erg/s/Hz]'

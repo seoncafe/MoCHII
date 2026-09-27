@@ -148,7 +148,10 @@ term's population from that n-level atom at the local (T, n_e).  The
 first-stage reverse rates of Mg, Si and Fe are the detailed balance of the
 total forward rate (the ion's excited terms in LTE), an upper bound on the
 reverse from the ground term, and each file says so.  The He-H charge exchange of the H/He balance is not
-in these files; its rates are closed forms in `src/ion_balance_mod.f90`.
+in these files: its rates are in `src/ion_balance_mod.f90`, closed forms except
+the non-radiative He+ + H rate (Loreau et al. 2014 by reciprocity), which is
+tabulated into `src/heii_h_charge_exchange_data.inc` by
+`tools/fitting/make_heii_h_charge_exchange.py`.
 
 Maximum fit errors are recorded in each header: at or below ~0.7% across
 the default C/N/O/Ne/S set except C III (5.5% full range, 0.50% where the
@@ -179,11 +182,15 @@ the Porter table.
 | `hcoll_<el>_<stage>.txt` | atomic-hydrogen impact rates for the ground-term fine structure (see above) |
 | `badnell_rr.dat`, `badnell_dr.dat` | Badnell radiative and dielectronic recombination fit parameters |
 | `sh95_*.txt`, `hei_porter_caseB.txt` | recombination-line emissivity tables |
+| `he1_case_b.dat` | the Porter He I case-B grid copied from Cloudy c23.01, the input `tools/fitting/make_hei_lines.py` parses into `hei_porter_caseB.txt`; not read at run time |
 | `h_2s_2p_mixing.txt` | H(2s) -> H(2p) collisional rate coefficients by collider (e, p, He+, He2+) and A_2s, for the two-photon quenching |
 | `hei_metastable.txt` | He I 2^3S metastable rate coefficients and the 10833 A line constants; the `PENNING A c d1 d2 d3` row is the Garcia Munoz (2025, A&A 698, A199) Penning + associative ionization rate `Q_31 = A exp(c/T + d1 lnT + d2 (lnT)^2 + d3 (lnT)^3)` cm^3 s^-1 (`A` = 1e-9); the `UPSILON role lower n 2S+1 l g_lower dE_eV Upsilon(1..n)` rows are the Bray, Burgess, Fursa & Tully (2000, A&AS 146, 481) Tables 2 and 3 effective collision strengths, 1^1S -> n^3L and 2^3S -> n^(2S+1)L for n <= 5 (41 transitions, role `Q13`/`FEED`/`Q31A`/`Q31B`/`SINGLET`/`TRIPLET`), at the `UPSGRID` nodes log T = 3.75-5.75 as printed plus 3.00-3.50 from the CHIANTI he_1 temperature dependence anchored at 10^3.75 K; `q = BETA Upsilon exp(-dE/kT)/(g_l sqrt T)` with the exact Maxwellian constant `BETA` = 8.629132e-6 and observed term energies (`E23S` = E(2^3S)); the 2^3S -> 1^1S electron de-excitation is not a row of its own but the detailed-balance inverse of the `Q13` row; the recombination source is not in the file (alpha_3 = f_3S alpha_B(He II), hei_cascade_mod x recomb_mod; the Oklopcic & Hirata 2018 `ALPHA3` row is gone and a file carrying it is refused); `CION3 A p T0` is the Black (1981) electron-impact ionization of 2^3S, `A T^p exp(-T0/T)` |
-| `gauntff_vh14.dat`, `gamma*.dat` | free-free Gaunt factors and free-bound emission tables |
 
-Not in this directory: the hydrogenic recombination of H II and He III
+Not in this directory: `data/gauntff_vh14.dat` (the van Hoof et al. 2014
+free-free Gaunt factors, `par%gaunt_vh14`), `data/gamma{HI,HeI,HeII}.dat`
+(the free-bound + free-free emission tables of the nebular continuum) and
+`data/HeI2phot.dat` (the He I two-photon shape) sit one level up; the
+hydrogenic recombination of H II and He III
 (alpha_B, the 2s share f_2s in case A and case B, and the He II case-A
 Lyman-line shares) is generated as Fortran DATA into
 `src/hydrogenic_recombination_data.inc` by

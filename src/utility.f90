@@ -8,12 +8,11 @@ module utility
    public :: array_2D_indices, array_3D_indices
    public :: loop_divide
    public :: get_base_name, get_base_input_name, get_extension
-   public :: name_for_backup
    public :: is_finite, finite
    public :: copy_file
    public :: time_stamp
    public :: get_date_time
-   public :: fatal_error
+   public :: fatal_error, refuse_input
    character(*), private, parameter :: LOWER_CASE = 'abcdefghijklmnopqrstuvwxyz'
    character(*), private, parameter :: UPPER_CASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -260,32 +259,6 @@ contains
    return
    end function get_base_input_name
    !------------------------------------------------
-   function name_for_backup(fname) result(fname_next)
-   !--- this routine gives a name for backup file for a given base name of a fits
-   !--- or hdf5 output file. For example, fname = 'DL19' for 'DL19.fits.gz' or
-   !--- 'DL19.h5'.  Returns the first <fname>_NN that doesn't collide with an
-   !--- existing file of either extension.
-   implicit none
-   character(len=*), intent(in) :: fname
-   character(len=PATH_LEN)      :: filename, fname_next
-   logical :: exists_fits, exists_h5
-   integer :: i
-
-   do i = 0,99
-      if (i == 0) then
-         fname_next = trim(fname)
-      else
-         !write(fname_next,'(a,i3.3)') trim(fname)//'_',i
-         write(fname_next,'(a,i2.2)') trim(fname)//'_',i
-      endif
-      filename = trim(fname_next)//'.fits.gz'
-      inquire(file=trim(filename), exist=exists_fits)
-      filename = trim(fname_next)//'.h5'
-      inquire(file=trim(filename), exist=exists_h5)
-      if (.not. (exists_fits .or. exists_h5)) exit
-   enddo
-   end function name_for_backup
-   !------------------------------------------------
    subroutine copy_file(infile, outfile, ierr)
    implicit none
    character(len=*),  intent(in)  :: infile
@@ -390,5 +363,28 @@ contains
    flush(6)
    call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
    end subroutine fatal_error
+   !------------------------------------------------
+   ! End the run on a rejected input, with exit status 1 so that mpirun and
+   ! any script that runs it see the failure (MPI_FINALIZE followed by a
+   ! bare STOP exits 0).  Only for checks that every rank evaluates on the
+   ! same data -- the namelist and what follows from it -- so every rank
+   ! arrives here together: rank 0 prints the message once, all ranks
+   ! finalize MPI and stop.  An error that one rank can meet alone (a file
+   ! read, a failed allocation) takes fatal_error instead, since a rank
+   ! waiting here for the others would wait forever.
+   subroutine refuse_input(message)
+   use mpi
+   implicit none
+   character(len=*), intent(in) :: message
+   integer :: rank, ierr
+   call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
+   if (rank == 0) then
+      write(*,'(2a)') 'ERROR: ', message
+      flush(6)
+   end if
+   call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+   call MPI_FINALIZE(ierr)
+   error stop 1, quiet=.true.
+   end subroutine refuse_input
    !------------------------------------------------
 end module utility

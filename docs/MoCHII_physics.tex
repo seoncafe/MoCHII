@@ -12,6 +12,7 @@
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\cmc}{\mathrm{cm^{3}\,s^{-1}}}
 \newcommand{\xHI}{x_{\mathrm{HI}}}
+\setlength{\emergencystretch}{2em}
 
 \begin{document}
 
@@ -32,17 +33,17 @@ field), the $n$-level emissivity solver, the ported nebular
 continuum and Storey \& Hummer recombination lines, and the
 quantitative validation gates: rate
 integrals vs.\ analytic attenuation (bias $+0.004\%$); the Str\"omgren
-sphere vs.\ an exact 1D reference ($+1.05\%$ in the ionized-volume radius at level 6, $+0.73\%$ at level 7; AMR
+sphere vs.\ an exact 1D reference ($+1.01\%$ in the ionized-volume radius at level 6, $+0.69\%$ at level 7; AMR
 $\equiv$ uniform); the thermal H/He nebula (median $0.12\%$ in $T_e$);
 the MOCASSIN Lexington benchmarks ($T_e = 8180$~K at HII40 and 6940~K at
 HII20 with the density-suppressed cooling default, run to the drift stopping
 test, matching a current \textsc{Cloudy} c25.00 run to $-0.37\%$ and $+0.44\%$,
 with the HII40 He\,\textsc{i} front $0.033$~pc inside \textsc{Cloudy}'s; the
-zero-density limit gives 7877 and 6282~K); and the line-flux comparison (H$\beta$ within a few
-percent of the published values, the optical collisional lines within
-the published spread).
+zero-density limit gives 7877 and 6282~K); and the line-flux comparison
+($L({\rm H}\beta)$ inside the published range at both, the optical
+collisional lines within the published spread).
 Also documented: the solution-driven I-front re-refinement
-(re-refined vs.\ native high-resolution octree $+0.006\%$ in the
+(re-refined vs.\ native high-resolution octree $+0.012\%$ in the
 ionized-volume radius with $4.5\times$ fewer cells) and an Illustris-TNG
 post-processing demonstration; the completed dust coupling
 (ionizing-band dust absorption with the dusty Str\"omgren reduction
@@ -86,9 +87,9 @@ recombination lines, and the nebular continuum.
 \subsection{Continuous energy and diagnostic bins}
 \label{sec:band}
 The ionizing band covers photon energies
-$[E_{\min}, E_{\max}] = [13.598, 100]$~eV.  By default
-(\code{par\%ion\_energy\_mode = 'continuous'}), a packet energy is sampled
-from the normalized source-energy CDF, rather than from a frequency bin.
+$[E_{\min}, E_{\max}] = [13.598, 100]$~eV.  A packet energy is sampled
+from the normalized source-energy CDF, never from a frequency bin (there is
+no binned-energy mode).
 For a Planck source the CDF is built adaptively from the Planck energy
 spectrum; for a tabulated source it is the cumulative integral of the
 input $L_E$.  H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}, and active
@@ -108,11 +109,13 @@ an equal-luminosity sample of the source spectrum.
 The packet retains $E_{\rm pkt}$ throughout transport.  Gas opacity,
 photoionization cross sections, and the excess energy used for heating are
 evaluated at this exact energy.  The $n_\nu$ bins
-(\code{par\%nnu\_ion}; gates use 32) receive only a diagnostic $J_E$ tally:
-the sampled energy is located by a binary search of the bin-edge array and
-assigned an output index.  Consequently the number or placement of those
-bins cannot alter the continuous-mode physical solution; it changes only
-the spectral resolution of saved tallies and rate diagnostics.  This is
+(\code{par\%nnu\_ion}, default 16; gates use 32) receive only a diagnostic
+$J_E$ tally, which is kept only when \code{par\%jnu\_output} asks for it to
+be written (default off) or the SEDust emission reads it: the sampled energy
+is located by a binary search of the bin-edge array and assigned an output
+index.  Consequently the number or placement of those bins cannot alter the
+physical solution; it changes only the spectral resolution of the saved
+tally.  This is
 important at thresholds: a photon exactly on a stored edge is assigned to
 the bin above it, but its interaction physics still uses its own energy.
 
@@ -132,8 +135,8 @@ thresholds outnumber the bins the lowest-priority (metal) edges are
 dropped gracefully --- the H/He edges are always kept --- so the option
 is safe at any \code{nnu\_ion}.  Setting it \code{.false.} uses a
 single log grid.  Because the transported energies are continuous, this
-choice changes the resolution of the saved $J_E$ tally and of the rate
-diagnostics only; it cannot move the physical solution.
+choice changes the resolution of the saved $J_E$ tally only; it cannot move
+the physical solution.
 
 \paragraph{FUV extension.}  With \code{par\%add\_fuv} the band grows a
 second, lower segment: \code{par\%nnu\_fuv} log bins on
@@ -172,7 +175,7 @@ all set, or none for an equal split of \code{par\%luminosity}, which
 becomes the sum) plus, independently, one isotropic external radiation
 field, on when \code{par\%ext\_intensity} $> 0$.  Each packet draws a
 component in proportion to its band-total luminosity, is emitted from
-it, and draws its frequency bin from that component's own spectrum CDF;
+it, and draws its energy from that component's own spectrum CDF;
 every packet carries $L_{\rm pkt} = \sum_c L_c/N$.  A single-component
 run takes the legacy code path (the RNG stream is unchanged, so earlier
 results reproduce).  The spectrum of internal source $i$ resolves as
@@ -232,7 +235,8 @@ of three analytic interstellar radiation fields: \code{'draine'}
 (Draine 1978), \code{'habing'} (the Draine shape at Habing 1968
 normalization, $/1.71$), and \code{'mathis'} (Mathis, Mezger \&
 Panagia 1983), the shape of the SEDust radiation-field module.  They
-are FUV-only (5--13.6~eV, exactly zero in the ionizing bins), so they
+are FUV-only (5~eV up to the H\,\textsc{i} edge, 13.598~eV, and exactly
+zero in the ionizing band), so they
 require \code{add\_fuv}, and \code{par\%ext\_scale} multiplies them.  The
 Draine field is the energy-weighted photon polynomial
 $F_{\rm ph}(E) = 1.658{\times}10^{6}\,E^{2} - 2.152{\times}10^{5}\,E^{3}
@@ -246,57 +250,71 @@ is set the preset or physical file is rescaled to that band-integrated
 $J$ (a note is printed; \code{ext\_scale} is then ignored).
 
 \subsection{Opacity and the zero-variance edge walk}
-Each leaf carries the band absorption coefficient per code length
+A packet of energy $E$ sees in a leaf the absorption coefficient per code
+length
 \begin{equation}
-  \kappa_b \;=\; n_{\rm H}\left[ \xHI\,\sigma_{\rm HI}(E_b)
+  \kappa(E) \;=\; n_{\rm H}\left[ \xHI\,\sigma_{\rm HI}(E)
    + y_{\rm He}\left( x_{\rm HeI}\sigma_{\rm HeI} +
-     x_{\rm HeII}\sigma_{\rm HeII}\right)(E_b)\right] d_{\rm cm}
-   \;(+\;\kappa_{\rm dust}),
+     x_{\rm HeII}\sigma_{\rm HeII}\right)(E)\right] d_{\rm cm}
+   \;(+\;\kappa_{\rm dust}(E)),
+  \label{eq:packet-opacity}
 \end{equation}
-stored as the full $(n_\nu, n_{\rm leaf})$ array \code{kap\_ion} --- the
-grey $s_{\rm ext}$ rescaling of the dust SED band cannot apply because
-the gas opacity varies with both leaf and bin.
+evaluated at the packet's own energy (\code{ion\_packet\_mod}): the cross
+sections are computed once when the packet is launched
+(\code{build\_ion\_packet\_physics}) and combined with the leaf state at each
+step (\code{ion\_packet\_opacity}).  No opacity is stored for each energy
+bin; the leaf carries only its state and the gray dust extinction density
+\code{rhokap}, which the dust term multiplies by the packet's
+$s_{\rm abs}(E)$ (and $s_{\rm sca}(E)$ when scattering is sampled;
+\S\ref{sec:dust}).
 With \code{par\%ion\_metal\_abs} (default on when \code{use\_metals})
 the registry metals join the absorption,
-$\Delta\kappa_b = n_{\rm H}\sum_{\rm el} A_{\rm el} \sum_i
-f_i\,\sigma_i(E_b)\,d_{\rm cm}$, with $\sigma_i$ the cross section of
+$\Delta\kappa(E) = n_{\rm H}\sum_{\rm el} A_{\rm el} \sum_i
+f_i\,\sigma_i(E)\,d_{\rm cm}$ (\code{species\_cached\_opacity}), with
+$\sigma_i$ the cross section of
 \S\ref{sec:photo} (Verner's \code{phfit2} prescription, inner shells
 included), the stage fractions $f_i$ from the same product chain as the
 cooling, iterated by the opacity feedback exactly like $\xHI$.  Above
 13.6~eV this is a $\sim$10$^{-22}$~cm$^2$ per H perturbation next to H/He
-and dust; in the FUV bins it is the only \emph{gas} opacity.  The absorbed
+and dust; below 13.6~eV (the FUV extension) it is the only \emph{gas}
+opacity.  The absorbed
 share returns to the metals through their own $\Gamma$ integrals, so the
 bookkeeping stays consistent, and the photoelectron energy it carries
 enters the thermal balance under \code{par\%metal\_heat} (on by default)
 through the shell-resolved heating coefficient of \S\ref{sec:photo}.
 
-Where the band has no scattering and the diffuse field is emitted
-explicitly, every packet's contribution to the mean-intensity tally is
-computed \emph{analytically} along its ray (the forced-first-flight
-estimator of MoCafe, made exact):
+Where the band has no scattering, every packet's contribution to the
+path estimators is computed \emph{analytically} along its ray (the
+forced-first-flight estimator of MoCafe, made exact): in each leaf it
+crosses the packet contributes the effective path length
 \begin{equation}
-  \Delta J_b({\rm leaf}) \;=\; w\,L_{\rm pkt}\,
-  \frac{e^{-\tau_{\rm in}} - e^{-\tau_{\rm out}}}{\kappa_b},
+  \ell_{\rm eff}({\rm leaf}) \;=\;
+  \frac{e^{-\tau_{\rm in}} - e^{-\tau_{\rm out}}}{\kappa(E)},
   \label{eq:edgewalk}
 \end{equation}
-accumulated leaf by leaf until the domain edge
-(\code{raytrace\_ion\_to\_edge\_amr}).  No interaction sampling is
-needed; the only Monte Carlo variance is in direction and bin sampling.
-The rate-integral gate verifies this estimator to a mean bias of
-$+0.004\%$.
+weighted by $w\,L_{\rm pkt}$, accumulated leaf by leaf until the domain
+edge (\code{raytrace\_ion\_to\_edge\_amr}).  No interaction sampling is
+needed; the only Monte Carlo variance is in the sampled energies and
+directions.  The rate-integral gate verifies this estimator to a mean bias
+of $+0.004\%$.
 
 \subsection{Rate integrals}
-With $V$ the leaf volume and $J_b$ the reduced tally, the code forms for
-each absorber $i$
+With $V$ the leaf volume, the code forms for each absorber $i$ the path
+estimators (\code{ion\_score\_mod}), summed over every packet segment
+through the leaf and reduced over the MPI ranks,
 \begin{equation}
-  \Gamma_i = \sum_b \frac{[4\pi J\,\Delta\nu]_b\,\sigma_i(E_b)}{h\nu_b},
+  \Gamma_i = \frac{1}{V}\sum_{\rm seg} w\,L_{\rm pkt}\,\ell_{\rm eff}\,
+             \frac{\sigma_i(E)}{E},
   \qquad
-  \mathcal{H}_i = \sum_b [4\pi J\,\Delta\nu]_b\,\sigma_i(E_b)
-  \left(1 - \frac{E_{{\rm th},i}}{E_b}\right),
+  \mathcal{H}_i = \frac{1}{V}\sum_{\rm seg} w\,L_{\rm pkt}\,\ell_{\rm eff}\,
+  \sigma_i(E)\left(1 - \frac{E_{{\rm th},i}}{E}\right),
   \label{eq:rates}
 \end{equation}
 the photoionization rate [s$^{-1}$] and photoheating [erg\,s$^{-1}$]
-for each particle of species $i$.  For a metal ion at energies where
+for each particle of species $i$, every factor at the packet's own energy
+$E$ ($\ell_{\rm eff}$ in cm); no bin enters.  The binned $J_E$ tally of
+\S\ref{sec:band} is a diagnostic written beside these and does not feed
+them.  For a metal ion at energies where
 more than one subshell absorbs, the heating factor
 $\sigma_i(1 - E_{{\rm th},i}/E)$ becomes the sum over the absorbing
 subshells $\sum_s \sigma_s\,(1 - E_{{\rm th},s}/E)$, since each subshell
@@ -531,8 +549,9 @@ for H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii}):
   \alpha_B^{\rm HeII} &= 1.260{\times}10^{-14}\,\lambda^{0.750},
 \end{align}
 He\,\textsc{iii} hydrogenic ($Z{=}2$).  These are retained so the
-recorded gates reproduce; they agree with the default to $<0.6\%$ for
-H\,\textsc{ii} and He\,\textsc{iii}, but give
+recorded gates reproduce.  At $10^4$~K their $\alpha_B$ lies $0.3\%$
+(H\,\textsc{ii}) and $0.9\%$ (He\,\textsc{iii}) above the default and their
+$\alpha_A$ $3.2\%$ and $2.0\%$ above it, and they give
 He\,\textsc{ii}$\to$He\,\textsc{i} $5\%$ lower ($\alpha_B = 2.62$ vs
 $2.76{\times}10^{-13}\,\cmc$).
 Recombination \emph{cooling}, the kinetic energy the captured electrons
@@ -580,8 +599,9 @@ its default on 2026-07-17, before the $\alpha_1$ correction of
 \S\ref{sec:diffuse} (Hui \& Gnedin remains a legacy option).  MOCASSIN
 and Cloudy always work in
 case A and transport the diffuse ground-recombination field explicitly,
-whereas MoCHII defaults to case B (on-the-spot) with an optional explicit
-diffuse field, and EXHALE is case B only.
+as MoCHII does by default (\code{par\%recombination\_continuum =
+'transported'} since 2026-09-26; \code{'on\_the\_spot'} keeps case B),
+while EXHALE is case B only.
 
 \begin{table}[htbp]
 \centering\small
@@ -594,14 +614,19 @@ apply).}
 code & source & H\,\textsc{ii}$\to$\textsc{i}
      & He\,\textsc{ii}$\to$\textsc{i} & He\,\textsc{iii}$\to$\textsc{ii} \\
 \midrule
-MoCHII (default)          & Badnell RR $+$ Milne $\alpha_1$            & 4.19 / 2.61 & 4.37 / 2.76 & 21.9 / 15.4 \\
+MoCHII (default)          & SH91 cascade$^a$ / Badnell RR; Milne $\alpha_1$ & 4.16 / 2.58 & 4.37 / 2.76 & 21.8 / 15.3 \\
 MoCHII (\code{hui\_gnedin})& Hui \& Gnedin 1997                        & 4.30 / 2.59 & 4.23 / 2.62 & 22.3 / 15.5 \\
 EXHALE (default)           & Badnell RR $+$ Mao\,\&\,Kaastra $\alpha_1$ & -- / 2.61   & -- / 2.81   & -- / 15.4   \\
 EXHALE (\code{legacy\_hhe\_rates}) & Hui \& Gnedin 1997 (case B)         & -- / 2.59   & -- / 2.62   & -- / 15.5   \\
 MOCASSIN                   & Verner \& Ferland 1996 (case A)           & 4.19        & 4.84        & 21.9        \\
 Cloudy c25.00              & level-resolved Milne, own $\sigma_{\rm pi}$ (case A) & 4.16 & 4.36 & 21.8 \\
 \bottomrule
-\end{tabular}
+\end{tabular}\\[2pt]
+\parbox{0.95\linewidth}{\raggedright\footnotesize $^a$ $\alpha_B$ of
+H\,\textsc{ii} and He\,\textsc{iii} from the zero-density Storey \& Hummer
+(1991) cascade, $\alpha_A$ of He\,\textsc{ii} from the Badnell total; until
+2026-09-26 all three came from Badnell, giving 4.19 / 2.61 and 21.9 / 15.4
+for the hydrogenic ions.}
 \end{table}
 The H\,\textsc{ii} and He\,\textsc{iii} rates agree across all four codes
 to within a few percent.  The one substantive difference is
@@ -622,7 +647,8 @@ takes it apart.
 measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
 which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
 front; they document the search for a residual that was mostly that early
-stop, and are not current bounds.  The converged residual is $0.034$~pc.
+stop, and are not current bounds.  The converged residual is $0.033$~pc
+(\code{m11\_hecx\_solver}, $4.2723$ against $4.3053$~pc).
 
 Neutral helium is the one species in the H/He inventory on which the
 photoionization codes disagree at more than the percent level.  Reading
@@ -726,7 +752,7 @@ Taken together with the front sensitivity measured in
 \S\ref{sec:diffuse} ($0.80$~pc per unit fractional change in the
 He\,\textsc{i} recombination rate), the $11$--$13\%$ code spread is worth
 $0.09$~pc --- more than the converged HII40 front residual against Cloudy,
-$0.034$~pc --- but MoCHII
+$0.033$~pc --- but MoCHII
 itself lies within $0.3\%$ of Cloudy, so that lever is not available to
 MoCHII: it measures how much of a helium front comparison between two
 arbitrary codes can be recombination data alone.
@@ -742,9 +768,12 @@ so the residual to \textsc{Cloudy}'s $4.30531$~pc is $0.17600$~pc
 (was $0.17755$; \code{tests/continuous\_energy/analyze\_hii40\_residuals.py}
 on \code{results/continuous\_energy/m2\_atomic/hii40\_atomic\_rates.h5}).
 \emph{Those residuals were measured on runs stopped by the earlier
-convergence rule} (\S\ref{sec:hii}); run to the drift test, the front is at
-$4.27107$~pc and the residual is $0.034$~pc
-(\code{results/continuous\_energy/m5\_converged}).
+convergence rule} (\S\ref{sec:hii}); run to the drift test, the front was at
+$4.27107$~pc and the residual $0.034$~pc
+(\code{results/continuous\_energy/m5\_converged}); with the current code it is
+at $4.27227$~pc, a residual of $0.033$~pc
+(\code{results/continuous\_energy/m11\_hecx\_solver/hii40\_converged},
+measured with the same script).
 
 \subsection{Collisional ionization (Voronov 1997)}
 \begin{equation}
@@ -825,9 +854,11 @@ their coefficients from the Badnell tables, and all 22 reproduce
 \code{data/atomic/badnell\_\{rr,dr\}.dat} at $10^4$~K to a ratio of $1.0000$.
 The key is fixed by the registry convention: \code{TRANSITION} $i$ of element
 $Z$ is the recombination of the ion of charge $i$, so the Badnell row is
-$(Z,\ N = Z - i,\ M = 1)$.  MoCHII's hardcoded H\,\textsc{i} coefficients
-($8.318{\times}10^{-11}$, $0.7472$, $2.965$, $7.001{\times}10^{5}$) are exactly
-the $Z = 1$, $N = 0$ row of the same table.  There is no transcription error
+$(Z,\ N = Z - i,\ M = 1)$.  The hardcoded H\,\textsc{i} coefficients MoCHII
+carried until 2026-09-26 ($8.318{\times}10^{-11}$, $0.7472$, $2.965$,
+$7.001{\times}10^{5}$) were exactly the $Z = 1$, $N = 0$ row of the same
+table; the hydrogenic $\alpha_B$ now comes from the cascade of
+\S\ref{sec:hherec}.  There is no transcription error
 anywhere in the registry, and no coefficient traceable to the wrong ion.
 
 \paragraph{The older forms cannot be migrated, and should not be.}  Badnell's
@@ -932,7 +963,7 @@ right (a code-to-code spread).
 defect in MoCHII's recombination data: no transcription error, no form that a
 better source could replace, and no coefficient attached to the wrong ion.
 That is not the same statement as ``the data are accurate''.  For H and He an
-independent determination exists and MoCHII matches it to $0.3$--$0.7\%$; for
+independent determination exists and MoCHII matches it to $0.02$--$0.3\%$ in $\alpha_A$ at $10^4$~K (it was $0.3$--$0.7\%$ while the hydrogenic ions used the Badnell total); for
 the metals no arbiter is available in this configuration, so the verdict there
 is the absence of a defect found, not accuracy established.
 
@@ -1065,7 +1096,7 @@ The correction raises the HII40 doubly/triply-ionized fractions
 fractions with the underconverged MOCASSIN baseline was partly
 fortuitous.
 
-With the shipped abundances 29 of these reactions are active --- 7 in the
+With all eleven registry elements present 29 of these reactions are active --- 7 in the
 $\mathrm{H}^+ \to \mathrm{H}^0$ direction (C, N, O, Mg, Si, S, Fe, all at
 the neutral stage) and 22 in the reverse --- and every one of them enters
 hydrogen's balance as well as the metal's
@@ -1080,22 +1111,75 @@ default on, 2026-09-24).}  Four reactions couple the H and He balances
   two channels that the underlying calculation (Zygelman, Dalgarno, Kimura
   \& Lane 1989, PRA 40, 2340) keeps apart.  The \emph{radiative} channel,
   through the $A\,^1\Sigma^+ \to X\,^1\Sigma^+$ transition, is
-  $1.25{\times}10^{-15}(T/300)^{0.25}\,\cmc$ (Glover \& Jappsen 2007, ApJ
-  666, 1, Table~1 R26, citing Zygelman et al.); that fit is one quarter of
+  $1.20{\times}10^{-15}(T/300)^{0.25}\,\cmc$ (Stancil, Lepp \& Dalgarno
+  1998, ApJ 509, 1, Table~1 reaction 19; read: ``Zygelman et al.\ 1989,
+  multiplied by 0.25 to account for approach probability factor''); that fit is one quarter of
   Zygelman's Table~I ``Direct'' column ($5.36$, $4.21$, $4.41$, $4.50$,
   $4.83$, $5.99{\times}10^{-15}$ at 1, 10, 100, 200, 400, 1000~K), the
   quarter being the probability of approach in the singlet,
   $(2S+1)(2-\delta_{0\Lambda})/[(2L_a+1)(2S_a+1)(2L_b+1)(2S_b+1)] = 1/4$
   for $\mathrm{He}^+(^2S) + \mathrm{H}(^2S)$ (Courtney et al.\ 2021, ApJ 919,
   70, Eqs.~4--6).  Zygelman tabulates only to 1000~K, so above that the
-  $T^{0.25}$ is an extrapolation.  The \emph{non-radiative} channel is the
-  Kingdon \& Ferland (1996, ApJS 106, 205) Table~1 He$^+$ row, their Eq.~7
-  with $a = 7.47{\times}10^{-6}$, $b = 2.06$, $c = 9.93$, $d = -3.89$,
-  fitted over $6\times10^3$--$10^5$~K.  Below 6000~K the fit is evaluated as
-  written: it falls as $t_4^{2.06}$, as a curve-crossing channel must at low
-  collision energy, whereas holding the 6000~K value would overstate it
-  tenfold at 1000~K; above $10^5$~K $T$ is held at $10^5$~K.  At 8000~K the
-  two channels give $2.84{\times}10^{-15}$ and $6.8{\times}10^{-15}\,\cmc$.
+  $T^{0.25}$ is an extrapolation.  Courtney et al.\ recompute the process to
+  $10^6$~K (their Fig.~3, digitized; their tabulated data could not be
+  obtained): the fit is within 2\% of it over $10^3$--$10^4$~K, 7--13\% high
+  at $1.5$--$3\times10^4$~K and 2--3$\times$ low below 1000~K
+  (\code{md/heii\_h\_charge\_exchange/RADIATIVE\_CHANNEL\_2026-09-26.md}).
+  Until 2026-09-26 MoCHII used Glover \& Jappsen (2007, ApJ 666, 1) R26,
+  $1.25{\times}10^{-15}(T/300)^{0.25}$, the same data with a 4\% higher
+  normalization and 3--6\% above Courtney et al.\ over $10^3$--$10^4$~K;
+  EXHALE carries the same SLD98 row.  The \emph{non-radiative} channel (since
+  2026-09-26) is the ground-to-ground exchange from Loreau, Ryabchenko \&
+  Vaeck (2014, J.\ Phys.\ B 47, 135204; read): their fully quantal
+  calculation of the reverse reaction H$^+$ + He(1s$^2$) $\to$ H(1s) +
+  He$^+$(1s), fit as their Eq.~3 with the process~(1) column of Table~2
+  ($\log_{10}\sigma$ in $10^{-16}$~cm$^2$ against $\log_{10}E$ in eV/u,
+  accurate to $<25\%$ at 100--400~eV/u and $<5\%$ elsewhere), taken to the
+  forward direction by microscopic reversibility,
+  \[
+    \sigma_f(E_f) = \frac{g_r}{g_f}\,\frac{\mu_r E_r}{\mu_f E_f}\,\sigma_r(E_r),
+    \qquad E_r = E_f + 10.989~{\rm eV},\quad g_r/g_f = 1/4 ,
+  \]
+  and Maxwell-averaged offline (\code{tools/fitting/make\_heii\_h\_charge\_exchange.py},
+  $10^3$--$10^6$~K at 0.02~dex, interpolated in $\log k$ vs $\log T$ and
+  held outside; the reciprocity is checked by averaging $\sigma_r$ directly
+  over the reverse channel, to $10^{-6}$).  The statistical-weight ratio
+  supplies the singlet approach probability.  E in eV/u is read as the
+  proton's laboratory energy per nucleon; the paper does not state the
+  frame, and reading it as the center-of-mass energy lowers the rate by
+  35--48\%.  Between the reverse threshold (13.66~eV/u) and 15~eV/u, where
+  their quantal cross sections start, there are no data, and the fit stays
+  finite at the threshold ($2.0\times10^{-23}$~cm$^2$): carried through, it
+  makes $\sigma_f \propto 1/E_f$ and a rate that grows without bound as $T$
+  falls; set to zero, it drops an open channel.  The form adopted there is
+  $\sigma_r \propto (x - x_{\rm th})^{1/2}$ joined to the fit at 15~eV/u,
+  i.e.\ $\sigma_f v$ constant at low forward energy (capture on the
+  ion--induced-dipole potential with a transfer probability that does not
+  vary with energy, an assumption no calculation tests; EXHALE carries the
+  same rate and form, $9.644\times10^{-17}$ at $10^4$~K in both codes).  Values: $0.96$, $0.98$, $0.98$, $0.96$, $0.95$, $1.00$,
+  $1.21$, $2.42{\times}10^{-16}\,\cmc$ at $10^3$, $3\times10^3$,
+  $6\times10^3$, $10^4$, $2\times10^4$, $3\times10^4$, $5\times10^4$,
+  $10^5$~K.  Validity: set by the quantal cross sections at
+  $2\times10^4$--$5\times10^4$~K (the near-threshold form moves it by
+  $\le 13\%$ there); below $\sim$$2\times10^4$~K increasingly by that form,
+  which the fit carried through the threshold and $\sigma_r = 0$ bracket
+  ($1.32\times$ and $0.46\times$ at $10^4$~K, $3.6\times$ and
+  $1.5\times10^{-5}\times$ at 1000~K); at $10^4$~K it agrees with Zygelman's
+  Figure~8 Maxwell-averaged and times 1/4 ($9.3\times10^{-17}$); above
+  $\sim$$3\times10^4$~K
+  Loreau et al.\ and Zygelman et al.\ disagree by up to $10^3$ in the cross
+  section above $\sim$5~eV, a disagreement Loreau et al.\ report themselves,
+  and the Loreau value is used because its two quantal methods and the
+  measurement of Latypov \& Shaporenko agree with it.  It replaces the
+  Kingdon \& Ferland (1996, ApJS 106, 205) Table~1 He$^+$ row ($a =
+  7.47{\times}10^{-6}$, $b = 2.06$, $c = 9.93$, $d = -3.89$), which is
+  $93\times$ larger at $10^4$~K: at $5\times10^4$--$10^5$~K it reproduces
+  Zygelman's singlet-conditional rate without the 1/4, and below
+  $2\times10^4$~K it exceeds the bound Zygelman's own Figure~8 sets by at
+  least 11, so no constant factor could mend it
+  (\code{md/heii\_h\_charge\_exchange/}).  At 8000~K the two channels now
+  give $2.73{\times}10^{-15}$ and $9.7{\times}10^{-17}\,\cmc$ (the KF96 row gave
+  $6.8{\times}10^{-15}$).
 \item $\mathrm{He}^{2+} + \mathrm{H} \to \mathrm{He}^+ + \mathrm{H}^+$:
   the KF96 He$^{2+}$ row, a constant $10^{-14}\,\cmc$ ($10^3$--$10^7$~K;
   West, Lane \& Cohen 1982).
@@ -1127,14 +1211,19 @@ $\mathrm{He}^+ + \mathrm{H}$, and without it He$^+$ is overestimated
 wherever it meets atomic hydrogen.  \textsc{Cloudy} c25 uses $1.25\times$
 the KF96 value for the non-radiative channel: its \code{ctrecombdata.dat}
 row is KF96 scaled by 0.25, and \code{atmdat\_char\_tran.cpp}:93 adds the
-full $7.47{\times}10^{-15}$ expression on top.  \code{.false.}\ drops all
+full $7.47{\times}10^{-15}$ expression on top; that is $116\times$ the
+channel MoCHII now carries at $10^4$~K.  EXHALE carried the KF96 row
+unscaled until 2026-09-26 and now carries the same Loreau rate.  \code{.false.}\ drops all
 four reactions and reproduces runs made before 2026-09-24.  Gate
 \code{tests/charge\_exchange/check\_helium\_charge\_exchange.f90} (in
 \code{run\_check.sh}): the rate forms and detailed balance to
-$5.0{\times}10^{-7}$; on four partially neutral cells the three balances
-plus charge neutrality close to $2.6{\times}10^{-11}$; and the exchange
-lowers He$^+$ and raises H$^+$ (on the cell with $x_{\rm HII} = 0.041$,
-$x_{\rm HII}$ rises $3.1\times$ and $x_{\rm HeII}$ falls to $0.968\times$).
+$6.9{\times}10^{-5}$ (the non-radiative rate against the generator's direct
+Maxwell averages, between table nodes); on four partially neutral cells the
+three balances plus charge neutrality close to $2.7{\times}10^{-11}$; and the
+exchange lowers He$^+$ and raises H$^+$ (on the cell with
+$\Gamma_{\rm H} = 3{\times}10^{-14}$~s$^{-1}$, $x_{\rm HII} = 0.022$,
+$x_{\rm HII}$ rises $1.63\times$ and $x_{\rm HeII}$ falls to $0.991\times$;
+with the KF96 non-radiative row these were $3.1\times$ and $0.968\times$).
 The heat these reactions exchange with the gas is the next paragraph.
 
 \paragraph{Charge-exchange heating (\code{par\%charge\_exchange\_heating},
@@ -1185,7 +1274,7 @@ unidentified.
 \mathrm{H}^+ \to \mathrm{X}^{i+1} + \mathrm{H}^0$; ``rec'': the reverse
 direction.}
 \label{tab:cxheat}
-\begin{tabular}{@{}llrrl@{}}
+\begin{tabular}{@{}llrrp{6.3cm}@{}}
 \toprule
 reaction & dir & $\Delta{\rm IP}$ & $\Delta E_{\rm kin}$ & product; source \\
 \midrule
@@ -1215,7 +1304,7 @@ Si$^+$$+$H & rec & $-5.446$ & $-5.446$ & Si $^3$P, ground \\
 Si$^{2+}$$+$H & rec & 2.748 & 2.748 & Si$^+$ $^2$P, ground by energetics \\
 Si$^{3+}$$+$H & rec & 19.895 & 4.230 & not identified; KF96 electronic \\
 Si$^{4+}$$+$H & rec & 31.544 & 7.493 & Si$^{3+}$ 4s $^2$S; KF96 electronic \\
-He$^+$$+$H, non-rad. & rec & 10.989 & 10.989 & He 1$^1$S; Zygelman et al.\ 1989 \\
+He$^+$$+$H, non-rad. & rec & 10.989 & 10.989 & He 1$^1$S; Loreau et al.\ 2014 (ground to ground) \\
 He$^+$$+$H, radiative & rec & 10.989 & 0 & photon \\
 He$+$H$^+$ & ion & $-10.989$ & $-10.989$ & reverse of the non-radiative channel \\
 He$^{2+}$$+$H & rec & 40.819 & 0 & radiative (KF96 $10^{-14}$ row) or He$^+$($n=2$) \\
@@ -1316,7 +1405,9 @@ $\mathrm{N}^{2+} + \mathrm{H}$ ($4.3{\times}10^{-5}$); the oxygen pair
 $\mathrm{O}^0 \leftrightarrow \mathrm{O}^+$, individually $\pm1.4\times10^{-4}$
 (HII40) and $\pm2.8\times10^{-4}$ (HII20), cancels to $1.7\times10^{-6}$ and
 $2.2\times10^{-6}$ because charge exchange locks oxygen's ionization to
-hydrogen's; He--H adds $3.0{\times}10^{-6}$ and $5{\times}10^{-8}$.  The local
+hydrogen's; He--H adds $3.0{\times}10^{-6}$ and $5{\times}10^{-8}$ (with the
+KF96 non-radiative He$^+$ + H row then in use, $93\times$ at $10^4$~K the Loreau rate that
+replaced it on 2026-09-26; the He--H share has not been re-measured since).  The local
 share rises outward with $x_{\rm HI}$ while O$^{2+}$ survives, to a maximum of
 $7.9{\times}10^{-4}$ at $r = 3.98$~pc (HII40, 0.7~pc inside the H front, where O$^{2+}$ is still abundant), and
 falls to $10^{-5}$ in the front itself, where O$^{2+}$ is gone; at HII20 the
@@ -1465,8 +1556,9 @@ documented separately in the recombination-lines subsection below.
 \begin{longtable}{@{}l p{10.8cm}@{}}
 \caption{Metal collisional diagnostic lines from the $n$-level solve
   (block \code{emis\_<el>\_<stage>} in \code{<base>\_emis}; principal lines,
-  \AA\ unless $\mu$m noted).  C, N, O, Ne, S are active by default; Ar, Mg,
-  Fe, Si, Cl, Ca are activated by \code{par\%abund\_<El>}.}
+  \AA\ unless $\mu$m noted).  Every metal abundance defaults to 0 (since
+  2026-09-25); an element is active when its \code{par\%abund\_<El>} is
+  positive.  The split below is the order in which the elements were added.}
   \label{tab:metallines_phys}\\
 \toprule
 ion (block) & principal lines \\
@@ -1494,7 +1586,7 @@ ion (block) & principal lines \\
 \code{s\_3} [S\,\textsc{iii}]  & 3722, 6314, 8831, 9070, 9532, 12\,$\mu$m, 18.7\,$\mu$m, 33.5\,$\mu$m \\
 \code{s\_4} S\,\textsc{iv}]   & 1398--1424 (UV multiplet), 10.5\,$\mu$m \\
 \midrule
-\multicolumn{2}{@{}l}{\itshape Optional --- activate with \code{par\%abund\_<El>}}\\
+\multicolumn{2}{@{}l}{\itshape Added later (argon, magnesium, iron, silicon, chlorine, calcium)}\\
 \midrule
 \code{ar\_3} [Ar\,\textsc{iii}]& 3006/3110, 5193, 7138, 7753, 8.99\,$\mu$m, 21.8\,$\mu$m \\
 \code{ar\_4} [Ar\,\textsc{iv}] & 2854/2869, 4713, 4741, 7170 (multiplet), 56\,$\mu$m, 78\,$\mu$m \\
@@ -1622,8 +1714,8 @@ The H\,\textsc{i} and He\,\textsc{ii} tables follow \code{par\%lyman\_lines},
 the fate of the Lyman-line photons, not the continuum treatment: case-A tables
 (\code{sh95\_\{hi,heii\}\_caseA.txt}, parsed from the original CDS files
 \code{e1a.d}/\code{e2a.d} onto the $10\times9$/$12\times9$ grids case A
-tabulates) are loaded when the Lyman lines escape (\code{'escaping'}); case B (H$\alpha$/H$\beta = 2.94$) is
-the default.  The He\,\textsc{i} Porter set is case B only.  An optional
+tabulates) are loaded when the Lyman lines escape (\code{'escaping'}); case B
+(H$\alpha$/H$\beta = 2.864$ at $10^4$~K, 2.94 at $\sim$7~kK) is the default.  The He\,\textsc{i} Porter set is case B only.  An optional
 collisional H\,\textsc{i} Balmer component (\code{par\%h\_coll\_effects},
 off by default) solves a 25-level H\,\textsc{i} atom (from CHIANTI
 \code{h\_1} through the $n$-level fit and solve) with collisional excitation from
@@ -1959,16 +2051,19 @@ metastable columns, where the optically-thin $\tau_0$ diagnostic breaks down
 \begin{minipage}{0.86\textwidth}
 \begin{tabbing}
 xxx\=xxx\=xxx\=\kill
-read grid $\rightarrow$ persist gas leaf state $\rightarrow$ fill \code{kap\_ion}\\
+read grid $\rightarrow$ persist gas leaf state $\rightarrow$ refresh the leaf
+  opacity ingredients\\
 \textbf{do} iter = 1, \code{gas\_niter}\\
-\> zero the band tally $J_b$\\
+\> zero the path estimators (and the $J_E$ tally, when it is kept)\\
 \> sample and transport stellar packets (analytic edge walk, Eq.~\ref{eq:edgewalk})\\
-\> [diffuse] rebuild the diffuse emission table from the current state;\\
-\> \> sample and transport $L_{\rm dif}/L_{\rm pkt}$ diffuse LyC packets\\
-\> ALLREDUCE $J_b$; rate integrals (Eq.~\ref{eq:rates}); metal $\Gamma$'s\\
+\> [transported continuum] rebuild the diffuse emission table from the\\
+\> \> current state; sample and transport
+   $\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})$ diffuse packets\\
+\> reduce the path estimators; rates (Eq.~\ref{eq:rates}); metal $\Gamma$'s\\
 \> solve each leaf: ionization only or coupled $(x, T_e)$\\
-\> refill \code{kap\_ion} from the new state (the stellar tally is\\
-\> \> recomputed from zero each iteration --- no reuse)\\
+\> refresh the dust density and the metal stage cache from the new state\\
+\> \> (the stellar estimators are recomputed from zero each\\
+\> \> iteration --- no reuse)\\
 \> converged by \code{par\%conv\_crit}: cell-max or volume-integrated
    tests (below)\\
 \textbf{end do}\\
@@ -1976,9 +2071,14 @@ outputs: rates + state maps; line luminosities; nebular continuum
 \end{tabbing}
 \end{minipage}
 \end{center}
-Every rank runs the identical cell solves (inputs are the reduced
-tallies), so all ranks agree on convergence; only the node master writes
-the shared state arrays.  Under-relaxation on $x$
+The cell solves are divided cyclically over all ranks of
+\code{MPI\_COMM\_WORLD} (\code{gas\_leaf\_owner\_\allowbreak first},
+\code{gas\_leaf\_owner\_\allowbreak stride}); each rank solves its own leaves from the
+reduced estimators, and \code{gas\_state\_publish} sums the ranks' results,
+one nonzero contribution for each leaf, into every node's shared state, so
+all ranks hold the same state and agree on convergence (until 2026-09-26
+every node repeated all leaves of the thermal solve, and the fixed-$T_e$
+solve ran on one rank of each node).  Under-relaxation on $x$
 (\code{par\%ion\_relax}) is available for sharp I-fronts.  Practical
 lessons recorded: a fully neutral start advances the front only
 $\sim$one cell per iteration (the photons die in the first neutral
@@ -2003,7 +2103,7 @@ the reported spectrum.  Rebuilding the direct tally from zero on every
 nonlinear iteration means that the changing opacity is always applied to a
 new sample of the source spectrum rather than to a reweighted old tally.
 
-For ordinary pseudo-random launching the inverse-CDF variate and the two
+For pseudo-random launching (\code{'random'}) the inverse-CDF variate and the two
 direction variates are independent Mersenne-Twister draws.  The same
 probability law is used by the Sobol option described next.  The packet
 weight is not divided by the probability density: equal packet luminosity
@@ -2045,14 +2145,15 @@ $L_s = \sum_c L_{s,c}$; its weight starts at 1 as before, so the Russian
 roulette of the dust scattering acts relative to the launch weight.  Each
 stratum then reproduces its own luminosity exactly, and the two sum to the
 band luminosity.  Every estimator downstream --- the rate and heating path
-estimators, $\Phi_3$ and its heating, the dust absorption, the
-$J_\nu$ tally and hence $G_0$, the peel-off images, the slab boundary
+estimators, $\Phi_3$ and its heating, the dust absorption, the Habing
+$G_0$, the $J_\nu$ tally, the peel-off images, the slab boundary
 tally, the energy ledger --- sums $L_{\rm pkt}\,w\,\ell$ over segments, so
-none of them needs to know which stratum a packet came from.  The diffuse
-recombination packets carry the luminosity of one \emph{ionizing} source
-packet, $L_{\rm ion}/N$ ($L/N$ without the strata), so the field that
-drives the ionization and the field it produces are sampled equally finely
-whatever the FUV share.  With \code{launch\_sequence = 'sobol'} the ionizing
+none of them needs to know which stratum a packet came from.  The number
+of diffuse recombination packets is set by the luminosity of one
+\emph{ionizing} source packet, $L_{\rm ion}/N$ ($L/N$ without the strata),
+and each carries $L_{\rm dif}$ over that number (\S\ref{sec:diffuse}), so
+the field that drives the ionization and the field it produces are sampled
+equally finely whatever the FUV share.  With \code{launch\_sequence = 'sobol'} the ionizing
 stratum uses the stellar stream at indices $0\ldots N-1$ --- the points a
 run without the extension uses --- and the FUV stratum a third scramble
 stream of its own, indexed from 0.
@@ -2099,10 +2200,12 @@ behavior) remains the default so the recorded gates reproduce.
 measures are no longer tested on their last step: with $d_n$ the step and
 $\rho$ its decay ratio, a measure passes when the drift still to come,
 $d_n\rho/(1-\rho)$, is below \code{gas\_tol}, or --- once the steps no
-longer fall (the Monte Carlo floor) --- when $d_n$ is.  \emph{Revised
-2026-09-26:} $\rho$ is the least-squares slope of $\ln d$ over the last 8
-iterations (it was the median of the last three ratios), and the floor is
-accepted only when the signed step
+longer fall ($\rho \ge 0.95$, the Monte Carlo floor) --- when $d_n$ is.
+\emph{Revised 2026-09-26:} $\rho$ is the least-squares slope of $\ln d$
+over the last 8 iterations and $d_n$ that fit's value at the latest one (it
+was the median of the last three ratios and the last step), no measure
+passes with fewer than 8 iterations of history, and the floor is accepted
+only when the signed step
 \begin{equation}
   s_n = \frac{\sum_{\rm leaf} V\,(x_{{\rm HII},n} - x_{{\rm HII},n-1})}
              {\sum_{\rm leaf} V\,x_{{\rm HII},n}}
@@ -2125,7 +2228,8 @@ decaying with $\rho \approx 0.86$, so six times the last step was still to
 come, and the helium measure was five times larger again.  Run for a fixed
 80 iterations the same input settles by iteration 60 --- He\,\textsc{i}
 front 4.271~pc against 4.103 at the early stop, $\langle T[N_pN_e]\rangle$
-8210.5 against 8175.3~K --- and the drift test stops at 58, at that answer.
+8210.5 against 8175.3~K --- and the drift test of 2026-09-25 stopped at
+58, at that answer.
 Measured on the FUV dusty Str\"omgren case at $8{\times}10^6$ packets
 (where the cell-max tests sat at 0.1 and 6.4 indefinitely): the volume
 measures decay smoothly to well-defined Monte Carlo floors of
@@ -2142,8 +2246,10 @@ writing output; either way the rates-file header records the convergence
 status in the keywords \code{CONVERGD}, \code{NITERDON}, \code{FINALDX},
 and \code{FINALDTE}.
 
-\subsection{Quasi-random photon launching (optional)}
-With \code{par\%launch\_sequence = 'sobol'} the packet launch draws its
+\subsection{Quasi-random photon launching}
+With \code{par\%launch\_sequence = 'sobol'} (the default since 2026-09-25;
+\code{'random'} restores the Mersenne Twister and is what the recorded
+gates pin) the packet launch draws its
 variables --- source component where relevant, energy, direction, and any
 entry-surface coordinates --- from an Owen-scrambled Sobol net
 (\code{src/qmc\_mod.f90}) instead of the Mersenne Twister, while every
@@ -2176,7 +2282,23 @@ $\xHI = \alpha n_e/(R_{\rm HI} + \alpha n_e)$ and the He stage chain
 $n_{i+1}/n_i = R_i/(\alpha_{i+1} n_e)$, closed by
 $n_e = n_{\rm H}[x_{\rm HII} + y_{\rm He}(x_{\rm HeII} +
 2x_{\rm HeIII})]$ and solved by a damped fixed point on $n_e$ (mixing
-$\tfrac12$, converged at $10^{-10}$, $\leq 200$ iterations).
+$\tfrac12$, converged at $10^{-10}$, $\leq 200$ iterations).  The helium
+fractions come from the stage ratios, $x_{\rm HeI} = 1/(1 + r_1 + r_1 r_2)$,
+$x_{\rm HeII} = r_1 x_{\rm HeI}$, $x_{\rm HeIII} = r_2 x_{\rm HeII}$, so each
+has full relative precision, and all three are carried and stored
+(\code{gas\_xHeIII}, the \code{x\_HeIII} dataset) rather than forming
+$1 - x_{\rm HeI} - x_{\rm HeII}$, which is rounding once He$^{2+}$ is
+scarce; hydrogen's two fractions likewise (below).  $n_e$ is the
+charge-neutral root down to the guard $n_e \geq 10^{-30}n_{\rm H}$
+(\code{NE\_FLOOR\_PER\_H}), which only keeps $n_e > 0$: every rate that
+multiplies $n_e$ stays above $\sim10^{-43}$~s$^{-1}$ there, far from
+underflow, while neutral gas with cosmic-ray ionization (not modeled) keeps
+$x_e \gtrsim 10^{-8}$.  With no photons and no collisional ionization
+(100~K) the root is $n_e = 0$ and the solve stops at the guard with every
+fraction finite; at 3000~K collisional ionization alone gives
+$n_e/n_{\rm H} = 5.5\times10^{-20}$.  The guard was $10^{-12}n_{\rm H}$
+until 2026-09-26, above the charge-neutral root of the radiation-starved
+leaves beyond the front (below).
 
 \emph{Two-way charge exchange} (\code{par\%charge\_exchange =
 'two\_way'}, the default).  Each reaction
@@ -2196,8 +2318,8 @@ with the sums running over every registry element and transition,
     k^{\rm CX}_{{\rm rec},i}\,n(\mathrm{X}^{(i+1)+}),
 \end{equation}
 in $\mathrm{s}^{-1}$: $R_{\rm cx}^{\rm in}$ neutralizes an H$^+$,
-$R_{\rm cx}^{\rm out}$ ionizes an H$^0$.  Eliminating
-$n_{\rm HII} = n_{\rm H}(1-\xHI)$ keeps the closed form,
+$R_{\rm cx}^{\rm out}$ ionizes an H$^0$.  With the sums held fixed,
+eliminating $n_{\rm HII} = n_{\rm H}(1-\xHI)$ gives the closed form
 \begin{equation}
   \xHI = \frac{\alpha_{\rm H} n_e + R_{\rm cx}^{\rm in}}
               {\Gamma_{\rm H} + (C_{\rm H} + \alpha_{\rm H})\,n_e
@@ -2206,7 +2328,8 @@ $n_{\rm HII} = n_{\rm H}(1-\xHI)$ keeps the closed form,
 \end{equation}
 so no matrix and no Newton step are needed; \emph{both} charge-exchange
 terms appear in the denominator, $R_{\rm cx}^{\rm in}$ for the same reason
-$\alpha_{\rm H} n_e$ does.  The two sums come from the same walk of the
+$\alpha_{\rm H} n_e$ does.  (Eq.~\ref{eq:hbalance-cx} states the structure;
+it is not how the balance is evaluated, for the reasons given below.)  The two sums come from the same walk of the
 stage chain that produces the metal electrons
 (\code{species\_metal\_sums}) and read the same cached coefficients the
 cascade reads, so the charge each reaction moves is conserved in the
@@ -2239,7 +2362,9 @@ inside the tolerance the runs were converged to
 Correcting the interchanged oxygen rows of \S\ref{sec:cx} is a separate
 change and moves the temperatures the \emph{other} way: measured from the
 same converged state, $\langle T[N_{\rm p}N_{\rm e}]\rangle$ rises by
-$+2.2$~K at HII40 and $+2.1$~K at HII20 (to 8170 and 6926~K, before the 2026-09-24 update that gives the current 8177 and 6936~K),
+$+2.2$~K at HII40 and $+2.1$~K at HII20 (to 8170 and 6926~K on early-stopped
+runs; the 2026-09-24 update then gave 8177 and 6936~K, and the current values
+are those of \S\ref{sec:hii}),
 $L({\rm H}\beta)$ by $+0.005\%$, and the ionization fronts by
 $\leq 4{\times}10^{-4}$~pc.
 
@@ -2253,24 +2378,90 @@ $n_{\rm H}=100$ and the HII20 abundances it then needs 124 passes at
 $x_{\rm HII}=0.18$, 239 at $0.10$ and 1285 at $0.021$, against a 200-pass
 cap, and a capped cell leaves with $x_{\rm HII}$ high by about $8\%$.
 
-MoCHII therefore does not substitute.  \code{hydrogen\_neutral\_fraction}
-solves the balance at the current $n_e$ for its root, with the whole metal
-cascade re-evaluated at each trial $x_{\rm HI}$.  The root is bracketed in
-$[0,1]$ \emph{by construction} --- $R(0) = -(\alpha_H n_e + R_{\rm in}) < 0$
-and $R(1) = \Gamma_H + (C_H+\alpha_H)n_e + R_{\rm out} > 0$ --- so Illinois
-iteration keeps the bracket at every step and the fraction cannot leave the
-physical range, which is the one property the plain substitution had and a
-bare secant would forfeit.  One call now reaches the converged state to
+MoCHII therefore does not substitute.  It solves the balance at the
+current $n_e$ for its root, with the whole metal cascade re-evaluated at
+each trial state.  From the two-way exchange (2026-07-31) to 2026-09-26
+that root was found in $\xHI$ on the bracket $[0,1]$ (Illinois); one call
+reached the converged state to
 $3.6\times10^{-11}$ at every $x_{\rm HII}$ down to $0.02$, against
 $1.8\times10^{-3}$ for substitution, and on HII20 the printed balance
-residual falls from a maximum of $4.6\times10^{-3}$ to $1.3\times10^{-6}$
+residual fell from a maximum of $4.6\times10^{-3}$ to $1.3\times10^{-6}$
 with the volume-weighted mean from $4.7\times10^{-4}$ to
-$4.5\times10^{-9}$.  The benchmark numbers above move by $0.01$~K, so the
+$4.5\times10^{-9}$; the benchmark numbers above moved by $0.01$~K, so the
 method changed the path to the root and not the root.  Extrapolating the
 $n_e$ sequence instead --- Aitken --- was tried and made the pass count
 worse, because a jump in one component leaves the rest of the coupled state
 off the slow manifold; that is recorded with its measurements in
-\code{docs/ION\_BALANCE\_CONVERGENCE\_PLAN.md}.
+\code{md/ION\_BALANCE\_CONVERGENCE\_PLAN.md}.
+
+\emph{The unknown is the ratio, not the fraction} (since 2026-09-26,
+\code{hydrogen\_ionization\_balance}).  A root in $\xHI$ cannot resolve
+gas beyond the ionization front.  There $R_{\rm cx}^{\rm in}\sim
+3\times10^{-11}$~s$^{-1}$ while $\Gamma_{\rm H}$ falls to
+$10^{-26}$--$10^{-40}$~s$^{-1}$ and $x_{\rm HII}$ to $10^{-10}$--$10^{-17}$
+(and below): the residual $\xHI(\ldots) - (\ldots)$ has terms of size
+$R_{\rm cx}^{\rm in}$ while the balance itself is $x_{\rm HII}
+R_{\rm cx}^{\rm in}$, 10 to 17 digits below them, and the near-resonant
+exchange $\mathrm{X} + \mathrm{H}^+ \leftrightarrow \mathrm{X}^+ +
+\mathrm{H}$ runs within $10^{-4}$ of its own detailed balance there, costing
+four more.  On a $10^5$~K blackbody in the HII40 geometry (on-the-spot
+continuum, 2 iterations, 1\,048\,576 packets) the 3000~K leaves beyond
+the front came out with $1-\xHI$ scattered by 1--2\% from one $n_e$ pass
+to the next at $x_{\rm HII}\sim10^{-10}$, and alternately as exactly 0 and
+as $\sim10^{-12}$ where $x_{\rm HII}\sim10^{-12}$, switching the
+$\mathrm{S}+\mathrm{H}^+$ ionization on and off; the damped $n_e$ loop then
+never settled (33\,193 final cell solves at the 200-pass cap, $|\Delta
+n_e|/n_e$ up to 1 at exit), and the same binary at 72 and 36 MPI ranks,
+whose photoionization rates agree to $3.7\times10^{-8}$, wrote $n_e$ and
+the metal stage fractions of those leaves differently by up to $95\%$ and
+$100\%$.  The equations are not ill-conditioned there: with $n_e$ frozen,
+the charge-neutrality map $n_e \mapsto n_e(\mathrm{H,He}) +
+\sum_{\rm el} n_{\rm el}\sum_i (i-1) f_i(n_e)$ is smooth and monotone with a
+single crossing (in one such leaf at $n_e = 2.93\times10^{-7}$~cm$^{-3}$,
+$x_{\rm HII} = 6.45\times10^{-13}$, where the $x_{\rm HI}$ root had left
+$6.1\times10^{-7}$ at one rank count and $2.0\times10^{-8}$ at the other).
+The balance is now solved for $u = \ln(n_{\rm HII}/n_{\rm HI})$, with
+\begin{equation}
+  \xHI = \frac{1}{1+e^{u}}, \quad x_{\rm HII} = \frac{1}{1+e^{-u}}, \qquad
+  G(u) = \ln\!\left[x_{\rm HII}(\alpha_{\rm H}n_e + R^{\rm in})\right]
+       - \ln\!\left[\xHI(\Gamma_{\rm H} + C_{\rm H}n_e + R^{\rm out}) + s\right],
+  \label{eq:hbalance-u}
+\end{equation}
+where $R^{\rm in}$, $R^{\rm out}$ collect every exchange (metal sums at the
+trial state; He--H and Penning terms lagged) and $s$ the on-the-spot
+cascades only H$^0$ absorbs.  Both fractions come out to full relative
+precision; nothing in $G$ cancels against the terms, so only the four digits
+of the exchange balance are lost; and $G = u - u^\ast$ for constant rates,
+so a unit-slope step from the previous iterate's $u$ lands on the root
+before Illinois takes over inside the bracket (searched outward from there,
+within $|u| \le 700$).  $x_{\rm HII}$ is carried beside $\xHI$ through the
+cell solve and stored with it (\code{gas\_xHII}, the \code{x\_HII}
+dataset), and everything that needs $n_{\rm HII}$ --- the metal stage
+fractions written and used for the packet opacity, the cooling, the
+recombination lines and continua, the diffuse sources, the grain survival
+factors --- reads it rather than forming $1-\xHI$.  Measured on the same
+case: the same binary at 72 and 36 ranks now agrees to $2.8\times10^{-9}$
+in $n_e$ and $1.2\times10^{-8}$ in the stage fractions; 3 final cell solves
+reach the cap, with $|\Delta n_e|/n_e \le 7.4\times10^{-9}$ at exit; and
+the written stage fractions reproduce the written $n_e$ to
+$6.3\times10^{-11}$ in all 59\,167 such leaves above the $n_e$ floor,
+where the old rule $n_{\rm HII} = n_{\rm H}(1-\xHI)$ missed it by more than
+$10^{-6}$ in 42\,204 of them and by more than $1\%$ in 19\,669 (up to
+$99.8\%$).  Against the code before the change, the ionized leaves agree to
+$1.3\times10^{-12}$ in $x_{\rm HII}$ and $1.2\times10^{-11}$ in $n_e$,
+$T_e$ is bit-identical in every leaf, the 128 lines agree to all printed
+digits and the nebular continuum file is byte-identical: what moved is
+$n_e$ and the metal stages of the leaves beyond the front, which no printed
+output of this case weights.  The other 24\,174 of those leaves sat at
+the former guard $n_e \geq 10^{-12}n_{\rm H}$, where charge neutrality was
+not imposed: the written $n_e$ exceeded the charge its stages carry by a
+mean 93\% (24\,159 leaves off by more than 1\%).  With the guard at
+$10^{-30}n_{\rm H}$ no leaf of the case is bound by it; those leaves now
+sit at their root, $n_e/n_{\rm H} = 7.5\times10^{-19}$ to $10^{-12}$
+(median $1.2\times10^{-14}$), and all 83\,341 leaves at 3000~K beyond the
+front reproduce the charge of their written stages to $2.6\times10^{-11}$.
+No final cell solve reaches the 200-pass cap (the largest exit step is
+$10^{-10}$), and the thermal solve takes the same time.
 
 \emph{Helium--hydrogen charge exchange} (\code{par\%helium\_charge\_exchange},
 default on; rates in \S\ref{sec:cx}).  With $k_{21}$, $k_{12}$, $k_{32}$,
@@ -2298,7 +2489,7 @@ the pair (\code{solve\_ion\_cell}, and \code{hydrogen\_balance\_residual},
 which evaluates the same terms on the written He fractions).  The He
 fractions in $R_{\rm He}$ are those of the previous iterate, and when the
 metal terms are also present they are held constant through
-\code{hydrogen\_neutral\_fraction}'s root find.  Because an exchange moves
+\code{hydrogen\_ionization\_balance}'s root find.  Because an exchange moves
 charge without changing $n_e$, the fixed point on $n_e$ alone could stop
 while $x_{\rm HI}$ and $x_{\rm HeII}$ are still moving, so with the switch
 on the loop also requires both to have changed by less than $10^{-10}$
@@ -2321,7 +2512,19 @@ the metal stage fractions written alongside are evaluated at the written
 $n_e$ and $T_e$, the residual of Eq.~(\ref{eq:hcx}) on that state is not
 identically zero; \code{hydrogen\_balance\_residual} reports it each gas
 iteration as the maximum over leaves and the volume-weighted mean.  It is
-a printed diagnostic and does not gate convergence.
+a printed diagnostic and does not gate convergence.  Since 2026-09-26 it
+reads the stored $x_{\rm HII}$ and covers every gas leaf with
+$x_{\rm HII} > 0$ (before, leaves with $1 - \xHI < 10^{-10}$ had to be left
+out).  Before $x_{\rm HeIII}$ was stored the residual also showed one limit
+of the written state that is not the balance's:
+$x_{\rm HeIII} = 1 - x_{\rm HeI} - x_{\rm HeII}$ came back as one unit of
+rounding ($1.1\times10^{-16}$) where the solve had $\ll 10^{-30}$, and the
+$\mathrm{He}^{2+}+\mathrm{H}$ term it carries,
+$y_{\rm He}n_{\rm H}x_{\rm HeIII}k_{32} \sim 10^{-27}$~s$^{-1}$ per H,
+exceeded $\Gamma_{\rm H}$ there, setting the printed maximum to
+$8\times10^{-5}$ on the $10^5$~K case above and $3\times10^{-2}$ on the
+40~kK PDR test.  With the stored $x_{\rm HeIII}$ both print
+$5\times10^{-11}$ and $7\times10^{-11}$.
 
 \subsection{Thermal balance}
 \label{sec:thermal}
@@ -2456,10 +2659,10 @@ moves by $-0.5$~K and $L({\rm H}\beta)$ by $+0.014\%$.
 The solved $T_e$ is written directly (only the ionization fractions carry
 the under-relaxation \code{par\%ion\_relax}), $n_e$ is rebuilt from the
 new state --- including the trace-metal electrons under
-\code{par\%metal\_ne} --- and, as in the ionization-only path, only the
-node-local rank~0 runs the bisection (the reduced band tally is identical
-on every node master) and writes the shared state, with the convergence
-metrics broadcast within the node.  The loop is gated by the $T_e$
+\code{par\%metal\_ne} --- and, as in the ionization-only path, the
+bisections are divided over all MPI ranks and their results summed into
+every node's shared state (the iteration loop above),
+so the convergence metrics are the same on every rank.  The loop is gated by the $T_e$
 convergence measures defined above (\code{gas\_tol\_te}, cell-max or
 volume-integrated per \code{par\%conv\_crit}).
 
@@ -2488,7 +2691,8 @@ plus its cooling and $n$-level files.
 measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
 which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
 front; they document the search for a residual that was mostly that early
-stop, and are not current bounds.  The converged residual is $0.034$~pc.
+stop, and are not current bounds.  The converged residual is $0.033$~pc
+(\code{m11\_hecx\_solver}, $4.2723$ against $4.3053$~pc).
 
 ``Trace'' names the \emph{data} treatment, not a switched-off feedback.  The
 founding plan lists metals feeding back on $n_e$ and on the opacity as a
@@ -2552,8 +2756,8 @@ edge below 100~eV, so the inner-shell correction of \S\ref{sec:photo} does
 not reach the measurements of this subsection.
 
 What is genuinely absent is metal recombination continua as a diffuse
-\emph{source}: the diffuse field has exactly four channels
-(\code{dif\_ch(4, nleaf)}) and all four are H/He.  Summing the metal
+\emph{source}: the diffuse field has exactly five channels
+(\code{dif\_ch(5, nleaf)}) and all five are H/He.  Summing the metal
 ground-state recombination continua whose photons lie above 24.587~eV
 (C\,\textsc{iv}, N\,\textsc{iii}, N\,\textsc{iv}, O\,\textsc{iii},
 O\,\textsc{iv}, Ne\,\textsc{iii}, Ne\,\textsc{iv}, S\,\textsc{iii},
@@ -2681,15 +2885,20 @@ same limit here gives $0.966$.  Each photon H$^0$ absorbs heats the gas by
 $E - 13.598$~eV; for the ground captures the capture's own kinetic-energy
 loss, which the case-B recombination cooling omits, cancels the photon's
 excess over threshold, leaving $10.989$~eV.  Dust and the metals are given
-no share of these photons.  Hydrogen's source enters its photoionization
-rate per H$^0$ at the previous iterate of the cell solve; it is at most
-${\sim}15\%$ of hydrogen's recombinations, so that map converges fast.
+no share of these photons.  In hydrogen's balance the ground captures
+H$^0$ takes enter its photoionization rate per H$^0$ at the previous
+iterate of the cell solve (their share $y$ falls with $n({\rm H^0})$), and
+the excited cascade, which H$^0$ takes whatever $n({\rm H^0})$ is, enters
+as the absolute source $s$ of Eq.~(\ref{eq:hbalance-u})
+(\code{hei\_on\_the\_spot\_sources}); together they are at most
+${\sim}15\%$ of hydrogen's recombinations.
 Gate \code{tests/hei\_on\_the\_spot/}.  \code{.false.} reproduces the
 earlier case B bit for bit.
 
-The omission was not small.  On the on-the-spot Lexington runs
-(\code{results/continuous\_energy/m7\_hei\_on\_the\_spot/}, restarted from
-converged states), turning the He\,\textsc{i} photons over to hydrogen
+The omission was not small.  On the on-the-spot Lexington runs restarted
+from converged states
+(\code{results/\allowbreak continuous\_energy/\allowbreak m7\_hei\_on\_the\_spot/}),
+turning the He\,\textsc{i} photons over to hydrogen
 raises $\langle T[{\rm N^+}n_e]\rangle$ by $178$~K at HII40
 ($7959\rightarrow8137$~K), $L({\rm H}\beta)$ by $7.8\%$ and moves the
 H front out by $0.16$~pc.  Against the run with the continuum transported,
@@ -2762,7 +2971,8 @@ $E={\rm IP(He^+)}+K$, so an absorption by $X$ nets
 ${\rm IP(He^+)}-{\rm IP}(X)$ per photon whatever its energy --- $40.819$~eV
 for H$^0$, $29.830$~eV for He$^0$, and nothing for He$^+$.
 \emph{Iteration.}  Both sources join the photoionization rates \emph{per
-absorber} at the previous iterate of the cell solve.  For He$^0$ this form
+absorber} at the previous iterate of the cell solve, except H$^0$'s share of
+the excited cascade (below).  For He$^0$ this form
 is required rather than convenient: its share of an excited group falls
 with $n({\rm He^0})$, so the rate per He$^0$ stays finite as He$^0$ is
 depleted, whereas a source count held at the previous iterate's share can
@@ -2813,8 +3023,8 @@ $0.82$), and the local balance closes.  That is not guaranteed: H$^0$'s share
 of the cascade does not fall with $n({\rm H^0})$ (below the He$^0$ edge nothing
 else absorbs, above it He$^0$ is as scarce as H$^0$ in the He$^{2+}$ zone), so
 it enters hydrogen's balance as an absolute source, its share evaluated at
-every trial $x_{\rm HI}$ of the root find
-(\code{hydrogen\_fraction\_with\_cascade}), and a cell can hold only as many
+every trial state of the root find
+(\code{hydrogen\_ionization\_balance}, Eq.~\ref{eq:hbalance-u}), and a cell can hold only as many
 absorptions as the recombinations that make H$^0$.  A weakly lit fully
 He$^{2+}$ cell at He/H $=0.1$ reaches $0.92$ and closes to $10^{-11}$; at
 He/H $=0.15$ (1.2--$1.8{\times}10^4$~K) the cascades outnumber the supply and
@@ -2880,12 +3090,16 @@ $x({\rm He^{2+}})$ of the three runs of Section~\ref{sec:ots-heii}
 
 \subsection{Explicit diffuse LyC field and packet sampling}
 \label{sec:diffuse}
-Case B on the spot is replaced by case A rates plus explicit emission of
-ground-recombination packets.  For each leaf and each of the three ground
-continua H\,\textsc{ii}$\rightarrow$H\,\textsc{i}($1s$),
+With \code{par\%recombination\_continuum = 'transported'} (the default
+since 2026-09-26) case B on the spot is replaced by case A rates plus
+explicit emission of recombination packets.  For each leaf and each of the
+three ground continua H\,\textsc{ii}$\rightarrow$H\,\textsc{i}($1s$),
 He\,\textsc{ii}$\rightarrow$He\,\textsc{i}($1^1S$), and
 He\,\textsc{iii}$\rightarrow$He\,\textsc{ii}($1s$), the emissivity uses
-$\alpha_1(T)=\alpha_A(T)-\alpha_B(T)$.  At the start of every gas
+the Milne $\alpha_1(T)$ of Eq.~(\ref{eq:milne-alpha1}), which is
+$\alpha_A(T)-\alpha_B(T)$ by construction (\S\ref{sec:hherec}); channels
+4 and 5 carry the He\,\textsc{i} and He\,\textsc{iii} excited cascades
+(below).  At the start of every gas
 iteration the code rebuilds the energy-luminosity table
 \begin{equation}
  L_{{\rm ch},l} = n_{e,l}n_{{\rm rec},l}\alpha_{1,\rm ch}(T_l)
@@ -2969,6 +3183,10 @@ He\,\textsc{ii} & 21.895 & 21.817 & 6.5366          & 6.5116 & 6.5145 \\
 \bottomrule
 \end{tabular}
 \end{center}
+(The MoCHII $\alpha_A$ column is the Badnell total all three channels used
+then; since 2026-09-26 H\,\textsc{ii} and He\,\textsc{iii} take $\alpha_B$
+from the Storey \& Hummer cascade, which gives $\alpha_A = 4.1624$ and
+$21.821$, $-0.04\%$ and $+0.02\%$ from Cloudy.)
 Badnell's totals are accurate to $0.3$--$0.7\%$ on all three channels, and
 the Mao $n{=}1$ values to $0.2$--$0.3\%$ for H\,\textsc{i} and
 He\,\textsc{ii} --- but He\,\textsc{i} is $2.38\%$ low, and the subtraction
@@ -3085,7 +3303,8 @@ out}$ from $8.89$ to $8.88{\times}10^{18}$~cm at HII20 with
 $1.44{\times}10^{19}$~cm unchanged at HII40.  A later, independent
 correction --- exchanging the oxygen charge-exchange rows of
 \S\ref{sec:cx} --- then carries these a further $+2.2$~K at HII40 and
-$+2.1$~K at HII20, to 8170 and 6926~K (8177 and 6936~K after the 2026-09-24 update).
+$+2.1$~K at HII20, to 8170 and 6926~K (8177 and 6936~K after the 2026-09-24
+update, all early-stopped; the current values are in \S\ref{sec:hii}).
 
 $L({\rm H}\beta)$ moves the \emph{wrong} way.  It falls $0.37$--$0.42\%$
 ($1.94 \to 1.93{\times}10^{37}$ and $4.70 \to 4.68{\times}10^{36}\,{\rm
@@ -3148,7 +3367,8 @@ does not.
 measured on runs stopped by the earlier convergence rule (\S\ref{sec:hii}),
 which ended the HII40 benchmark 0.17~pc short of its converged He\,\textsc{i}
 front; they document the search for a residual that was mostly that early
-stop, and are not current bounds.  The converged residual is $0.034$~pc.
+stop, and are not current bounds.  The converged residual is $0.033$~pc
+(\code{m11\_hecx\_solver}, $4.2723$ against $4.3053$~pc).
 
 \paragraph{Where the Cloudy front residual is not.}  Each of those four
 corrections is independently correct --- three of them reproduce an external
@@ -3336,10 +3556,13 @@ weights over the five channels.  Its emission point is
 uniform in the selected cubic leaf and its direction is isotropic.  It is
 then transported with the same exact-energy edge walk and path estimator as
 a stellar packet.  Hence diffuse luminosity is represented by packet count,
-with a packet weight within half a packet of the stellar one.  At HII40 the diffuse band luminosity
-converges to $6.8{\times}10^{38}$~erg/s $=0.50\,L_\star$.
+each packet carrying the stellar packet luminosity to within a factor
+$1 \pm 1/(2N_{\rm dif})$.  At HII40 the diffuse band luminosity
+converges to $7.25{\times}10^{38}$~erg/s $=0.57\,L_\star$ in the current
+production run (\code{m11\_hecx\_solver}, $1.9{\times}10^7$ diffuse packets
+an iteration; earlier revisions recorded $6.8{\times}10^{38}$~erg/s).
 
-For output bookkeeping, the energy from Eq.~(\ref{eq:diffuse-energy}) is
+For output bookkeeping, the sampled energy is
 mapped by binary search of \code{ion\_eedge} (\code{ion\_bin\_of}).  This
 works for both threshold-aligned and logarithmic diagnostic grids; an energy
 on an edge falls in the bin above it.  The assignment is a tally address
@@ -3477,7 +3700,7 @@ with $y_{\rm He} = n_{\rm He}/n_{\rm H}$.  Their eq.~17 competes
 $n({\rm H^0})a_\nu({\rm H^0})$ against $n({\rm He^0})a_\nu({\rm He^0})/914$
 and writes the result in neutral fractions ``assuming He/H $=0.1$'', so the
 77 carries that abundance; the factor $y_{\rm He}/0.1$ (since 2026-09-26) is
-exactly 1 for every run at He/H $=0.1$.
+exactly 1 for every run at He/H $=0.1$.  $p_{584}$ is
 the probability that the 584~\AA{} photon ends up ionizing hydrogen
 (\code{hei\_584\_ionizes\_H} in \code{hei\_cascade\_mod}).  Its two limits are
 the correct ones: $x({\rm H^0})\rightarrow0$ gives $p_{584}\rightarrow0$,
@@ -3773,40 +3996,43 @@ simultaneously.
 The three parts of the dust coupling, now complete:
 \begin{itemize}
 \item \textbf{Absorption competition.}  With \code{par\%ion\_add\_dust},
-  each band bin adds
-  $\kappa_{\rm d}(b,{\rm leaf}) = \rho\kappa_{\rm leaf}\,s_{\rm abs}(b)$
-  where $s_{\rm abs}(b) = (1{-}a(E_b))\,C_{\rm ext}(E_b)/C_{\rm ext}
-  (\lambda_{\rm ref})$.  By default these come from the grain model named
-  by \code{par\%dust\_model},
+  a packet of energy $E$ sees the dust absorption
+  $\kappa_{\rm d}(E,{\rm leaf}) = \rho\kappa_{\rm leaf}\,s_{\rm abs}(E)$,
+  where $s_{\rm abs}(E) = (1{-}a(E))\,C_{\rm ext}(E)/$\allowbreak$C_{\rm ext}
+  (\lambda_{\rm ref})$, evaluated at the packet's own energy
+  (\code{ion\_dust\_\allowbreak sabs\_at}).  By default these come from the grain model
+  named by \code{par\%dust\_model} (\code{astrodust}, the default,
+  \code{dl07}, \code{mrn} or \code{zubko}),
   so that the power a cell absorbs is set by the same grains that
-  reradiate it in Section~\ref{sec:sedust}.  No model is extended: the
-  astrodust and DL07 grids come from the random-orientation T-matrix table,
-  which spans $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m in 1762
-  wavelengths, i.e.\ 12.4~keV down to the far infrared, so below the Lyman
-  limit the optics are the same $b/a = 1.4$ oblate spheroid on the DH21
-  dielectric function as above it (with the Rayleigh, $x < 0.1$, and
+  reradiate it in Section~\ref{sec:sedust}.  No model is extended:
+  \code{grain\_model\_mod} builds every model on the whole wavelength axis of
+  its own optics product (\code{include\_euv}) and passes no
+  \code{lam\_min}.  The astrodust axis is the random-orientation T-matrix
+  table, which spans $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m in
+  1762 wavelengths, i.e.\ 12.4~keV down to the far infrared, so below the
+  Lyman limit the optics are the same $b/a = 1.4$ oblate spheroid on the
+  DH21 dielectric function as above it (with the Rayleigh, $x < 0.1$, and
   geometric-optics, $x > 50$, limits wherever the size parameter leaves the
   T-matrix range, exactly as the rest of the table does) rather than a
-  volume-equivalent-sphere approximation.  \code{grain\_model\_mod} still asks
-  for the grid down to $1.24/E_{\max}$, but SEDust prepends points only when
-  that is \emph{shorter} than the table's first wavelength: at
-  $E_{\max} = 100$~eV it is not ($0.0124\,\mu$m against
-  $1.0{\times}10^{-4}\,\mu$m), and an extension can arise only above
-  $E_{\max} = 12398.4$~eV.  There astrodust refuses to build one --- that
-  band's optics are the same spheroid, and this tree carries the Q table
-  without the T-matrix solver --- and the refusal is turned into a message
-  naming \code{par\%eion\_max}; a clamped refractive index or a silent
-  equal-volume sphere is never passed off as physics.  The Zubko model needs no
-  extension either: its own DustEM optics tables span
-  0.001--$10^4\,\mu$m (1.24~keV down to $1.24{\times}10^{-4}$~eV), so the
-  whole ionizing band is already tabulated, which is why
-  \code{build\_zubko} takes no \code{lam\_min}.  Whichever model is named,
+  volume-equivalent-sphere approximation.  DL07 and MRN are Mie on the D03
+  dielectric functions and share their own axis, 1823 wavelengths from
+  $6.2054{\times}10^{-5}\,\mu$m; the Zubko model's DustEM optics tables span
+  0.001--$10^4\,\mu$m (1.24~keV down to $1.24{\times}10^{-4}$~eV, 1201
+  wavelengths).  All four therefore tabulate the whole ionizing band.
+  Above $E_{\max} = 12398.4$~eV astrodust would need an extension and
+  refuses to build one --- that band's optics are the same spheroid, and
+  this tree carries the Q table without the T-matrix solver --- so a
+  clamped refractive index or a silent equal-volume sphere is never passed
+  off as physics.  Whichever model is named,
   \code{gas\_opacity\_mod} verifies at setup that its grid spans the whole
   transported band --- $1.24/E_{\max}$ to $1.24/E_{\min}$, the latter taken
   from \code{efuv\_min} when \code{par\%add\_fuv} --- together with
   $\lambda_{\rm ref}$, and stops the run if it does not (the interpolators
   clamp at the grid edges, so an unchecked short grid would silently freeze
-  the EUV optics).
+  the EUV optics).  The reference extinction $C_{\rm ext}(\lambda_{\rm ref})$
+  itself is the model's own when \code{par\%cext\_dust} is negative (the
+  default); a positive value is used as given, with a warning past 1\%
+  (\code{dust\_reference\_extinction}).
   Setting \code{par\%ion\_dust\_kext} overrides
   the model with an explicit table covering the EUV (the
   WD01/D03 $R_V{=}3.1$ table, 1\,\AA--$10^4\,\mu$m:
@@ -3818,15 +4044,15 @@ The three parts of the dust coupling, now complete:
   of $0.832$ and shifted the dusty Str\"omgren radius by $+1.6\%$.
 \item \textbf{Scattering.}  With \code{par\%ion\_dust\_scatter} the
   scattering coefficient joins the extinction
-  ($s_{\rm sca}(b) = a\,C_{\rm ext}/C_{\rm ext,ref}$; in-band
-  Henyey--Greenstein asymmetry $g(E_b) = 0.67$--$0.99$ from the table
+  ($s_{\rm sca}(E) = a\,C_{\rm ext}/C_{\rm ext,ref}$; in-band
+  Henyey--Greenstein asymmetry $g(E) = 0.67$--$0.99$ from the table
   $\langle\cos\rangle$ column) and interactions are sampled: after the
   analytic zero-variance direct walk, a first interaction is forced
   along the ray with weight $w_1 = 1 - e^{-\tau_{\rm edge}}$, the
   packet keeps the albedo fraction
   $a_{\rm eff} = \kappa_{\rm sca,d}/\kappa_{\rm ext}$ at each
   interaction, scatters into an HG direction, and continues with
-  unforced flights (whose segments tally into $J_b$) under Russian
+  unforced flights (whose segments score the same path estimators) under Russian
   roulette ($w_{\min} = 10^{-4}$).  Stellar and diffuse packets share
   the walk; gas ionization, gas heating, and grain heating all derive
   from the same tally, so the energy split is bookkept by construction.
@@ -3840,16 +4066,18 @@ The three parts of the dust coupling, now complete:
   in ionized gas) --- the generalization including its
   PAH-specific option.
 \item \textbf{Grain heating and the equilibrium temperature.}
-  \code{Heat\_dust(leaf)} $= \sum_b [4\pi J\Delta\nu]_b\,
-  \kappa_{\rm abs,d}$ [erg\,s$^{-1}$\,cm$^{-3}$] is consumed by
+  \code{Heat\_dust(leaf)} $= (\rho\kappa/d_{\rm cm})\,V^{-1}\sum_{\rm seg}
+  w\,L_{\rm pkt}\,\ell_{\rm eff}\,s_{\rm abs}(E)$ [erg\,s$^{-1}$\,cm$^{-3}$],
+  the path estimator of Eq.~(\ref{eq:rates}) with the dust absorption at each
+  packet's energy (\code{ion\_score\_\allowbreak apply\_dust\_heat}), is consumed by
   \code{dust\_temp\_mod}: $f_{\rm emit}(T) = 4\pi\int s_{\rm abs}(\nu)
-  B_\nu(T)\,d\nu$ is precomputed from the same kext table (log-$T$
+  B_\nu(T)\,d\nu$ is precomputed from the same optics the transport uses (log-$T$
   grid, 3.2--3200~K) and $T_{\rm d}({\rm leaf})$ solves
   ${\rm Heat\_dust} = (\rho\kappa/d_{\rm cm})f_{\rm emit}(T_{\rm d})$;
   outputs are the $T_{\rm d}$ leaf map and the grid-integrated
   modified-blackbody IR spectrum (1--1000\,$\mu$m).  FUV grain heating
-  is transported by the \code{par\%add\_fuv} band extension (Section
-  2.1): gas cross sections vanish below their thresholds automatically,
+  is transported by the \code{par\%add\_fuv} band extension
+  (Section~\ref{sec:band}): gas cross sections vanish below their thresholds automatically,
   so no new transport code is involved, and the two-segment grid keeps
   the ionizing bins at full resolution.  This is the
   single equilibrium \emph{mixture} temperature; the size- and
@@ -3859,12 +4087,15 @@ The three parts of the dust coupling, now complete:
 \medskip\noindent
 \textbf{Where the size-integrated extinction curve comes from.}
 The curve above is not integrated over grain size when the transport asks
-for it.  SEDust's \code{dust\_extinction} returns the \emph{precomputed}
-size-integrated curve of a \code{SEDust/data/kext\_*.dat} table, which the
-builder loaded, interpolated onto the model's own wavelength grid
-(log~$\lambda$--log~$C$ for the cross sections, linear in log~$\lambda$ for
-$\langle\cos\rangle$, and the table value itself wherever a model wavelength
-coincides with a table wavelength).  The size integral
+for it.  A model's optics are one HDF5 product,
+\code{SEDust/data/<model>/sedust\_<model>.h5}, which carries the wavelength
+axis (\code{/grid/lambda}), the cross-section tables (\code{/qtable}) and the
+precomputed size-integrated curve (\code{/kext}) together; SEDust's
+\code{dust\_extinction} serves that curve on the model's own axis, so the
+grid the transport runs on and the curve it reads cannot be paired wrongly.
+\code{build\_dust} resolves everything the model is made of from
+\code{par\%sed\_data\_dir} (blank by default, then
+\code{<executable dir>/SEDust/data}).  The size integral
 \begin{equation}
   C_{\rm ext}(\lambda) = \sum_{\rm pop}\sum_a {\rm d}n(a)
      \big[C_{\rm abs}(\lambda,a) + C_{\rm sca}(\lambda,a)\big],
@@ -3874,76 +4105,50 @@ coincides with a table wavelength).  The size integral
   \langle\cos\rangle = \frac{\sum {\rm d}n\,C_{\rm sca}\,g}
                             {\sum {\rm d}n\,C_{\rm sca}}
 \end{equation}
-is the calculation that \emph{wrote} those tables; it remains reachable as
-SEDust's \code{size\_integrated\_extinction}.  Which table a run serves is
-\code{par\%sed\_kext}: blank (the default) takes SEDust's own standard table
-for the named \code{par\%dust\_model}, so those file names are written down in
-one place; naming a file instead makes it mandatory, and the build stops with
-that file named if it cannot be read.  The standard tables are
-\code{kext\_astrodust\_MW\_euv.dat} (1762 wavelengths,
-$1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m),
-\code{kext\_dl07\_MW\_euv.dat} (1823,
-$6.2054{\times}10^{-5}$--$3.981{\times}10^{4}\,\mu$m), and
-\code{kext\_zubko\_BARE\_GR\_S.dat} (1201, $10^{-3}$--$10^{4}\,\mu$m).
+is the calculation that \emph{wrote} \code{/kext}; it remains reachable as
+SEDust's \code{size\_integrated\_extinction}.  \code{par\%sed\_kext} blank
+(the default) takes the product's own curve; naming a file instead makes it
+mandatory, and the build stops with that file named if it cannot be read.
 
-Serving a table instead of redoing the integral is exact where the model
-grid and the table grid coincide and interpolated where they do not, and
-the gate \code{tests/grain\_kext} measures both against
-\code{size\_integrated\_extinction} over the model as MoCHII builds it.
-Cross sections are compared relative to themselves (they set rates); the
-albedo $a$ and the product $a\langle\cos\rangle$ absolutely, because the
-transport uses them as the probability that an interaction scatters and the
-forward displacement it carries.  The worst departure on each side of the
-Lyman limit $0.0912\,\mu$m, which the gate keeps as its reporting boundary:
+The gate \code{tests/grain\_kext} compares the served curve against
+\code{size\_integrated\_extinction} over the model as MoCHII builds it, for
+all four models.  Cross sections are compared relative to themselves (they
+set rates); the albedo $a$ and the product $a\langle\cos\rangle$
+absolutely, because the transport uses them as the probability that an
+interaction scatters and the forward displacement it carries.  The worst
+departure on each side of the Lyman limit $0.0912\,\mu$m, which the gate
+keeps as its reporting boundary (run 2026-09-27):
 \begin{center}\small
-\begin{tabular}{@{}lcccccc@{}}
+\begin{tabular}{@{}lrcccccc@{}}
 \toprule
- & \multicolumn{2}{c}{$\lambda \ge 0.0912\,\mu$m}
+ & & \multicolumn{2}{c}{$\lambda \ge 0.0912\,\mu$m}
  & \multicolumn{2}{c}{$\lambda < 0.0912\,\mu$m} & band & \\
-model as built & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
+model & $N_\lambda$ & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
  & $C_{\rm ext}, C_{\rm abs}$ & $a$, $a\langle\cos\rangle$
  & $s_{\rm abs}$ & $C_{\rm ext}(\lambda_{\rm ref})$ \\
 \midrule
-astrodust, $E_{\max} = 100$~eV     & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
-   & 1.95e--14 & 2.83e--14 \\
-astrodust, $E_{\max} = 150$~eV     & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
-   & 1.95e--14 & 2.83e--14 \\
-astrodust, no \code{lam\_min}      & 4.91e--13 & 4.24e--13 & 4.84e--13 & 8.13e--13
-   & 1.95e--14 & 2.83e--14 \\
-dl07, $E_{\max} = 100$~eV          & 4.65e--13 & 3.07e--13 & 3.21e--12 & 1.50e--12
-   & 2.95e--14 & 2.12e--14 \\
-zubko                              & 4.91e--13 & 2.72e--13 & 4.83e--13 & 2.77e--13
-   & 2.89e--14 & 1.42e--14 \\
+astrodust & 1762 & 8.0e--16 & 4.4e--16 & 8.5e--16 & 2.5e--16 & 0       & 0 \\
+dl07      & 1823 & 5.4e--15 & 1.3e--15 & 9.9e--16 & 4.4e--16 & 2.2e--16 & 0 \\
+mrn       & 1823 & 9.7e--16 & 3.3e--16 & 1.1e--15 & 5.6e--16 & 7.3e--15 & 7.1e--15 \\
+zubko     & 1201 & 6.0e--16 & 2.2e--16 & 6.9e--16 & 2.2e--16 & 6.9e--15 & 7.2e--15 \\
 \midrule
-tolerance                          & 1e--10 & 1e--10 & 1e--9 & 1e--9
-   & 1e--4 & 1e--9 \\
+tolerance & & 1e--12 & 1e--12 & 1e--12 & 1e--12 & 1e--8 & 1e--12 \\
 \bottomrule
 \end{tabular}
 \end{center}
-Nothing here is interpolation any more: the model grid \emph{is} the table
-grid on both sides of the Lyman limit, so the served value is the table value
-and the only difference is the 13 significant digits the tables are written
-with.  The three astrodust rows are identical because they are the same grid
---- asking for $1.24/E_{\max}$ at 100~eV, at 150~eV, or not asking at all all
-return the native 1762-point table.  DL07 is the one case where the two grids
-are not the same object: its kext table is the finer of the two (1823 points
-from $6.2054{\times}10^{-5}\,\mu$m against the model's 1762 from
-$1.0{\times}10^{-4}\,\mu$m), but the model's nodes fall on table nodes to
-rounding, which is why its numbers sit at $10^{-12}$ rather than $10^{-13}$.
-The two integrals the transport is actually built on follow: the band-averaged
-$s_{\rm abs}$ over 13.598--100~eV agrees to $2$--$3{\times}10^{-14}$ and the
-normalization $C_{\rm ext}(\lambda_{\rm ref} = 0.55\,\mu$m) to
-$1$--$3{\times}10^{-14}$.  Because no interpolation is left to bound, the
-tolerance below the Lyman limit was tightened from $3{\times}10^{-2}$ to
-$10^{-9}$.
-
-What the table presumes is that it was computed from that model's
-\emph{default} inputs.  Changing \code{par\%sed\_sizedist},
-\code{par\%sed\_qtable}, \code{par\%sed\_dl07\_sdindex} or
-\code{par\%sed\_zubko\_config} moves the grains that emit without moving the
-curve that extinguishes, and the two then no longer describe the same dust.
-That is exactly what the gate catches: a table belonging to other grains
-departs by $O(1)$ where the two are otherwise equal to 13 digits.
+Nothing here is interpolation: the model grid \emph{is} the grid of the
+stored curve on both sides of the Lyman limit, and \code{/kext} and
+\code{/qtable} of each product are written from the same double-precision
+numbers, so what is left is rounding in the sum the gate recomputes.  Until
+the products were rewritten, DL07's and Zubko's \code{/kext} came from
+seven-digit text optics and needed tolerances of $10^{-6}$; one tolerance
+now covers all four.  What the curve presumes is that it was computed from
+that model's \emph{default} inputs: moving \code{par\%sed\_dl07\_sdindex} or
+\code{par\%sed\_dl07\_uisrf} off them, or pointing \code{par\%sed\_kext} at a
+curve computed for other grains, moves the grains that emit without moving
+the curve that extinguishes, and the two then no longer describe the same
+dust.  That is exactly what the gate catches: a curve belonging to other
+grains departs by $O(1)$ where the two are otherwise equal to rounding.
 
 \medskip\noindent
 \textbf{What the longer Q table changed.}  The astrodust table used to stop at
@@ -3951,18 +4156,22 @@ the Lyman limit (169 radii $\times$ 1129 wavelengths), and everything below it
 was built at run time by extending the model with Mie theory for the
 volume-equivalent sphere.  It now runs to $1.0{\times}10^{-4}\,\mu$m in 1762
 wavelengths, so that region is the spheroid itself.  Above $0.0912\,\mu$m the
-size-integrated curve is unchanged to rounding (worst $1.4{\times}10^{-10}$ on
+size-integrated curve was unchanged to rounding (worst $1.4{\times}10^{-10}$ on
 $C_{\rm ext}$); below it, it was recomputed.  Over the band MoCHII transports,
-13.598--100~eV (137 grid points), the new curve departs from the old by at most
+13.598--100~eV (137 grid points), the new curve departed from the old by at most
 $1.010{\times}10^{-2}$ ($C_{\rm ext}$), $3.798{\times}10^{-2}$ ($C_{\rm abs}$)
 and $4.645{\times}10^{-2}$ ($C_{\rm sca}$), with medians
 $5.44{\times}10^{-3}$, $1.11{\times}10^{-2}$ and $9.48{\times}10^{-3}$; the
-band integrals move $+0.459\%$ ($C_{\rm ext}$) and $+0.910\%$
-($C_{\rm abs}$).  Far larger differences, up to a factor $1300$, sit at
-$1.0$--$1.1{\times}10^{-4}\,\mu$m --- the 12.4~keV end of the table, outside
-anything MoCHII transports --- and the two must not be quoted together.
-Building the longer grid costs 156.4~s (astrodust), about 73~s (DL07) and
-0.55~s (Zubko) at \code{par\%sed\_NT} $= 200$, paid once per rank at startup.
+band integrals moved $+0.459\%$ ($C_{\rm ext}$) and $+0.910\%$
+($C_{\rm abs}$) (measured 2026-08-04, against the curve of that date;
+later SEDust updates have changed the astrodust curve again).  Far larger differences, up to a factor
+$1300$, sit at $1.0$--$1.1{\times}10^{-4}\,\mu$m --- the 12.4~keV end of the
+table, outside anything MoCHII transports --- and the two must not be quoted
+together.  Building a model is a startup cost every rank pays: the four
+builds of the gate take 199~s together in one process at
+\code{par\%sed\_NT} $= 200$ (2026-09-27); the split recorded on 2026-08-07,
+not re-measured, was 152.9~s (astrodust), 2.4~s (DL07, which reads its
+stored \code{/qtable} instead of solving Mie) and 0.18~s (Zubko).
 
 \subsection{Stochastic dust emission (SEDust coupling)}
 \label{sec:sedust}
@@ -3970,14 +4179,16 @@ With \code{par\%dust\_sed}, \code{sedust\_mod} (adapted from the MoCafe
 \code{dustemis\_mod}) computes the grid-integrated dust SED with
 size-resolved stochastic heating and PAH bands, using the in-tree
 SEDust library (built from source under \code{SEDust/sed} by
-\code{build\_lib.sh}; astrodust, DL07, and Zubko grain models).  The
+\code{build\_lib.sh}; astrodust, DL07, MRN and Zubko grain models).  The
 coupling follows the MoCafe convention that makes the normalization
 exact by construction:
 \begin{itemize}
-\item \textbf{Shape from the local field.}  For each leaf, the band
-  tally $J_b$ is converted to $J_\lambda$ on the SEDust wavelength grid
-  --- for astrodust and DL07 the native 1762-point Q-table grid,
-  $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m, and for Zubko its own
+\item \textbf{Shape from the local field.}  For each leaf, the binned
+  $J_E$ tally of \S\ref{sec:band} (kept whenever \code{par\%dust\_sed} and \code{par\%ion\_add\_dust} are on)
+  is converted to $J_\lambda$ on the SEDust wavelength grid
+  --- the model's own axis: for astrodust the native 1762-point Q-table
+  grid, $1.0{\times}10^{-4}$--$3.981{\times}10^{4}\,\mu$m, for DL07 and MRN
+  1823 points from $6.2054{\times}10^{-5}\,\mu$m, and for Zubko its own
   1201-point DustEM grid, $10^{-3}$--$10^{4}\,\mu$m.  The whole transported
   band falls on the grid either way, with or without
   \code{par\%ion\_add\_dust}, so the grains absorb it with their own cross
@@ -3997,8 +4208,9 @@ exact by construction:
   not the same thing: a model grid is the grid of its optics tables and can
   reach far past the illuminated band --- the Zubko/ZDA tables start at
   $10^{-3}\,\mu$m (1.24~keV), 91 times harder than a field cut off at the
-  Lyman limit, and the astrodust and DL07 Q-table grid now starts a further
-  decade up, at $1.0{\times}10^{-4}\,\mu$m (12.4~keV) --- and measuring the
+  Lyman limit, and the astrodust grid starts a further decade up, at
+  $1.0{\times}10^{-4}\,\mu$m (12.4~keV; DL07 and MRN at
+  $6.2{\times}10^{-5}\,\mu$m) --- and measuring the
   grid there would raise the bound by that factor with no photon to justify it,
   coarsening the enthalpy bins (a fixed bin count spread over a
   correspondingly wider window).  The threshold is
@@ -4111,10 +4323,11 @@ convention, adapted to the band): every emitted packet --- stellar and
 diffuse --- peels a direct contribution
 $L_{\rm pkt}w\,e^{-\tau}/(4\pi r^2)$ toward each observer, and, when
 dust scattering is sampled, every interaction peels a scattered
-contribution with the Henyey--Greenstein phase function of the
-packet's bin (after the albedo weight, before the new direction is
+contribution with the Henyey--Greenstein phase function at the
+packet's energy (after the albedo weight, before the new direction is
 sampled).  The optical depth to the box edge along the observer
-direction is integrated through \code{kap\_ion} at the packet's bin by
+direction is integrated with the opacity at that same energy
+(\code{ion\_packet\_opacity}, Eq.~\ref{eq:packet-opacity}) by
 a tally-free walk (tallying the virtual peel ray would double count),
 so the images carry exactly the transport's extinction: gas, dust
 absorption, and dust scattering.  Images are TAN projections on the
@@ -4144,9 +4357,9 @@ limit the image-integrated flux is $F = J A_{\rm proj}/d^2$, and with
 again the line-of-sight optical-depth map.  The scattered peel is
 origin-agnostic and unchanged.
 
-For the \emph{dust} bands no transport is needed --- the nebula is
-optically thin to its own IR --- so \code{par\%dust\_emis\_bands}
-instead stores SEDust band emissivities of each leaf
+For the \emph{dust} bands no peel-off pass is run --- an H\,\textsc{ii}
+region reabsorbs under 1\% of its own infrared (\S\ref{sec:dustrt}) --- so
+\code{par\%dust\_emis\_bands} instead stores SEDust band emissivities of each leaf
 (\code{\_dustemis}, the same block layout as the \code{\_emis} file)
 and the Python map maker projects them into flux-conserving dust-band
 images exactly like line maps.
@@ -4274,7 +4487,9 @@ frequency, face, the two in-face coordinates, and the Lambert $\mu,\phi$).
 \subsection{PDR-zone physics}
 \label{sec:pdr}
 Three switches extend the FUV zone beyond ion structure; the first two
-default on since 2026-07-31 (\S\ref{sec:metalop}), \code{grain\_pe} off:
+default on since 2026-07-31 (\S\ref{sec:metalop}) and, left out of the
+input, follow \code{par\%use\_metals} since 2026-09-25; \code{grain\_pe} is
+off:
 \begin{itemize}
 \item \code{par\%metal\_ne}: electrons from the metal cascade join the
   $n_e$ closure of the cell solve,
@@ -4309,8 +4524,9 @@ default on since 2026-07-31 (\S\ref{sec:metalop}), \code{grain\_pe} off:
   \code{cext\_dust}; a naive DGR$/0.01$ scale made the heating
   $100\times$ too strong and drove the zone to a false
   Ly$\alpha$-capped 12~kK equilibrium).  $G_0$ is the local FUV
-  field in Habing units summed from the FUV bins of the tally
-  (\code{add\_fuv} required).  Three further guards, each found by the
+  field in Habing units, a path estimator summed over the packet segments
+  below $E_{\min}$ (\code{ion\_score\_apply\_g0}; \code{add\_fuv}
+  required).  Three further guards, each found by the
   gate:
   (i) the BT94 fits are evaluated at $\min(T, 10^4\,{\rm K})$ ---
   outside their fit range the $T^{0.7}$ term of $\epsilon$ diverges;
@@ -4474,9 +4690,9 @@ end in $2s$,
   f_{2s}(Z, T, {\rm case}) = \frac{\alpha_{\rm eff}(2s, {\rm case})}{\alpha_B},
 \end{equation}
 numerator and denominator from \emph{one} $nl$-resolved radiative cascade in
-the zero-density limit (\code{hydrogenic\_recombination\_mod}, whose data
-\code{src/hydrogenic\_recombination\_data.inc} are written by
-\code{tools/fitting/make\_hydrogenic\_recombination.py}; the same cascade
+the zero-density limit (the module \code{hydrogenic\_recombination\_mod}, whose
+data \code{src/\allowbreak hydrogenic\_recombination\_data.inc} are written by
+\code{tools/\allowbreak fitting/\allowbreak make\_hydrogenic\_recombination.py}; the same cascade
 gives $\alpha_B$ of both ions, Section~\ref{sec:hherec}).  The cascade
 takes the hydrogenic A-values and photoionization cross sections of Storey \&
 Hummer (1991, the CPC routines \code{ACOFZ1} and \code{PIXZ1}, unmodified),
@@ -4719,14 +4935,15 @@ gap is physical: He consumes photons and the model re-emits none).
 \toprule
 run & leaves & $R_{\rm eff}$ [pc] & vs.\ 1D \\
 \midrule
-uniform level 6            & 262\,144 & 3.0675 & $+1.05\%$ \\
-front-refined levels 4--6  & 74\,320  & 3.0676 & $+1.06\%$ \\
-center-refined levels 4--6 & 7\,568   & 3.1205 & $+2.80\%$ \\
+uniform level 6            & 262\,144 & 3.0663 & $+1.01\%$ \\
+front-refined levels 4--6  & 74\,320  & 3.0668 & $+1.03\%$ \\
+center-refined levels 4--6 & 7\,568   & 3.1204 & $+2.80\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The front-refined octree reproduces the uniform grid to four decimals
-with 3.5$\times$ fewer cells; the center-refined control (coarsest
+The front-refined octree reproduces the uniform grid to $5\times10^{-4}$~pc
+($0.02\%$) with 3.5$\times$ fewer cells (runs of 2026-09-27, stopped on the
+drift test); the center-refined control (coarsest
 cells \emph{at} the front) shows why the I-front is the one place
 needing resolution (Figure~\ref{fig:g1}).
 
@@ -4742,10 +4959,14 @@ front-refined (green, overlying blue).}
 \subsection{Thermal H/He nebula}
 Same configuration with the thermal balance on
 (Figure~\ref{fig:g2a}): $T_e(r)$ matches the 1D thermal reference to
-median $0.12\%$, mean bias $-0.006\%$, max $3.4\%$ over
-$0.3 < r < 2.8$~pc (\code{results/continuous\_energy/m10\_drift\_test/g2a\_thermal},
-the current defaults and the hydrogenic $\alpha_B$, against the reference of
-\code{MoCHII\_paper/python/make\_g2a\_thermal.py}, which takes its rates from
+median $0.12\%$, mean bias $-0.004\%$, max $3.4\%$ over
+$0.3 < r < 2.8$~pc (run \code{g2a\_thermal} in
+\code{results/\allowbreak continuous\_energy/\allowbreak m12\_vol\_stop}, the
+current code restarted from the m11 run and stopped on the drift test after
+10 iterations; the m11 run, capped at 40 iterations on the cell test, gave
+$0.12\%$, $-0.008\%$, $2.8\%$), against the reference of
+\code{python/make\_g2a\_thermal.py} of the paper tree
+(\code{../MoCHII\_paper}, beside this repository), which takes its rates from
 \code{tools/python/mochii\_rates.py} and carries the hydrogen share of the
 He\,\textsc{i} and He\,\textsc{ii} on-the-spot photons, the $2^3$S coupling and
 the band from 4.78~eV on 256 stellar-band bins; the $0.61\%$ recorded before
@@ -4767,15 +4988,19 @@ against the 1D exact reference.}
 
 \subsection{The MOCASSIN Lexington benchmarks}
 \label{sec:hii}
-\emph{Converged runs (2026-09-25, current defaults 2026-09-26).}  The
-numbers of this section are from \code{results/continuous\_energy/m5\_converged}
-and, where the current code is quoted, from
-\code{results/continuous\_energy/m10\_drift\_test}: those states restarted
+\emph{Converged runs (2026-09-25; current code 2026-09-27).}  The
+numbers of this section are from \code{m5\_converged} and, where the
+current code is quoted, from \code{m11\_hecx\_solver} (both under
+\code{results/\allowbreak continuous\_energy/}): those states restarted
 with every default of 2026-09-25 in force (charge-exchange heating, the
 2$^3$S coupling with the band from 4.78~eV, the on-the-spot helium photons;
 \code{m8\_defaults}), with the hydrogenic $\alpha_B$ of \S\ref{sec:hherec}
 (\code{m9\_hydrogenic\_alpha}), and continued to the stopping test as
-revised on 2026-09-26 (52 and 59 further iterations in all): the production inputs run to
+revised on 2026-09-26 (52 and 59 further iterations in all), and once more
+with the He$^+$ + H charge exchange and the hydrogen-balance solve of
+2026-09-27 (\code{m11\_hecx\_solver}; $\langle T[N_pN_e]\rangle$ moved
+by at most 0.04~K, $L({\rm H}\beta)$ by $<10^{-4}$, the on-the-spot runs
+by $+1.6$ and $+1.0$~K): the production inputs run to
 the drift stopping test (\S\ref{sec:conv}; 64 iterations at HII40, 55 at
 HII20), with the HII40 gas extended to 5.2~pc because the converged
 hydrogen front sits on the $1.46\times10^{19}$~cm outer radius of the
@@ -4784,9 +5009,11 @@ step alone, ended the runs while the structure was still moving outward:
 the same HII40 input stopped at iteration 37 with
 $\langle T[N_pN_e]\rangle = 8175.3$~K, the He\,\textsc{i} front at 4.103~pc
 (\textsc{Cloudy} 4.305), $\langle\mathrm{He^+}\rangle/\langle\mathrm{H^+}\rangle
-= 0.700$ and $L(\mathrm{H}\beta) = 1.927{\times}10^{37}$; converged these are
-8206.7~K, 4.271~pc (a residual of 0.034~pc), 0.758 and
-$2.000{\times}10^{37}$.  Numbers quoted below as ``early-stopped'' come from
+= 0.700$ and $L(\mathrm{H}\beta) = 1.927{\times}10^{37}$; converged
+(\code{m5\_converged}) these were 8206.7~K, 4.271~pc (a residual of
+0.034~pc), 0.758 and $2.000{\times}10^{37}$, and with the current code
+(\code{m11\_hecx\_solver}) they are 8179.7~K, 4.272~pc (0.033~pc), 0.752 and
+$2.023{\times}10^{37}$.  Numbers quoted below as ``early-stopped'' come from
 the earlier rule.
 
 \textbf{Temperatures.}  $T_e$ weighted by $n_{\rm HII} n_e$, MoCHII with
@@ -4810,8 +5037,9 @@ HII40 & 8180 K & 7877 K & 8210 K & 7720--8199 K & 8176 K \\
 With the density-suppressed cooling default (\code{par\%cooling\_model =
 local\_ne}) MoCHII gives $T_e = 8180$~K (HII40) and 6940~K (HII20),
 matching a current \textsc{Cloudy} c25.00 run (8210 and 6910~K) to
-$-0.37\%$ and $+0.44\%$ (\code{results/continuous\_energy/m10\_drift\_test},
-2026-09-26; the hydrogenic $\alpha_B$, 1.1\% below the Badnell-minus-Milne
+$-0.37\%$ and $+0.44\%$ (\code{results/continuous\_energy/m11\_hecx\_solver},
+2026-09-27, 8179.7 and 6940.1~K, the same to 0.04~K as \code{m10\_drift\_test}
+of 2026-09-26; the hydrogenic $\alpha_B$, 1.1\% below the Badnell-minus-Milne
 value it replaced, lowered them by 27 and 18~K from the 8207 and 6958~K of
 \code{m8\_defaults}, and the continuation to the revised stopping test
 moved them by $+0.2$ and $+0.0$~K while the HII40 hydrogen front moved out
@@ -4919,15 +5147,18 @@ published 1.64--3.27, and the [N\,\textsc{ii}], [S\,\textsc{ii}] and
 $L({\rm H}\beta) \approx 1.9 \times 10^{37}$ (HII40) and
 $4.7 \times 10^{36}\,{\rm erg\,s^{-1}}$ (HII20) sat $\sim$3\% below the
 published $2.01$--$2.10 \times 10^{37}$ and $4.83$--$5.04 \times 10^{36}$
-in the early-stopped runs; converged they are $2.00 \times 10^{37}$ and
-$4.79 \times 10^{36}$, $0.5\%$ and $0.8\%$ below the lowest published
-values, with the case-B recombinations at $0.98$ and $1.00\,Q_{\rm H}$.  The emissivity
+in the early-stopped runs; converged (\code{m5\_converged}) they were
+$2.00 \times 10^{37}$ and $4.79 \times 10^{36}$, $0.5\%$ and $0.8\%$ below
+the lowest published values, with the case-B recombinations at $0.98$ and
+$1.00\,Q_{\rm H}$; with the current code (\code{m11\_hecx\_solver}) they are
+$2.023 \times 10^{37}$ and $4.846 \times 10^{36}$, inside both published
+ranges, at their low ends.  The emissivity
 chain itself is exact (Section~\ref{sec:nlevel}).
 
 \subsection{Re-refinement gate and the TNG demonstration}
 The re-refinement of Section~\ref{sec:refine} on the Str\"omgren
 configuration (level-5 start, rebuild to level 7 at iteration 15,
-32\,768 $\rightarrow$ 467\,272 leaves; runs of 2026-09-26 with the
+32\,768 $\rightarrow$ 467\,272 leaves; runs of 2026-09-27, stopped on the drift test, with the
 hydrogenic $\alpha_B$, \code{results/continuous\_energy/m10\_drift\_test/g1\_g4/}):
 
 \begin{center}
@@ -4935,15 +5166,15 @@ hydrogenic $\alpha_B$, \code{results/continuous\_energy/m10\_drift\_test/g1\_g4/
 \toprule
 run & leaves & $R_{\rm eff}$ [pc] & vs.\ 1D \\
 \midrule
-re-refined 5$\rightarrow$7 & 467\,272   & 3.0579 & $+0.74\%$ \\
-native uniform level 7     & 2\,097\,152 & 3.0577 & $+0.73\%$ \\
+re-refined 5$\rightarrow$7 & 467\,272   & 3.0562 & $+0.68\%$ \\
+native uniform level 7     & 2\,097\,152 & 3.0559 & $+0.67\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-The two agree to $+0.006\%$ with $4.5\times$ fewer leaves, and both
-improve on level 6 ($+1.05\%$) --- resolution-convergent, as the
+The two agree to $+0.012\%$ with $4.5\times$ fewer leaves, and both
+improve on level 6 ($+1.01\%$) --- resolution-convergent, as the
 resolution-convergence requirement expects.  The G1 input on the same
-uniform level-7 grid gives 3.0578~pc ($+0.73\%$).  The front profiles overlie
+uniform level-7 grid gives 3.0563~pc ($+0.69\%$).  The front profiles overlie
 exactly.
 
 The post-processing demonstration runs MoCHII on an Illustris-TNG
@@ -4956,8 +5187,9 @@ $n_e$-weighted mean $T_e = 7502$~K, and the refinement (32\,768
 $\rightarrow$ 617\,135 leaves) tracks the \emph{distributed} ionization
 topology of a turbulent medium --- clump skins and partially ionized
 gas, not a single thin shell.  The run also demonstrates why the
-max-cell convergence test stalls in such media (clump-surface jitter);
-a volume-integrated criterion is queued.
+max-cell convergence test stalls in such media (clump-surface jitter),
+which is what the volume-integrated criterion (\code{conv\_crit = 'vol'},
+\S\ref{sec:conv}) was added for.
 
 \begin{figure}[p]
 \centering
@@ -4979,17 +5211,17 @@ dust absorption in every bin:
 \toprule
 case & $R_{\rm eff}$(1D) [pc] & $R_{\rm eff}$(MC) [pc] & dev \\
 \midrule
-dust-free            & 3.0355 & 3.0675 & $+1.05\%$ \\
+dust-free            & 3.0355 & 3.0663 & $+1.02\%$ \\
 full MW dust        & 2.1966 & 2.2120 & $+0.70\%$ \\
 \code{laursen09\_live} & 3.0206 & 3.0518 & $+1.03\%$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-(All runs of 2026-09-26, level 6.)  The gate is on what the dust adds: each
-dusty deviation less the dust-free one on the same grid, $-0.35\%$ and
-$-0.02\%$, against a tolerance of 1\%; the dust-free $+1.05\%$ is the
+(All runs of 2026-09-27, level 6, stopped on the drift test with gas\_tol = $5\times10^{-3}$.)  The gate is on what the dust adds: each
+dusty deviation less the dust-free one on the same grid, $-0.31\%$ and
+$+0.02\%$, against a tolerance of 1\%; the dust-free $+1.02\%$ is the
 finite width of the front on the 0.125~pc cells, which the level-7 grid
-reduces to $+0.73\%$.  The gate used to test the deviation alone, which
+reduces to $+0.69\%$.  The gate used to test the deviation alone, which
 measured that resolution bias along with the dust and failed the nearly
 dust-free \code{laursen09\_live} run at $+1.03\%$ once the hydrogenic
 $\alpha_B$ moved the fronts out.
@@ -5043,15 +5275,16 @@ the low-threshold stages fully singly ionized --- radially averaged
 C\,\textsc{ii} $= 1.000$ and Mg\,\textsc{ii} $= 1.000$ from the front
 out to the sphere edge, the PDR-side structure that the ionizing-only
 band cannot produce (there the same zone recombines to
-C\,\textsc{i}/Mg\,\textsc{i}).  Two documented limitations in that
-zone: electrons from metal ionization are not fed back into $n_e$ (the
-trace-species design), and with photoheating $\approx 0$ the thermal
-bisection pins $T_e$ at \code{te\_min} --- PDR temperatures require
-photoelectric heating, outside the present scope.  The front-zone
-cells with vanishing heating also dominate the $\max|\Delta T_e|$
-convergence test (another argument for the queued volume-integrated
-criterion); the H\,\textsc{ii}-interior structure and $T_e$
-(8.1--10.5~kK) converge normally.
+C\,\textsc{i}/Mg\,\textsc{i}).  Two limitations in that zone at the time
+of this test have since been lifted: electrons from metal ionization were
+not fed back into $n_e$ (\code{par\%metal\_ne}, now on by default), and with
+photoheating $\approx 0$ the thermal bisection pinned $T_e$ at
+\code{te\_min} (grain photoelectric heating, \code{par\%grain\_pe}, and the
+atomic-hydrogen fine-structure cooling of \S\ref{sec:pdr} now exist).  The
+front-zone cells with vanishing heating also dominated the
+$\max|\Delta T_e|$ convergence test, which the volume-integrated criterion
+(\S\ref{sec:conv}) avoids; the H\,\textsc{ii}-interior structure and $T_e$
+(8.1--10.5~kK) converged normally.
 
 \subsection{External field and multiple sources}
 \label{sec:extval}
@@ -5216,7 +5449,7 @@ $5518/5538 = 1.402$, the low-density limit.
 \subsection{Line and continuum outputs}
 The converged-state outputs now include: the SH95 H\,\textsc{i}
 recombination lines (smoke-state check: H$\alpha$/H$\beta = 2.94$ at
-$\sim$7~kK); the $n$-level collisional lines for the 24 registry ions
+$\sim$7~kK); the $n$-level collisional lines for the 27 registry ions
 (including [C\,\textsc{ii}] 158\,$\mu$m, C\,\textsc{iii}] 1909,
 [N\,\textsc{iii}] 57\,$\mu$m, Mg\,\textsc{ii} 2796/2803, and the
 [Fe\,\textsc{ii}] IR lines); and the grid-integrated nebular
@@ -5302,20 +5535,20 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
 \section{Known limitations and next steps}
 \label{sec:limits}
 \begin{itemize}
-\item By default He recombination emits only the three ground continua;
-  the He\,\textsc{i} excited-channel ionizing photons ($\sim$60\% of He
-  recombinations) are re-emitted only when \code{par\%hei\_diffuse} is
-  set --- their effect on the He\,\textsc{i}/\textsc{ii} split against
-  MOCASSIN is small (the split is set by the $>$24.6-eV budget).
-  The He\,\textsc{iii} case-B cascade --- the He\,\textsc{ii} Ly$\alpha$
-  (40.8~eV), the $2^2$S two-photon continuum and the free-bound
-  continuum into $n\ge2$, all of which ionize H --- is transported only
-  when \code{par\%heii\_diffuse} is set (default off;
-  Section~\ref{sec:heiicascade}).  Immaterial wherever He$^{2+}$ is absent, as
-  in both Lexington benchmarks; a hard spectrum must have it on.
-\item With the default astrodust or DL07 SEDust optics, the EUV part of the
-  leaf field lies on the 1762-point EUV Q-table grid and is not folded into a
-  shorter-wavelength bin.  A custom Q/kext table that does not cover the
+\item With the transported continuum (the default since 2026-09-26) the
+  He\,\textsc{i} and He\,\textsc{iii} excited cascades are transported as
+  channels 4 and 5 (\code{par\%hei\_diffuse}, \code{par\%heii\_diffuse},
+  on when the input leaves them out; channel 5 needs \code{eion\_max}
+  $\ge 40.813$~eV).  With the on-the-spot continuum they are absorbed in
+  place (\S\ref{sec:ots-hei}, \S\ref{sec:ots-heii}), which fails where the
+  He$^{2+}$ zone is optically thin at 40.8~eV.  Not yet a diffuse source:
+  free-free above 13.598~eV and the metal recombination continua
+  (\S\ref{sec:metalop}).
+\item With any of the four SEDust models the EUV part of the leaf field
+  lies on the model's own optics axis (astrodust 1762 points from
+  $10^{-4}\,\mu$m, DL07 and MRN 1823 from $6.2{\times}10^{-5}\,\mu$m, Zubko
+  1201 from $10^{-3}\,\mu$m) and is not folded into a shorter-wavelength
+  bin.  A custom Q/kext table that does not cover the
   transported band is rejected at setup rather than silently clamped.
 \item The thermal-loop line cooling is suppressed to the local $n_e$ by
   default (\code{cooling\_model = local\_ne}) through the $(T,n_e)$ table
@@ -5332,10 +5565,11 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   outside 5--1000~K (C\,\textsc{i}), 30--1000~K (O\,\textsc{i}) and
   20--2000~K (C\,\textsc{ii}).  Ar\,\textsc{ii} carries no cooling or lines (no CHIANTI v11
   level data).
-\item PDR zones: with the Section~\ref{sec:pdr} switches off (the
-  default), the FUV extension gives the PDR-side \emph{ion structure}
-  only; with them on, $n_e$, metal photoheating, and photoelectric
-  heating make the PDR temperatures first-order estimates ---
+\item PDR zones: with the Section~\ref{sec:pdr} switches off, the FUV
+  extension gives the PDR-side \emph{ion structure} only; with them on
+  (\code{metal\_ne} and \code{metal\_heat} follow \code{use\_metals};
+  \code{grain\_pe} is off by default), $n_e$, metal photoheating, and
+  photoelectric heating make the PDR temperatures first-order estimates ---
   H$_2$/CO chemistry and line-transfer cooling remain out of scope.
 \item The cell-max convergence test stalls at the front-cell Monte
   Carlo noise floor (and at clump-surface jitter in turbulent media);
@@ -5351,7 +5585,7 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   medians of the 2000-era published Lexington temperatures (at the top of
   the HII40 range, 160--190~K above the HII20 one) --- a data-vintage
   difference, not a code defect.
-\item The HII40 He\,\textsc{i} front sits $0.034$~pc ($0.8\%$ in radius)
+\item The HII40 He\,\textsc{i} front sits $0.033$~pc ($0.8\%$ in radius)
   inside the \textsc{Cloudy} c25.00 one.  The $0.18$~pc once reported here
   as unexplained was, to $0.14$~pc, premature stopping of the gas iteration
   (\S\ref{sec:hii}); the single-parameter exclusions of

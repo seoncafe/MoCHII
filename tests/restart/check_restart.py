@@ -5,7 +5,7 @@ import h5py
 import numpy as np
 
 W = sys.argv[1]
-KEYS = ('x_HI', 'x_HeI', 'x_HeII', 'n_e', 'T_e')
+KEYS = ('x_HI', 'x_HII', 'x_HeI', 'x_HeII', 'x_HeIII', 'n_e', 'T_e')
 src = h5py.File(f'{W}/fresh_rates.h5', 'r')
 S = {k: src[k + '/data'][:] for k in KEYS + ('LeafXYZ', 'LeafSize')}
 ok = True
@@ -30,9 +30,30 @@ j = np.full(xyz.shape[1], -1)
 j[inside] = lut[idx[inside, 0], idx[inside, 1], idx[inside, 2]]
 use = (j >= 0) & (S['n_e'][np.maximum(j, 0)] > 0) & (co['n_e/data'][:] > 0)
 eq = {k: bool(np.array_equal(co[k + '/data'][:][use], S[k][j[use]]))
-      for k in ('x_HI', 'x_HeI', 'x_HeII', 'T_e')}
+      for k in ('x_HI', 'x_HII', 'x_HeI', 'x_HeII', 'x_HeIII', 'T_e')}
 print(f' (b) 32^3 grid: {use.sum()} gas leaves take the containing previous leaf:', eq)
 ok &= all(eq.values()) and use.sum() > 0
+
+#--- (c) files written before 2026-09-26, without x_HII, without x_HeIII,
+#--- and without both: the missing fraction from the complement, everything
+#--- else as in (a), and the run says so
+X3 = np.maximum(0.0, 1.0 - (S['x_HeI'] + S['x_HeII']))  # as previous_state_mod forms it
+for c, missing in (('noxhii', ('x_HII',)), ('noxheiii', ('x_HeIII',)),
+                   ('noboth', ('x_HII', 'x_HeIII'))):
+    lg = h5py.File(f'{W}/{c}_rates.h5', 'r')
+    log = open(f'{W}/{c}.log').read()
+    eq = {k: bool(np.array_equal(S[k], lg[k + '/data'][:]))
+          for k in KEYS if k not in missing}
+    if 'x_HII' in missing:
+        eq['x_HII = 1 - x_HI'] = bool(np.array_equal(lg['x_HII/data'][:],
+                                                     1.0 - S['x_HI']))
+        eq['x_HII note'] = 'carries no x_HII' in log
+    if 'x_HeIII' in missing:
+        eq['x_HeIII = 1 - x_HeI - x_HeII'] = bool(
+            np.array_equal(lg['x_HeIII/data'][:], X3))
+        eq['x_HeIII note'] = 'carries no x_HeIII' in log
+    print(f' (c) restart from a file without {" and ".join(missing)}:', eq)
+    ok &= all(eq.values())
 
 print(' GATE (restart_file):', 'PASS' if ok else 'FAIL')
 sys.exit(0 if ok else 1)

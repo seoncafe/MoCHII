@@ -131,7 +131,7 @@ def solve_ion_scalar(gH, gHe1, gHe2, T, xHI, xHeI, xHeII):
     aH, aHe2, aHe3 = alphaB_HII(T), alphaB_HeII(T), alphaB_HeIII(T)
     cH, cHe1, cHe2 = ci_HI(T), ci_HeI(T), ci_HeII(T)
     xHeIII = max(0.0, 1.0 - xHeI - xHeII)
-    ne = max(NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeIII)), 1e-12*NH)
+    ne = max(NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeIII)), 1e-30*NH)
     for _ in range(200):
         ne_old = ne
         den = gH + (cH + aH)*ne
@@ -142,7 +142,7 @@ def solve_ion_scalar(gH, gHe1, gHe2, T, xHI, xHeI, xHeII):
         xHeII = xHeI*r1
         xHeIII = xHeII*r2
         ne = NH*((1.0 - xHI) + YHE*(xHeII + 2.0*xHeIII))
-        ne = max(0.5*(ne + ne_old), 1e-12*NH)
+        ne = max(0.5*(ne + ne_old), 1e-30*NH)
         if abs(ne - ne_old) <= 1e-10*ne:
             break
     return xHI, xHeI, xHeII, ne

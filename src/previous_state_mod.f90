@@ -4,7 +4,16 @@ module previous_state_mod
 ! (par%restart_file = that run's <base>_rates file, HDF5 or FITS).
 !
 ! What a transport pass depends on, beyond the grid and the sources, is
-!   x_HI, x_HeI, x_HeII   the H and He opacity, and the start of the next solve;
+!   x_HI, x_HII, x_HeI, x_HeII
+!                         the H and He opacity, and the start of the next
+!                         solve; x_HII is read where the file carries it
+!                         (written since 2026-09-26), else taken as
+!                         1 - x_HI with a printed note -- beyond the
+!                         ionization front that has lost x_HII's digits, so
+!                         the first transport pass (metal stages, n_HII)
+!                         sees that state until the first cell solve
+!                         recovers x_HII; likewise x_HeIII (written since
+!                         2026-09-26), else max(0, 1 - x_HeI - x_HeII);
 !   T_e, n_e              the diffuse-field emission (recombination spectra,
 !                         alpha(T_e), n_e n_ion) of the first diffuse pass;
 !   Gamma_<el>_stages     the metal photoionization rates: the stage-fraction
@@ -18,7 +27,7 @@ module previous_state_mod
 ! All of them are written to the rates file already.
 !
 ! Leaves are matched by position: each new leaf takes the values of the
-! previous leaf that contains its centre, so the new grid may differ from the
+! previous leaf that contains its center, so the new grid may differ from the
 ! old one (refined, coarsened, extended).  A new leaf with no previous
 ! counterpart -- outside the old domain, or gas where the old leaf was
 ! vacuum (n_e = 0) -- keeps the par%*_init values.  The lookup is a hash on
@@ -42,8 +51,9 @@ contains
 
   subroutine load_previous_state(fname)
     use iofile_mod
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, &
-                              gas_Te, gas_nleaf, gas_state_sync
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+                              gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
+                              gas_state_sync
     use species_mod,   only : n_elements, elem_name, elem_nstage, &
                               species_set_photoionization_rates
     use utility,       only : fatal_error
@@ -51,9 +61,10 @@ contains
 
     type(io_file_type) :: file
     character(len=64)  :: extname
-    real(kind=wp), allocatable :: oxyz(:,:), osize(:), ox1(:), ox2(:), ox3(:), &
-                                  one(:), ote(:), g(:,:)
-    real(kind=wp), allocatable :: nx1(:), nx2(:), nx3(:), nne(:), nte(:)
+    real(kind=wp), allocatable :: oxyz(:,:), osize(:), ox1(:), ox1p(:), ox2(:), &
+                                  ox3(:), ox4(:), one(:), ote(:), g(:,:)
+    real(kind=wp), allocatable :: nx1(:), nx1p(:), nx2(:), nx3(:), nx4(:), &
+                                  nne(:), nte(:)
     type :: rate_block
        real(kind=wp), allocatable :: g(:,:)
        character(len=8) :: name = ''
@@ -62,9 +73,10 @@ contains
     integer, allocatable :: match(:)
     integer :: status, n1, n2, nold, il, j, ie, k, nr, nmatched, ngas_new, &
                nunmatched_gas, ierr, nst
-    logical :: have(8)
+    logical :: have(8), have_xhii, have_xheiii
 
-    nold = 0;  nr = 0;  have = .false.
+    nold = 0;  nr = 0;  have = .false.;  have_xhii = .false.
+    have_xheiii = .false.
     allocate(orates(max(n_elements,1)))
 
     !--- world rank 0 reads the previous state
@@ -88,10 +100,16 @@ contains
              allocate(osize(n1));  call io_read_image(file, osize, status);  have(2) = .true.
           case ('x_HI')
              allocate(ox1(n1));  call io_read_image(file, ox1, status);  have(3) = .true.
+          case ('x_HII')
+             allocate(ox1p(n1));  call io_read_image(file, ox1p, status)
+             have_xhii = .true.
           case ('x_HeI')
              allocate(ox2(n1));  call io_read_image(file, ox2, status);  have(4) = .true.
           case ('x_HeII')
              allocate(ox3(n1));  call io_read_image(file, ox3, status);  have(5) = .true.
+          case ('x_HeIII')
+             allocate(ox4(n1));  call io_read_image(file, ox4, status)
+             have_xheiii = .true.
           case ('n_e')
              allocate(one(n1));  call io_read_image(file, one, status);  have(6) = .true.
           case ('T_e')
@@ -114,12 +132,28 @@ contains
        call io_close(file, status)
        if (.not. all(have(1:7))) call fatal_error('restart_file: '//trim(fname)// &
           ' lacks one of LeafXYZ, LeafSize, x_HI, x_HeI, x_HeII, n_e, T_e')
+       if (.not. have_xhii) then
+          !--- a file written before x_HII was stored (2026-09-26)
+          allocate(ox1p(size(ox1)));  ox1p = 1.0_wp - ox1
+          write(*,'(a)') ' RESTART: NOTE: '//trim(fname)//' carries no x_HII'// &
+             ' (written before 2026-09-26); x_HII = 1 - x_HI, which beyond'// &
+             ' the ionization front has lost its digits: the first transport'// &
+             ' pass sees that state, the first cell solve recovers x_HII'
+       end if
+       if (.not. have_xheiii) then
+          !--- a file written before x_HeIII was stored (2026-09-26)
+          allocate(ox4(size(ox2)));  ox4 = max(0.0_wp, 1.0_wp - (ox2 + ox3))
+          write(*,'(a)') ' RESTART: NOTE: '//trim(fname)//' carries no x_HeIII'// &
+             ' (written before 2026-09-26); x_HeIII = max(0, 1 - x_HeI - x_HeII),'// &
+             ' which where He2+ is scarce is rounding: the first transport'// &
+             ' pass sees that state, the first cell solve recovers x_HeIII'
+       end if
     end if
 
     !--- rank 0 matches every new leaf to the previous leaf containing its
-    !--- centre and assembles the new-grid arrays; they are then broadcast.
-    allocate(nx1(gas_nleaf), nx2(gas_nleaf), nx3(gas_nleaf), nne(gas_nleaf), &
-             nte(gas_nleaf), match(gas_nleaf))
+    !--- center and assembles the new-grid arrays; they are then broadcast.
+    allocate(nx1(gas_nleaf), nx1p(gas_nleaf), nx2(gas_nleaf), nx3(gas_nleaf), &
+             nx4(gas_nleaf), nne(gas_nleaf), nte(gas_nleaf), match(gas_nleaf))
     if (mpar%p_rank == 0) then
        call match_leaves(oxyz, osize, match)
        nmatched = 0;  ngas_new = 0;  nunmatched_gas = 0
@@ -133,11 +167,14 @@ contains
           if (gas_nH(il) > 0.0_wp) ngas_new = ngas_new + 1
           if (j > 0) then
              nmatched = nmatched + 1
-             nx1(il) = ox1(j);  nx2(il) = ox2(j);  nx3(il) = ox3(j)
+             nx1(il) = ox1(j);  nx1p(il) = ox1p(j)
+             nx2(il) = ox2(j);  nx3(il) = ox3(j);  nx4(il) = ox4(j)
              nne(il) = one(j);  nte(il) = ote(j)
           else
              if (gas_nH(il) > 0.0_wp) nunmatched_gas = nunmatched_gas + 1
-             nx1(il) = gas_xHI(il);  nx2(il) = gas_xHeI(il);  nx3(il) = gas_xHeII(il)
+             nx1(il) = gas_xHI(il);  nx1p(il) = gas_xHII(il)
+             nx2(il) = gas_xHeI(il);  nx3(il) = gas_xHeII(il)
+             nx4(il) = gas_xHeIII(il)
              nne(il) = gas_ne(il);   nte(il) = gas_Te(il)
           end if
        end do
@@ -148,13 +185,17 @@ contains
     end if
     call MPI_BCAST(match, gas_nleaf, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nx1, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(nx1p, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nx2, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nx3, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(nx4, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nne, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nte, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     if (mpar%h_rank == 0) then
-       gas_xHI(1:gas_nleaf)   = nx1;  gas_xHeI(1:gas_nleaf) = nx2
-       gas_xHeII(1:gas_nleaf) = nx3;  gas_ne(1:gas_nleaf)   = nne
+       gas_xHI(1:gas_nleaf)   = nx1;  gas_xHII(1:gas_nleaf) = nx1p
+       gas_xHeI(1:gas_nleaf)  = nx2
+       gas_xHeII(1:gas_nleaf) = nx3;  gas_xHeIII(1:gas_nleaf) = nx4
+       gas_ne(1:gas_nleaf)    = nne
        gas_Te(1:gas_nleaf)    = nte
     end if
     call gas_state_sync()
@@ -189,10 +230,10 @@ contains
   end subroutine load_previous_state
 
   !=========================================================================
-  ! match(il) = the previous leaf whose cube contains the centre of new leaf
+  ! match(il) = the previous leaf whose cube contains the center of new leaf
   ! il, or 0.  Previous leaves are grouped by size; within a size class a
   ! leaf is keyed by the integer position floor((x - xmin)/s) of its cube,
-  ! and a new centre is looked up class by class.
+  ! and a new center is looked up class by class.
   !=========================================================================
   subroutine match_leaves(oxyz, osize, match)
     use octree_mod,    only : leaf_cx, leaf_cy, leaf_cz

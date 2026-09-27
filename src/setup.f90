@@ -18,7 +18,7 @@ contains
 
   character(len=PATH_LEN) :: model_infile, arg
   character(len=PATH_LEN) :: exepath
-  integer :: unit, ierr, islash
+  integer :: ierr, islash
 
   namelist /parameters/ par
 
@@ -26,12 +26,12 @@ contains
      call get_command_argument(1, model_infile)
   else
      call get_command_argument(0, arg)
-     write(*,*) 'Usage: ',trim(arg),' input_file.'
-     stop
+     call refuse_input('no input file.  Usage: '//trim(arg)//' input_file')
   endif
 
   par%require_convergence = .false.   ! definite baseline; namelist may override
   call read_parameters_with_implicit_defaults(trim(model_infile))
+  call refuse_unused_mocafe_items()
 
   !--- Resolve the SEDust data directory relative to the executable when the
   !--- user leaves par%sed_data_dir blank, so a fresh checkout runs dust
@@ -87,125 +87,150 @@ contains
   !--- built from the namelist (par%nx/ny/nz + par%xmax/ymax/zmax).
   if (trim(par%grid_type) == 'uniform') par%grid_type = 'car'
   if (trim(par%grid_type) /= 'amr' .and. trim(par%grid_type) /= 'car') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: MoCHII requires par%grid_type = ''amr'' or ''car''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'MoCHII requires par%grid_type = ''amr'' or ''car''.')
   endif
   !--- par%density_file: a uniform 3D density cube (FITS/HDF5) for the 'car'
   !--- grid; nx/ny/nz come from the file, so it is an alternative to both the
   !--- namelist nx/ny/nz and the amr leaf-list.
   if (len_trim(par%density_file) > 0 .and. trim(par%grid_type) /= 'car') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%density_file (a 3D density cube) requires par%grid_type = ''car''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%density_file (a 3D density cube) requires par%grid_type = ''car''.')
   endif
   if (len_trim(par%density_file) > 0 .and. len_trim(par%amr_file) > 0) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: set either par%amr_file (leaf list) or par%density_file (cube), not both.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'set either par%amr_file (leaf list) or par%density_file (cube), not both.')
   endif
   if (len_trim(par%amr_file) == 0) then
      if (trim(par%grid_type) == 'amr') then
-        if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: grid_type=''amr'' requires par%amr_file (refinement structure).'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input( &
+           'grid_type=''amr'' requires par%amr_file (refinement structure).')
      else if (len_trim(par%density_file) > 0) then
         if (par%xmax <= 0.0_wp) then
-           if (mpar%p_rank == 0) write(*,'(a)') &
-              'ERROR: grid_type=''car'' with par%density_file needs par%xmax > 0.'
-           call MPI_FINALIZE(ierr);  stop
+           call refuse_input( &
+              'grid_type=''car'' with par%density_file needs par%xmax > 0.')
         end if
      else if (par%xmax <= 0.0_wp .or. &
               (par%nx < 2 .and. .not. par%xy_periodic)) then
         !--- nx=1 is allowed only with xy_periodic (a plane-parallel column
         !--- whose single lateral cell wraps onto itself).
-        if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: grid_type=''car'' without par%amr_file needs par%xmax>0 and '// &
-           'par%nx>=2 (par%nx>=1 allowed with par%xy_periodic).'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input( &
+           'grid_type=''car'' without par%amr_file needs par%xmax>0 and '// &
+           'par%nx>=2 (par%nx>=1 allowed with par%xy_periodic).')
      else if (par%ny < 1 .or. par%nz < 1 .or. &
               par%ymax <= 0.0_wp .or. par%zmax <= 0.0_wp) then
         !--- the remaining namelist-built dimensions must be positive.
-        if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: grid_type=''car'' without par%amr_file needs par%ny>=1, '// &
-           'par%nz>=1, par%ymax>0, and par%zmax>0.'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input( &
+           'grid_type=''car'' without par%amr_file needs par%ny>=1, '// &
+           'par%nz>=1, par%ymax>0, and par%zmax>0.')
      end if
   endif
   if (trim(par%grid_type) == 'car' .and. par%refine_front) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: refine_front needs the octree (par%grid_type = ''amr'').'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'refine_front needs the octree (par%grid_type = ''amr'').')
   endif
   if (par%refine_front) then
      if (par%refine_lbase > par%refine_lmax) then
-        if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a)') &
-           'ERROR: par%refine_lbase (', par%refine_lbase, &
-           ') must not exceed par%refine_lmax (', par%refine_lmax, ').'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input('par%refine_lbase ('//integer_text(par%refine_lbase)// &
+           ') must not exceed par%refine_lmax ('//integer_text(par%refine_lmax)//').')
      endif
      if (par%refine_lbase < 1 .or. par%refine_lmax < 1) then
-        if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: par%refine_lbase and par%refine_lmax must be >= 1.'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input( &
+           'par%refine_lbase and par%refine_lmax must be >= 1.')
      endif
      if (par%refine_iter < 1 .or. par%refine_iter >= par%gas_niter) then
-        if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a)') &
-           'ERROR: par%refine_iter (', par%refine_iter, &
+        call refuse_input('par%refine_iter ('//integer_text(par%refine_iter)// &
            ') must be in [1, par%gas_niter-1] so the new grid is iterated '// &
-           'on; par%gas_niter = ', par%gas_niter, '.'
-        call MPI_FINALIZE(ierr);  stop
+           'on; par%gas_niter = '//integer_text(par%gas_niter)//'.')
      endif
   endif
-  if (trim(par%grid_type) == 'car' .and. &
-      trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'amr') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%car_walk must be ''dda'' (default) or ''amr''.'
-     call MPI_FINALIZE(ierr);  stop
+  !--- A string item with a fixed set of values is checked against that set
+  !--- whether or not this run reads it, so a misspelled value is refused
+  !--- rather than falling through to a default branch or going unread.
+  if (trim(par%car_walk) /= 'dda' .and. trim(par%car_walk) /= 'amr') then
+     call refuse_input( &
+        'par%car_walk must be ''dda'' (default) or ''amr''.')
+  endif
+  if (trim(par%conv_crit) /= 'cell' .and. trim(par%conv_crit) /= 'vol') then
+     call refuse_input('par%conv_crit must be ''cell'' (default; the cell '// &
+        'maxima) or ''vol'' (the volume-integrated drift test).')
+  endif
+  !--- iofile_mod::io_file_extension maps 'hdf5'/'h5' to HDF5 and anything
+  !--- else to FITS, so a misspelling would silently write FITS.
+  if (strlowcase(trim(par%file_format)) /= 'hdf5' .and. &
+      strlowcase(trim(par%file_format)) /= 'h5'   .and. &
+      strlowcase(trim(par%file_format)) /= 'fits') then
+     call refuse_input('par%file_format must be ''hdf5'' (default) or ''fits''.')
+  endif
+  !--- grid_mod_amr's leaf dust opacity: an unknown law used to fall through
+  !--- to 'global_dgr'.
+  select case (trim(par%dust_density_law))
+  case ('global_dgr', 'none', 'laursen09_live', 'laursen09', 'from_file')
+  case default
+     call refuse_input('par%dust_density_law must be ''global_dgr'' (default), '// &
+        '''none'', ''laursen09_live'', ''laursen09'' or ''from_file''.')
+  end select
+  if (trim(par%amr_type) == 'ramses') then
+     call refuse_input('par%amr_type = ''ramses'' is not read directly; convert '// &
+        'the snapshot to the generic leaf file first (MoCafe v2.00 carries '// &
+        'python/AMR_grid/convert_ramses_to_generic.py; this tree does not).')
+  else if (trim(par%amr_type) /= 'generic') then
+     call refuse_input('par%amr_type must be ''generic'' (the leaf-list file).')
+  endif
+  if (trim(par%ext_geometry) /= 'rec' .and. trim(par%ext_geometry) /= 'sph') then
+     call refuse_input('par%ext_geometry must be ''rec'' (default) or ''sph''.')
+  endif
+  if (trim(par%slab_faces) /= 'top' .and. trim(par%slab_faces) /= 'bottom' &
+      .and. trim(par%slab_faces) /= 'both') then
+     call refuse_input( &
+        'par%slab_faces must be ''top'', ''bottom'', or ''both''.')
+  endif
+  if ((trim(par%slab_top_mode) /= 'beam' .and. trim(par%slab_top_mode) /= 'isotropic') .or. &
+      (trim(par%slab_bot_mode) /= 'beam' .and. trim(par%slab_bot_mode) /= 'isotropic')) then
+     call refuse_input( &
+        'par%slab_top_mode / slab_bot_mode must be ''beam'' or ''isotropic''.')
+  endif
+  !--- the ionizing band launches point sources only (every slot, whether or
+  !--- not par%nsource reaches it: a slot the run does not use is still a
+  !--- value the input asked for)
+  if (any(par%src_geometry /= 'point')) then
+     call refuse_input('the ionizing band supports only par%src_geometry = ''point''.')
   endif
   if (trim(par%ci_model) /= 'voronov' .and. &
       trim(par%ci_model) /= 'dere_hybrid') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%ci_model must be ''voronov'' (default) or ''dere_hybrid''.')
   endif
   if (trim(par%charge_exchange) /= 'two_way' .and. &
       trim(par%charge_exchange) /= 'metal_only') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%charge_exchange must be ''two_way'' (default) or '// &
-        '''metal_only'' (reproduction only).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%charge_exchange must be ''two_way'' (default) or '// &
+        '''metal_only'' (reproduction only).')
   endif
   if (trim(par%recomb_model) /= 'detailed_balance' .and. &
       trim(par%recomb_model) /= 'hui_gnedin') then
-     if (mpar%p_rank == 0) then
-        write(*,'(a)') 'ERROR: par%recomb_model must be ''detailed_balance'' '// &
-           '(default) or ''hui_gnedin''.'
-        if (trim(par%recomb_model) == 'badnell_milne') write(*,'(a)') &
-           '       ''badnell_milne'' was renamed ''detailed_balance'' on '// &
-           '2026-09-26 (the hydrogenic ions no longer use the Badnell total).'
-     end if
-     call MPI_FINALIZE(ierr);  stop
+     if (trim(par%recomb_model) == 'badnell_milne') call refuse_input( &
+        'par%recomb_model = ''badnell_milne'' was renamed ''detailed_balance'' '// &
+        'on 2026-09-26 (the hydrogenic ions no longer use the Badnell total).')
+     call refuse_input('par%recomb_model must be ''detailed_balance'' '// &
+        '(default) or ''hui_gnedin''.')
   endif
   if (trim(par%diffuse_energy_model) /= 'exponential' .and. &
       trim(par%diffuse_energy_model) /= 'threshold'   .and. &
       trim(par%diffuse_energy_model) /= 'milne') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%diffuse_energy_model must be ''milne'', ' // &
-          '''exponential'' or ''threshold''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+          'par%diffuse_energy_model must be ''milne'', ' // &
+          '''exponential'' or ''threshold''.')
   endif
   if (trim(par%cooling_model) /= 'low_density' .and. &
       trim(par%cooling_model) /= 'local_ne') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%cooling_model must be ''local_ne'' (default) or ''low_density''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%cooling_model must be ''local_ne'' (default) or ''low_density''.')
   endif
   if (trim(par%twophoton_quenching) /= 'colliders' .and. &
       trim(par%twophoton_quenching) /= 'lumped_ne') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%twophoton_quenching must be ''colliders'' (default) or ''lumped_ne''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%twophoton_quenching must be ''colliders'' (default) or ''lumped_ne''.')
   endif
 
   !--- Source model.  The ionizing band is fed by any number of internal point
@@ -225,20 +250,18 @@ contains
     case ('shape_ev', 'per_ev', 'per_hz', 'per_ang', 'per_um')
        is_phys = trim(par%spectrum_type) /= 'shape_ev'
     case default
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%spectrum_type must be ''shape_ev'' (default), ''per_ev'', ''per_hz'', '// &
-          '''per_ang'', or ''per_um''.'
-       call MPI_FINALIZE(ierr);  stop
+       call refuse_input( &
+          'par%spectrum_type must be ''shape_ev'' (default), ''per_ev'', ''per_hz'', '// &
+          '''per_ang'', or ''per_um''.')
     end select
 
     !--- the ISRF presets (draine/habing/mathis) are external-only; an internal
     !--- file slot naming one is almost certainly a mistake.
     if (ion_ext_preset_id(par%ion_spectrum) > 0 .or. &
         ion_ext_preset_id(par%src_spectrum_file) > 0) then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: ISRF preset names (draine/habing/mathis) are valid only for '// &
-          'par%ext_spectrum, not for an internal source file slot.'
-       call MPI_FINALIZE(ierr);  stop
+       call refuse_input( &
+          'ISRF preset names (draine/habing/mathis) are valid only for '// &
+          'par%ext_spectrum, not for an internal source file slot.')
     endif
     ext_is_preset   = ion_ext_preset_id(par%ext_spectrum) > 0
     ext_is_physfile = (.not. ext_is_preset) .and. len_trim(par%ext_spectrum) > 0 .and. is_phys
@@ -257,10 +280,9 @@ contains
           par%ext_geometry = 'rec'
        end if
        if (par%ext_intensity <= 0.0_wp .and. .not. (ext_is_preset .or. ext_is_physfile)) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: external source_geometry requires par%ext_intensity > 0 '// &
-             '(mean intensity J), an ISRF preset, or a physical-type ext_spectrum.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'external source_geometry requires par%ext_intensity > 0 '// &
+             '(mean intensity J), an ISRF preset, or a physical-type ext_spectrum.')
        endif
        par%nsource = 0
        if (mpar%p_rank == 0) write(*,'(a)') &
@@ -269,22 +291,9 @@ contains
     else if (trim(par%source_geometry) == 'slab') then
        !--- plane-parallel slab illumination (its own single-component source).
        if (.not. par%xy_periodic) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: source_geometry=''slab'' needs par%xy_periodic (a slab is '// &
-             'periodic in x and y).'
-          call MPI_FINALIZE(ierr);  stop
-       endif
-       if (trim(par%slab_faces) /= 'top' .and. trim(par%slab_faces) /= 'bottom' &
-           .and. trim(par%slab_faces) /= 'both') then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: par%slab_faces must be ''top'', ''bottom'', or ''both''.'
-          call MPI_FINALIZE(ierr);  stop
-       endif
-       if ((trim(par%slab_top_mode) /= 'beam' .and. trim(par%slab_top_mode) /= 'isotropic') .or. &
-           (trim(par%slab_bot_mode) /= 'beam' .and. trim(par%slab_bot_mode) /= 'isotropic')) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: par%slab_top_mode / slab_bot_mode must be ''beam'' or ''isotropic''.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'source_geometry=''slab'' needs par%xy_periodic (a slab is '// &
+             'periodic in x and y).')
        endif
        block
          logical :: ltop, lbot
@@ -295,34 +304,29 @@ contains
          !--- ever reaching a z-face.  Require 0 <= theta < 90 on each lit beam face.
          if (ltop .and. trim(par%slab_top_mode) == 'beam' .and. &
              (par%slab_top_theta < 0.0_wp .or. par%slab_top_theta >= 90.0_wp)) then
-            if (mpar%p_rank == 0) write(*,'(a)') &
-               'ERROR: par%slab_top_theta must be in [0, 90) degrees for a beam.'
-            call MPI_FINALIZE(ierr);  stop
+            call refuse_input( &
+               'par%slab_top_theta must be in [0, 90) degrees for a beam.')
          endif
          if (lbot .and. trim(par%slab_bot_mode) == 'beam' .and. &
              (par%slab_bot_theta < 0.0_wp .or. par%slab_bot_theta >= 90.0_wp)) then
-            if (mpar%p_rank == 0) write(*,'(a)') &
-               'ERROR: par%slab_bot_theta must be in [0, 90) degrees for a beam.'
-            call MPI_FINALIZE(ierr);  stop
+            call refuse_input( &
+               'par%slab_bot_theta must be in [0, 90) degrees for a beam.')
          endif
          !--- each lit face must carry a positive source strength on its own (a
          !--- negative one could hide behind a positive one in the sum and push
          !--- slab_ptop outside [0, 1]).
          if (ltop .and. par%slab_top_source <= 0.0_wp) then
-            if (mpar%p_rank == 0) write(*,'(a)') &
-               'ERROR: par%slab_top_source must be > 0 on the lit top face.'
-            call MPI_FINALIZE(ierr);  stop
+            call refuse_input( &
+               'par%slab_top_source must be > 0 on the lit top face.')
          endif
          if (lbot .and. par%slab_bot_source <= 0.0_wp) then
-            if (mpar%p_rank == 0) write(*,'(a)') &
-               'ERROR: par%slab_bot_source must be > 0 on the lit bottom face.'
-            call MPI_FINALIZE(ierr);  stop
+            call refuse_input( &
+               'par%slab_bot_source must be > 0 on the lit bottom face.')
          endif
        end block
        if (par%slab_nmu < 1) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: par%slab_nmu must be >= 1.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'par%slab_nmu must be >= 1.')
        endif
        !--- slab illumination is its own single source; composing it with
        !--- internal point sources or an external field is not yet supported.
@@ -330,17 +334,15 @@ contains
        !--- signals an explicit extra-source request; nsource <= 1 is silently
        !--- overridden by the slab below.
        if (par%nsource > 1 .or. par%ext_intensity > 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: source_geometry=''slab'' cannot be combined with internal '// &
+          call refuse_input( &
+             'source_geometry=''slab'' cannot be combined with internal '// &
              'point sources (par%nsource > 1) or an external field '// &
-             '(par%ext_intensity > 0); slab+other-source composition is not yet supported.'
-          call MPI_FINALIZE(ierr);  stop
+             '(par%ext_intensity > 0); slab+other-source composition is not yet supported.')
        endif
        par%nsource = 0
     else if (trim(par%source_geometry) /= 'point') then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%source_geometry must be ''point'', ''slab'', ''external_rec'', or ''external_sph''.'
-       call MPI_FINALIZE(ierr);  stop
+       call refuse_input( &
+          'par%source_geometry must be ''point'', ''slab'', ''external_rec'', or ''external_sph''.')
     endif
 
     !--- external field ON: mean intensity, an ISRF preset, or a physical-type
@@ -351,32 +353,25 @@ contains
     !--- scale, and note that ext_intensity (if set) overrides ext_scale.
     if (ext_is_preset) then
        if (par%ext_scale <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: par%ext_scale must be > 0 for an ISRF preset.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'par%ext_scale must be > 0 for an ISRF preset.')
        endif
        if (.not. par%add_fuv) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the ISRF presets are FUV-only; set par%add_fuv (with '// &
-             'par%efuv_min < 13.6) so the FUV bins carry the field.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'the ISRF presets are FUV-only; set par%add_fuv (with '// &
+             'par%efuv_min < 13.6) so the FUV bins carry the field.')
        endif
        if (par%ext_intensity > 0.0_wp .and. par%ext_scale /= 1.0_wp &
            .and. mpar%p_rank == 0) write(*,'(a)') &
           'NOTE: par%ext_intensity rescales the preset to a target band J; '// &
           'par%ext_scale is then ignored.'
     endif
-    !--- external geometry validation (only when the external field is on).
+    !--- the spherical entry surface needs its radius (only when the external
+    !--- field is on; the value set of ext_geometry is checked above).
     if (ext_on) then
-       if (trim(par%ext_geometry) /= 'rec' .and. trim(par%ext_geometry) /= 'sph') then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: par%ext_geometry must be ''rec'' or ''sph''.'
-          call MPI_FINALIZE(ierr);  stop
-       endif
        if (trim(par%ext_geometry) == 'sph' .and. par%rmax <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: ext_geometry=''sph'' requires par%rmax > 0.'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'ext_geometry=''sph'' requires par%rmax > 0.')
        endif
     endif
 
@@ -393,16 +388,13 @@ contains
 
     !--- internal point sources.
     if (par%nsource < 0 .or. par%nsource > MAX_SRC) then
-       if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
-          'ERROR: par%nsource must be in [0, ', MAX_SRC, '].'
-       call MPI_FINALIZE(ierr);  stop
+       call refuse_input('par%nsource must be in [0, '//integer_text(MAX_SRC)//'].')
     endif
     if (par%nsource == 0 .and. trim(par%source_geometry) /= 'slab') then
        if (.not. ext_on) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: no source: set par%nsource >= 1 or the external field '// &
-             '(par%ext_intensity > 0, an ISRF preset, or a physical ext_spectrum).'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'no source: set par%nsource >= 1 or the external field '// &
+             '(par%ext_intensity > 0, an ISRF preset, or a physical ext_spectrum).')
        endif
     else if (par%nsource == 1) then
        !--- single point source: normalize the legacy scalars into the arrays
@@ -415,11 +407,6 @@ contains
           par%src_lum(1)      = par%luminosity
           par%src_geometry(1) = 'point'
        endif
-       if (trim(par%src_geometry(1)) /= 'point') then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the ionizing band supports only src_geometry = ''point''.'
-          call MPI_FINALIZE(ierr);  stop
-       endif
     else
        !--- multiple point sources.  src_lum: all set (keep) or all unset.  For
        !--- a 'shape_ev' spectrum an unset set is the equal split of par%luminosity
@@ -429,11 +416,6 @@ contains
        nset = 0
        do is = 1, par%nsource
           if (par%src_lum(is) > 0.0_wp) nset = nset + 1
-          if (trim(par%src_geometry(is)) /= 'point') then
-             if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
-                'ERROR: src_geometry(', is, ') must be ''point'' in the ionizing band.'
-             call MPI_FINALIZE(ierr);  stop
-          endif
        end do
        if (nset == 0) then
           if (.not. src_is_absolute) then
@@ -442,10 +424,9 @@ contains
              end do
           endif
        else if (nset /= par%nsource) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: set par%src_lum for ALL sources or for NONE '// &
-             '(equal split, or derived for a physical-type source file).'
-          call MPI_FINALIZE(ierr);  stop
+          call refuse_input( &
+             'set par%src_lum for ALL sources or for NONE '// &
+             '(equal split, or derived for a physical-type source file).')
        endif
        if (nset == par%nsource) par%luminosity = sum(par%src_lum(1:par%nsource))  ! informational total
     endif
@@ -470,35 +451,30 @@ contains
     !--- stream; the dust-scattering / SED draws keep the Mersenne Twister.
     if (trim(par%launch_sequence) /= 'random' .and. &
         trim(par%launch_sequence) /= 'sobol') then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: par%launch_sequence must be ''sobol'' (default) or ''random''.'
-       call MPI_FINALIZE(ierr);  stop
+       call refuse_input( &
+          'par%launch_sequence must be ''sobol'' (default) or ''random''.')
     endif
   end block
 
   !--- general parameter sanity (fail fast rather than run on nonsense).
   if (par%no_photons < 1.0_wp) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%no_photons must be >= 1.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%no_photons must be >= 1.')
   endif
   if (trim(par%fuv_sampling) /= 'separate' .and. &
       trim(par%fuv_sampling) /= 'proportional') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%fuv_sampling must be ''separate'' (default) or ''proportional''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%fuv_sampling must be ''separate'' (default) or ''proportional''.')
   endif
   if (par%add_fuv .and. trim(par%fuv_sampling) == 'separate' .and. &
       par%no_photons_fuv < 1.0_wp .and. par%no_photons_fuv /= -1.0_wp) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%no_photons_fuv must be >= 1 with par%add_fuv and '// &
-        'par%fuv_sampling = ''separate''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%no_photons_fuv must be >= 1 with par%add_fuv and '// &
+        'par%fuv_sampling = ''separate''.')
   endif
   if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%source_cdf_tol must be in (0, 1).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%source_cdf_tol must be in (0, 1).')
   endif
   !--- Energy sampling covers every source configuration (point sources,
   !--- external field, slab), so the one requirement is that SOME spectrum is
@@ -508,39 +484,33 @@ contains
       len_trim(par%ext_spectrum) == 0 .and. &
       par%tstar <= 0.0_wp .and. par%ext_tstar <= 0.0_wp .and. &
       all(par%src_tstar <= 0.0_wp)) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: the ionizing band needs a Planck or tabulated source spectrum.'
-     call MPI_FINALIZE(ierr);  stop 1
+     call refuse_input( &
+        'the ionizing band needs a Planck or tabulated source spectrum.')
   endif
   if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ion_relax must be in (0, 1].'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%ion_relax must be in (0, 1].')
   endif
   if (trim(par%lyman_lines) /= 'on_the_spot' .and. &
       trim(par%lyman_lines) /= 'escaping') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%lyman_lines must be ''on_the_spot'' (default) or ' // &
-        '''escaping'' (MoCHII does not transport the Lyman lines).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%lyman_lines must be ''on_the_spot'' (default) or ' // &
+        '''escaping'' (MoCHII does not transport the Lyman lines).')
   endif
   if (trim(par%recombination_continuum) /= 'on_the_spot' .and. &
       trim(par%recombination_continuum) /= 'transported' .and. &
       trim(par%recombination_continuum) /= 'escaping') then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%recombination_continuum must be ''on_the_spot'', ' // &
-        '''transported'' (default) or ''escaping''.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%recombination_continuum must be ''on_the_spot'', ' // &
+        '''transported'' (default) or ''escaping''.')
   endif
   if (par%solve_te .and. par%te_min >= par%te_max) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%solve_te needs par%te_min < par%te_max.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%solve_te needs par%te_min < par%te_max.')
   endif
   if (par%ion_peel .and. (par%nxim < 1 .or. par%nyim < 1)) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%ion_peel needs par%nxim >= 1 and par%nyim >= 1.')
   endif
   if ((par%hei_metastable .or. par%hei_metastable_coupling) .and. &
       par%abund_He > 0.0_wp) then
@@ -569,26 +539,23 @@ contains
      !--- the point-observer peel is ill-defined under xy-periodicity (the
      !--- medium tiles into infinitely many periodic images); the emergent
      !--- observable of a periodic slab is the boundary I(mu) tally instead.
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%ion_peel is not supported with par%xy_periodic (a periodic '// &
+     call refuse_input( &
+        'par%ion_peel is not supported with par%xy_periodic (a periodic '// &
         'slab has no finite-distance observer; use the boundary I(mu) output '// &
-        'written for source_geometry=''slab'').'
-     call MPI_FINALIZE(ierr);  stop
+        'written for source_geometry=''slab'').')
   endif
 
   !--- ionizing band
   if (par%eion_max <= par%eion_min .or. par%nnu_ion < 1) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: need par%eion_max > par%eion_min and par%nnu_ion >= 1.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'need par%eion_max > par%eion_min and par%nnu_ion >= 1.')
   endif
   if (len_trim(par%ion_spectrum) == 0 .and. par%tstar <= 0.0_wp .and. &
       len_trim(par%src_spectrum_file) == 0 .and. &
       len_trim(par%ext_spectrum) == 0 .and. par%ext_tstar <= 0.0_wp) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: the ionizing band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
-        'par%src_spectrum_file, par%ext_spectrum, or par%ext_tstar > 0.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'the ionizing band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
+        'par%src_spectrum_file, par%ext_spectrum, or par%ext_tstar > 0.')
   endif
 
   !--- dust in the ionizing band needs extinction optics: either the EUV kext
@@ -602,14 +569,12 @@ contains
      'optics from the ''', trim(par%dust_model), ''' SEDust grain model.'
 
   if (par%grain_pe .and. .not. par%add_fuv) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%grain_pe needs par%add_fuv (the FUV field is its heating source).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%grain_pe needs par%add_fuv (the FUV field is its heating source).')
   endif
   if (par%grain_pe .and. .not. par%ion_add_dust) then
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: par%grain_pe needs par%ion_add_dust (grain opacity carries the field).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input( &
+        'par%grain_pe needs par%ion_add_dust (grain opacity carries the field).')
   endif
 
   select case(trim(par%distance_unit))
@@ -622,10 +587,9 @@ contains
      case ('')
         par%distance2cm = 1.0_wp
      case default
-        if (mpar%p_rank == 0) write(*,'(a)') &
-           'ERROR: unknown par%distance_unit ('''//trim(par%distance_unit)// &
-           ''') — use ''kpc'', ''pc'', ''au'', or '''' (cm).'
-        call MPI_FINALIZE(ierr);  stop
+        call refuse_input( &
+           'unknown par%distance_unit ('''//trim(par%distance_unit)// &
+           ''') — use ''kpc'', ''pc'', ''au'', or '''' (cm).')
   end select
 
   if (len_trim(par%out_file) == 0) then
@@ -731,20 +695,20 @@ contains
     !--- the He II Ly-alpha energy [eV] (heii_cascade_mod::E_HEII_LYA)
     real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp
     character(len=64) :: names
-    integer :: unit, k, world_rank, ierr
+    integer :: k, world_rank, ierr
     namelist /parameters/ par
 
     par0 = par
     ab_default = abundances()
 
     call set_implicit_items(.true., -1.0_wp)
-    open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
+    call read_namelist_file()
     par_hi = par
     ab_hi  = abundances()
 
     par = par0
     call set_implicit_items(.false., -2.0_wp)
-    open(newunit=unit, file=fname, status='old');  read(unit, parameters);  close(unit)
+    call read_namelist_file()
     ab_lo = abundances()
 
     given_um   = par_hi%use_metals .eqv. par%use_metals
@@ -816,6 +780,52 @@ contains
 
   contains
 
+    !--- One read of the namelist group /parameters/.  An unknown or
+    !--- misspelled item, a value that does not fit its item, or a file with
+    !--- no &parameters group ends the run with the compiler's message; Intel
+    !--- Fortran's names the line where it stopped reading ("line N"), which
+    !--- can be the line after the offending one, so both are echoed.
+    subroutine read_namelist_file()
+      use utility, only : refuse_input
+      integer :: unit, ios, ios_open
+      character(len=1024) :: msg
+      open(newunit=unit, file=fname, status='old', action='read', &
+           iostat=ios_open, iomsg=msg)
+      if (ios_open /= 0) call refuse_input('cannot open the input file '''// &
+         fname//''': '//trim(msg))
+      read(unit, nml=parameters, iostat=ios, iomsg=msg)
+      close(unit)
+      if (ios < 0) call refuse_input('no namelist group &parameters ... / '// &
+         'was found in '''//fname//''' ('//trim(msg)//').')
+      if (ios > 0) call refuse_input('the namelist group &parameters in '''// &
+         fname//''' could not be read (an unknown or misspelled item, or a '// &
+         'value that does not fit its item):'//new_line('a')//'       '// &
+         trim(msg)//input_lines_near(msg))
+    end subroutine read_namelist_file
+
+    !--- The line the read message names and the one before it, numbered,
+    !--- or nothing when the message names no line.
+    function input_lines_near(msg) result(text)
+      character(len=*), intent(in)  :: msg
+      character(len=:), allocatable :: text
+      character(len=1024) :: line
+      integer :: at, nline, unit, ios, i
+      text = ''
+      at = index(msg, 'line ', back=.true.)
+      if (at == 0) return
+      read(msg(at+5:), *, iostat=ios) nline
+      if (ios /= 0 .or. nline < 1) return
+      open(newunit=unit, file=fname, status='old', action='read', iostat=ios)
+      if (ios /= 0) return
+      do i = 1, nline
+         read(unit, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         if (i >= nline - 1) text = text//new_line('a')//'       line '// &
+            integer_text(i)//': '//trim(line)
+      end do
+      close(unit)
+    end function input_lines_near
+
     !--- flag for the logical items, sentinel for the real ones (a value no
     !--- input gives: every real item here is > 0 when set).
     subroutine set_implicit_items(flag, sentinel)
@@ -844,6 +854,147 @@ contains
     end function abundances
 
   end subroutine read_parameters_with_implicit_defaults
+
+  !=========================================================================
+  ! params_type (define.f90) still declares items of the MoCafe dust-
+  ! continuum code that MoCHII has no code for.  The namelist accepts them,
+  ! so a MoCafe input still parses, but an item set in the input would do
+  ! nothing and say nothing; this refuses every one that differs from its
+  ! declared default, by name.  The list is checked by grep over src/:
+  !   referenced nowhere outside define.f90 (33): the first block below;
+  !   referenced only where it has no effect (19):
+  !     grid_mod_car::grid_create builds a box grid that grid_create_amr
+  !       zeroes and whose taumax/tauhomo it overwrites -- geometry,
+  !       density_zscale, density_rscale, density_powerlaw_index,
+  !       density_zprofile, spiral_m, spiral_pitch, spiral_amp, and use_sed
+  !       (whose distance-unit change grid_create_amr undoes);
+  !     grid_create_amr sets xyz_symmetry and z_symmetry .false. before any
+  !       transport;
+  !     sed_mod::setup_sed, which nothing calls, is the only reader of
+  !       nlambda, lambda_min, lambda_max, lambda0, kext_file,
+  !       source_spectrum, hgg and albedo.
+  ! docs/MoCHII_UserGuide.tex and md/MOCAFE_PARAMETER_DIVERGENCE.md carry
+  ! the same list.  Porting one of these features means deleting its line.
+  !=========================================================================
+  subroutine refuse_unused_mocafe_items()
+    use define
+    use utility, only : refuse_input
+    use, intrinsic :: ieee_arithmetic, only : ieee_class, ieee_quiet_nan, &
+                                              operator(==), operator(/=)
+    implicit none
+    type(params_type) :: d          ! every item at its declared default
+    character(len=:), allocatable :: report
+    integer :: nset
+
+    report = '';  nset = 0
+    !--- referenced nowhere outside define.f90
+    call item(par%sightline_tau .neqv. d%sightline_tau, 'sightline_tau')
+    call item(par%nr /= d%nr, 'nr')
+    call item(differs(par%source_zscale, d%source_zscale), 'source_zscale')
+    call item(differs(par%source_rscale, d%source_rscale), 'source_rscale')
+    call item(par%out_bitpix /= d%out_bitpix, 'out_bitpix')
+    call item(par%out_bitpix_force .neqv. d%out_bitpix_force, 'out_bitpix_force')
+    call item(par%use_reduced_wgt .neqv. d%use_reduced_wgt, 'use_reduced_wgt')
+    call item(par%use_stokes .neqv. d%use_stokes, 'use_stokes')
+    call item(par%scatt_mat_file /= d%scatt_mat_file, 'scatt_mat_file')
+    call item(par%save_jlam .neqv. d%save_jlam, 'save_jlam')
+    call item(par%use_dustemis .neqv. d%use_dustemis, 'use_dustemis', &
+         'dust emission is par%dust_sed and par%dust_emis_transport')
+    call item(par%dust_emission_method /= d%dust_emission_method, &
+         'dust_emission_method', 'dust emission is par%dust_sed')
+    call item(par%dust_fast_table .neqv. d%dust_fast_table, 'dust_fast_table', &
+         'dust emission is par%dust_sed')
+    call item(par%dust_nU /= d%dust_nU, 'dust_nU', 'dust emission is par%dust_sed')
+    call item(par%dust_single_teq .neqv. d%dust_single_teq, 'dust_single_teq', &
+         'dust emission is par%dust_sed')
+    call item(any(par%src_spectrum /= d%src_spectrum), 'src_spectrum', &
+         'the source spectra are par%src_spectrum_file, par%ion_spectrum and '// &
+         'par%src_tstar')
+    call item(any(par%src_zscale /= d%src_zscale), 'src_zscale')
+    call item(any(par%src_rscale /= d%src_rscale), 'src_rscale')
+    call item(any(par%src_sersic_index /= d%src_sersic_index), 'src_sersic_index')
+    call item(any(par%src_reff /= d%src_reff), 'src_reff')
+    call item(any(par%src_axial_ratio /= d%src_axial_ratio), 'src_axial_ratio')
+    call item(any(par%src_boxiness /= d%src_boxiness), 'src_boxiness')
+    call item(par%allsky .neqv. d%allsky, 'allsky')
+    call item(par%allsky_nside /= d%allsky_nside, 'allsky_nside')
+    call item(par%allsky_x /= d%allsky_x, 'allsky_x')
+    call item(par%allsky_y /= d%allsky_y, 'allsky_y')
+    call item(par%allsky_z /= d%allsky_z, 'allsky_z')
+    call item(par%use_mrw .neqv. d%use_mrw, 'use_mrw')
+    call item(par%mrw_gamma /= d%mrw_gamma, 'mrw_gamma')
+    call item(par%use_amr_grid .neqv. d%use_amr_grid, 'use_amr_grid', &
+         'the octree is par%grid_type = ''amr''')
+    call item(par%cone_opening /= d%cone_opening, 'cone_opening')
+    call item(par%output_normalization /= d%output_normalization, &
+         'output_normalization')
+    call item(par%radiation_angular_PDF_file /= d%radiation_angular_PDF_file, &
+         'radiation_angular_PDF_file')
+    !--- referenced only where it has no effect (see the header)
+    call item(par%geometry /= d%geometry, 'geometry', &
+         'the density is par%amr_file, par%density_file or par%nH_const with '// &
+         'par%rmin/rmax')
+    call item(differs(par%density_zscale, d%density_zscale), 'density_zscale')
+    call item(differs(par%density_rscale, d%density_rscale), 'density_rscale')
+    call item(differs(par%density_powerlaw_index, d%density_powerlaw_index), &
+         'density_powerlaw_index')
+    call item(par%density_zprofile /= d%density_zprofile, 'density_zprofile')
+    call item(par%spiral_m /= d%spiral_m, 'spiral_m')
+    call item(par%spiral_pitch /= d%spiral_pitch, 'spiral_pitch')
+    call item(par%spiral_amp /= d%spiral_amp, 'spiral_amp')
+    call item(par%xyz_symmetry .neqv. d%xyz_symmetry, 'xyz_symmetry')
+    call item(par%z_symmetry .neqv. d%z_symmetry, 'z_symmetry')
+    call item(par%use_sed .neqv. d%use_sed, 'use_sed')
+    call item(par%nlambda /= d%nlambda, 'nlambda')
+    call item(par%lambda_min /= d%lambda_min, 'lambda_min')
+    call item(par%lambda_max /= d%lambda_max, 'lambda_max')
+    call item(par%lambda0 /= d%lambda0, 'lambda0')
+    call item(par%kext_file /= d%kext_file, 'kext_file', &
+         'the grain optics are par%dust_model, par%sed_kext and par%ion_dust_kext')
+    call item(par%source_spectrum /= d%source_spectrum, 'source_spectrum', &
+         'the source spectra are par%ion_spectrum, par%src_spectrum_file and '// &
+         'par%ext_spectrum')
+    call item(par%hgg /= d%hgg, 'hgg')
+    call item(par%albedo /= d%albedo, 'albedo')
+
+    if (nset > 0) call refuse_input('the input sets '//integer_text(nset)// &
+       ' item(s) that MoCHII does not use; remove them:'//report)
+
+  contains
+
+    subroutine item(set, name, instead)
+      logical,          intent(in)           :: set
+      character(len=*), intent(in)           :: name
+      character(len=*), intent(in), optional :: instead
+      if (.not. set) return
+      nset = nset + 1
+      report = report//new_line('a')//'       par%'//name// &
+         ' is a MoCafe dust-continuum parameter that MoCHII does not use'
+      if (present(instead)) report = report//' ('//instead//')'
+    end subroutine item
+
+    !--- a real item against its default, where the default may be the NaN
+    !--- "unset" marker (compared by class: -fp-model fast does not keep
+    !--- NaN comparisons)
+    logical function differs(a, b)
+      real(kind=wp), intent(in) :: a, b
+      if (ieee_class(b) == ieee_quiet_nan) then
+         differs = ieee_class(a) /= ieee_quiet_nan
+      else
+         differs = ieee_class(a) == ieee_quiet_nan .or. a /= b
+      end if
+    end function differs
+
+  end subroutine refuse_unused_mocafe_items
+
+  !--- an integer as its shortest decimal text
+  function integer_text(i) result(text)
+    integer, intent(in) :: i
+    character(len=:), allocatable :: text
+    character(len=16) :: buf
+    write(buf, '(i0)') i
+    text = trim(buf)
+  end function integer_text
 
   !---------------------------------------
   subroutine setup_procedure

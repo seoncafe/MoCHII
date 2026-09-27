@@ -6,13 +6,26 @@ module gas_state_mod
 ! MoCHII persists them as shared-memory leaf arrays and adds the He
 ! ionization fractions and T_e/n_e.
 !
+! Hydrogen's state is carried as BOTH fractions, x_HI and x_HII, each to its
+! own relative precision; x_HI + x_HII = 1 to rounding.  Beyond the
+! ionization front x_HII falls to 1e-10 .. 1e-17 (and below), where
+! 1 - x_HI keeps none of its digits or rounds to zero, so every consumer of
+! n_HII reads gas_xHII instead of forming it from x_HI.  The cell solves
+! produce both (ion_balance_mod::hydrogen_ionization_balance).
+!
+! Helium likewise carries all three fractions, x_HeI, x_HeII, x_HeIII, each
+! to its own relative precision (x_HeI + x_HeII + x_HeIII = 1 to rounding):
+! the cell solve forms them from the stage ratios, and in radiation-starved
+! gas 1 - x_HeI - x_HeII rounds to one unit of rounding (1.1e-16) where
+! x_HeIII is << 1e-30, which the He2+ + H exchange term then carries.
+!
 ! The state is INITIALIZED (from the file columns where present,
 ! else from par%xHI_init etc.); when gas_niter = 0 it is never updated —
 ! no equilibrium solve, no opacity feedback.  gas_state_setup is called
 ! from grid_create_amr before the transient read arrays are deallocated.
 !
 ! Where the cell solves run.  The state is one node-shared copy per node;
-! the per-leaf ionization/thermal solves are divided over ALL ranks of
+! the ionization/thermal solves of the leaves are divided over ALL ranks of
 ! MPI_COMM_WORLD, rank p taking the leaves gas_leaf_owner_first() +
 ! k gas_leaf_owner_stride() (cyclic, as the SEDust solve and the dust
 ! emission launch divide theirs), so adding nodes divides the work.  Each
@@ -32,25 +45,33 @@ module gas_state_mod
 
   public :: gas_state_setup, gas_state_recreate, gas_state_sync
   public :: gas_state_publish, gas_leaf_owner_first, gas_leaf_owner_stride
-  public :: gas_nH, gas_xHI, gas_xHeI, gas_xHeII, gas_ne, gas_Te, gas_nleaf
+  public :: gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, gas_xHeIII
+  public :: gas_ne, gas_Te
+  public :: gas_nleaf
 
   real(kind=wp), pointer :: gas_nH(:)    => null()  ! H number density [cm^-3]
   real(kind=wp), pointer :: gas_xHI(:)   => null()  ! n_HI / n_H
+  real(kind=wp), pointer :: gas_xHII(:)  => null()  ! n_HII / n_H
   real(kind=wp), pointer :: gas_xHeI(:)  => null()  ! n_HeI / n_He
   real(kind=wp), pointer :: gas_xHeII(:) => null()  ! n_HeII / n_He
+  real(kind=wp), pointer :: gas_xHeIII(:) => null() ! n_HeIII / n_He
   real(kind=wp), pointer :: gas_ne(:)    => null()  ! electron density [cm^-3]
   real(kind=wp), pointer :: gas_Te(:)    => null()  ! electron temperature [K]
   integer :: gas_nleaf = 0
-  integer :: win_xHI = MPI_WIN_NULL, win_xHeI = MPI_WIN_NULL
-  integer :: win_xHeII = MPI_WIN_NULL, win_ne = MPI_WIN_NULL
+  integer :: win_xHI = MPI_WIN_NULL, win_xHII = MPI_WIN_NULL
+  integer :: win_xHeI = MPI_WIN_NULL
+  integer :: win_xHeII = MPI_WIN_NULL, win_xHeIII = MPI_WIN_NULL
+  integer :: win_ne = MPI_WIN_NULL
   integer :: win_Te = MPI_WIN_NULL
 
 contains
 
   !=========================================================================
   ! nH is mandatory (from the AMR file); xHI is optional (file column) —
-  ! when absent every leaf starts at par%xHI_init.  He fractions start at
-  ! par%xHeI_init / par%xHeII_init (no He columns in the generic format).
+  ! when absent every leaf starts at par%xHI_init.  x_HII starts at 1 - x_HI
+  ! (the only information the file or the namelist gives).  He fractions
+  ! start at par%xHeI_init / par%xHeII_init (no He columns in the generic
+  ! format), x_HeIII at max(0, 1 - xHeI_init - xHeII_init).
   !=========================================================================
   subroutine gas_state_setup(nH, nleaf, xHI)
     implicit none
@@ -62,8 +83,10 @@ contains
     gas_nleaf = nleaf
     call create_shared_mem(gas_nH,    [nleaf])
     call create_shared_mem(gas_xHI,   [nleaf])
+    call create_shared_mem(gas_xHII,  [nleaf])
     call create_shared_mem(gas_xHeI,  [nleaf])
     call create_shared_mem(gas_xHeII, [nleaf])
+    call create_shared_mem(gas_xHeIII, [nleaf])
     call create_shared_mem(gas_ne,    [nleaf])
     call create_shared_mem(gas_Te,    [nleaf])
     call cache_state_windows()
@@ -79,12 +102,15 @@ contains
        else
           gas_xHI(:) = par%xHI_init
        end if
+       do il = 1, nleaf
+          gas_xHII(il) = 1.0_wp - gas_xHI(il)
+       end do
        gas_xHeI(:)  = par%xHeI_init
        gas_xHeII(:) = par%xHeII_init
+       gas_xHeIII(:) = max(0.0_wp, 1.0_wp - par%xHeI_init - par%xHeII_init)
        do il = 1, nleaf
-          gas_ne(il) = gas_nH(il) * ( (1.0_wp - gas_xHI(il)) &
-                       + par%abund_He*(gas_xHeII(il) &
-                       + 2.0_wp*max(0.0_wp, 1.0_wp - gas_xHeI(il) - gas_xHeII(il))) )
+          gas_ne(il) = gas_nH(il) * ( gas_xHII(il) &
+                       + par%abund_He*(gas_xHeII(il) + 2.0_wp*gas_xHeIII(il)) )
        end do
        gas_Te(:) = par%te_fixed
     end if
@@ -108,24 +134,29 @@ contains
   ! (the old ones are leaked until finalize), filled from position-mapped
   ! local arrays.  Collective; h_rank 0 writes.
   !=========================================================================
-  subroutine gas_state_recreate(nleaf, nHv, x1, x2, x3, nev, tev)
+  subroutine gas_state_recreate(nleaf, nHv, x1, x1p, x2, x3, x4, nev, tev)
     implicit none
     integer,       intent(in) :: nleaf
-    real(kind=wp), intent(in) :: nHv(nleaf), x1(nleaf), x2(nleaf), &
-                                 x3(nleaf), nev(nleaf), tev(nleaf)
+    real(kind=wp), intent(in) :: nHv(nleaf), x1(nleaf), x1p(nleaf), &
+                                 x2(nleaf), x3(nleaf), x4(nleaf), &
+                                 nev(nleaf), tev(nleaf)
     gas_nleaf = nleaf
     call create_shared_mem(gas_nH,    [nleaf])
     call create_shared_mem(gas_xHI,   [nleaf])
+    call create_shared_mem(gas_xHII,  [nleaf])
     call create_shared_mem(gas_xHeI,  [nleaf])
     call create_shared_mem(gas_xHeII, [nleaf])
+    call create_shared_mem(gas_xHeIII, [nleaf])
     call create_shared_mem(gas_ne,    [nleaf])
     call create_shared_mem(gas_Te,    [nleaf])
     call cache_state_windows()
     if (mpar%h_rank == 0) then
        gas_nH(1:nleaf)    = nHv
        gas_xHI(1:nleaf)   = x1
+       gas_xHII(1:nleaf)  = x1p
        gas_xHeI(1:nleaf)  = x2
        gas_xHeII(1:nleaf) = x3
+       gas_xHeIII(1:nleaf) = x4
        gas_ne(1:nleaf)    = nev
        gas_Te(1:nleaf)    = tev
     end if
@@ -147,19 +178,25 @@ contains
   ! node's shared state.  te_new is absent for the fixed-T_e solve, which
   ! leaves T_e as it is.  The arrays come back holding the full state.
   !=========================================================================
-  subroutine gas_state_publish(xHI_new, xHeI_new, xHeII_new, ne_new, te_new)
-    real(kind=wp), intent(inout)           :: xHI_new(:), xHeI_new(:), &
-                                              xHeII_new(:), ne_new(:)
+  subroutine gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, &
+                               xHeIII_new, ne_new, te_new)
+    real(kind=wp), intent(inout)           :: xHI_new(:), xHII_new(:), &
+                                              xHeI_new(:), xHeII_new(:), &
+                                              xHeIII_new(:), ne_new(:)
     real(kind=wp), intent(inout), optional :: te_new(:)
     call sum_over_world(xHI_new)
+    call sum_over_world(xHII_new)
     call sum_over_world(xHeI_new)
     call sum_over_world(xHeII_new)
+    call sum_over_world(xHeIII_new)
     call sum_over_world(ne_new)
     if (present(te_new)) call sum_over_world(te_new)
     if (mpar%h_rank == 0) then
        gas_xHI(1:gas_nleaf)   = xHI_new(1:gas_nleaf)
+       gas_xHII(1:gas_nleaf)  = xHII_new(1:gas_nleaf)
        gas_xHeI(1:gas_nleaf)  = xHeI_new(1:gas_nleaf)
        gas_xHeII(1:gas_nleaf) = xHeII_new(1:gas_nleaf)
+       gas_xHeIII(1:gas_nleaf) = xHeIII_new(1:gas_nleaf)
        gas_ne(1:gas_nleaf)    = ne_new(1:gas_nleaf)
        if (present(te_new)) gas_Te(1:gas_nleaf) = te_new(1:gas_nleaf)
     end if
@@ -191,8 +228,10 @@ contains
     integer :: ierr
 
     if (win_xHI   /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHI,   ierr)
+    if (win_xHII  /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHII,  ierr)
     if (win_xHeI  /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeI,  ierr)
     if (win_xHeII /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeII, ierr)
+    if (win_xHeIII /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeIII, ierr)
     if (win_ne    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_ne,    ierr)
     if (win_Te    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_Te,    ierr)
     call MPI_BARRIER(mpar%hostcomm, ierr)
@@ -200,8 +239,10 @@ contains
 
   subroutine cache_state_windows()
     call get_window(gas_xHI,   win_xHI)
+    call get_window(gas_xHII,  win_xHII)
     call get_window(gas_xHeI,  win_xHeI)
     call get_window(gas_xHeII, win_xHeII)
+    call get_window(gas_xHeIII, win_xHeIII)
     call get_window(gas_ne,    win_ne)
     call get_window(gas_Te,    win_Te)
   end subroutine cache_state_windows

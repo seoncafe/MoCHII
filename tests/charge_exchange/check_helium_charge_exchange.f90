@@ -2,9 +2,14 @@ program check_helium_charge_exchange
 !---------------------------------------------------------------------------
 ! Gate: He-H charge exchange in the H/He balance (par%helium_charge_exchange,
 ! ion_balance_mod::cx_HeII_H and companions).
-!  (a) the rate coefficients are the published forms: the Glover & Jappsen
-!      (2007) R26 radiative fit plus the Kingdon & Ferland (1996) eq. (7)
-!      He+ row, and the KF96 He++ row;
+!  (a) the rate coefficients are the published forms: the Stancil, Lepp &
+!      Dalgarno (1998) reaction (19) radiative fit (Glover & Jappsen 2007
+!      R26 until 2026-09-26) plus the non-radiative rate of Loreau et al.
+!      (2014) by reciprocity -- the values below are
+!      tools/fitting/make_heii_h_charge_exchange.py's direct Maxwell
+!      averages at 3000, 8000, 1e4, 3e4 K (1e4 K a table node, the others
+!      between nodes, so this also bounds the interpolation) -- and the KF96
+!      He++ row;
 !  (b) the two reverses are the detailed-balance partners of the forward
 !      rates: He + H+ of the non-radiative He+ + H channel alone,
 !      k12/k_nr = 4 exp(-10.989 eV/kT), and He+ + H+ of the He++ row,
@@ -28,6 +33,9 @@ program check_helium_charge_exchange
   real(kind=wp) :: aH, aHe2, aHe3, cH, cHe1, cHe2, k21, k12, k32, k23
   real(kind=wp) :: nHI, nHII, nHe, h3, xoff, h1off, h2off, neoff, eh, e1, e2, eq
   real(kind=wp) :: Ts(4) = [3000.0_wp, 8000.0_wp, 1.0e4_wp, 3.0e4_wp]
+  !--- Loreau et al. (2014) by reciprocity at Ts (make_heii_h_charge_exchange.py)
+  real(kind=wp), parameter :: KNR_REF(4) = [9.753526e-17_wp, 9.720719e-17_wp, &
+                                            9.643531e-17_wp, 9.961932e-17_wp]
   integer :: is, it, ierr
   logical :: ok
 
@@ -43,8 +51,8 @@ program check_helium_charge_exchange
   worst = 0.0_wp
   do it = 1, 4
      T = Ts(it)
-     knr = 7.47e-15_wp*(T/1e4_wp)**2.06_wp*(1.0_wp + 9.93_wp*exp(-3.89_wp*T/1e4_wp))
-     ref = 1.25e-15_wp*(T/300.0_wp)**0.25_wp + knr
+     knr = KNR_REF(it)
+     ref = 1.20e-15_wp*(T/300.0_wp)**0.25_wp + knr
      worst = max(worst, abs(cx_HeII_H(T)/ref - 1.0_wp))
      ref = 4.0_wp*knr*exp(-10.988953_wp*11604.518_wp/T)
      worst = max(worst, abs(cx_HeI_Hp(T)/ref - 1.0_wp))
@@ -55,7 +63,9 @@ program check_helium_charge_exchange
         cx_HeII_H(T), cx_HeI_Hp(T), cx_HeIII_H(T), cx_HeII_Hp(T)
   end do
   write(*,'(a,es9.2)') ' (a,b) published rate forms and both detailed balances: worst ', worst
-  if (worst > 1.0e-5_wp) ok = .false.   ! eV-to-K conversion constant rounding
+  !--- 1e-3: the log-log interpolation of the 0.02 dex table between nodes
+  !--- (the eV-to-K conversion rounding is 1e-5)
+  if (worst > 1.0e-3_wp) ok = .false.
 
   !--- (c) + (d): partially neutral cells at 1e4 K, n_H = 100
   T = 1.0e4_wp;  nH = 100.0_wp;  nHe = par%abund_He*nH
