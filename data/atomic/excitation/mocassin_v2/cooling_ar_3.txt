@@ -1,0 +1,20 @@
+# Supplied MOCASSIN v2 finite-level cooling model: ar_3
+# Source atom SHA-256: 8001c679bdf85eb484ebe7817eaa8fc7ab1454af5833bac0905eca7508824423
+# Strict stationary low-density limit; collision-determined radiatively closed states.
+# Log-log PCHIP strengths; adopted constant strengths below first source node.
+# Signed coefficients describe total positive cooling, not individual radiation.
+# Numerical fit interval: 1000..100000 K; no extrapolation accuracy claim.
+# Maximum relative error on 1601 temperatures: 0.0044701242331612861.
+# Atomic accuracy and original publication correspondence remain unverified.
+11
+1.6143885142759075e-18 1600.2076431598753
+-3.9787727343585752e-18 9600.2076431598762
+8.9596748112944749e-17 17600.207643159876
+-8.4898013348599115e-16 25600.207643159876
+4.6926581329934861e-15 33600.207643159876
+-1.4407367286846141e-14 41600.207643159876
+2.4680169103310309e-14 49600.207643159876
+-2.0297406546105609e-14 57600.207643159883
+1.3418595028644683e-14 73600.207643159869
+-9.1886847665605806e-15 81600.207643159869
+1.8727325235101998e-15 89600.207643159869

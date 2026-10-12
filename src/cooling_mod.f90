@@ -7,10 +7,13 @@ module cooling_mod
 !   - recombination cooling: beta = k T [(3/2) alpha + d alpha/d ln T]
 !     from the case-A/B alpha of recomb_mod for H II, He II and He III
 !     (maxwellian_recombination_cooling; exact for a Maxwellian);
-!   - free-free: Lambda_ff = 1.42554e-27 sqrt(T) Z^2 n_ion n_e gbar(T,Z),
-!     with the thermally averaged Gaunt factor gbar(T,Z) obtained at setup
-!     by integrating the MOCASSIN getGauntFF (Hummer 1988) over
-!     u = h nu / kT with weight e^-u, tabulated on a log-T grid;
+!   - free-free: Lambda_ff = FF_TOTAL sqrt(T) Z^2 n_ion n_e gbar(T,Z)
+!     (free_free_mod: FF_TOTAL = 1.425557e-27 cgs, the frequency integral of
+!     the spectral coefficient the written continuum and the transported
+!     free-free packets use), with the thermally averaged Gaunt factor
+!     gbar(T,Z) obtained at setup by integrating free_free_gaunt (Hummer
+!     1988 within its stated range, the van Hoof et al. 2014 table outside
+!     it) over u = h nu / kT with weight e^-u, tabulated on a log-T grid;
 !   - collisional-ionization cooling: rate x ionization potential;
 !   - line cooling from the cooling fits (tools/fitting products):
 !     Lambda(T) = T^-1/2 sum A_i exp(-T_i/T) per (n_e n_ion), loaded from
@@ -20,6 +23,7 @@ module cooling_mod
   use define
   use recomb_mod
   use nlevel_cooling_mod, only : nlevel_cooling_add, nlevel_cooling_apply
+  use free_free_mod,      only : free_free_gaunt, FF_TOTAL
   implicit none
   private
 
@@ -33,16 +37,6 @@ module cooling_mod
   !--- when one of these changes, which is how three such mismatches reached
   !--- the published gate numbers before they were found.
   public :: betaA_HII, betaB_HII, beta_HeII, beta_HeIII
-
-  interface
-     subroutine getGauntFF(z, log10Te, xlf, g, iflag)
-        implicit none
-        integer, intent(out) :: iflag
-        real, intent(in)  :: log10Te, z
-        real, dimension(:), intent(in)  :: xlf
-        real, dimension(size(xlf)), intent(out) :: g
-     end subroutine getGauntFF
-  end interface
 
   type cooling_fit_type
      integer :: n = 0
@@ -59,9 +53,11 @@ module cooling_mod
   integer :: hi_cool_idx = 0
 
   !--- thermally averaged free-free Gaunt factor gbar(T,Z) for net ion
-  !--- charge Z = 1..4 (max metal net charge is 4: the largest registry
-  !--- element has 5 stages), tabulated on a log-T grid at setup.
-  integer, parameter :: NGT = 41, NGZ = 4
+  !--- charge Z = 1..MAX_ION_STAGES-1, tabulated on a log-T grid at setup.
+  !--- 0.01 dex in T: linear interpolation on the former 0.1 dex grid left
+  !--- up to 4.9e-4 between nodes (Z = 4 at 3000 K, beside the Hummer / van
+  !--- Hoof switch at gamma^2 = 1e3; tests/freefree_emission (a))
+  integer, parameter :: NGT = 401, NGZ = MAX_ION_STAGES - 1
   real(kind=wp) :: gff_logT(NGT), gff_z(NGT, NGZ)
 
 contains
@@ -80,7 +76,8 @@ contains
     !--- (T, n_e) suppression table for H I under the local-n_e cooling model.
     if (trim(par%cooling_model) == 'local_ne') hi_cool_idx = nlevel_cooling_add('h', 1)
 
-    !--- gbar_ff(T, Z) tables over log T = 2..6, for net charge Z = 1..4.
+    !--- gbar_ff(T, Z) tables over log T = 2..6, through the highest
+    !--- represented ion charge.
     do i = 1, NGT
        gff_logT(i) = 2.0_wp + 4.0_wp*real(i-1,wp)/real(NGT-1,wp)
        do iz = 1, NGZ
@@ -133,7 +130,11 @@ implicit none
     do i = 1, fit%n
        lam = lam + fit%A(i)*exp(-fit%Ti(i)/T)
     end do
-    lam = lam/sqrt(T)
+    !--- A fit with coefficients of both signs can go negative outside the
+    !--- temperatures it was fitted on (e.g. a Mg III fit below 1000 K); a
+    !--- collisional line cooling coefficient is never negative, so the sum
+    !--- is held at zero there.  Inside the fit range it is positive.
+    lam = max(lam, 0.0_wp)/sqrt(T)
   end function cooling_eval
 
   !=========================================================================
@@ -197,47 +198,34 @@ implicit none
 
   !=========================================================================
   ! Thermally averaged free-free Gaunt factor: gbar = Int g_ff(u) e^-u du
-  ! over u = h nu / kT (32-point midpoint on u in [1e-4, 20]), using the
-  ! ported MOCASSIN getGauntFF (log10 nu in Rydberg units).
+  ! over u = h nu / kT, g_ff from free_free_mod::free_free_gaunt (Hummer
+  ! 1988 inside its stated range 1e-3 <= gamma^2 <= 1e3, 1e-4 <= u <=
+  ! 10^1.5, T >= 10^2.5 K; the van Hoof et al. 2014 table outside it), the
+  ! Gaunt factor of the spectral coefficient as well, so the cooling and the
+  ! emitted spectrum integrate one function.  Trapezoid rule in ln u over
+  ! [1e-9, 300] (400 nodes): the integrand g u e^-u vanishes at both ends,
+  ! so the rule converges exponentially.  It was a 64-point midpoint rule on
+  ! [1e-4, 20] normalized by Int e^-u du, whose missing u < 1e-4 (where g is
+  ! largest) and midpoint error left gbar 2.8e-4 below the integral of the
+  ! spectrum (tests/freefree_emission (a)).
   !=========================================================================
   real(kind=wp) function gaunt_ff_mean(T, Zc) result(gm)
     implicit none
     real(kind=wp), intent(in) :: T, Zc
-    integer, parameter :: NU = 64
-    real, allocatable :: xlf(:), g(:)
-    real(kind=wp) :: u(NU), du(NU), lnu_lo, lnu_hi, ryd_over_kt
-    integer :: i, iflag
+    integer, parameter :: NU = 400
+    real(kind=wp), parameter :: U_LO = 1.0e-9_wp, U_HI = 300.0_wp
+    real(kind=wp) :: lu, h, u, f
+    integer :: i
 
-    allocate(xlf(NU), g(NU))
-    !--- log-spaced u grid; weight e^-u du.
-    lnu_lo = log(1.0e-4_wp);  lnu_hi = log(20.0_wp)
-    do i = 1, NU
-       u(i)  = exp(lnu_lo + (lnu_hi - lnu_lo)*(real(i,wp)-0.5_wp)/real(NU,wp))
-       du(i) = u(i)*(lnu_hi - lnu_lo)/real(NU,wp)
-    end do
-    !--- h nu / Ryd = u * kT / Ryd
-    ryd_over_kt = 13.605693_wp*ev2erg/(kboltz_cgs*T)
-    do i = 1, NU
-       xlf(i) = real(log10(u(i)/ryd_over_kt))
-    end do
-    if (par%gaunt_vh14) then
-       block
-         use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
-         call gaunt_vh14_setup()
-         do i = 1, NU
-            g(i) = real(gauntff_vh14(Zc, T, u(i)/ryd_over_kt))
-         end do
-       end block
-    else
-       call getGauntFF(real(log10(Zc)), real(log10(T)), xlf, g, iflag)
-    end if
+    h  = (log(U_HI) - log(U_LO))/real(NU-1, wp)
     gm = 0.0_wp
     do i = 1, NU
-       gm = gm + real(g(i),wp)*exp(-u(i))*du(i)
+       lu = log(U_LO) + h*real(i-1, wp)
+       u  = exp(lu)
+       f  = free_free_gaunt(Zc, T, u)*u*exp(-u)
+       if (i == 1 .or. i == NU) f = 0.5_wp*f
+       gm = gm + f*h
     end do
-    !--- normalize by Int e^-u du over the same grid (finite-range bias).
-    gm = gm / (exp(-1.0e-4_wp) - exp(-20.0_wp))
-    deallocate(xlf, g)
   end function gaunt_ff_mean
 
   !=========================================================================
@@ -284,7 +272,7 @@ implicit none
     end if
 
     !--- free-free (Z=1: H II + He II; Z=2: He III)
-    cool = cool + 1.42554e-27_wp*sqrt(T)*ne* &
+    cool = cool + FF_TOTAL*sqrt(T)*ne* &
            ( (nHII + nHeII_n)*gbar_ff(T,1) + 4.0_wp*nHeIII*gbar_ff(T,2) )
 
     !--- collisional-ionization cooling

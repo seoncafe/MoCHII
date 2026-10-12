@@ -1,0 +1,448 @@
+{
+  "model": "mocassin_v2",
+  "approved_date": "2026-10-11",
+  "files": [
+    {
+      "file": "cooling_ar_2.txt",
+      "sha256": "09abdae87f919482c5579b419e946c606c913aa3c21b0af4c57042976e962233"
+    },
+    {
+      "file": "cooling_ar_3.txt",
+      "sha256": "088ee1a8f5cf2b46920e25572a1d7d883d19c5d3071a149e52dc9e386d31a932"
+    },
+    {
+      "file": "cooling_ar_4.txt",
+      "sha256": "18e3ea347edb2407ba3e6420163f63c2c035eec66b81154381485b04a1de4486"
+    },
+    {
+      "file": "cooling_ar_5.txt",
+      "sha256": "7ccf72c49a40a6bfe1a385c72655255bb67d0d9c2b467e130d4868a2dca8f026"
+    },
+    {
+      "file": "cooling_ar_7.txt",
+      "sha256": "4450eaf0f265a8a7aa8319b20a1ba4564bf7be54815baffed03ee9f7ec185dde"
+    },
+    {
+      "file": "cooling_c_2.txt",
+      "sha256": "4b655eeda865027643129dc6a4f9a7ebcef4fdfbc67f41b1f6dbd150d0dcec31"
+    },
+    {
+      "file": "cooling_c_3.txt",
+      "sha256": "61a456c35f3bceb69b0cfae014fce2c2dccd25323550ac23a15efdc2150463d1"
+    },
+    {
+      "file": "cooling_c_4.txt",
+      "sha256": "1e978a14b6a909a2731710f32d7dd226a566070f081dce2ec71c825cc3b36d3b"
+    },
+    {
+      "file": "cooling_ca_2.txt",
+      "sha256": "ba60685eacfa0b19cf64f22406422b73964c19b033406ae6f4dc4f58977c5704"
+    },
+    {
+      "file": "cooling_ca_4.txt",
+      "sha256": "9ce2d50234ef79266c41fd7db3680aa7633bd576cf0b3bfd17447c320444049b"
+    },
+    {
+      "file": "cooling_ca_5.txt",
+      "sha256": "e252950784eae38e85f78686c0abe1457b395fd9c07500b8a7a967a0207c2b39"
+    },
+    {
+      "file": "cooling_ca_6.txt",
+      "sha256": "868088fb825ce724bad2e1ad6396e8edcfe9cd69cb8782ef9ae1aca628752a67"
+    },
+    {
+      "file": "cooling_cl_2.txt",
+      "sha256": "046588014c37166cddd35908a644f7173455010925d6784043472aa22f404777"
+    },
+    {
+      "file": "cooling_cl_3.txt",
+      "sha256": "016363796b602cfa2f60e94b759c6ba26f3fa25063308d202a07aa20b36ba120"
+    },
+    {
+      "file": "cooling_cl_4.txt",
+      "sha256": "32a09b7cbcfc268ff54296a6b690ce44db7dab03f9b43ae5b36fab0434ea846b"
+    },
+    {
+      "file": "cooling_cl_5.txt",
+      "sha256": "7df8ab8103382cf67a7bd77a3d22f6de1eca5fa4133a717c9a375e67f83fdb4d"
+    },
+    {
+      "file": "cooling_fe_2.txt",
+      "sha256": "3eeb9dcd78ade6d9124501d67138f39f8e6be50cc40493ec34d782973a904b3d"
+    },
+    {
+      "file": "cooling_fe_6.txt",
+      "sha256": "d12c69a4bb46ff846eba49bc96b313d69d7dbcad5441c71443fe324cd46b7026"
+    },
+    {
+      "file": "cooling_fe_7.txt",
+      "sha256": "ba45d69b95361d0726190d6868badab2e26e091bd58b7d7095a3e5d873556af4"
+    },
+    {
+      "file": "cooling_mg_2.txt",
+      "sha256": "1998a383f05dedb4a67120e1b07d07fc9ab4e9c4dae6e9f9bcd30a55479a0df3"
+    },
+    {
+      "file": "cooling_mg_4.txt",
+      "sha256": "13dd83f1ee19e59f12b92438d225c8432dfb8b39a11526d3213ba5f74371ce6f"
+    },
+    {
+      "file": "cooling_mg_5.txt",
+      "sha256": "ccb9e421e3ff2a302499382248d345f9b02e7f6d616a9749313cff2154c684d0"
+    },
+    {
+      "file": "cooling_mg_6.txt",
+      "sha256": "c5aa8caa6474749bb6303c7ed0cf580f985062a01de47d38358c81825be51900"
+    },
+    {
+      "file": "cooling_mg_7.txt",
+      "sha256": "4e3878af06e27df180812e83629e0b4fbb057a9a3c8ee6048ecd1ae563fef8d8"
+    },
+    {
+      "file": "cooling_n_1.txt",
+      "sha256": "29579724d4cc7ae48b059052a436458074f2bdb5e9d6a86e53d60e3c0609fdbe"
+    },
+    {
+      "file": "cooling_n_2.txt",
+      "sha256": "db72080d5c918a85ff64e0db7e7c19ddad5c0ed2b0bc6ffe72ea368c3cf21c1d"
+    },
+    {
+      "file": "cooling_n_3.txt",
+      "sha256": "a39e923af729cce692e957db1c98d076693c61ccc94069ddeb048d12fe05fe5e"
+    },
+    {
+      "file": "cooling_n_4.txt",
+      "sha256": "c446d3e5198d495cac29e6623c6cefbbe054831d0245e1837ef118e0de0b61ec"
+    },
+    {
+      "file": "cooling_n_5.txt",
+      "sha256": "0f3348a11367d9100bc936e31878f5cc1461dbb8e2c8325ffab19a5f61824163"
+    },
+    {
+      "file": "cooling_ne_2.txt",
+      "sha256": "dc85035ae509d757c9fd7c2e13d09525b969efee73fa93ae9045143d81818504"
+    },
+    {
+      "file": "cooling_ne_3.txt",
+      "sha256": "e2754475bc8eb4f43f50b257ee10d361a1fa214161c02d716cb1e159f74fe668"
+    },
+    {
+      "file": "cooling_ne_4.txt",
+      "sha256": "2f94de94c579f83ee75a17dc2e381ce6f12600282c3b42e03efacc8fbfe780e9"
+    },
+    {
+      "file": "cooling_ne_5.txt",
+      "sha256": "49cb48645899609dbbb583cf577f79cc5e13ff932933b021292da96d0bee62d6"
+    },
+    {
+      "file": "cooling_ne_7.txt",
+      "sha256": "edb3b319df3e6d826b79575451518b9055216ed3fa19cff3abac7ec0ea767f69"
+    },
+    {
+      "file": "cooling_o_1.txt",
+      "sha256": "336e94f0b0ffd9de33ecd494eb0d43dfb4d88d2b90fd2c7032711da50fbd21dd"
+    },
+    {
+      "file": "cooling_o_2.txt",
+      "sha256": "976029b6fd507803854a0c42eb414f1a36370dcce9d42cb04b9f0e1761ca26b9"
+    },
+    {
+      "file": "cooling_o_3.txt",
+      "sha256": "63be6f58066ea1e78d75f4cad05167e4c90d1b4e18ab075c736676fc8fdd2338"
+    },
+    {
+      "file": "cooling_o_4.txt",
+      "sha256": "86c8cd67720c8fbb42d9946c8b5b2f2cc2628d40d2b5c9b6a68a4e94489a6559"
+    },
+    {
+      "file": "cooling_o_5.txt",
+      "sha256": "1f972576125cb18b4a7e513fbdfaf6c4c92f2b2b4352723ef1bbd73304431470"
+    },
+    {
+      "file": "cooling_o_6.txt",
+      "sha256": "0a1e29ccd6d281dadc279e58538ebe8a694868526c2ce30a2a75b0358f825a8a"
+    },
+    {
+      "file": "cooling_s_2.txt",
+      "sha256": "7ec5d96af797fd76a6329ca64b588d5e26a40e3161d35c80b81022e5c3b9459a"
+    },
+    {
+      "file": "cooling_s_4.txt",
+      "sha256": "113eb8dfd18cf9146ffc8ef2543fb963c2303ac2a24814aae1af349040c4aa28"
+    },
+    {
+      "file": "cooling_s_5.txt",
+      "sha256": "4ed38cca8d1196b5f081bef6bcc9335d60ded496df4eb2b7f89e456b7dfd4eda"
+    },
+    {
+      "file": "cooling_s_6.txt",
+      "sha256": "ac1d006f82f3e3aaad5e5a4859217c30fc18bc64dbedffbfca4cd18720693d92"
+    },
+    {
+      "file": "cooling_si_2.txt",
+      "sha256": "a0e40bc9391df485952b76a2e064f621bfb2fd73970526dbe879be93aef91931"
+    },
+    {
+      "file": "cooling_si_3.txt",
+      "sha256": "7d688f13c511d1cb43fa997ec581df4790453bddbe894585f5e490daff93f470"
+    },
+    {
+      "file": "cooling_si_4.txt",
+      "sha256": "bc92e51325277b633b1c42a32cdda59a48b349026b89dbc17c84ee742db6ccb1"
+    },
+    {
+      "file": "cooling_si_6.txt",
+      "sha256": "7da5cae6d9a9b4db26abe4e31d300fc4dec1ad49d35fa6ec2e2b39cad54a81eb"
+    },
+    {
+      "file": "cooling_si_7.txt",
+      "sha256": "3680405f9bfb1c576db2de7def9026fc027f6fcf32fc84a381df65fba5cfa529"
+    },
+    {
+      "file": "hcoll_c_1.txt",
+      "sha256": "0382ece7a86ace884543fc6b2f746435062142bfe59bf50b5182eb464134aa3b"
+    },
+    {
+      "file": "hcoll_c_2.txt",
+      "sha256": "f66bdb492d3c8cdda3f4ed3e51b707dd7b6035b41baa147fc23da55cbeeeb7a6"
+    },
+    {
+      "file": "hcoll_o_1.txt",
+      "sha256": "76bed073d4cbef7ab0d41f363147f7cb27615ffb429c5cba6ead0d2424806c5c"
+    },
+    {
+      "file": "nlevel_ar_2.txt",
+      "sha256": "58ce52375aecaa2c4cdd14f57950ee5f4a227225326a3f22d90fdcd9de5e8883"
+    },
+    {
+      "file": "nlevel_ar_3.txt",
+      "sha256": "8001c679bdf85eb484ebe7817eaa8fc7ab1454af5833bac0905eca7508824423"
+    },
+    {
+      "file": "nlevel_ar_4.txt",
+      "sha256": "60936436edac38905fcf23e06be3f81cbfc94c534cc5d7051d9578a0d2caac9f"
+    },
+    {
+      "file": "nlevel_ar_5.txt",
+      "sha256": "32593e7b8698d25670e090417093b609197aa09e557fd177c257c0543ce26f6a"
+    },
+    {
+      "file": "nlevel_ar_6.txt",
+      "sha256": "73e89c5da69c96302e4cad979c8c146d4487636198b3f49c72d7e38b925fbbae"
+    },
+    {
+      "file": "nlevel_ar_7.txt",
+      "sha256": "e20d1e7dc9625e976174c0aa3edcd78049a63b4a5f211e1cd3d53bd4fb757213"
+    },
+    {
+      "file": "nlevel_c_1.txt",
+      "sha256": "46ddd23179359e3f915d773188db6814f12700d1f8277f089d3722307b29782a"
+    },
+    {
+      "file": "nlevel_c_2.txt",
+      "sha256": "75a838d2a689672aa394e85cc2227445a570dd8e900300049092cf2efd0a9ecc"
+    },
+    {
+      "file": "nlevel_c_3.txt",
+      "sha256": "125f01bfe3757cfa2ddff9a56fe8532a2d17bcd24e9aa1008b52143abb9f9e46"
+    },
+    {
+      "file": "nlevel_c_4.txt",
+      "sha256": "ef60a5e356f5bbc05364fa99142f64774f29201c5088320bf727ccad4ea39e46"
+    },
+    {
+      "file": "nlevel_ca_2.txt",
+      "sha256": "b5ac0ed3dbd900f842a66c45c0741cb42ebec77b9f37949b0d18e64ab00e5a81"
+    },
+    {
+      "file": "nlevel_ca_4.txt",
+      "sha256": "060e5acb6bc9adba8e090cbf0d30c600ed8c8485bdc76bc50a3d739d211fe33e"
+    },
+    {
+      "file": "nlevel_ca_5.txt",
+      "sha256": "0f5f7616de76396fb9825cf2a9002e0ba4943ec258558101dfbdeb8df4dfea8f"
+    },
+    {
+      "file": "nlevel_ca_6.txt",
+      "sha256": "efd4c7b7956d97c487d1967fc9a1aa1cb82d709c98606837f019a336d26c8964"
+    },
+    {
+      "file": "nlevel_cl_2.txt",
+      "sha256": "b0817c4e2d183f751da295d11170552153bd80322b38ecfabd7a8dd62440e46a"
+    },
+    {
+      "file": "nlevel_cl_3.txt",
+      "sha256": "775f1e379b6de852fb5e67ce1fa186182e08f8044004b8b3b775e2f8ad64907d"
+    },
+    {
+      "file": "nlevel_cl_4.txt",
+      "sha256": "a25d74549fa934e88f04f756c543928718786f82f8fc5d81314e75368b8a57b2"
+    },
+    {
+      "file": "nlevel_cl_5.txt",
+      "sha256": "dd7e930d73cb3f5f173180930d58f177cf893c89f808e7ab061661d1029b8981"
+    },
+    {
+      "file": "nlevel_fe_2.txt",
+      "sha256": "30e968db49bdbd99ea2f82e1a2b66706c8d7371521af138ee21e3928237579d4"
+    },
+    {
+      "file": "nlevel_fe_5.txt",
+      "sha256": "1ce304959c616a540ce7ed70baa7e4baacf4db2c404e7657097e68b365eddfa8"
+    },
+    {
+      "file": "nlevel_fe_6.txt",
+      "sha256": "e21c3f0195a9da64fb4462c0ba16fa3b62633d7730324e701e6989a50ae19922"
+    },
+    {
+      "file": "nlevel_fe_7.txt",
+      "sha256": "0d681814d57bf4048151138b19d262ce67b89aa01cfcdb55a10ecdd6b427220f"
+    },
+    {
+      "file": "nlevel_mg_1.txt",
+      "sha256": "637da0d573d5f713b2100fbcb898d2c5f59b110d29d69fe6e47c4903c3f64708"
+    },
+    {
+      "file": "nlevel_mg_2.txt",
+      "sha256": "623a2381c54fc7fad3019979e1b64399b6b3492e39ce44a7623563226cf218a1"
+    },
+    {
+      "file": "nlevel_mg_4.txt",
+      "sha256": "653db2645aa254ffa68a3abd25f237fb91082a10282673485a4ffbf140e9fe3f"
+    },
+    {
+      "file": "nlevel_mg_5.txt",
+      "sha256": "792e37b8be401368606421b022b6699a351bedce37f24ae09a39713661995641"
+    },
+    {
+      "file": "nlevel_mg_6.txt",
+      "sha256": "e2c04e7df3cf4ca3b10233473f882aa3c912333978b3c0bead31e774add6041b"
+    },
+    {
+      "file": "nlevel_mg_7.txt",
+      "sha256": "7390e0dbff890eb9bba0b83c3238a44c6b2210b8e153b36c02dfdc96b86b458f"
+    },
+    {
+      "file": "nlevel_n_1.txt",
+      "sha256": "8a268fe199045a34f0b458f8862f6a2a7e3e6f4c782e9bd91555e4242e2043c8"
+    },
+    {
+      "file": "nlevel_n_2.txt",
+      "sha256": "4844a8129ac9548d6a583db2694a5e22694a8f03f729801b25d6796ba80a6436"
+    },
+    {
+      "file": "nlevel_n_3.txt",
+      "sha256": "44bf414bf4beccf8d9babb76a5b04926f3bee65c4badc66b97aee0eb0ba235b4"
+    },
+    {
+      "file": "nlevel_n_4.txt",
+      "sha256": "974043c0412f141aabe5fd1b8c5695d780324df35c741762e6265e8b02919f23"
+    },
+    {
+      "file": "nlevel_n_5.txt",
+      "sha256": "5b0333e0cd759a200ab1dc2512e82342827a56873d03e2ffbfbf37fd181a7bc9"
+    },
+    {
+      "file": "nlevel_ne_2.txt",
+      "sha256": "7090030d40babf2f2c5a6431347e0cb2e7d36109153243f1823a063ab0b0c018"
+    },
+    {
+      "file": "nlevel_ne_3.txt",
+      "sha256": "0d76fbce4bf6ba57ec56cc7f315338b7d84c95f54d4a6014c3f2c8f70fc2d71d"
+    },
+    {
+      "file": "nlevel_ne_4.txt",
+      "sha256": "642fd009a7e3cba52482b1a0f808ef1cc032ef663fa8df78484d180a6d1c11c6"
+    },
+    {
+      "file": "nlevel_ne_5.txt",
+      "sha256": "49ef0aee0c612621eb183a17b1bbfe635d7fd8e28945cb50ed2d5919aaf1a691"
+    },
+    {
+      "file": "nlevel_ne_6.txt",
+      "sha256": "517e22670b6a3c6860030037d0628b72949f65fdeb02f5a191d46564357630b3"
+    },
+    {
+      "file": "nlevel_ne_7.txt",
+      "sha256": "2b0faadb80825c43d7373c0b72b2940fc5db48ec52590054c39b2ca87a5e5149"
+    },
+    {
+      "file": "nlevel_o_1.txt",
+      "sha256": "eb37638e578bcff81ca20effe508663991c3ba1f4de2b9d8dbd6d316968381d0"
+    },
+    {
+      "file": "nlevel_o_2.txt",
+      "sha256": "1c19a05cbd6d4c7e89ca6f52eed5b8b5dc55937e08bb7ba70d2c98342e26bce5"
+    },
+    {
+      "file": "nlevel_o_3.txt",
+      "sha256": "e982a7a508cbc44f44aaede4408098cf152765bb053bba049db36187b0a17b02"
+    },
+    {
+      "file": "nlevel_o_4.txt",
+      "sha256": "4dfd9f9691db61c82b14789096240e09614f678c9d1ac3b18eff8b4633ce3e31"
+    },
+    {
+      "file": "nlevel_o_5.txt",
+      "sha256": "4db8055830110f48e0474d3c21a3937c0125a81b934b54d1750347ddecfb2fc8"
+    },
+    {
+      "file": "nlevel_o_6.txt",
+      "sha256": "3becdbdcee79853a15b734c36413c182aefe3d37b1a1d1bafe052508af192781"
+    },
+    {
+      "file": "nlevel_s_2.txt",
+      "sha256": "415d94354cc6fcc7fd5faa306e79d6ec362f3f3a82b3a4d79fea83d8794abad0"
+    },
+    {
+      "file": "nlevel_s_3.txt",
+      "sha256": "2200b83496b0ff8040cea9ec8ce89c137753bbb13efa899eb1d1f1870f8a8d4d"
+    },
+    {
+      "file": "nlevel_s_4.txt",
+      "sha256": "9d1b8aa62f735c7ba51df8d7fc94e29c2b97e617a10e59adcf95ffd2a56dc326"
+    },
+    {
+      "file": "nlevel_s_5.txt",
+      "sha256": "aeb3e48b0dce3e0f9acb9ee41afe20ffabdf13b08030d1c30afbdaa71ee95547"
+    },
+    {
+      "file": "nlevel_s_6.txt",
+      "sha256": "d4ae57907cef76238730d691f51cb691730bf8dc6f83fedeba2b23ba1c04a5ed"
+    },
+    {
+      "file": "nlevel_si_2.txt",
+      "sha256": "abc8f10a8f979f777c1f26c7c304092097be87eb381dbec2a11b0d8c886abc1d"
+    },
+    {
+      "file": "nlevel_si_3.txt",
+      "sha256": "ce0d708c904c86f379b0859027f8e56517b3c4b7a7ac7e9ef329483d2dd1e7c2"
+    },
+    {
+      "file": "nlevel_si_4.txt",
+      "sha256": "b05883472a7479824fa177ab1397900197076fd18501248edc138bdd731f991c"
+    },
+    {
+      "file": "nlevel_si_6.txt",
+      "sha256": "97619b11c16d5ec6eb98c4342d8574dbd1850f3b6435ffc7078e8d4ca60a87e0"
+    },
+    {
+      "file": "nlevel_si_7.txt",
+      "sha256": "dada2d73e1daff77bcbe399c5890374df61e9a787eb02950d77ccf777afb70c2"
+    }
+  ],
+  "atomic_accuracy_verified": false,
+  "complete_77_stage_goal": false,
+  "missing_reference_atom": [
+    "ca_7"
+  ],
+  "absolute_cooling_without_fit": [
+    "ar_6",
+    "c_1",
+    "fe_5",
+    "mg_1",
+    "ne_6",
+    "s_3"
+  ],
+  "cooling_fit_note": "cooling_n_2.txt was regenerated on 2026-10-11 by tools/fitting/mocassin_cooling_fits.py SHA-256 83f2a68e3a38486a09c4aa8fd7e72ef9cdc36006461c6af0e9fc1d91d7932024 to the stationary state at n_e = 1e-6 cm^-3; its strict-limit fit stated 0.48682404% and measured 0.48682627% against the installed atom. No other mocassin_v2 fit differs between the 1e-6 plateau and the strict limit by more than 1e-4 (fe_2 checked on the installed atom, 3e-10)."
+}

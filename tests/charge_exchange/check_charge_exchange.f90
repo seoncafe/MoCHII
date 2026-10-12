@@ -17,8 +17,16 @@ program check_charge_exchange
 ! sum shows up here as an O(1) disagreement on the reactions it touches.
 !
 ! Checks:
-!   1. reaction census: the registry carries 29 reactions with all 11
-!      elements active (7 CXI + 22 CXR), the number the two sums run over;
+!   1. reaction census: with all 11 elements active on the 77-stage roster
+!      (ELEMENT .. 7, stages I-VII) the registry carries exactly the
+!      reactions listed in CX_EL/CX_IT/CX_DIR below -- 7 CXI + 38 CXR, or
+!      7 + 60 with par%langevin_charge_exchange (run with the argument
+!      'langevin'), which adds X^q + H for q = 5, 6 of every element.  The
+!      list is the set of nonzero CXI/CXR rows of data/atomic/element_*.txt
+!      read off the files and checked against the sources they cite (KF96
+!      Tables 1-2, Barragan et al. 2006, Huang et al. 2023, Zhao et al. 2005,
+!      Ferland et al. 1997); it is compared reaction by reaction, so a row
+!      gained or lost anywhere fails, not only a changed count;
 !   2. pairwise conservation: for every reaction,
 !         k_CXI n(X^i)  n_HII   from hydrogen's side
 !      == k_CXI n(X^i)  n_HII   from the cascade's side,   to TOL_PAIR;
@@ -32,7 +40,23 @@ program check_charge_exchange
 !      as well as the numerator, for the same reason alpha_H n_e does.
 !      Dropping it there must break check 3b — the gate asserts that the
 !      truncated denominator FAILS, so the algebra cannot silently regress to
-!      the wrong form.
+!      the wrong form;
+!   5. the recombination rates of transitions 2-4 taken from Kingdon &
+!      Ferland (1996, ApJS 106, 205) Tables 1 and 2 reproduce the published
+!      fit k = a 1e-9 t4^b [1 + c exp(d t4)], t4 = T/1e4 K, held at the end
+!      of each published temperature interval (the files' rule), with the
+!      parameters typed below from the paper and cross-read against Cloudy
+!      c25.00 data/ctrecombdata.dat.  Two rows are not the printed KF96
+!      fits: N4+ + H and Si2+ + H take the updated KF96 database distributed
+!      with Cloudy (Ferland et al. 2013, RMxAA 49, 137, Sec. 2.1;
+!      ctrecombdata.dat: N4+ 2.95, 0.55, -0.39, -1.07 on 1e3-1e6 K, Si2+
+!      6.77, 0.0736, -0.43, -0.11 on 500-1e5 K), the author's choice of
+!      2026-10-11, as the element files do; the other 27 rows equal both.  The files tabulate these rates (form 8), so the
+!      tolerance TOL_KF96 is the log-log interpolation between their nodes;
+!   6. with the argument 'langevin', the q = 5, 6 rows are the Ferland et
+!      al. (1997, ApJ 481, L115) eq. (2) Langevin rate with the reduced
+!      mass, k = 2 pi q e sqrt(alpha_H a0^3 / mu), alpha_H = 4.5 (atomic
+!      units), independent of T; without it every q >= 5 rate is zero.
 !
 ! TOL_STATE is looser than TOL_BALANCE because solve_ion_cell exits its damped
 ! n_e fixed point at a relative 1e-10 and takes the charge-exchange sums from
@@ -62,16 +86,95 @@ program check_charge_exchange
   use mpi
   implicit none
 
-  !--- MAX_ST, MAX_EL of species_mod (the shape of its reaction-resolved
-  !--- output); lines_mod carries the same literal for frac.
-  integer,       parameter :: MST = 6, MEL = 11
+  !--- Shared capacities of the reaction-resolved species output.
+  integer,       parameter :: MST = MAX_ION_STAGES, MEL = MAX_METAL_ELEMENTS
   !--- round-off criterion on the reaction rates and on the algebra.
   real(kind=wp), parameter :: TOL_PAIR    = 1.0e-14_wp
   real(kind=wp), parameter :: TOL_BALANCE = 1.0e-14_wp
   !--- the one-iterate lag of the two sums inside the fixed point, with margin
   !--- (measured worst 1.6e-6, in the cold neutral state).
   real(kind=wp), parameter :: TOL_STATE   = 1.0e-5_wp
-  integer,       parameter :: NCXI_EXPECT = 7, NCXR_EXPECT = 22
+  !--- census: the nonzero CXI/CXR rows of data/atomic/element_*.txt
+  !--- (transition it joins stage it and it+1; CXR is X^it+ + H0).
+  !--- Transition 1 (both directions where carried): Huang et al. (2023)
+  !--- Table 4, nitrogen KF96, sulfur by product term (Zhao et al. 2005);
+  !--- recombination of q = 2-4: KF96 Tables 1-2, N2+ and O2+ from Barragan
+  !--- et al. (2006).  No rate for Ne+, Ar+, Cl+, Ca+ + H (KF96 Table 1 has
+  !--- none), Cl2+ (KF96 Table 2: radiative 1e-14, not carried) and Ca2+.
+  integer, parameter :: NCX = 45
+  character(len=2), parameter :: CX_EL(NCX) = [character(len=2) :: &
+     'c ','c ','c ','c ','c ', 'n ','n ','n ','n ','n ', &
+     'o ','o ','o ','o ','o ', 'ne','ne','ne', 's ','s ','s ','s ','s ', &
+     'ar','ar','ar', 'mg','mg','mg','mg','mg', 'fe','fe','fe','fe','fe', &
+     'si','si','si','si','si', 'cl','cl', 'ca','ca']
+  integer, parameter :: CX_IT(NCX) = [1,1,2,3,4, 1,1,2,3,4, 1,1,2,3,4, &
+     2,3,4, 1,1,2,3,4, 2,3,4, 1,1,2,3,4, 1,1,2,3,4, 1,1,2,3,4, 3,4, 3,4]
+  !--- 1 ionization (CXI), 2 recombination (CXR)
+  integer, parameter :: CX_DIR(NCX) = [1,2,2,2,2, 1,2,2,2,2, 1,2,2,2,2, &
+     2,2,2, 1,2,2,2,2, 2,2,2, 1,2,2,2,2, 1,2,2,2,2, 1,2,2,2,2, 2,2, 2,2]
+  integer, parameter :: NCXI_EXPECT = 7, NCXR_EXPECT = 38
+  !--- Langevin rows: X^q + H for q = 5, 6 of all 11 elements
+  integer, parameter :: NLANGEVIN = 22
+  !--- KF96 recombination fits [a (1e-9 cm^3 s^-1), b, c, d, T_low, T_high]
+  !--- for transitions 2-4, Table 1 except Cl3+, Cl4+, Fe4+ (Table 2 totals)
+  !--- and N4+, Si2+ (updated database distributed with Cloudy, see check 5)
+  integer, parameter :: NKF = 29
+  character(len=2), parameter :: KF_EL(NKF) = [character(len=2) :: &
+     'c ','c ','c ', 'n ','n ', 'o ','o ', 'ne','ne','ne', 'mg','mg','mg', &
+     'si','si','si', 's ','s ','s ', 'ar','ar','ar', 'cl','cl', 'ca','ca', &
+     'fe','fe','fe']
+  integer, parameter :: KF_IT(NKF) = [2,3,4, 3,4, 3,4, 2,3,4, 2,3,4, 2,3,4, &
+     2,3,4, 2,3,4, 3,4, 3,4, 2,3,4]
+  real(kind=wp), parameter :: KF_P(6,NKF) = reshape([ &
+     1.67e-4_wp, 2.79_wp,     304.72_wp, -4.07_wp,    5.0e3_wp, 5.0e4_wp, & ! C2+
+     3.25_wp,    0.21_wp,     0.19_wp,   -3.29_wp,    1.0e3_wp, 1.0e5_wp, & ! C3+
+     332.46_wp, -0.11_wp,    -0.995_wp,  -1.58e-3_wp, 1.0e1_wp, 1.0e5_wp, & ! C4+
+     4.54_wp,    0.57_wp,    -0.65_wp,   -0.89_wp,    1.0e1_wp, 1.0e5_wp, & ! N3+
+     2.95_wp,    0.55_wp,    -0.39_wp,   -1.07_wp,    1.0e3_wp, 1.0e6_wp, & ! N4+ (Cloudy update)
+     3.98_wp,    0.26_wp,     0.56_wp,   -2.62_wp,    1.0e3_wp, 5.0e4_wp, & ! O3+
+     0.252_wp,   0.63_wp,     2.08_wp,   -4.16_wp,    1.0e3_wp, 3.0e4_wp, & ! O4+
+     1.0e-5_wp,  0.0_wp,      0.0_wp,     0.0_wp,     5.0e3_wp, 5.0e4_wp, & ! Ne2+
+     14.73_wp,   4.52e-2_wp, -0.84_wp,   -0.31_wp,    5.0e3_wp, 5.0e4_wp, & ! Ne3+
+     6.47_wp,    0.54_wp,     3.59_wp,   -5.22_wp,    1.0e3_wp, 3.0e4_wp, & ! Ne4+
+     8.58e-5_wp, 2.49e-3_wp,  2.93e-2_wp,-4.33_wp,    1.0e3_wp, 3.0e4_wp, & ! Mg2+
+     6.49_wp,    0.53_wp,     2.82_wp,   -7.63_wp,    1.0e3_wp, 3.0e4_wp, & ! Mg3+
+     6.36_wp,    0.55_wp,     3.86_wp,   -5.19_wp,    1.0e3_wp, 3.0e4_wp, & ! Mg4+
+     6.77_wp,    7.36e-2_wp, -0.43_wp,   -0.11_wp,    5.0e2_wp, 1.0e5_wp, & ! Si2+ (Cloudy update)
+     0.490_wp,  -8.74e-2_wp, -0.36_wp,   -0.79_wp,    1.0e3_wp, 3.0e4_wp, & ! Si3+
+     7.58_wp,    0.37_wp,     1.06_wp,   -4.09_wp,    1.0e3_wp, 5.0e4_wp, & ! Si4+
+     1.0e-5_wp,  0.0_wp,      0.0_wp,     0.0_wp,     1.0e3_wp, 3.0e4_wp, & ! S2+
+     2.29_wp,    4.02e-2_wp,  1.59_wp,   -6.06_wp,    1.0e3_wp, 3.0e4_wp, & ! S3+
+     6.44_wp,    0.13_wp,     2.69_wp,   -5.69_wp,    1.0e3_wp, 3.0e4_wp, & ! S4+
+     1.0e-5_wp,  0.0_wp,      0.0_wp,     0.0_wp,     1.0e3_wp, 3.0e4_wp, & ! Ar2+
+     4.57_wp,    0.27_wp,    -0.18_wp,   -1.57_wp,    1.0e3_wp, 3.0e4_wp, & ! Ar3+
+     6.37_wp,    0.85_wp,     10.21_wp,  -6.22_wp,    1.0e3_wp, 3.0e4_wp, & ! Ar4+
+     1.88_wp,    0.32_wp,     1.77_wp,   -5.70_wp,    1.0e3_wp, 3.0e4_wp, & ! Cl3+ (Table 2)
+     7.27_wp,    0.29_wp,     1.04_wp,  -10.14_wp,    1.0e3_wp, 3.0e4_wp, & ! Cl4+ (Table 2)
+     3.17e-2_wp, 2.12_wp,     12.06_wp,  -0.40_wp,    1.0e3_wp, 3.0e4_wp, & ! Ca3+
+     2.68_wp,    0.69_wp,    -0.68_wp,   -4.47_wp,    1.0e3_wp, 3.0e4_wp, & ! Ca4+
+     1.26_wp,    7.72e-2_wp, -0.41_wp,   -7.31_wp,    1.0e3_wp, 1.0e5_wp, & ! Fe2+
+     3.42_wp,    0.51_wp,    -2.06_wp,   -8.99_wp,    1.0e3_wp, 1.0e5_wp, & ! Fe3+
+     14.60_wp,   3.57e-2_wp, -0.92_wp,   -0.37_wp,    1.0e3_wp, 3.0e4_wp  & ! Fe4+ (Table 2)
+     ], [6, NKF])
+  integer, parameter :: NTKF = 5
+  !--- inside the intervals, and outside them where the rate is held
+  real(kind=wp), parameter :: TKF(NTKF) = [2.0e3_wp, 5.0e3_wp, 1.0e4_wp, &
+                                           2.0e4_wp, 6.0e4_wp]
+  !--- log-log interpolation of the files' form-8 tables: measured worst
+  !--- 4.6e-6 over the 145 points (2026-10-11, N4+ and Si2+ updated)
+  real(kind=wp), parameter :: TOL_KF96 = 1.0e-4_wp
+  !--- Langevin rate: standard atomic weights [u] (CIAAW), H 1.00794.
+  !--- Measured 5.4e-5 .. 5.6e-5 on all 22 rows (2026-10-11), the same on
+  !--- every element, so a difference in the constants rather than the masses
+  real(kind=wp), parameter :: TOL_LANGEVIN = 1.0e-3_wp
+  real(kind=wp), parameter :: AMU_G = 1.66053906660e-24_wp, A0_CM = 0.529177210903e-8_wp
+  real(kind=wp), parameter :: E_ESU = 4.80320471e-10_wp, ALPHA_H_AU = 4.5_wp
+  character(len=2), parameter :: AW_EL(11) = [character(len=2) :: &
+     'c ','n ','o ','ne','mg','si','s ','cl','ar','ca','fe']
+  real(kind=wp), parameter :: AW(11) = [12.011_wp, 14.007_wp, 15.999_wp, &
+     20.180_wp, 24.305_wp, 28.085_wp, 32.06_wp, 35.45_wp, 39.948_wp, &
+     40.078_wp, 55.845_wp]
+  real(kind=wp), parameter :: AW_H = 1.00794_wp
   !--- cell states: T [K], n_H [cm^-3], Gamma_H [s^-1].  Two ionized states
   !--- (one dense), one at the ionization front, one mostly neutral, and one
   !--- cold and dense, so every reaction is exercised with a stage
@@ -93,13 +196,18 @@ program check_charge_exchange
   real(kind=wp) :: resid, resid_form, resid_bad, xHI_form, xHI_bad
   real(kind=wp) :: worst_bal, worst_bad, worst_state, tol_form
   character(len=8) :: worst_in_id, worst_out_id
-  integer :: ierr, ie, it, is, k, ncxi, ncxr
-  logical :: ok, caseA
+  character(len=16) :: arg
+  integer :: ierr, ie, it, is, k, ncxi, ncxr, j, idir, ncxr_required
+  logical :: ok, caseA, langevin, carried, listed
+  real(kind=wp) :: kexp, t4, worst_kf, mu, worst_lv
 
   call MPI_INIT(ierr)
   mpar%p_rank = 0
+  call get_command_argument(1, arg)
+  langevin = trim(arg) == 'langevin'
+  par%langevin_charge_exchange = langevin
 
-  !--- registry with every element active, so all 29 reactions are present.
+  !--- registry with every element active, so every carried reaction is present.
   par%atomic_dir     = 'data/atomic'
   par%use_metals     = .true.
   par%metal_ne       = .true.
@@ -128,24 +236,108 @@ program check_charge_exchange
   ok    = .true.
   caseA = trim(par%recombination_continuum) /= 'on_the_spot'
 
-  !--- 1: the reaction census the two sums run over.
+  !--- 1: the reaction census the two sums run over, reaction by reaction.
+  ncxr_required = NCXR_EXPECT
+  if (langevin) ncxr_required = NCXR_EXPECT + NLANGEVIN
+  write(*,'(/,a,l2,a)') '=== reaction census (11 elements, 77 stages, T = 1e4 K, '// &
+     'langevin_charge_exchange =', langevin, ') ==='
   ncxi = 0;  ncxr = 0
   do ie = 1, n_elements
+     if (elem_nstage(ie) /= 7) then
+        write(*,'(a,a,a,i0)') '  FAIL: ', trim(elem_name(ie)), ' carries stages ', &
+           elem_nstage(ie)
+        ok = .false.
+     end if
      do it = 1, elem_nstage(ie)-1
         call species_cx_coefficients(ie, it, 1.0e4_wp, k_cxi, k_cxr)
         if (k_cxi > 0.0_wp) ncxi = ncxi + 1
         if (k_cxr > 0.0_wp) ncxr = ncxr + 1
+        do idir = 1, 2
+           carried = merge(k_cxi, k_cxr, idir == 1) > 0.0_wp
+           listed = .false.
+           do j = 1, NCX
+              if (trim(CX_EL(j)) == trim(elem_name(ie)) .and. CX_IT(j) == it &
+                  .and. CX_DIR(j) == idir) listed = .true.
+           end do
+           if (langevin .and. idir == 2 .and. it >= 5) listed = .true.
+           if (carried .neqv. listed) then
+              write(*,'(a,a,a,i0,a,a,a,l2,a,l2)') '  FAIL: ', trim(elem_name(ie)), &
+                 ' transition ', it, merge(' CXI', ' CXR', idir == 1), &
+                 ': carried', carried, ', expected', listed
+              ok = .false.
+           end if
+        end do
      end do
   end do
-  write(*,'(/,a)') '=== reaction census (11 elements, T = 1e4 K) ==='
   write(*,'(a,i3,a,i3,a)') ' CXI (H+ -> H0): ', ncxi, ' reactions (expected ', &
      NCXI_EXPECT, ')'
   write(*,'(a,i3,a,i3,a)') ' CXR (H0 -> H+): ', ncxr, ' reactions (expected ', &
-     NCXR_EXPECT, ')'
-  if (ncxi /= NCXI_EXPECT .or. ncxr /= NCXR_EXPECT) then
+     ncxr_required, ')'
+  if (ncxi /= NCXI_EXPECT .or. ncxr /= ncxr_required) then
      write(*,'(a)') '  FAIL: the registry no longer carries the expected ' // &
         'set of charge-exchange reactions'
      ok = .false.
+  end if
+
+  !--- 5: KF96 recombination rates of transitions 2-4
+  write(*,'(/,a)') '=== KF96 Tables 1-2 recombination rates, q = 2-4 ==='
+  worst_kf = 0.0_wp
+  do j = 1, NKF
+     ie = element_index(KF_EL(j))
+     do k = 1, NTKF
+        t4 = min(max(TKF(k), KF_P(5,j)), KF_P(6,j))/1.0e4_wp
+        kexp = KF_P(1,j)*1.0e-9_wp*t4**KF_P(2,j)*(1.0_wp + KF_P(3,j)*exp(KF_P(4,j)*t4))
+        call species_cx_coefficients(ie, KF_IT(j), TKF(k), k_cxi, k_cxr)
+        rel = abs(k_cxr/kexp - 1.0_wp)
+        if (rel > worst_kf) worst_kf = rel
+        if (rel > TOL_KF96) then
+           write(*,'(a,a,i2,a,f8.0,a,es12.5,a,es12.5)') '  FAIL: ', KF_EL(j), &
+              KF_IT(j), ' T =', TKF(k), ' code ', k_cxr, ' KF96 ', kexp
+           ok = .false.
+        end if
+     end do
+     call species_cx_coefficients(ie, KF_IT(j), 1.0e4_wp, k_cxi, k_cxr)
+     write(*,'(a4,a,i1,a,es12.4)') KF_EL(j), ' q=', KF_IT(j), '  k(1e4 K) = ', k_cxr
+  end do
+  write(*,'(a,es10.3,a,es9.2,a,i0,a)') ' worst |k/k_KF96 - 1| = ', worst_kf, &
+     '  (tolerance ', TOL_KF96, ', ', NKF*NTKF, ' points)'
+
+  !--- 6: Langevin rows (q = 5, 6), or their absence
+  write(*,'(/,a)') '=== Langevin rows, q = 5, 6 (Ferland et al. 1997 eq. 2) ==='
+  worst_lv = 0.0_wp
+  do ie = 1, n_elements
+     j = 0
+     do k = 1, size(AW_EL)
+        if (trim(AW_EL(k)) == trim(elem_name(ie))) j = k
+     end do
+     mu = AW(j)*AW_H/(AW(j) + AW_H)*AMU_G
+     do it = 5, elem_nstage(ie)-1
+        kexp = 0.0_wp
+        if (langevin) kexp = 2.0_wp*pi*real(it, wp)*E_ESU*sqrt(ALPHA_H_AU*A0_CM**3/mu)
+        do k = 1, NTKF
+           call species_cx_coefficients(ie, it, TKF(k), k_cxi, k_cxr)
+           if (langevin) then
+              rel = abs(k_cxr/kexp - 1.0_wp)
+           else
+              rel = abs(k_cxr) + abs(k_cxi)
+           end if
+           if (rel > worst_lv) worst_lv = rel
+           if (rel > TOL_LANGEVIN .or. (.not. langevin .and. rel /= 0.0_wp)) then
+              write(*,'(a,a,i2,a,f8.0,a,es12.5,a,es12.5)') '  FAIL: ', &
+                 trim(elem_name(ie)), it, ' T =', TKF(k), ' code ', k_cxr, &
+                 ' expected ', kexp
+              ok = .false.
+           end if
+        end do
+        if (langevin) write(*,'(a4,a,i1,a,es12.5,a,es12.5)') elem_name(ie), &
+           ' q=', it, '  code ', k_cxr, '  Langevin ', kexp
+     end do
+  end do
+  if (langevin) then
+     write(*,'(a,es10.3,a,es9.2,a)') ' worst |k/k_Langevin - 1| = ', worst_lv, &
+        '  (tolerance ', TOL_LANGEVIN, ', atomic weights)'
+  else
+     write(*,'(a,es10.3)') ' switched off: largest q >= 5 rate ', worst_lv
   end if
 
   !--- 2 + 3 + 4: on each converged cell state.
@@ -285,6 +477,16 @@ program check_charge_exchange
   if (.not. ok) error stop 1
 
 contains
+
+  integer function element_index(name) result(ie_found)
+    character(len=*), intent(in) :: name
+    integer :: je
+    ie_found = 0
+    do je = 1, n_elements
+       if (trim(elem_name(je)) == trim(name)) ie_found = je
+    end do
+    if (ie_found == 0) error stop 'element not in the registry'
+  end function element_index
 
   !--- relative residual of  n_HI (Gamma_H + C_H n_e + R_cx_out)
   !--- = (alpha_H n_e + R_cx_in) n_HII  at the neutral fraction x, on the

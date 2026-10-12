@@ -32,6 +32,7 @@ module dust_temp_mod
   real(kind=wp) :: tgrid(NT), femit(NT)
   real(kind=wp), allocatable :: lam_ir(:), sabs_ir(:)
   real(kind=wp), allocatable :: t_dust(:)
+  logical :: femit_ready = .false.
 
 contains
 
@@ -47,6 +48,9 @@ contains
     integer :: unit, ios, n, i, k, ierr
     logical :: from_model
 
+    !--- built once: the gas-grain terms need T_dust in every iteration
+    !--- (thermal_mod), the output needs it at the end
+    if (femit_ready) return
     !--- dust optics (lambda, albedo, C_ext): a kext file OVERRIDES the model
     !--- (backward compatible); an empty par%ion_dust_kext takes them from the
     !--- SEDust grain model, the SAME source gas_opacity_mod uses, so the
@@ -112,6 +116,7 @@ contains
        end do
     end do
     deallocate(lam, alb, cext)
+    femit_ready = .true.
     if (mpar%p_rank == 0) write(*,'(a,es11.4,a)') &
        ' DUST: femit(20 K) = ', femit_of(20.0_wp), &
        ' erg/s/cm^2 (equilibrium mixture emission function ready)'

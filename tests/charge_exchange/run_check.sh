@@ -1,8 +1,9 @@
 #!/bin/bash
 #--- Build and run the two-way charge-exchange gate against the already-compiled
 #--- MoCHII objects: every charge-exchange reaction must carry the same
-#--- volumetric rate in hydrogen's balance and in the metal cascade.  Exits
-#--- nonzero when the gate fails.
+#--- volumetric rate in hydrogen's balance and in the metal cascade, on the
+#--- 77-stage roster, with the reaction census and the KF96 / Langevin rates.
+#--- Exits nonzero when the gate fails.
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$R"
@@ -20,8 +21,10 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/charge_exchange/check_charge_exchange.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 ./tests/charge_exchange/check_charge_exchange.x
+#--- the same with the q >= 5 Langevin rows (par%langevin_charge_exchange)
+./tests/charge_exchange/check_charge_exchange.x langevin
 
 #--- G-M1f: the cell solve must converge inside one call in partially neutral
 #--- gas, where the lagged substitution map is marginally stable.
@@ -31,7 +34,7 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/charge_exchange/check_cell_convergence.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 ./tests/charge_exchange/check_cell_convergence.x
 
 #--- detailed balance: the two directions of each pair are not independent.
@@ -41,7 +44,7 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/charge_exchange/check_detailed_balance.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 ./tests/charge_exchange/check_detailed_balance.x
 
 #--- He-H charge exchange: published rate forms, detailed balance of the
@@ -52,7 +55,7 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/charge_exchange/check_helium_charge_exchange.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 ./tests/charge_exchange/check_helium_charge_exchange.x
 
 #--- charge-exchange heating: every carried reaction has its energy defect,
@@ -65,5 +68,6 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/charge_exchange/check_charge_exchange_heating.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 ./tests/charge_exchange/check_charge_exchange_heating.x
+./tests/charge_exchange/check_charge_exchange_heating.x langevin

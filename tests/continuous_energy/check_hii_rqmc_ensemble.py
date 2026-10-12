@@ -42,7 +42,7 @@ def read(path):
             "T_e": array(handle, "T_e"),
             "x_c": stages(array(handle, "x_c_stages"), nleaf),
             "attrs": {name: attr(header, name) for name in
-                      ("CONVERGD", "FLDCONS", "IONEMODE", "NUBINUSE",
+                      ("CONVERGD", "STATESOL", "IONEMODE", "NUBINUSE",
                        "ENRGSAMP", "L_EMIT", "L_ABS", "L_ESC")},
         }
 
@@ -67,7 +67,7 @@ def check_case(tag, directory):
         a = model["attrs"]
         closure = abs(float(a["L_ABS"]) + float(a["L_ESC"]) -
                       float(a["L_EMIT"])) / float(a["L_EMIT"])
-        passed = (bool_value(a["CONVERGD"]) and bool_value(a["FLDCONS"]) and
+        passed = (bool_value(a["CONVERGD"]) and bool_value(a["STATESOL"]) and
                   a["IONEMODE"] == "continuous" and
                   a["NUBINUSE"] == "diagnostic_only" and
                   a["ENRGSAMP"] == "sobol" and np.isfinite(closure) and

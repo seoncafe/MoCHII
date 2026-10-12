@@ -1,0 +1,207 @@
+--- src/nlevel_cooling_mod.f90	2026-10-10 13:28:47.538753205 +0900
++++ md/atomic_stage_expansion/validation_2026-10-10/cooling_subnormal_candidate/nlevel_cooling_mod.f90	2026-10-10 14:29:05.829910788 +0900
+@@ -8,33 +8,27 @@
+ !   Lambda_SE(T, ne) = (sum_k emis_k(T, ne)) / ne   [erg cm^3 s^-1, over the
+ !                       NRAD radiative transitions; the volume cooling is
+ !                       ne n_ion Lambda_SE, matching cooling_eval]
+-! is a function of (T, n_e) alone and is tabulated exactly at setup from the
+-! n-level atom files (data/atomic/nlevel_<el>_<stage>.txt).  Lambda_SE
+-! decreases with n_e (the populations saturate) -- the density suppression.
+-! Stored for each ion:
+-!   Ssup(T, ne)   = Lambda_SE(T, ne) / Lambda_SE(T, ne_floor)  (2-D, in (0,1])
+-!   lam_se_ref(T) = Lambda_SE(T, ne_floor)                     (1-D, low-ne
+-!                                                               limit)
+-! with ne_floor = 10^-6 cm^-3 far below every critical density, so the
+-! reference column is the low-density limit.
++! is a function of (T, n_e) alone and is tabulated at setup from the n-level
++! atom files (data/atomic/nlevel_<el>_<stage>.txt). Store absolute Lambda_SE
++! values, including positive subnormal values, at every grid point. The
++! n_e = 10^-6 cm^-3 column is the numerical low-density reference. Cooling
++! need not decrease monotonically with density for every atom and temperature.
+ !
+-! Runtime cooling coefficient, combined with the existing Tier-1 fit lam_fit
+-! passed in as an argument (so this module never uses cooling_mod -> no
+-! module cycle):
+-!   Lambda(T, ne) = lam_fit(T) * [ f_cov(T) Ssup(T, ne) + (1 - f_cov(T)) ]
+-!   f_cov(T)      = min(1, lam_se_ref(T) / lam_fit(T))
+-! f_cov is the fraction of the low-density cooling the (possibly truncated)
+-! n-level model accounts for; the remaining 1 - f_cov is high-excitation
+-! resonance-line cooling whose critical densities are far above nebular
+-! values, left in its low-density limit (unsuppressed).  As n_e -> 0,
+-! Ssup -> 1 and Lambda -> lam_fit exactly, recovering the current default.
++! Runtime cooling combines the existing low-density fit lam_fit with the
++! registered atom. A source-converged atom uses the density ratio
++! Lambda = lam_fit * Lambda_SE(T,ne)/Lambda_SE(T,ne_floor) when the reference
++! is positive; an exact zero reference uses absolute Lambda_SE(T,ne).
++! A partial atom retains the positive low-density residual when lam_fit is
++! at least the registered reference, otherwise it scales the registered
++! density dependence by lam_fit/reference. The coverage flag requires
++! independent source convergence before it is enabled.
+ ! Ions with no n-level model get idx = 0 -> lam_fit returned unchanged.
+ !
+ ! The table is built here from the SAME solver (nlevel_mod) that produces the
+ ! emergent line diagnostics, so the thermal balance and the line list are one
+-! physics.  Interpolation: bilinear in (log T, log n_e) for Ssup, linear in
+-! log T for lam_se_ref, with edge clamping (log n_e below the floor -> 1,
+-! above the ceiling -> the last column, T clamped to the grid).
++! physics. Interpolation uses log Lambda linear in 1/T for positive endpoints
++! and log Lambda linear in log n_e for positive column values. Zero endpoints
++! use linear interpolation. T and n_e are clamped to the grid edges.
+ !---------------------------------------------------------------------------
+   use define
+   use nlevel_mod, only : nlevel_atom_type, nlevel_load, &
+@@ -50,11 +44,8 @@
+   !--- (low-density) column.  This is finer in T than the initial D4 spec
+   !--- (0.05/0.2 dex): the gate G-a criterion (worst 0.5% vs the direct solve)
+   !--- is set by the low-T/high-n_e corner where a high-Tx line and a saturated
+-  !--- low-n_crit line become comparable -- a sum of two exponentials in T that
+-  !--- one interpolation cell cannot resolve at 0.05 dex.  The build is a few
+-  !--- seconds for the full registry (gate G-h) and the runtime lookup cost is
+-  !--- independent of the grid size, so the T axis is refined to pass G-a with
+-  !--- margin (plan section C1: "refine the T axis if it fails").
++  !--- low-n_crit line become comparable. Runtime lookup cost is independent
++  !--- of the grid size. Full-registry build time depends on atom size.
+   integer, parameter :: NT = 401, NNE = 161
+   !--- H I plus every stage of the supported metal elements.  Only ions
+   !--- with an n-level file allocate their (T, n_e) tables.
+@@ -62,17 +53,13 @@
+   real(kind=wp), parameter :: T_LO  =  2.0_wp, DT_L  = 0.01_wp
+   real(kind=wp), parameter :: NE_LO = -6.0_wp, DNE_L = 0.1_wp
+ 
+-  !--- Ssup/lamref are allocatable so a low_density run (no tables built)
+-  !--- carries none of the ~0.5 MB/ion table storage: the static reg(MAXION)
+-  !--- array then costs only its scalar members until nlevel_cooling_add
+-  !--- allocates the arrays of an ion actually tabulated.
++  !--- Absolute cooling arrays are allocated only for ions actually tabulated.
+   type cool_table_type
+      character(len=16) :: name = ''
+      integer :: stage = 0
+      integer :: nlev  = 0
+      logical :: density_ratio_cooling = .false.
+-     real(kind=wp), allocatable :: Ssup(:,:)
+-     real(kind=wp), allocatable :: lamref(:)
++     real(kind=wp), allocatable :: lambda(:,:)
+   end type cool_table_type
+ 
+   logical :: inited = .false.
+@@ -102,7 +89,7 @@
+   !=========================================================================
+   ! Register an ion's cooling table.  Loads data/atomic/nlevel_<name>_<stage>
+   ! (par%atomic_dir, '_full' suffix for Fe II/III under par%fe_levels_full, exactly
+-  ! as lines_mod), builds Ssup + lam_se_ref, and returns the new index.
++  ! as lines_mod), builds the absolute cooling table, and returns its index.
+   ! Returns 0 (no table; caller keeps lam_fit) when the file does not load.
+   !=========================================================================
+   integer function nlevel_cooling_add(name, stage) result(idx)
+@@ -156,17 +143,14 @@
+     reg(ie)%stage = stage
+     reg(ie)%nlev  = atom%nlev
+     reg(ie)%density_ratio_cooling = atom%density_ratio_cooling
+-    allocate(reg(ie)%Ssup(NT, NNE), reg(ie)%lamref(NT))
+-    reg(ie)%lamref(:) = lam(:,1)
+-    do j = 1, NNE
+-       reg(ie)%Ssup(:,j) = lam(:,j)/max(lam(:,1), tiny(1.0_wp))
+-    end do
++    allocate(reg(ie)%lambda(NT, NNE))
++    reg(ie)%lambda(:,:) = lam(:,:)
+     idx = ie
+ 
+     if (mpar%p_rank == 0) write(*,'(a,a,a,i0,a,i0,a,f8.4)') &
+        ' NLCOOL: ', trim(name), ' stage ', stage, &
+        ' tabulated (nlev = ', atom%nlev, &
+-       '), Ssup(1e4 K, 1e4 cm^-3) = ', suppression_ratio(ie, 1.0e4_wp, 1.0e4_wp)
++       '), Lambda/Lambda_ref(1e4 K, 1e4 cm^-3) = ', suppression_ratio(ie, 1.0e4_wp, 1.0e4_wp)
+   end function nlevel_cooling_add
+ 
+   !=========================================================================
+@@ -176,13 +160,13 @@
+     implicit none
+     integer,       intent(in) :: idx
+     real(kind=wp), intent(in) :: lam_fit, T, ne
+-    real(kind=wp) :: fcov, S, lamref
++    real(kind=wp) :: lamref, lam_se
+     if (idx <= 0) then
+        lam = lam_fit
+        return
+     end if
+     lamref = low_density_cooling(idx, T)
+-    S      = cooling_coeff(idx, T, ne)/max(lamref, tiny(1.0_wp))
++    lam_se = cooling_coeff(idx, T, ne)
+     ! A complete or source-converged atom supplies the density dependence
+     ! of the entire fitted cooling. Fit/interpolation errors cannot be
+     ! interpreted as unsuppressed emission from omitted levels. Truncated
+@@ -190,11 +174,18 @@
+     ! Current convergence checks cover 1000--100000 K and ne <= 1e10 cm^-3;
+     ! table evaluations outside that range do not establish source accuracy.
+     if (reg(idx)%density_ratio_cooling) then
+-       lam = lam_fit*S
++       if (lamref > 0.0_wp) then
++          lam = lam_fit*(lam_se/lamref)
++       else
++          lam = lam_se
++       end if
+        return
+     end if
+-    fcov   = min(1.0_wp, lamref/max(lam_fit, tiny(1.0_wp)))
+-    lam    = lam_fit*(fcov*S + (1.0_wp - fcov))
++    if (lamref <= lam_fit) then
++       lam = lam_se + (lam_fit - lamref)
++    else
++       lam = (lam_fit/lamref)*lam_se
++    end if
+   end function nlevel_cooling_apply
+ 
+   !=========================================================================
+@@ -254,17 +245,16 @@
+ 
+   !=========================================================================
+   ! Cooling coefficient at (T, ne-column j): ln(Lambda) linear in 1/T between
+-  ! the two log-T rows (weight w1); a zero endpoint (never in practice: the
+-  ! lowest-Tx line does not underflow down to 100 K) falls back to linear in
+-  ! log T (weight wt).  Lambda_grid(i,j) = lamref(i) Ssup(i,j).
++  ! the two log-T rows (weight w1); a zero endpoint falls back to linear in
++  ! log T (weight wt). Positive subnormal grid values are retained directly.
+   !=========================================================================
+   real(kind=wp) function col_cooling(idx, it, j, w1, wt) result(val)
+     implicit none
+     integer,       intent(in) :: idx, it, j
+     real(kind=wp), intent(in) :: w1, wt
+     real(kind=wp) :: Li, Lip
+-    Li  = reg(idx)%lamref(it)  *reg(idx)%Ssup(it,j)
+-    Lip = reg(idx)%lamref(it+1)*reg(idx)%Ssup(it+1,j)
++    Li  = reg(idx)%lambda(it,j)
++    Lip = reg(idx)%lambda(it+1,j)
+     if (Li > 0.0_wp .and. Lip > 0.0_wp) then
+        val = exp(log(Li) + w1*(log(Lip) - log(Li)))
+     else
+@@ -273,8 +263,7 @@
+   end function col_cooling
+ 
+   !=========================================================================
+-  ! lam_se_ref(T): the low-density cooling limit (the ne-floor column), used
+-  ! for f_cov and the report; same ln-linear-in-1/T interpolation in T.
++  ! Low-density reference from the ne-floor column, using the same T rule.
+   !=========================================================================
+   real(kind=wp) function low_density_cooling(idx, T) result(val)
+     implicit none
+@@ -291,13 +280,18 @@
+   end function low_density_cooling
+ 
+   !=========================================================================
+-  ! Ssup(T, ne) = Lambda_SE(T, ne) / lam_se_ref(T), for the setup report.
++  ! Cooling ratio for the setup report. A zero reference has no defined ratio.
+   !=========================================================================
+   real(kind=wp) function suppression_ratio(idx, T, ne) result(S)
+     implicit none
+     integer,       intent(in) :: idx
+     real(kind=wp), intent(in) :: T, ne
+-    S = cooling_coeff(idx, T, ne)/max(low_density_cooling(idx, T), tiny(1.0_wp))
++    S = low_density_cooling(idx, T)
++    if (S > 0.0_wp) then
++       S = cooling_coeff(idx, T, ne)/S
++    else
++       S = 0.0_wp
++    end if
+   end function suppression_ratio
+ 
+   !=========================================================================

@@ -123,6 +123,24 @@ turned up defects on their side as well, and one omission common to all five
 codes.
 \end{abstract}
 
+\paragraph{Current-data qualification (2026-10-11).}
+The benchmark temperatures, budgets, and cooling-fit counts in this memo
+describe their stated historical runs; they have not been remeasured with
+the current selected excitation data. Production now selects
+\code{metal\_excitation\_model='mocassin\_v2'} by default: 55 installed atoms,
+571 levels, and 49 cooling fits with 763 terms. The explicit
+\code{'extended'} model contains 62 atoms, 1951 levels, and 38 fits with
+377 terms. Matching cooling and $n$-level files are selected under
+\code{data/atomic/excitation/}; the root files are historical preparation
+products. Production element rates still declare 43 metal stages and 32
+transitions. The 77-stage, 66-transition roster has been checked but is not
+active, and no matched full spatial \Mocassin{} v2 comparison is complete.
+The present defaults leave metal collisional-ionization cooling,
+neutral-hydrogen excitation of metal lines, and charge-exchange heating off;
+metal free--free remains on. Thus the corresponding rows below describe
+available processes or explicitly enabled historical runs, not the current
+default cooling inventory.
+
 %==========================================================================
 \section{Context: what was left after everything else was excluded}
 \label{sec:context}
@@ -1272,8 +1290,9 @@ summed over H$^{+}$, He$^{+}$ and He$^{++}$ only, with no net-charge term for
 the metal ions (\MoCHII{} adds one, worth $\sim2\times10^{-4}$ of the H/He
 term), and there is no metal recombination cooling ($0.05\%$ of the \Cloudy{}
 budget, Table~\ref{tab:budget}; \MoCHII{} carries it since 2026-09-24, with the
-metal collisional-ionization loss, under \code{par\%metal\_heat}, on by
-default --- \code{species\_mod::\allowbreak metal\_ionization\_cooling}).
+metal collisional-ionization loss, now controlled separately by
+\code{par\%metal\_collisional\_ionization} and off by default ---
+\code{species\_mod::\allowbreak metal\_ionization\_cooling}).
 
 \paragraph{Collisional ionization is not in the budget.}  \code{collIon}
 (:1378, Drake \& Ulrich 1980) is computed for hydrogen only, explicitly zeroed
@@ -1308,10 +1327,11 @@ removes at $\nH = 100$~cm$^{-3}$ is common to both.  What remains is that
 on three of the four largest metal coolants, which adds cooling, while
 \MoCHII{} carries the current CHIANTI~v11 strengths.  Neither code's temperature
 can therefore be attributed to a single data difference.  On channels rather
-than data, \MoCHII{} carries four that \Mocassin{} does not ---
+than data, \MoCHII{} makes four processes available that \Mocassin{} does not ---
 collisional-ionization cooling, metal free-free with the net ion charge, metal
 recombination cooling, and atomic-hydrogen impact on the \CI{}, \CII{} and \OI{} fine-structure lines
-for neutral gas (\Mocassin{}'s $\Upsilon$ tables are electron-impact only) --- and \Mocassin{}
+for neutral gas (\Mocassin{}'s $\Upsilon$ tables are electron-impact only).
+The first and fourth are off by default; \Mocassin{}
 carries one that \MoCHII{} does not, the gas--grain collisional term.
 
 \subsection{\Torus{}}
@@ -1668,11 +1688,14 @@ its metal terms are added in \code{src/thermal\_mod.f90}:76--103.  Ion counts: W
 and \Torus{} are fixed lists compiled into the source; the \Mocassin{} entry is
 what its data files supply for
 the HII40 composition (C, N, O, Ne, S) at the default \code{nstages = 7},
-reaching O\,\textsc{vi}; \MoCHII{}'s 28 are its cooling fits, \HI{} plus 27
-metal ions over 11 elements, reaching stage \textsc{iv} (\textsc{v} for Ca).  \MoCHII{} is a superset of the line and
+reaching O\,\textsc{vi}; \MoCHII{}'s 28 are the historical cooling fits,
+\HI{} plus 27 metal ions over 11 elements, reaching stage \textsc{iv}
+(\textsc{v} for Ca). The current selected model has 49 metal cooling fits.
+\MoCHII{} is a superset of the line and
 H/He channels except for the last two rows: the gas--grain term,
 which \Mocassin{} carries and \Torus{} carries as an option; and \HeI{}
-collisional excitation, which no code carries.  It now carries the
+collisional excitation, which is now available but off by default in
+\MoCHII{}. It now carries the
 density-dependent level populations in the thermal balance too, through the
 $(T, \nel)$ table of Section~\ref{sec:limit}.}
 \label{tab:codes}
@@ -1681,26 +1704,27 @@ $(T, \nel)$ table of Section~\ref{sec:limit}.}
 \toprule
 Cooling term & Wood & \CMI{} & \Mocassin{} & \Torus{} & \MoCHII{} \\
 \midrule
-metal collisionally excited lines & 12 ions & 13 ions & 26 ions & 15 ions & 28 ions \\
+metal collisionally excited lines & 12 ions & 13 ions & 26 ions & 15 ions & 28 historical \\
 Cl, Ar line cooling      & data unread & no & yes & no & yes \\
 \NI{}, \OI{} line cooling & defective & yes & yes & yes & yes \\
 \SIV{} line cooling      & no  & yes & yes & yes & yes (added here) \\
 \HI{} collisional excitation & no & no & yes & yes & yes \\
-collisional-ionization cooling & no & no & no & no & yes \\
+collisional-ionization cooling & no & no & no & no & optional; off \\
 metal recombination cooling & no & no & no & no & yes \\
 \HeIII{} recombination cooling & no & no & yes & no & yes \\
 free-free at $Z = 2$ (\HeIII{}) & no & no & yes & no & yes \\
 free-free from the metal ions & no & no & no & no & yes \\
 level populations at the local $\nel$ & yes & yes & yes & yes & yes (table) \\
 gas--grain collisional cooling & no & no & yes & optional & no \\
-\HeI{} collisional excitation & no & no & no & no & no \\
+\HeI{} collisional excitation & no & no & no & no & optional; off \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Table~\ref{tab:codes} collects the result.  The negative result of the audit is
-the last row: \HeI{} collisional-excitation line cooling is absent from all
-five codes, \MoCHII{} included.  In the HII40 budget of
+the last row: \HeI{} collisional-excitation line cooling was absent from all
+five codes in the historical comparison. It is now available in \MoCHII{}
+through explicit metastable coupling, which is off by default. In the HII40 budget of
 Table~\ref{tab:budget} \Cloudy{} puts $1.943\times10^{35}$~erg\,s$^{-1}$ in it,
 $0.062\%$ of the total, so at benchmark conditions the omission is harmless; it
 would matter only where neutral helium is abundant and the gas hot enough to
@@ -1756,11 +1780,12 @@ a 1995-era nine-code spread that both current-generation codes exceed, so the
 verdict there is agreement with \Cloudy{}, not a shortfall against the
 published floor.
 
-The same audit applied to the other Monte Carlo photoionization codes shows
-that \MoCHII{}'s inventory is now a superset of all four in the line and H/He
-channels, with two exceptions.  \HeI{} collisional-excitation line cooling is
-absent from Wood's code, from \CMI{}, from \Mocassin{}, from \Torus{} and from
-\MoCHII{}, and is worth $0.062\%$ of the HII40 budget.  And \Mocassin{} carries a
+The same historical audit applied to the other Monte Carlo photoionization
+codes found two exceptions to \MoCHII{}'s then-available line and H/He
+inventory. \HeI{} collisional-excitation line cooling was absent from all
+five codes in that comparison, and is worth $0.062\%$ of the HII40 budget.
+\MoCHII{} now has this process under explicit metastable coupling, off by
+default. \Mocassin{} carries a
 gas--grain collisional term and \Torus{} carries one as an option, of order
 $10^{-4}$ of the line cooling at
 $\nH = 100$~cm$^{-3}$.  The metal level populations at the local $\nel$ that

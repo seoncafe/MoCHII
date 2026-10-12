@@ -7,7 +7,7 @@ implicit none
 private
 public minloc1, gauleg, dot_product, cross_product, &
        locate, interp, interp_eq, &
-       calc_Integral, calc_CDF
+       calc_Integral, calc_CDF, catmull_rom_uniform
 public GAUSS_LAGUERRE4_X, GAUSS_LAGUERRE4_W
 
 !--- four-point Gauss-Laguerre rule, Int_0^inf e^-x f(x) dx ~ sum w_k f(x_k):
@@ -340,4 +340,35 @@ contains
 
   end subroutine newton_raphson
   !--------------------
+!--- Catmull-Rom cubic through f(i-1..i+2) on a uniform grid, at the
+!--- fraction w in [0,1] of the interval (i, i+1); C1 across every node.  A
+!--- missing neighbor at the table ends is the linear extrapolation, so the
+!--- slope is continuous there too.  Entries <= -1e300 mark "no value"
+!--- (e.g. the log of a coefficient that is zero): an interval with one at
+!--- either end returns that marker, and a marked outer neighbor is
+!--- replaced by the linear extrapolation.  (MoCHII addition.)
+pure real(kind=wp) function catmull_rom_uniform(f, i, w) result(v)
+   real(kind=wp), intent(in) :: f(:), w
+   integer,       intent(in) :: i
+   real(kind=wp), parameter :: NONE = -1.0e300_wp
+   real(kind=wp) :: p0, p1, p2, p3
+   integer :: n
+   n  = size(f)
+   p1 = f(i);  p2 = f(i+1)
+   if (p1 <= NONE .or. p2 <= NONE) then
+      v = -huge(1.0_wp)
+      return
+   end if
+   p0 = 2.0_wp*p1 - p2
+   if (i > 1) then
+      if (f(i-1) > NONE) p0 = f(i-1)
+   end if
+   p3 = 2.0_wp*p2 - p1
+   if (i < n - 1) then
+      if (f(i+2) > NONE) p3 = f(i+2)
+   end if
+   v = p1 + 0.5_wp*w*(p2 - p0 + w*(2.0_wp*p0 - 5.0_wp*p1 + 4.0_wp*p2 - p3 &
+                              + w*(3.0_wp*(p1 - p2) + p3 - p0)))
+end function catmull_rom_uniform
+
 end module mathlib

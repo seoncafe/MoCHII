@@ -16,31 +16,27 @@ module recomb_continuum_mod
 !    swap remains a drop-in at this interface.
 !  - ABOVE the table range: Milne-relation free-bound from the ground
 !    photoionization cross sections (photo_xsec: exact hydrogenic for H I
-!    and He II, VFKY96 for He I) + free-free with the
-!    Hummer getGauntFF Gaunt factor (Z=1 for H II/He II, Z=2 for He III).
+!    and He II, VFKY96 for He I) + free-free with the Gaunt factor of
+!    free_free_mod (Z=1 for H II/He II, Z=2 for He III).
 !
-! These coefficients have two consumers that must not drift apart: the
-! written nebular continuum (nebcont_mod) and the He II n>=2 free-bound
-! component of the diffuse ionizing field (heii_cascade_mod).  They live here
-! so that both read one table through one interpolator.
+! These coefficients have three consumers that must not drift apart: the
+! written nebular continuum (nebcont_mod), the He II n>=2 free-bound
+! component of the diffuse ionizing field (heii_cascade_mod), and the
+! free-free packets of the diffuse field (diffuse_mod channel 7, through the
+! band tables freefree_band_setup builds from gamma_ff).  They live here so
+! that all read one coefficient.
 !---------------------------------------------------------------------------
   use define
+  use free_free_mod, only : free_free_gaunt, FF_SPECTRAL
   implicit none
   private
 
   public :: recomb_continuum_setup, recomb_continuum_is_ready
   public :: gamma_tab, gamma_milne, gamma_ff, gamma_tab_nodes
   public :: RYD_ERG, HCRYD_K, MILNE_C, NU_HI, NU_HEI, NU_HEII
-
-  interface
-     subroutine getGauntFF(z, log10Te, xlf, g, iflag)
-        implicit none
-        integer, intent(out) :: iflag
-        real, intent(in)  :: log10Te, z
-        real, dimension(:), intent(in)  :: xlf
-        real, dimension(size(xlf)), intent(out) :: g
-     end subroutine getGauntFF
-  end interface
+  public :: freefree_band_setup, freefree_band_coefficient
+  public :: freefree_band_sample_energy, freefree_band_is_ready
+  public :: FF_ZMAX
 
   !--- tabulated continuum coefficients (log10 of 1e-40 erg cm^3/s/Hz)
   type gamma_table
@@ -50,8 +46,30 @@ module recomb_continuum_mod
   type(gamma_table) :: gtab(3)          ! 1=HI, 2=HeI, 3=HeII
   logical, save :: ready = .false.
 
+  !--- Free-free emission inside the transported band (diffuse_mod channel
+  !--- 7), per net ion charge Z = 1..FF_ZMAX: energy-luminosity CDFs in
+  !--- x = (E - E_lo)/kT and the band coefficients, on a log-T grid.  The
+  !--- layout is that of the Milne ground-continuum tables
+  !--- (milne_recomb_spectrum_mod): NX nodes clustered towards x = 0, cut
+  !--- at x = 60.
+  integer,       parameter :: FF_ZMAX = MAX_ION_STAGES - 1
+  integer,       parameter :: FF_NT = 192, FF_NX = 512
+  real(kind=wp), parameter :: FF_TLO = 1.0e2_wp, FF_THI = 1.0e6_wp
+  real(kind=wp), parameter :: FF_XMAX = 60.0_wp
+  real(kind=wp), save :: ff_lgT(FF_NT), ff_xg(FF_NX)
+  real(kind=wp), save, allocatable :: ff_cdf(:,:,:)      ! (FF_NX, FF_NT, FF_ZMAX)
+  real(kind=wp), save :: ff_lncoef(FF_NT, FF_ZMAX)       ! ln G_Z(T), see below
+  real(kind=wp), save :: ff_elo = 0.0_wp, ff_ehi = 0.0_wp ! band edges [eV]
+  logical,       save :: ff_ready = .false.
+
   real(kind=wp), parameter :: RYD_ERG   = 2.1798723611035e-11_wp
-  real(kind=wp), parameter :: HCRYD_K   = 157807.0_wp       ! Ryd/k [K]
+  !--- Ryd/k [K] for the frequencies of these tables, which are in units of
+  !--- the infinite-mass Rydberg (RYD_ERG; the H edge sits at 0.999466 of
+  !--- it, and MILNE_C carries R_inf^2).  It was MOCASSIN's 157807 K, close
+  !--- to the H ionization energy over k (157802 K) rather than R_inf/k
+  !--- (157887.5 K), so exp(-h nu/kT) was too large by exp(5.1e-4 h nu/kT):
+  !--- the free-free coefficient +0.8% at 1 Ryd and 1e4 K, +3.3% at 4 Ryd.
+  real(kind=wp), parameter :: HCRYD_K   = RYD_ERG/kboltz_cgs
   real(kind=wp), parameter :: MILNE_C   = 4.9874105e-6_wp   ! (h^2/2 pi me k)^1.5 Ryd^2 [cm K^1.5]
   real(kind=wp), parameter :: NU_HI     = 0.999466_wp       ! edges [Ryd]
   real(kind=wp), parameter :: NU_HEI    = 1.80804_wp
@@ -168,7 +186,7 @@ contains
     real(kind=wp) :: ff, gff, chi1
     integer :: n1
     ff  = gamma_ff(nu, T, Z)
-    gff = ff/(6.8391e-38_wp*real(Z*Z,wp)*exp(-nu*HCRYD_K/T)/sqrt(T)*1.0e40_wp)
+    gff = ff/(FF_SPECTRAL*real(Z*Z,wp)*exp(-nu*HCRYD_K/T)/sqrt(T)*1.0e40_wp)
     n1  = ceiling(real(Z,wp)/sqrt(nu) - 1.0e-9_wp)
     chi1 = real(Z*Z,wp)/real(n1*n1,wp)
     g = ff*(1.0_wp + (exp(chi1*HCRYD_K/T) - 1.0_wp)/gff)
@@ -228,27 +246,176 @@ contains
   end function gamma_milne
 
   !=========================================================================
-  ! Free-free coefficient [1e-40 erg cm^3/s/Hz]:
-  ! gamma_ff = 6.8391e-38 Z^2 g_ff exp(-h nu/kT)/sqrt(T) * 1e40
+  ! Free-free coefficient [1e-40 erg cm^3/s/Hz], 4 pi j_nu / (n_e n_i):
+  ! gamma_ff = FF_SPECTRAL Z^2 g_ff exp(-h nu/kT)/sqrt(T) * 1e40, with
+  ! FF_SPECTRAL and g_ff from free_free_mod (until 2026-10-11 the rounded
+  ! MOCASSIN 6.8391e-38 and the Hummer fit at every u, also above its
+  ! stated u <= 10^1.5).
   !=========================================================================
   real(kind=wp) function gamma_ff(nu, T, Z) result(g)
     implicit none
     real(kind=wp), intent(in) :: nu, T
     integer,       intent(in) :: Z
-    real :: xlf(1), gf(1)
-    integer :: iflag
-    if (par%gaunt_vh14) then
-       block
-         use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
-         call gaunt_vh14_setup()
-         gf(1) = real(gauntff_vh14(real(Z,wp), T, nu))
-       end block
-    else
-       xlf(1) = real(log10(nu))
-       call getGauntFF(real(log10(real(Z,wp))), real(log10(T)), xlf, gf, iflag)
-    end if
-    g = 6.8391e-38_wp*real(Z*Z,wp)*real(gf(1),wp) &
-        * exp(-nu*HCRYD_K/T)/sqrt(T) * 1.0e40_wp
+    real(kind=wp) :: u
+    u = nu*HCRYD_K/T
+    g = FF_SPECTRAL*real(Z*Z,wp)*free_free_gaunt(real(Z,wp), T, u) &
+        * exp(-u)/sqrt(T) * 1.0e40_wp
   end function gamma_ff
+
+  !=========================================================================
+  ! FREE-FREE EMISSION AS A DIFFUSE IONIZING SOURCE (diffuse_mod channel 7).
+  !
+  ! The free-free photons of the ionized gas above the band's lower edge
+  ! E_lo = par%eion_min (13.598 eV by default) up to par%eion_max ionize H0,
+  ! He0, He+ and the metals like any other band photon.  The emissivity is
+  ! gamma_ff -- the coefficient of the written continuum -- so in the band
+  !   L_Z = n_e n_Z V Int_{E_lo}^{E_hi} gamma_ff(nu, T, Z) 1e-40 dnu
+  !       = n_e n_Z V G_Z(T) exp(-E_lo/kT),
+  !   G_Z(T) = FF_SPECTRAL Z^2 T^(-1/2) (kT/h) Int_0^{x_hi} g_ff(u) e^(-x) dx,
+  ! u = E_lo/kT + x, x_hi = min(60, (E_hi - E_lo)/kT).  The Boltzmann factor
+  ! of the edge is applied at the leaf, so G_Z is smooth in T and is
+  ! interpolated as ln G_Z by a Catmull-Rom cubic in log T.  Packet energies follow the
+  ! energy emissivity itself (a packet carries energy; the photon rate it
+  ! represents is L <1/E>, the physical one), from the CDF of
+  ! g_ff(u) e^(-x), interpolated in log T and inverted once, continuous in E.
+  !
+  ! ENERGY.  The free-free cooling (cooling_mod, species_mod::metal_freefree,
+  ! FF_TOTAL Z^2 gbar_ff) removes the whole emitted spectrum from the gas;
+  ! the band part transported here is not removed again: absorbed, it heats
+  ! the gas or ionizes, as stellar photons do, and what escapes leaves.
+  ! Without it the band part simply escaped.  Its share of the free-free
+  ! emission is ~ exp(-E_lo/kT): 1.4e-7 at 1e4 K, 3.7e-4 at 2e4 K.
+  !
+  ! VALIDITY.  Non-relativistic free-free (kT << m_e c^2) of a fully
+  ! stripped-equivalent net charge Z (hydrogenic Gaunt factor); the
+  ! Gaunt factor rule is free_free_mod's.
+  !=========================================================================
+  subroutine freefree_band_setup()
+    implicit none
+    real(kind=wp) :: t, T_K, kT_eV, x_hi, xa, xb, xm, fa, fm, fb, seg, acc, ulo
+    integer :: iz, it, ix
+
+    if (ff_ready) return
+    ff_elo = par%eion_min
+    ff_ehi = par%eion_max
+    if (.not. allocated(ff_cdf)) allocate(ff_cdf(FF_NX, FF_NT, FF_ZMAX))
+    do ix = 1, FF_NX
+       t = real(ix-1, wp)/real(FF_NX-1, wp)
+       ff_xg(ix) = FF_XMAX*t*t
+    end do
+    do it = 1, FF_NT
+       ff_lgT(it) = log10(FF_TLO) + (log10(FF_THI) - log10(FF_TLO)) &
+                    *real(it-1, wp)/real(FF_NT-1, wp)
+    end do
+    do iz = 1, FF_ZMAX
+       do it = 1, FF_NT
+          T_K   = 10.0_wp**ff_lgT(it)
+          kT_eV = kboltz_cgs*T_K/ev2erg
+          ulo   = ff_elo/kT_eV
+          x_hi  = min(FF_XMAX, (ff_ehi - ff_elo)/kT_eV)
+          acc = 0.0_wp
+          ff_cdf(1, it, iz) = 0.0_wp
+          fb = freefree_shape(iz, T_K, ulo, 0.0_wp)
+          do ix = 1, FF_NX-1
+             xa = ff_xg(ix)
+             xb = min(ff_xg(ix+1), x_hi)
+             if (xb > xa) then
+                xm = 0.5_wp*(xa + xb)
+                fa = fb                ! the previous segment's upper end
+                fm = freefree_shape(iz, T_K, ulo, xm)
+                fb = freefree_shape(iz, T_K, ulo, xb)
+                seg = (xb - xa)/6.0_wp*(fa + 4.0_wp*fm + fb)
+                acc = acc + seg
+             end if
+             ff_cdf(ix+1, it, iz) = acc
+          end do
+          if (acc > 0.0_wp) then
+             ff_cdf(:, it, iz) = ff_cdf(:, it, iz)/acc
+             ff_lncoef(it, iz) = log(FF_SPECTRAL*real(iz*iz,wp)/sqrt(T_K) &
+                                     *kboltz_cgs*T_K/h_planck_cgs*acc)
+          else
+             ff_cdf(:, it, iz) = 1.0_wp
+             ff_lncoef(it, iz) = -huge(1.0_wp)
+          end if
+          ff_cdf(FF_NX, it, iz) = 1.0_wp
+       end do
+    end do
+    ff_ready = .true.
+  end subroutine freefree_band_setup
+
+  logical function freefree_band_is_ready() result(ok)
+    ok = ff_ready
+  end function freefree_band_is_ready
+
+  !--- g_ff(u) e^(-x) at u = ulo + x, the free-free energy emissivity in the
+  !--- band up to the factor FF_SPECTRAL Z^2 T^(-1/2) exp(-E_lo/kT)
+  real(kind=wp) function freefree_shape(iz, T_K, ulo, x) result(f)
+    integer,       intent(in) :: iz
+    real(kind=wp), intent(in) :: T_K, ulo, x
+    f = free_free_gaunt(real(iz,wp), T_K, ulo + x)*exp(-x)
+  end function freefree_shape
+
+  !--- temperature bracket on the log-T grid, clamped
+  subroutine freefree_tbracket(T_K, it, w)
+    real(kind=wp), intent(in)  :: T_K
+    integer,       intent(out) :: it
+    real(kind=wp), intent(out) :: w
+    real(kind=wp) :: s
+    s = (log10(max(T_K, tinest)) - ff_lgT(1))/(ff_lgT(2) - ff_lgT(1))
+    s = min(max(s, 0.0_wp), real(FF_NT-1, wp))
+    it = min(int(s) + 1, FF_NT-1)
+    w  = s - real(it-1, wp)
+  end subroutine freefree_tbracket
+
+  !=========================================================================
+  ! Band free-free luminosity per n_e n_Z [erg cm^3 s^-1] at T:
+  ! G_Z(T) exp(-E_lo/kT) (0 for Z outside 1..FF_ZMAX).
+  !=========================================================================
+  real(kind=wp) function freefree_band_coefficient(iz, T_K) result(c)
+    use mathlib, only : catmull_rom_uniform
+    integer,       intent(in) :: iz
+    real(kind=wp), intent(in) :: T_K
+    real(kind=wp) :: w, lc
+    integer :: it
+    c = 0.0_wp
+    if (iz < 1 .or. iz > FF_ZMAX) return
+    call freefree_tbracket(T_K, it, w)
+    lc = catmull_rom_uniform(ff_lncoef(:, iz), it, w)
+    if (lc < -1.0e300_wp) return
+    c  = exp(lc - ff_elo*ev2erg/(kboltz_cgs*T_K))
+  end function freefree_band_coefficient
+
+  !=========================================================================
+  ! Photon energy [eV] of one free-free packet of net charge iz at T from
+  ! the uniform u: the CDF interpolated in log T, inverted once, linear in
+  ! x within the bracketing nodes.
+  !=========================================================================
+  real(kind=wp) function freefree_band_sample_energy(iz, T_K, u) result(E)
+    integer,       intent(in) :: iz
+    real(kind=wp), intent(in) :: T_K, u
+    real(kind=wp) :: w, kT_eV, uu, ca, cb, cm, x
+    integer :: it, lo, hi, mid
+    call freefree_tbracket(T_K, it, w)
+    kT_eV = kboltz_cgs*T_K/ev2erg
+    uu = min(max(u, 0.0_wp), 1.0_wp)
+    lo = 1;  hi = FF_NX
+    ca = (1.0_wp - w)*ff_cdf(lo, it, iz) + w*ff_cdf(lo, it+1, iz)
+    cb = (1.0_wp - w)*ff_cdf(hi, it, iz) + w*ff_cdf(hi, it+1, iz)
+    do while (hi - lo > 1)
+       mid = (lo + hi)/2
+       cm  = (1.0_wp - w)*ff_cdf(mid, it, iz) + w*ff_cdf(mid, it+1, iz)
+       if (uu > cm) then
+          lo = mid;  ca = cm
+       else
+          hi = mid;  cb = cm
+       end if
+    end do
+    if (cb > ca) then
+       x = ff_xg(lo) + (ff_xg(hi) - ff_xg(lo))*(uu - ca)/(cb - ca)
+    else
+       x = ff_xg(lo)
+    end if
+    E = min(ff_elo + x*kT_eV, ff_ehi*(1.0_wp - 1.0e-12_wp))
+  end function freefree_band_sample_energy
 
 end module recomb_continuum_mod

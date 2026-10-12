@@ -13,7 +13,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 NBINS = (8, 16, 32, 64, 128)
 EXCLUDED_DATASETS = {"J_nu", "E_bin", "dE_bin"}
-REQUIRED_ATTRIBUTES = ("CONVERGD", "FLDCONS", "IONEMODE", "NUBINUSE", "ENRGSAMP")
+REQUIRED_ATTRIBUTES = ("CONVERGD", "STATESOL", "IONEMODE", "NUBINUSE", "ENRGSAMP")
 
 
 def value(attribute):
@@ -54,7 +54,7 @@ def compare_case(tag, directory):
                 metadata_ok = (
                     int(value(header.attrs["NNU_ION"])) == nbin
                     and as_bool(value(header.attrs["CONVERGD"]))
-                    and as_bool(value(header.attrs["FLDCONS"]))
+                    and as_bool(value(header.attrs["STATESOL"]))
                     and value(header.attrs["IONEMODE"]) == "continuous"
                     and value(header.attrs["NUBINUSE"]) == "diagnostic_only"
                     and value(header.attrs["ENRGSAMP"]) == "sobol"

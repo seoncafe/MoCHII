@@ -5,8 +5,8 @@ module ionizing_field_mod
 ! Transport every stellar and diffuse packet through the CURRENT opacity,
 ! reduce the path-length tally into 4 pi J_nu dnu, and turn that into the
 ! photoionization and heating rate integrals.  The nonlinear iteration, the
-! final consistency pass and the peel-off imaging pass all come through here,
-! so the radiation field the written rates carry is built exactly as the
+! final pass (before the final gas solve) and the peel-off imaging pass all
+! come through here, so the radiation field the written rates carry is built exactly as the
 ! field that drove the iteration -- same launch set, same diffuse rebuild,
 ! same reduction.
 !
@@ -42,7 +42,8 @@ module ionizing_field_mod
   use gas_rates_mod,    only : gas_rates_compute
   use species_mod,      only : species_gamma_compute
   use diffuse_mod,      only : diffuse_build, gen_diffuse_photon, &
-                               gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum
+                               gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum, &
+                               diffuse_channel_luminosity
   use heii_cascade_mod, only : heii_cascade_transported
   use ion_peel_mod,     only : ion_peel_setup, ion_peel_direct, ion_peel_scatter
   use photon_schedule_mod, only : photon_schedule_begin, photon_schedule_next, &
@@ -149,9 +150,15 @@ contains
        !--- whole band, L_ion/nphotons with the strata), so the recombination
        !--- field is sampled as finely as the field that drives it.
        call diffuse_build(ionizing_packet_luminosity())
-       if (.not. peel .and. mpar%p_rank == 0) write(6,'(a,es12.4,a,i12,a)') &
-          '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
-          diffuse_nphot, ' packets'
+       if (.not. peel .and. mpar%p_rank == 0) then
+          write(6,'(a,es12.4,a,i12,a)') &
+             '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
+             diffuse_nphot, ' packets'
+          !--- by channel: H I, He I, He II ground; He I, He III cascades;
+          !--- metal ground continua; free-free
+          write(6,'(a,7es11.3)') '     diffuse L by channel 1-7 [erg/s]:', &
+             diffuse_channel_luminosity
+       end if
        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
        !--- varies per pass, and a Sobol prefix of any length is balanced.

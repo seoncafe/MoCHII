@@ -1,7 +1,11 @@
 program check_hcoll
 !---------------------------------------------------------------------------
 ! Gate for the atomic-hydrogen impact rates of the C I, C II and O I ground
-! terms (data/atomic/hcoll_<el>_<stage>.txt read by nlevel_mod):
+! terms, on the atoms of each metal excitation model: the selected one
+! (par%metal_excitation_model, default first) and the other, each resolved
+! by nlevel_mod::metal_excitation_data_file, so the gate reads exactly
+! the nlevel_<el>_<stage>.txt atoms and the hcoll_<el>_<stage>.txt rates
+! beside them that a run loads.  For each model:
 !  (1) low-density limit: with n_e -> 0 and n_HI = 1e-4 cm^-3, every excitation
 !      out of the ground level ends in a photon of the ground-term cascade, so
 !      the photon rate of each fine-structure line reproduces the published
@@ -18,9 +22,6 @@ program check_hcoll
   use define
   use nlevel_mod
   implicit none
-  type(nlevel_atom_type) :: ao, ac, ac2
-  logical :: ok1, ok2, ok3, fail
-  real(kind=wp) :: emis(600), emis0(600), T, worst, dev
   real(kind=wp), parameter :: hc = 1.9864458571489287e-16_wp
   real(kind=wp), parameter :: Ts(3) = [100.0_wp, 300.0_wp, 1000.0_wp]
   real(kind=wp), parameter :: Tb(3) = [50.0_wp, 700.0_wp, 5000.0_wp]
@@ -32,18 +33,52 @@ program check_hcoll
   !--- low enough that H collisions do not redistribute the excited levels
   !--- (n_HI k << A for the 370/609 um lines of C I)
   real(kind=wp), parameter :: NHI_LOW = 1.0e-4_wp
-  character(len=*), parameter :: dir = '../../data/atomic/'
+  character(len=16) :: models(2), default_model
+  logical :: failed_any
+
+  !--- run from tests/hcoll (run_check.sh); the default model comes first
+  par%atomic_dir = '../../data/atomic'
+  default_model = par%metal_excitation_model
+  models(1) = default_model
+  if (trim(default_model) == 'chianti') then
+     models(2) = 'mocassin_v2'
+  else
+     models(2) = 'chianti'
+  end if
+  failed_any = .false.
+  call gate_hydrogen_impact(models(1), failed_any)
+  call gate_hydrogen_impact(models(2), failed_any)
+  if (failed_any) then
+     write(*,'(a)') 'FAIL'
+     stop 1
+  end if
+  write(*,'(a)') 'PASS'
+
+contains
+
+  subroutine gate_hydrogen_impact(model, failed_any)
+  character(len=*), intent(in) :: model
+  logical, intent(inout) :: failed_any
+  type(nlevel_atom_type) :: ao, ac, ac2
+  logical :: ok1, ok2, ok3, fail
+  real(kind=wp), allocatable :: emis(:), emis0(:)
+  real(kind=wp) :: T, worst, dev
   integer :: it
 
+  par%metal_excitation_model = model
+  write(*,'(3a)') ' model ', trim(model), merge(' (default)', '          ', &
+       trim(model) == trim(default_model))
+  write(*,'(2a)') '   ', trim(metal_excitation_data_file('nlevel', 'o', 1))
   fail = .false.
-  call nlevel_load(dir//'nlevel_o_1.txt', ao, ok1)
-  call nlevel_load(dir//'nlevel_c_1.txt', ac, ok2)
-  call nlevel_load(dir//'nlevel_c_2.txt', ac2, ok3)
+  call nlevel_load(trim(metal_excitation_data_file('nlevel', 'o', 1)), ao, ok1)
+  call nlevel_load(trim(metal_excitation_data_file('nlevel', 'c', 1)), ac, ok2)
+  call nlevel_load(trim(metal_excitation_data_file('nlevel', 'c', 2)), ac2, ok3)
   if (.not. (ok1 .and. ok2 .and. ok3 .and. nlevel_has_hcoll(ao) .and. &
       nlevel_has_hcoll(ac) .and. nlevel_has_hcoll(ac2))) then
      write(*,'(a)') 'FAIL: atoms or hydrogen rates not loaded'
      stop 1
   end if
+  allocate(emis(ao%nrad), emis0(ao%nrad))
 
   !--- (1) photon rates of the ground-term lines at n_e -> 0, divided by n_HI.
   !--- O I (1=3P2 2=3P1 3=3P0): photons(2->1) = k12 + k13 (3P0 cascades
@@ -53,17 +88,29 @@ program check_hcoll
   worst = 0.0_wp
   do it = 1, 3
      T = Ts(it)
+     if (size(emis) /= ao%nrad) then
+        deallocate(emis)
+        allocate(emis(ao%nrad))
+     end if
      call nlevel_emissivities(ao, T, 1.0e-12_wp, emis, NHI_LOW)
      dev = max(abs(line_rate(ao, emis, 2, 1)/NHI_LOW/(1e-11_wp*(tabO(1,it)+tabO(2,it))) - 1.0_wp), &
                abs(line_rate(ao, emis, 3, 2)/NHI_LOW/(1e-11_wp*tabO(2,it)) - 1.0_wp))
      worst = max(worst, dev)
      write(*,'(a,f7.0,a,2es12.4,a,es9.2)') ' O I  T=', T, '  photons 63/145 um ', &
         line_rate(ao, emis, 2, 1)/NHI_LOW, line_rate(ao, emis, 3, 2)/NHI_LOW, '  dev ', dev
+     if (size(emis) /= ac%nrad) then
+        deallocate(emis)
+        allocate(emis(ac%nrad))
+     end if
      call nlevel_emissivities(ac, T, 1.0e-12_wp, emis, NHI_LOW)
      dev = abs(line_rate(ac, emis, 2, 1)/NHI_LOW/(1e-11_wp*(tabC(1,it)+tabC(2,it))) - 1.0_wp)
      worst = max(worst, dev)
      write(*,'(a,f7.0,a,es12.4,a,es9.2)') ' C I  T=', T, '  photons 609 um    ', &
         line_rate(ac, emis, 2, 1)/NHI_LOW, '  dev ', dev
+     if (size(emis) /= ac2%nrad) then
+        deallocate(emis)
+        allocate(emis(ac2%nrad))
+     end if
      call nlevel_emissivities(ac2, T, 1.0e-12_wp, emis, NHI_LOW)
      dev = abs(line_rate(ac2, emis, 2, 1)/NHI_LOW / (2.0_wp*7.6e-10_wp*(T/100.0_wp)**0.14_wp &
                *exp(-(ac2%e_cm1(2))*hc/(kboltz_cgs*T))) - 1.0_wp)
@@ -87,6 +134,10 @@ program check_hcoll
 
   !--- (3) increment = emissivity difference
   worst = 0.0_wp
+  if (size(emis) /= ao%nrad) then
+     deallocate(emis)
+     allocate(emis(ao%nrad))
+  end if
   do it = 1, 3
      T = Ts(it)
      call nlevel_emissivities(ao, T, 10.0_wp, emis, 1.0e4_wp)
@@ -125,12 +176,14 @@ program check_hcoll
   end do
 
   if (fail) then
-     write(*,'(a)') 'FAIL'
-     stop 1
+     write(*,'(3a)') ' model ', trim(model), ': FAIL'
+     failed_any = .true.
+  else
+     write(*,'(3a)') ' model ', trim(model), ': pass'
   end if
-  write(*,'(a)') 'PASS'
+  end subroutine gate_hydrogen_impact
 
-contains
+
 
   !--- photon rate [s^-1 per ion] of the radiative row joining levels u -> l
   real(kind=wp) function line_rate(a, em, u, l) result(r)
@@ -150,8 +203,10 @@ contains
   real(kind=wp) function boltzmann_dev(a, T) result(d)
     type(nlevel_atom_type), intent(in) :: a
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: em(600), pop(40), b
+    real(kind=wp), allocatable :: em(:), pop(:)
+    real(kind=wp) :: b
     integer :: k, u, l
+    allocate(em(a%nrad), pop(a%nlev))
     call nlevel_emissivities(a, T, 1.0e-12_wp, em, 1.0e14_wp)
     pop = -1.0_wp
     do k = 1, a%nrad

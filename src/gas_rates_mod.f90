@@ -11,13 +11,17 @@ module gas_rates_mod
 ! reduced path sums by the leaf volume and hands them to the solver.  The
 ! ionizing-band tally jt_ion(inu, il) remains a diagnostic spectrum, written out
 ! with par%jnu_output as J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2)
-! [erg/s/cm^2/Hz/sr]; without it (and without the SEDust emission, which also
-! reads it) the tally is not kept at all.
+! [erg/s/cm^2/Hz/sr]; without it (and without the SEDust emission and the grain
+! charge distribution of par%grain_pe, which also read it) the tally is not
+! kept at all.
 !
 ! gas_rates_write writes '<base>_rates.<ext>': Gamma / heating arrays,
 ! J_nu(nnu, nleaf) with par%jnu_output, the energy grid, and leaf centers.
 !---------------------------------------------------------------------------
   use define
+  use mpi
+  use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
+                          shared_host_rank, shared_host_size, shared_host_comm
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use jtally_mod,   only : jt_ion
   use ion_band_mod, only : ion_e, ion_de, ion_dnu, nnu_band
@@ -26,13 +30,19 @@ module gas_rates_mod
 
   public :: gas_rates_compute, gas_rates_write
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
-  public :: heat_dust, g0_fuv
+  public :: heat_dust
   public :: run_converged, run_iters, run_final_dx, run_final_dte
-  public :: run_field_consistent
+  public :: run_state_solved_in_field
   public :: secondary_ionization
 
-  real(kind=wp), allocatable :: gamma_HI(:), gamma_HeI(:), gamma_HeII(:)
-  real(kind=wp), allocatable :: heat_HI(:),  heat_HeI(:),  heat_HeII(:)
+  !--- H/He photoionization rates and photoheating per leaf: the same on
+  !--- every rank, so one node-shared copy (2026-10-12); the node's ranks
+  !--- fill disjoint leaves from the reduced path estimators
+  real(kind=wp), pointer, contiguous :: gamma_HI(:) => null(), &
+       gamma_HeI(:) => null(), gamma_HeII(:) => null()
+  real(kind=wp), pointer, contiguous :: heat_HI(:) => null(), &
+       heat_HeI(:) => null(), heat_HeII(:) => null()
+  integer :: rate_win(6) = MPI_WIN_NULL
 
   !--- secondary ionization by fast photoelectrons (par%use_sec_ion;
   !--- photoelectron_degradation_mod): the photoelectron energy deposition
@@ -42,50 +52,60 @@ module gas_rates_mod
   !--- by secondary_ionization, inside the cell solve.  Metals are not
   !--- partitioned: they are trace absorbers, and their photoelectron energy is
   !--- all heat.
-  real(kind=wp), allocatable :: sec_edep(:,:,:)
+  real(kind=wp), pointer, contiguous :: sec_edep(:,:,:) => null()   ! node-shared
+  integer :: sec_win = MPI_WIN_NULL
   !--- EUV grain heating [erg s^-1 cm^-3]: the ionizing-band part of the
   !--- grain heating integral that the dust SED band misses;
   !--- consumed by the SEDust stage later.
   real(kind=wp), allocatable :: heat_dust(:)
-  !--- local FUV field in Habing units, G0 = int_{FUV} 4 pi J_nu dnu
-  !--- / 1.6e-3 erg/s/cm^2 (nonzero only with par%add_fuv); drives the
-  !--- grain photoelectric heating (par%grain_pe).
-  real(kind=wp), allocatable :: g0_fuv(:)
 
   !--- convergence state of the gas iteration, set by main.f90 after the
-  !--- loop and written to the rates-file header so an unconverged run is
+  !--- loop (and for each iterate written under par%rates_write_interval)
+  !--- and written to the rates-file header so an unconverged run is
   !--- self-documenting (the iteration can hit the cap without converging).
   logical       :: run_converged = .false.
   integer       :: run_iters     = 0
   real(kind=wp) :: run_final_dx  = 0.0_wp
   real(kind=wp) :: run_final_dte = 0.0_wp
-  !--- .true. when the written rates, gas heating and dust heating were
-  !--- rebuilt by transporting the WRITTEN gas state, so that state and the
-  !--- radiation field belong to the same iterate.  .false. means they are
-  !--- one gas solve apart (rates-only runs, par%gas_niter < 1).
-  logical       :: run_field_consistent = .false.
+  !--- .true. when the written gas state was solved in the written field
+  !--- (main.f90, final pass and final solve), so H, He, T_e, n_e and the
+  !--- metal stages are the solution of the written rates; the field is the
+  !--- transport of the state one solve earlier, run_final_dx/_dte apart.
+  !--- .false. for rates-only runs (par%gas_niter < 1): the written state
+  !--- is the input state.
+  logical       :: run_state_solved_in_field = .false.
 
 contains
 
   !=========================================================================
   subroutine gas_rates_compute()
     implicit none
-    integer  :: nleaf
+    integer  :: nleaf, k, ierr
 
     nleaf = amr_grid%nleaf
-    if (allocated(gamma_HI)) then
-       if (size(gamma_HI) /= nleaf) &
-          deallocate(gamma_HI, gamma_HeI, gamma_HeII, &
-                     heat_HI, heat_HeI, heat_HeII, heat_dust, &
-                     g0_fuv)                                    ! re-refinement
+    if (associated(gamma_HI)) then
+       if (size(gamma_HI) /= nleaf) then                     ! re-refinement
+          call destroy_shared_mem(gamma_HI);  call destroy_shared_mem(gamma_HeI)
+          call destroy_shared_mem(gamma_HeII)
+          call destroy_shared_mem(heat_HI);   call destroy_shared_mem(heat_HeI)
+          call destroy_shared_mem(heat_HeII)
+       end if
     end if
-    if (.not. allocated(gamma_HI)) &
-       allocate(gamma_HI(nleaf), gamma_HeI(nleaf), gamma_HeII(nleaf), &
-                heat_HI(nleaf),  heat_HeI(nleaf),  heat_HeII(nleaf), &
-                heat_dust(nleaf), g0_fuv(nleaf))
-    gamma_HI = 0.0_wp;  gamma_HeI = 0.0_wp;  gamma_HeII = 0.0_wp
-    heat_HI  = 0.0_wp;  heat_HeI  = 0.0_wp;  heat_HeII  = 0.0_wp
-    heat_dust = 0.0_wp; g0_fuv = 0.0_wp
+    if (.not. associated(gamma_HI)) then
+       call create_shared_mem(gamma_HI,   [nleaf]);  call get_window(gamma_HI,   rate_win(1))
+       call create_shared_mem(gamma_HeI,  [nleaf]);  call get_window(gamma_HeI,  rate_win(2))
+       call create_shared_mem(gamma_HeII, [nleaf]);  call get_window(gamma_HeII, rate_win(3))
+       call create_shared_mem(heat_HI,    [nleaf]);  call get_window(heat_HI,    rate_win(4))
+       call create_shared_mem(heat_HeI,   [nleaf]);  call get_window(heat_HeI,   rate_win(5))
+       call create_shared_mem(heat_HeII,  [nleaf]);  call get_window(heat_HeII,  rate_win(6))
+    end if
+    !--- heat_dust stays private: the dust emission transport adds the
+    !--- reabsorbed infrared to it on every rank
+    if (allocated(heat_dust)) then
+       if (size(heat_dust) /= nleaf) deallocate(heat_dust)
+    end if
+    if (.not. allocated(heat_dust)) allocate(heat_dust(nleaf))
+    heat_dust = 0.0_wp
 
     !--- The already reduced packet-energy path estimators are the rates.
     !--- jt_ion stays populated only as a diagnostic spectrum and must not feed
@@ -95,6 +115,10 @@ contains
       call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
                                heat_HI, heat_HeI, heat_HeII)
     end block
+    do k = 1, 6
+       call MPI_WIN_FENCE(0, rate_win(k), ierr)
+    end do
+    call MPI_BARRIER(shared_host_comm(), ierr)
     if (par%ion_add_dust) then
        block
          use ion_score_mod, only : ion_score_apply_dust_heat
@@ -108,17 +132,16 @@ contains
        block
          use ion_score_mod, only : ion_score_apply_sec
          use photoelectron_degradation_mod, only : N_EDEP
-         if (allocated(sec_edep)) then
-            if (size(sec_edep, 3) /= nleaf) deallocate(sec_edep)
+         if (associated(sec_edep)) then
+            if (size(sec_edep, 3) /= nleaf) call destroy_shared_mem(sec_edep)
          end if
-         if (.not. allocated(sec_edep)) allocate(sec_edep(N_EDEP, 3, nleaf))
+         if (.not. associated(sec_edep)) then
+            call create_shared_mem(sec_edep, [N_EDEP, 3, nleaf])
+            call get_window(sec_edep, sec_win)
+         end if
          call ion_score_apply_sec(sec_edep)
-       end block
-    end if
-    if (par%add_fuv) then
-       block
-         use ion_score_mod, only : ion_score_apply_g0
-         call ion_score_apply_g0(g0_fuv)
+         call MPI_WIN_FENCE(0, sec_win, ierr)
+         call MPI_BARRIER(shared_host_comm(), ierr)
        end block
     end if
   end subroutine gas_rates_compute
@@ -155,12 +178,20 @@ contains
   end subroutine secondary_ionization
 
   !=========================================================================
-  subroutine gas_rates_write()
+  !--- iterate = .true. (main.f90, par%rates_write_interval) writes the
+  !--- state of the gas iteration in progress to <base>_rates_iterate: it is
+  !--- written to a temporary name and renamed over the previous iterate
+  !--- only once complete.  The header then records CONVERGD F, STATESOL F
+  !--- and the iteration count, so restart_file can resume from it.
+  subroutine gas_rates_write(iterate)
     use iofile_mod
     use utility, only : get_base_name, fatal_error
     implicit none
+    logical, intent(in), optional :: iterate
     type(io_file_type) :: file
-    character(len=PATH_LEN) :: filename
+    character(len=PATH_LEN) :: filename, partname
+    logical :: write_iterate
+    integer :: cmdstat, exitstat
     real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
     real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped
     integer :: status, il, inu, ic, nleaf
@@ -168,10 +199,20 @@ contains
     if (mpar%p_rank /= 0) return
     nleaf = amr_grid%nleaf
 
+    write_iterate = .false.
+    if (present(iterate)) write_iterate = iterate
     status = 0
-    filename = trim(get_base_name(par%out_file))//'_rates'// &
-               trim(io_file_extension(par%file_format))
-    call io_open_new(file, trim(filename), status)
+    if (write_iterate) then
+       filename = trim(get_base_name(par%out_file))//'_rates_iterate'// &
+                  trim(io_file_extension(par%file_format))
+       partname = trim(get_base_name(par%out_file))//'_rates_iterate_part'// &
+                  trim(io_file_extension(par%file_format))
+    else
+       filename = trim(get_base_name(par%out_file))//'_rates'// &
+                  trim(io_file_extension(par%file_format))
+       partname = filename
+    end if
+    call io_open_new(file, trim(partname), status)
 
     call io_append_image(file, gamma_HI, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','Gamma_HI','H I photoionization rate [s^-1]',status)
@@ -192,10 +233,10 @@ contains
     end if
     call io_put_keyword(file,'CONVERGD',run_converged,'gas iteration converged',status)
     call io_put_keyword(file,'NITERDON',run_iters,   'gas iterations run',      status)
-    call io_put_keyword(file,'FINALDX', run_final_dx, 'final max|delta x_HII|',  status)
-    call io_put_keyword(file,'FINALDTE',run_final_dte,'final max|delta Te|/Te',  status)
-    call io_put_keyword(file,'FLDCONS', run_field_consistent, &
-       'rates rebuilt by transporting the written state', status)
+    call io_put_keyword(file,'FINALDX', run_final_dx, 'last-solve max|delta x_HII|', status)
+    call io_put_keyword(file,'FINALDTE',run_final_dte,'last-solve max|delta Te|/Te', status)
+    call io_put_keyword(file,'STATESOL', run_state_solved_in_field, &
+       'written state solved in the written field', status)
     !--- provenance of the spectral model behind these rates: packet energies
     !--- were sampled continuously from each source's spectrum, so the spectral
     !--- bins below carry the diagnostic spectrum only.
@@ -290,6 +331,21 @@ contains
       tmp = gas_Te(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','T_e','electron temperature [K]',status)
+      !--- He I 2^3S photoionization rate of the last transport pass: the
+      !--- 2^3S population behind the He I diffuse channel of the next pass
+      !--- reads it before that pass's own transport, so restart_file
+      !--- restores it (previous_state_mod)
+      if (par%hei_metastable_coupling) then
+         block
+           use hei_metastable_mod, only : hei_phi3_rate
+           do il = 1, nleaf
+              tmp(il) = hei_phi3_rate(il)
+           end do
+         end block
+         call io_append_image(file, tmp, status, bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','Phi_HeI_23S', &
+              'He I 2^3S photoionization rate [s^-1]',status)
+      end if
       deallocate(tmp)
     end block
 
@@ -325,8 +381,16 @@ contains
     end if
 
     call io_close(file, status)
-    if (status /= 0) call fatal_error('failed to write rates file: '//trim(filename))
-    write(*,'(2a)') ' ION: rates written to: ', trim(filename)
+    if (status /= 0) call fatal_error('failed to write rates file: '//trim(partname))
+    if (write_iterate) then
+       call execute_command_line('/bin/mv -f "'//trim(partname)//'" "'// &
+            trim(filename)//'"', exitstat=exitstat, cmdstat=cmdstat)
+       if (cmdstat /= 0 .or. exitstat /= 0) call fatal_error( &
+            'failed to rename '//trim(partname)//' to '//trim(filename))
+       write(*,'(2a,i0)') ' ION: iterate written to: ', trim(filename)//', iteration ', run_iters
+    else
+       write(*,'(2a)') ' ION: rates written to: ', trim(filename)
+    end if
   end subroutine gas_rates_write
 
 end module gas_rates_mod

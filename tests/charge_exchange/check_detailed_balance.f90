@@ -65,10 +65,8 @@ program check_detailed_balance
   !--- tested one-sided (see the header), by name
   integer, parameter :: NRADIATIVE_EXO = 1
   character(len=2), parameter :: RADIATIVE_EXO(NRADIATIVE_EXO) = ['c ']
-  !--- Tested from 3000 K.  The Kingdon & Ferland forms 6 and 7 clamp only
-  !--- their fitted factor into t4 = [0.5, 5]; the Boltzmann factor of form 7
-  !--- takes the actual T, so a KF96 pair that shares b, c, d keeps detailed
-  !--- balance below 5000 K too.
+  ! Tested from 3000 K, within the KF96 nitrogen interval (100--50000 K).
+  ! The two directions share b, c, d; the activation factor takes actual T.
   integer,       parameter :: NT = 5
   real(kind=wp), parameter :: TT(NT) = [3.0e3_wp, 5.0e3_wp, 8.0e3_wp, &
                                         1.0e4_wp, 2.0e4_wp]
@@ -86,6 +84,9 @@ program check_detailed_balance
   call MPI_INIT(ierr);  mpar%p_rank = 0
   par%atomic_dir = 'data/atomic'
   par%use_metals = .true.
+  !--- the n-level (T, n_e) cooling tables play no part here; 'low_density'
+  !--- keeps species_setup from building them for every stage
+  par%cooling_model = 'low_density'
   par%abund_C  = 2.2e-4_wp;  par%abund_N  = 4.0e-5_wp
   par%abund_O  = 3.3e-4_wp;  par%abund_Ne = 5.0e-5_wp
   par%abund_S  = 9.0e-6_wp;  par%abund_Ar = 3.0e-6_wp

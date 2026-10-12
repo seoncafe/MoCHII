@@ -89,7 +89,9 @@ public
 
 ! maximum number of stellar source components (multi-population SED)
   integer, parameter :: MAX_SRC = 16
-  integer, parameter :: MAX_METAL_TRANSITIONS = 64
+  integer, parameter :: MAX_METAL_ELEMENTS = 11
+  integer, parameter :: MAX_ION_STAGES = 7
+  integer, parameter :: MAX_METAL_TRANSITIONS = MAX_METAL_ELEMENTS*(MAX_ION_STAGES-1)
 
 ! tinest = the smallest positive number
 ! eps    = the least positive number
@@ -106,8 +108,8 @@ public
   real(real32),  parameter :: nan32 = transfer(-4194304_int32, 1._real32)
 
 ! Ionizing packet physics evaluated once at the packet energy and reused
-! across every crossed leaf.  The fixed metal capacity exceeds the current
-! registry maximum (11 elements x at most 5 ionizing transitions).
+! across every crossed leaf.  The fixed metal capacity MAX_METAL_TRANSITIONS
+! = 66 holds stages I-VII of all 11 metal elements.
   type ion_packet_physics_type
      real(kind=wp) :: energy_eV = 0.0_wp
      real(kind=wp) :: sigma_HI = 0.0_wp
@@ -635,15 +637,21 @@ public
      !--- Defaults that depend on other items (setup.f90::
      !--- read_parameters_with_implicit_defaults), applied only to an item the
      !--- input leaves out:
-     !---   add_fuv   .true. when the 2^3S population is used
-     !---             (hei_metastable or hei_metastable_coupling), else .false.
+     !---   add_fuv   .true. when anything in the run absorbs below the H I
+     !---             edge: the He I 2^3S population (hei_metastable or
+     !---             hei_metastable_coupling, with helium), a metal whose
+     !---             neutral ionization potential is below 13.598 eV (C, S,
+     !---             Mg, Fe, Si, Cl, Ca: C I 11.26 ... Ca I 6.11 eV), or dust
+     !---             (ion_add_dust; grain heating and grain photoelectric
+     !---             heating are driven by 6-13.6 eV); else .false.
      !---             Without it Phi_3 misses 4.78-13.6 eV, which for a 40 kK
-     !---             star is ~10x the part above 13.6 eV that it counts;
-     !---   efuv_min  4.78 eV when the 2^3S population is used -- the
-     !---             threshold of sigma_3 as the code evaluates it (SIGMA3A in
+     !---             star is ~10x the part above 13.6 eV that it counts, and
+     !---             neutral carbon is 1.7-4.7x Cloudy's at HII40 (m8);
+     !---   efuv_min  4.78 eV in the same cases -- the threshold of sigma_3 as
+     !---             the code evaluates it (SIGMA3A in
      !---             data/atomic/hei_metastable.txt; the NIST ionization
-     !---             energy of 2^3S, IP(He) - E(2^3S), is 4.7677 eV) -- else
-     !---             6.0 eV.
+     !---             energy of 2^3S, IP(He) - E(2^3S), is 4.7677 eV), below
+     !---             every metal edge (Ca I 6.11 eV) -- else 6.0 eV.
      logical            :: add_fuv      = .false.
      real(kind=wp)      :: efuv_min     = 6.0_wp      ! FUV lower edge [eV]
      integer            :: nnu_fuv      = 8           ! FUV bins
@@ -680,8 +688,9 @@ public
      !--- further registry elements (default 0 = off; pass GAS-PHASE
      !--- values — Si and especially Ca are strongly depleted onto
      !--- grains, Cl is nearly undepleted; typical Orion gas-phase:
-     !--- Si 3e-6, Cl 3e-7, Ca 2e-8).  Five stages each; Cl uses the
-     !--- VY95 outer-shell photoionization form (absent from VFKY96).
+     !--- Si 3e-6, Cl 3e-7, Ca 2e-8).  Stages I-VII each, like every
+     !--- metal; Cl has no VFKY96 outer-shell fit, so phfit2 sums its VY95
+     !--- subshells at every energy.
      real(kind=wp)      :: abund_Si     = 0.0_wp
      real(kind=wp)      :: abund_Cl     = 0.0_wp
      real(kind=wp)      :: abund_Ca     = 0.0_wp
@@ -701,8 +710,7 @@ public
      logical            :: ion_metal_abs = .true.
      !--- PDR-zone physics.  metal_ne and metal_heat default ON: they are real
      !--- physics, they are what the published benchmark runs used, and the
-     !--- measurement below is what settled it.  grain_pe still defaults off
-     !--- (it needs add_fuv and a dust model to mean anything).  Inputs that
+     !--- measurement below is what settled it.  Inputs that
      !--- must reproduce a recorded gate set the two explicitly to .false.
      !--- COST OF SWITCHING THEM OFF, and the domain over which it is known,
      !--- 2026-07-31 on the Lexington benchmarks with only these two switches
@@ -726,14 +734,51 @@ public
      !---              energy and collisional-ionization energy out
      !---              (species_mod::metal_ionization_cooling, added
      !---              2026-09-24);
-     !--- grain_pe:    grain photoelectric heating + grain recombination
-     !---              cooling (Bakes & Tielens 1994 fits) driven by the
-     !---              local FUV field in Habing units (needs add_fuv);
-     !---              scaled by pe_scale x DGR relative to MW dust.
      logical            :: metal_ne     = .true.
      logical            :: metal_heat   = .true.
+     !--- metal_collisional_ionization: electron-impact ionization of the
+     !---   metal stages (Voronov 1997; times the Dere 2007 ratio with
+     !---   par%ci_model = 'dere_hybrid')
+     !---   in the stage balance, and its ionization-energy loss in the
+     !---   thermal balance.  Default on: physically required (it sets the
+     !---   stages of hot gas and costs the gas the ionization energy);
+     !---   MOCASSIN v2 reads the data but never applies it (collIon = 0),
+     !---   which is a v2 omission, not a model choice.  .false. only for a
+     !---   parity comparison with such a code.
+     logical            :: metal_collisional_ionization = .true.
+     !--- neutral_hydrogen_excitation: atomic-hydrogen impact on the
+     !---   ground-term fine structure of C I, C II, O I (hcoll_<el>_<stage>.txt
+     !---   beside the atom; Abrahamsson et al. 2007, Barinovs et al. 2005),
+     !---   in the same level equilibrium as the electrons, for cooling and
+     !---   lines.  Default on: it is the dominant excitation of these
+     !---   coolants wherever the gas is neutral.  .false. only for parity
+     !---   with electron-only codes.
+     logical            :: neutral_hydrogen_excitation = .true.
+     !--- langevin_charge_exchange: X^q + H -> X^(q-1) + H+ for q >= 5 at the
+     !---   Langevin capture rate with unit transfer probability (Ferland et
+     !---   al. 1997 form; 2 pi q e sqrt(alpha_H/mu), alpha_H = 4.5 a0^3),
+     !---   an upper limit, not a measured rate.  Off by default because the
+     !---   approximation is not established.  It acts only on stages with
+     !---   q >= 5, i.e. once the stage roster reaches stage VI.
+     logical            :: langevin_charge_exchange = .false.
+     !--- grain_pe: the grain charge distribution, photoelectric heating of
+     !---   the gas (with photodetachment) and the cooling of the gas by the
+     !---   electrons and ions the grains capture, after Weingartner & Draine
+     !---   (2001, ApJS 134, 263) for the grains of par%dust_model in the
+     !---   field the transport has in each leaf (grain_photoelectric_mod;
+     !---   gate tests/grain_photoelectric).  Left out of the input it is ON
+     !---   whenever ion_add_dust and add_fuv are (setup.f90): physically
+     !---   present wherever grains meet radiation and plasma.  It needs both;
+     !---   it keeps the J_nu band tally (jtally_mod).  The Bakes & Tielens
+     !---   (1994) fits it replaced and their pe_scale are removed.
+     !--- gas_grain_energy_exchange: energy exchanged by neutral H and He
+     !---   atoms striking grains, n_gr pi a^2 n_i v_i alpha_i 2k(T - T_d),
+     !---   Hollenbach & McKee (1979) accommodation (gas_grain_collision_mod);
+     !---   T_d the equilibrium mixture temperature of dust_temp_mod.  Left out
+     !---   of the input it is ON whenever ion_add_dust is.  The electrons and
+     !---   ions grains capture are counted by grain_pe.
      logical            :: grain_pe     = .false.
-     real(kind=wp)      :: pe_scale     = 1.0_wp
+     logical            :: gas_grain_energy_exchange = .false.
      !--- He I EXCITED-level recombination radiation as a fourth diffuse
      !--- channel (needs recombination_continuum = 'transported'): every
      !--- case-B He II recombination reaches 1^1S through one n = 2 term
@@ -774,8 +819,9 @@ public
      logical            :: heii_diffuse = .false.
      !--- free-free Gaunt factors from the van Hoof et al. (2014) table
      !--- (data/gauntff_vh14.dat) instead of the ported Hummer (1988)
-     !--- getGauntFF — the PLAN item-3 swap; off by default so the
-     !--- recorded gates reproduce.
+     !--- getGauntFF within its stated range. False selects Hummer where
+     !--- valid and this table outside that range, for the cooling and the
+     !--- spectral coefficient alike (free_free_mod::free_free_gaunt).
      logical            :: gaunt_vh14   = .false.
      !--- secondary ionization of H I / He I by fast photoelectrons
      !--- (photoelectron_degradation_mod): a photoelectron of kinetic energy
@@ -791,8 +837,9 @@ public
      !--- metal free-free cooling in the thermal balance, weighted by the
      !--- net ion charge Z_ion = ionization stage - 1 (a stage-j metal ion
      !--- contributes n_ion Z_ion^2 gbar_ff(T,Z_ion), j >= 2): the trace
-     !--- completion of the H II + He II/III free-free term.  On by default
-     !--- (a physically correct completion; the effect is trace).
+     !--- completion of the H II + He II/III free-free term. Enabled by default
+     !--- at the user's explicit request, although the inspected MOCASSIN v2
+     !--- thermal balance includes H and He free-free contributions only.
      logical            :: metal_freefree = .true.
      !--- peel-off imaging of the band: after convergence, one extra
      !--- transport pass peels direct (stellar + diffuse) and
@@ -837,12 +884,17 @@ public
      !--- [erg/s/cm^3; sum(emis*V) = L_line, rows match <base>_lines.txt]
      !--- with wl_* wavelength arrays, plus the state needed for maps
      !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HII/HeI/HeII, x_<el>_stages).
+     !--- The metal blocks carry the lines with L >= emis_line_floor
+     !--- L(Hbeta) only (a full CHIANTI atom has up to ~1e4 lines); the
+     !--- text table carries every line.
      logical            :: emis_output  = .false.
+     real(kind=wp)      :: emis_line_floor = 1.0e-4_wp
      !--- write the ionizing-band mean intensity J_nu(nu, leaf) into
      !--- '<base>_rates' (dataset J_nu).  The binned tally behind it,
      !--- jt_ion (nnu_band x nleaf values on EVERY rank), is kept only when
-     !--- something needs it: this output, or the SEDust emission
-     !--- (ion_add_dust with dust_sed), whose leaf spectrum reads it.  The
+     !--- something needs it: this output, the SEDust emission
+     !--- (ion_add_dust with dust_sed), whose leaf spectrum reads it, or
+     !--- grain_pe, whose grain charge distribution reads it.  The
      !--- photoionization and heating rates never use it (they come from the
      !--- energy-integrated path estimators of ion_score_mod).  Off by
      !--- default since 2026-09-26; before, the tally was always kept.
@@ -872,13 +924,18 @@ public
      !--- transfers (Bray et al. 2000 collision strengths) cool or heat the
      !--- gas with a closed energy ledger; and in the diffuse field the 19.82
      !--- eV photons are n_3 A_31, with the collisional transfers to 2^1S /
-     !--- 2^1P feeding the two-photon and 584 A branches.  .false. drops all
-     !--- of it and reproduces the earlier solve bit for bit (the output
-     !--- diagnostic par%hei_metastable uses the same population either way).
+     !--- 2^1P feeding the two-photon and 584 A branches.  Default on:
+     !--- physically required (the 2^3S population is real and every
+     !--- triplet recombination passes through it).  .false. drops all of
+     !--- this coupling (the output diagnostic par%hei_metastable uses the
+     !--- same population either way) and reproduces the earlier solve bit
+     !--- for bit; MOCASSIN v2 has the triplet recombination emission but no
+     !--- population feedback.
      logical            :: hei_metastable_coupling = .true.
      !--- start the gas iteration from a previous run's <base>_rates file
-     !--- (HDF5 or FITS): x_HI, x_HII, x_HeI, x_HeII, x_HeIII, T_e, n_e and the
-     !--- metal photoionization rates, leaf by leaf, matched by position so
+     !--- (HDF5 or FITS): x_HI, x_HII, x_HeI, x_HeII, x_HeIII, T_e, n_e, the
+     !--- metal photoionization rates and (with hei_metastable_coupling) the
+     !--- He I 2^3S photoionization rate, leaf by leaf, matched by position so
      !--- the grid may differ (a file without x_HII or x_HeIII, written before
      !--- 2026-09-26/27, restarts from x_HII = 1 - x_HI and x_HeIII =
      !--- max(0, 1 - x_HeI - x_HeII), with a note); leaves with no
@@ -929,8 +986,11 @@ public
      !--- laursen09_live, whose rhokap already carries it].  Requires a
      !--- model with an explicit 'PAH' channel (astrodust).
      logical            :: sed_pah_live = .false.
-     !--- PAH share of the reference extinction and the PAH survival in
-     !--- ionized gas (laursen09_live option).
+     !--- PAH share of the reference extinction (laursen09_live option) and
+     !--- the PAH survival in ionized gas: the PAH grains of a leaf are
+     !--- weighted by (x_HI + f_ion_pah x_HII) in the photoelectric heating
+     !--- always, and in the emission under sed_pah_live.  Default 0: PAHs
+     !--- are destroyed inside H II regions.
      real(kind=wp)      :: f_pah        = 0.0_wp
      real(kind=wp)      :: f_ion_pah    = 0.0_wp
      !--- ionization equilibrium + opacity feedback iteration.
@@ -943,6 +1003,13 @@ public
      real(kind=wp)      :: gas_tol      = 1.0e-3_wp
      real(kind=wp)      :: te_fixed     = 1.0e4_wp
      real(kind=wp)      :: ion_relax    = 1.0_wp
+     !--- write the iterate every rates_write_interval gas iterations to
+     !--- <base>_rates_iterate (the <base>_rates layout, header CONVERGD F,
+     !--- STATESOL F, NITERDON = the iteration), so a stopped run can be
+     !--- resumed with par%restart_file.  Each write replaces the previous
+     !--- one through a temporary file and a rename, so a run killed during
+     !--- a write leaves the previous iterate intact.  0 or negative = never.
+     integer            :: rates_write_interval = 0
      !--- what becomes of the ground-state recombination photons (the H I,
      !--- He I and He II ground continua, which can ionize):
      !---   'on_the_spot'  absorbed where they are made, the
@@ -956,7 +1023,11 @@ public
      !---       the ground state being balanced by wherever its photon is
      !---       absorbed; the He I and He III excited-cascade channels
      !---       (hei_diffuse, heii_diffuse) follow it when the input leaves
-     !---       them out;
+     !---       them out; and since 2026-10-11 also the ground continua of
+     !---       every metal transition (diffuse channel 6, the Milne spectrum
+     !---       on the outer-shell cross section) and the free-free emission
+     !---       inside the band (channel 7; metal ions with metal_freefree),
+     !---       always on with this mode (diffuse_mod);
      !---   'escaping'  lost from the nebula (optically thin continuum, case
      !---       A without transport); alpha_A and no packets.
      !--- (Replaces par%case_ab and par%diffuse_field, 2026-09-25: B/F was
@@ -1044,7 +1115,7 @@ public
      !--- approximation leaves out), and an endothermic reaction
      !--- takes its defect from the gas:
      !---   dE = [IP(acceptor's product stage) - IP(donor)] - E_rad.
-     !--- .true. (default) adds, in the thermal balance (thermal_mod::net_rate),
+     !--- .true. adds, in the thermal balance (thermal_mod::net_rate),
      !--- the sum over the carried reactions of rate x dE: the metal-H
      !--- reactions under use_metals (species_mod::
      !--- metal_charge_exchange_heating; the defects, product states and
@@ -1056,7 +1127,10 @@ public
      !--- (ion_balance_mod::helium_charge_exchange_heating; Zygelman et al.
      !--- 1989).  A pair formed as one channel and its detailed-balance reverse
      !--- carries opposite defects and deposits nothing when the two balance.
-     !--- .false. leaves the thermal balance exactly as before 2026-09-25.
+     !--- Default on: the energy is real and charge exchange is carried in
+     !--- the ionization balance anyway (MOCASSIN v2 leaves it out of its
+     !--- thermal balance, an omission).  .false. leaves the thermal balance
+     !--- as before 2026-09-25 (reproduction of recorded runs only).
      logical            :: charge_exchange_heating = .true.
      !--- thermal balance.  solve_te (default .true.) solves heating =
      !--- cooling by bisection on log T in [te_min, te_max] in every leaf,
@@ -1143,9 +1217,20 @@ public
      !--- metal_ne, metal_heat and ion_metal_abs then switch the metal
      !--- electrons, photoheating and opacity individually.
      logical            :: use_metals   = .false.
-     !--- load the expanded Fe II/III n-level models (nlevel_fe_*_full.txt,
-     !--- 16/34 levels) instead of the compact 13/14-level defaults.
-     logical            :: fe_levels_full = .false.
+     !--- metal excitation atoms (data/atomic/excitation/<model>/): level
+     !--- populations, radiation, collisions, the matching cooling fits, the
+     !--- atomic-H collision files and the charge-exchange product terms.
+     !---   'chianti'      full CHIANTI 11.0.2 atoms (every bound level and
+     !---                  every radiative and collision row; Stout for Cl VII,
+     !---                  Ar II, Ca IV), md/atomic_stage_expansion/
+     !---                  chianti_model_2026-10-11/
+     !---   'mocassin_v2'  the MOCASSIN v2 atoms (plus the CHIANTI Fe II
+     !---                  forbidden rows), for parity runs only
+     !--- Cost of 'chianti' against 'mocassin_v2' (2026-10-11, 72 ranks,
+     !--- 262144 leaves, 11 metals): +25 MB of memory on each rank (672 against
+     !--- 647 MB), setup +0.5 min, one gas iteration +0.45 min, line output
+     !--- +2.7 min.
+     character(len=16)  :: metal_excitation_model = 'chianti'
      real(kind=wp)      :: abund_C      = 0.0_wp
      real(kind=wp)      :: abund_N      = 0.0_wp
      real(kind=wp)      :: abund_O      = 0.0_wp

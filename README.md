@@ -17,13 +17,17 @@ infrared dust/PAH spectrum.
   sampled from a Planck or tabulated-spectrum CDF, with cross sections
   evaluated at each sampled energy.  Ionizing bins are diagnostic spectral
   tallies only; their count and edges do not enter the transport.  The band is
-  extendable into the FUV as a separate segment with its own packets (by
-  default from 6 eV; with helium present the He I 2^3S coupling, on by
-  default, extends it to the 4.78 eV 2^3S edge unless the input sets
-  `add_fuv`), with an analytic zero-variance estimator
+  extended into the FUV as a separate segment with its own packets
+  (`add_fuv`), from 4.78 eV (the He I 2^3S edge) whenever something in the
+  run absorbs below the H I edge: the He I 2^3S population (with helium),
+  a metal whose neutral ionization potential lies below 13.598 eV, or dust.
+  An input that sets `add_fuv` or `efuv_min` keeps its own values. The band
+  has an analytic zero-variance estimator
   for the direct field, explicit diffuse recombination packets (case A,
-  `recombination_continuum='transported'`, the default) or on-the-spot
-  (case B), dust absorption and Henyey–Greenstein scattering
+  `recombination_continuum='transported'`, the default: the H/He ground
+  continua, the He I and He III excited cascades, the metal ground
+  free-bound continua and the free-free emission inside the band) or
+  on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
   in the band.  The three ground recombination continua are sampled from
   their detailed-balance Milne free-bound spectra
   (`diffuse_energy_model='milne'`), using the same cross sections transport
@@ -52,11 +56,32 @@ infrared dust/PAH spectrum.
   box faces or a bounding sphere (cosine-weighted entry), so a cloud
   embedded in an interstellar radiation field is modeled directly.
 - **Gas physics**: H/He photoionization equilibrium and thermal balance;
-  metals (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) as trace species with Verner et al.
-  (1996) cross sections, Badnell radiative + dielectronic recombination,
-  Voronov (1997) collisional ionization, and charge exchange; all atomic
-  rates are fitted offline from CHIANTI and evaluated as closed forms at
-  run time.  Adding an ion is a data operation, not a code operation.
+  metals (C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, Ca) as trace species through
+  ionization stages I-VII (77 stages, 66 transitions). Metal photoabsorption
+  is Verner's `phfit2` (the Verner et al. 1996 outer-shell fit below the
+  first inner-shell edge, the Verner & Yakovlev 1995 subshell sum above it);
+  Ne III uses the Nahar (2019) R-matrix ground-term cross section below
+  178 eV. A band above the lowest terminal ionization potential of the
+  elements present (Cl VII, 114.2 eV) is refused. Badnell radiative +
+  dielectronic recombination, Voronov (1997) collisional ionization
+  (`metal_collisional_ionization`, on by default), and charge exchange with
+  hydrogen in both balances (45 reactions with all eleven elements;
+  `langevin_charge_exchange` adds the q >= 5 Langevin upper limits, off by
+  default) with its kinetic heat (`charge_exchange_heating`, on by default).
+  Metal excitation, cooling and lines come from one atom per stage, selected
+  by `metal_excitation_model`: `'chianti'` (the default) takes full CHIANTI
+  11.0.2 atoms for 67 stages and Stout atoms for Cl VII, Ar II and Ca IV;
+  `'mocassin_v2'` takes the MOCASSIN v2 atoms, for parity runs. Every stage
+  with an atom cools and emits; atomic-hydrogen impact on the C I, C II and
+  O I fine structure (`neutral_hydrogen_excitation`) is on by default. The
+  He I 2^3S population is coupled into the ionization and thermal balance
+  (`hei_metastable_coupling`, on by default). See
+  [atomic data](data/atomic/README.md) for coverage and the
+  [current results](md/ATOMIC_PHYSICS_RESTORATION_RESULTS_2026-10-11.md).
+  Removed and renamed inputs (`metal_inner_shell_absorption`,
+  `additional_line_cooling`, `high_charge_exchange`, `fe_levels_full`,
+  `pe_scale`, `metal_excitation_model='extended'`) are refused with their
+  replacement named.
   Optional Shull & van Steenberg (1985) secondary ionization by fast
   photoelectrons, scaled in energy after Dalgarno, Yan & Liu (1999)
   (`use_sec_ion`, for hard fields and partially neutral gas),
@@ -102,10 +127,13 @@ infrared dust/PAH spectrum.
   too, so its ratio to the direct image is the line-of-sight optical depth),
   bin-resolved image cubes with a self-describing band grid, and dust-band
   emissivities for infrared maps.
-- **PDR zone (optional)**: FUV photoionization of low-threshold metals
-  beyond the ionization front, metal electrons in the charge balance,
-  metal photoheating, and grain photoelectric heating (Bakes & Tielens
-  1994).
+- **PDR zone**: FUV photoionization of low-threshold metals beyond the
+  ionization front, metal electrons in the charge balance and metal
+  photoheating (on with the metals), and, on by default with dust, grain
+  photoelectric heating and accretion cooling (Weingartner & Draine 2001,
+  for the grains of `dust_model`, with PAHs weighted by their survival
+  x_HI + `f_ion_pah` x_HII) and neutral gas-grain energy exchange
+  (Hollenbach & McKee 1979).
 - **Grids**: adaptive octree read from a generic AMR file (RAMSES /
   Illustris-TNG converters available), with optional solution-driven
   re-refinement at the ionization front; or a uniform Cartesian grid
@@ -136,8 +164,10 @@ code [MoCafe](https://github.com/seoncafe/MoCafe) and is validated against
 analytic Strömgren solutions, the Lexington H II-region benchmarks (against
 the published multi-code results and against current Cloudy and MOCASSIN
 runs), and PyNeb emissivities.  On the Lexington HII40 and HII20 cases the
-mean electron temperature `<T[NpNe]>` is 8180 K and 6940 K, within 0.37% and
-0.44% of Cloudy c25.00 (8210 K and 6910 K).
+mean electron temperature `<T[NpNe]>` is 8176 K and 6942 K, within 0.41% and
+0.46% of Cloudy c25.00 (8210 K and 6910 K), and L(Hbeta) is 2.025e37 and
+4.85e36 erg/s, inside the published ranges (converged runs of 2026-10-11,
+`results/continuous_energy/m13_restoration/`).
 
 ## Build and run
 
@@ -182,4 +212,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-09-27 13:08 KST
+Last updated: 2026-10-12 22:10 KST

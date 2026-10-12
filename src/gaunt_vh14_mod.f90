@@ -1,14 +1,15 @@
 module gaunt_vh14_mod
 !---------------------------------------------------------------------------
 ! MoCHII: van Hoof et al. (2014, MNRAS 444, 420) thermally averaged
-! free-free Gaunt factors.  Reads data/gauntff_vh14.dat (downloaded from
+! frequency-dependent free-free Gaunt factors. Reads data/gauntff_vh14.dat (downloaded from
 ! the published table set, 2026-07-12): g_ff on an (log10 gam2, log10 u)
 ! grid with gam2 = Z^2 Ry/kT and u = h nu/kT; 81 x 146 points, both axes
 ! starting at (-6, -16) with step 0.2 dex.  Bilinear interpolation,
 ! clamped at the grid edges.  Selected by par%gaunt_vh14 at the same
 ! call sites as the ported Hummer (1988) getGauntFF (the PLAN item-3
-! swap); the Hummer path remains the default so the recorded gates
-! reproduce.
+! swap). Hummer is used only within its stated range, this table outside
+! it, for the cooling and the spectral coefficient alike
+! (free_free_mod::free_free_gaunt).
 !---------------------------------------------------------------------------
   use define
   implicit none

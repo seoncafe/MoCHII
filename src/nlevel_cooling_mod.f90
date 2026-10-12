@@ -8,37 +8,35 @@ module nlevel_cooling_mod
 !   Lambda_SE(T, ne) = (sum_k emis_k(T, ne)) / ne   [erg cm^3 s^-1, over the
 !                       NRAD radiative transitions; the volume cooling is
 !                       ne n_ion Lambda_SE, matching cooling_eval]
-! is a function of (T, n_e) alone and is tabulated exactly at setup from the
-! n-level atom files (data/atomic/nlevel_<el>_<stage>.txt).  Lambda_SE
-! decreases with n_e (the populations saturate) -- the density suppression.
-! Stored for each ion:
-!   Ssup(T, ne)   = Lambda_SE(T, ne) / Lambda_SE(T, ne_floor)  (2-D, in (0,1])
-!   lam_se_ref(T) = Lambda_SE(T, ne_floor)                     (1-D, low-ne
-!                                                               limit)
-! with ne_floor = 10^-6 cm^-3 far below every critical density, so the
-! reference column is the low-density limit.
+! is a function of (T, n_e) alone and is tabulated at setup from the n-level
+! atom files (data/atomic/excitation/<par%metal_excitation_model>/
+! nlevel_<el>_<stage>.txt; H I data/atomic/nlevel_h_1.txt). Store absolute Lambda_SE
+! values, including positive subnormal values, at every grid point. The
+! n_e = 10^-6 cm^-3 column is the numerical low-density reference. Cooling
+! need not decrease monotonically with density for every atom and temperature.
 !
-! Runtime cooling coefficient, combined with the existing Tier-1 fit lam_fit
-! passed in as an argument (so this module never uses cooling_mod -> no
-! module cycle):
-!   Lambda(T, ne) = lam_fit(T) * [ f_cov(T) Ssup(T, ne) + (1 - f_cov(T)) ]
-!   f_cov(T)      = min(1, lam_se_ref(T) / lam_fit(T))
-! f_cov is the fraction of the low-density cooling the (possibly truncated)
-! n-level model accounts for; the remaining 1 - f_cov is high-excitation
-! resonance-line cooling whose critical densities are far above nebular
-! values, left in its low-density limit (unsuppressed).  As n_e -> 0,
-! Ssup -> 1 and Lambda -> lam_fit exactly, recovering the current default.
+! Runtime cooling combines the existing low-density fit lam_fit with the
+! registered atom. A source-converged atom uses the density ratio
+! Lambda = lam_fit * Lambda_SE(T,ne)/Lambda_SE(T,ne_floor) when the reference
+! is positive; an exact zero reference uses absolute Lambda_SE(T,ne).
+! A partial atom retains the positive low-density residual when lam_fit is
+! at least the registered reference, otherwise it scales the registered
+! density dependence by lam_fit/reference. The coverage flag requires
+! independent source convergence before it is enabled.
 ! Ions with no n-level model get idx = 0 -> lam_fit returned unchanged.
 !
 ! The table is built here from the SAME solver (nlevel_mod) that produces the
 ! emergent line diagnostics, so the thermal balance and the line list are one
-! physics.  Interpolation: bilinear in (log T, log n_e) for Ssup, linear in
-! log T for lam_se_ref, with edge clamping (log n_e below the floor -> 1,
-! above the ceiling -> the last column, T clamped to the grid).
+! physics. Interpolation uses shape-preserving cubic log Lambda in -1/T for
+! positive endpoints and log Lambda linear in log n_e between density columns.
+! Zero endpoints use nonnegative linear interpolation in log T. Density and
+! temperatures below the grid are clamped. Temperature-table atoms end at
+! their last source temperature.
 !---------------------------------------------------------------------------
   use define
-  use nlevel_mod, only : nlevel_atom_type, nlevel_load, MAXLEV, &
-                         nlevel_cooling_prepT, nlevel_cooling_solve
+  use nlevel_mod, only : nlevel_atom_type, nlevel_load, &
+                         nlevel_cooling_prepT, nlevel_cooling_solve, metal_excitation_data_file
+  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   implicit none
   private
 
@@ -50,25 +48,23 @@ module nlevel_cooling_mod
   !--- (low-density) column.  This is finer in T than the initial D4 spec
   !--- (0.05/0.2 dex): the gate G-a criterion (worst 0.5% vs the direct solve)
   !--- is set by the low-T/high-n_e corner where a high-Tx line and a saturated
-  !--- low-n_crit line become comparable -- a sum of two exponentials in T that
-  !--- one interpolation cell cannot resolve at 0.05 dex.  The build is a few
-  !--- seconds for the full registry (gate G-h) and the runtime lookup cost is
-  !--- independent of the grid size, so the T axis is refined to pass G-a with
-  !--- margin (plan section C1: "refine the T axis if it fails").
-  integer, parameter :: NT = 401, NNE = 161, MAXION = 40
+  !--- low-n_crit line become comparable. Runtime lookup cost is independent
+  !--- of the grid size. Full-registry build time depends on atom size.
+  integer, parameter :: NT = 401, NNE = 161
+  !--- H I plus every stage of the supported metal elements.  Only ions
+  !--- with an n-level file allocate their (T, n_e) tables.
+  integer, parameter :: MAXION = 1 + MAX_METAL_ELEMENTS*MAX_ION_STAGES
   real(kind=wp), parameter :: T_LO  =  2.0_wp, DT_L  = 0.01_wp
   real(kind=wp), parameter :: NE_LO = -6.0_wp, DNE_L = 0.1_wp
 
-  !--- Ssup/lamref are allocatable so a low_density run (no tables built)
-  !--- carries none of the ~0.5 MB/ion table storage: the static reg(MAXION)
-  !--- array then costs only its scalar members until nlevel_cooling_add
-  !--- allocates the arrays of an ion actually tabulated.
+  !--- Absolute cooling arrays are allocated only for ions actually tabulated.
   type cool_table_type
      character(len=16) :: name = ''
      integer :: stage = 0
      integer :: nlev  = 0
-     real(kind=wp), allocatable :: Ssup(:,:)
-     real(kind=wp), allocatable :: lamref(:)
+     logical :: density_ratio_cooling = .false.
+     real(kind=wp), allocatable :: logT(:)
+     real(kind=wp), allocatable :: lambda(:,:)
   end type cool_table_type
 
   logical :: inited = .false.
@@ -96,9 +92,9 @@ contains
   end subroutine nlevel_cooling_init
 
   !=========================================================================
-  ! Register an ion's cooling table.  Loads data/atomic/nlevel_<name>_<stage>
-  ! (par%atomic_dir, '_full' suffix for Fe under par%fe_levels_full, exactly
-  ! as lines_mod), builds Ssup + lam_se_ref, and returns the new index.
+  ! Register an ion's cooling table from the selected coherent excitation
+  ! model, matching lines_mod and charge-transfer populations. Builds the
+  ! absolute cooling table and returns its index.
   ! Returns 0 (no table; caller keeps lam_fit) when the file does not load.
   !=========================================================================
   integer function nlevel_cooling_add(name, stage) result(idx)
@@ -107,21 +103,22 @@ contains
     integer,          intent(in) :: stage
     type(nlevel_atom_type) :: atom
     character(len=PATH_LEN) :: fname
-    character(len=8)   :: nlsuf
     logical :: ok
-    real(kind=wp) :: Rcoll(MAXLEV,MAXLEV), Rrad(MAXLEV,MAXLEV)
-    real(kind=wp) :: lam(NT, NNE), Tk, nek
+    real(kind=wp), allocatable :: Rcoll(:,:), Rrad(:,:), lam(:,:)
+    real(kind=wp) :: Tk, nek, last_logT
     integer(kind=i8b) :: c0, c1, crate
-    integer :: i, j, ie
+    integer :: i, j, k, ie, nt_ion, first_row, row_stride
 
     idx = 0
     call nlevel_cooling_init()
 
-    !--- filename (par%fe_levels_full appends '_full' for Fe; lines_mod:296).
-    nlsuf = ''
-    if (par%fe_levels_full .and. trim(name) == 'fe') nlsuf = '_full'
-    write(fname,'(a,a,a,i0,a,a)') trim(par%atomic_dir)//'/nlevel_', &
-       trim(name), '_', stage, trim(nlsuf), '.txt'
+    if (trim(name) == 'h') then
+       ! Hydrogen uses its common atomic model; the input selector applies
+       ! only to metals. cooling_mod registers H I through this same API.
+       write(fname,'(a,i0,a)') trim(par%atomic_dir)//'/nlevel_h_',stage,'.txt'
+    else
+       fname=metal_excitation_data_file('nlevel',name,stage)
+    end if
     call nlevel_load(trim(fname), atom, ok)
     if (.not. ok) return
 
@@ -132,35 +129,93 @@ contains
        return
     end if
 
+    ie = nion_reg + 1
+    ! Rows tabulated in T (version-2 TEMPERATURE_TABLE, ttype 0) hold Upsilon
+    ! at their final node above it (nlevel_mod::nlevel_upsilon); report the
+    ! atoms whose tables end below te_max, where that hold is in use.
+    last_logT = huge(1.0_wp)
+    do k = 1, atom%nups
+       if (atom%ttype(k) == 0) last_logT = min(last_logT, &
+          atom%node_x(atom%offset(k)+atom%nc(k)-1))
+    end do
+    if (last_logT < log(par%te_max) .and. mpar%p_rank == 0) &
+       write(*,'(3a,i0,a,es10.3,a,es10.3,a)') ' NLCOOL: ', trim(name), ' stage ', &
+          stage, ': collision table ends at ', exp(last_logT), &
+          ' K < te_max = ', par%te_max, ' K; Upsilon held at its final node above it'
+    nt_ion = NT
+    allocate(reg(ie)%logT(NT))
+    reg(ie)%logT = gT
+    allocate(Rcoll(atom%nlev,atom%nlev), Rrad(atom%nlev,atom%nlev), lam(nt_ion,NNE))
     call system_clock(c0, crate)
-    do i = 1, NT
-       Tk = 10.0_wp**gT(i)
+    !--- the temperature rows are divided cyclically over the ranks of
+    !--- MPI_COMM_WORLD and summed (one contributor for each row, zeros
+    !--- elsewhere, so the sum is exact); without MPI one process builds all
+    call table_row_division(first_row, row_stride)
+    lam = 0.0_wp
+    do i = first_row, nt_ion, row_stride
+       Tk = 10.0_wp**reg(ie)%logT(i)
        call nlevel_cooling_prepT(atom, Tk, Rcoll, Rrad)
        do j = 1, NNE
           nek = 10.0_wp**gne(j)
           lam(i,j) = nlevel_cooling_solve(atom, Rcoll, Rrad, nek)
        end do
     end do
+    call table_row_sum(lam)
     call system_clock(c1)
     build_time_total = build_time_total + real(c1-c0, wp)/real(crate, wp)
 
-    nion_reg = nion_reg + 1
-    ie = nion_reg
+    nion_reg = ie
     reg(ie)%name  = name
     reg(ie)%stage = stage
     reg(ie)%nlev  = atom%nlev
-    allocate(reg(ie)%Ssup(NT, NNE), reg(ie)%lamref(NT))
-    reg(ie)%lamref(:) = lam(:,1)
-    do j = 1, NNE
-       reg(ie)%Ssup(:,j) = lam(:,j)/max(lam(:,1), tiny(1.0_wp))
-    end do
+    reg(ie)%density_ratio_cooling = atom%density_ratio_cooling
+    allocate(reg(ie)%lambda(nt_ion, NNE))
+    reg(ie)%lambda(:,:) = lam(:,:)
     idx = ie
 
     if (mpar%p_rank == 0) write(*,'(a,a,a,i0,a,i0,a,f8.4)') &
        ' NLCOOL: ', trim(name), ' stage ', stage, &
        ' tabulated (nlev = ', atom%nlev, &
-       '), Ssup(1e4 K, 1e4 cm^-3) = ', suppression_ratio(ie, 1.0e4_wp, 1.0e4_wp)
+       '), Lambda/Lambda_ref(1e4 K, 1e4 cm^-3) = ', suppression_ratio(ie, 1.0e4_wp, 1.0e4_wp)
   end function nlevel_cooling_add
+
+  !=========================================================================
+  ! The share of the table rows built by this process: rank r of
+  ! MPI_COMM_WORLD builds rows r+1, r+1+nranks, ...  A build without MPI, or
+  ! a call before MPI_Init (standalone tests), builds every row.
+  !=========================================================================
+  subroutine table_row_division(first_row, row_stride)
+#ifdef MPI
+    use mpi
+#endif
+    integer, intent(out) :: first_row, row_stride
+#ifdef MPI
+    logical :: started
+    integer :: rank, nranks, ierr
+    call MPI_INITIALIZED(started, ierr)
+    if (started) then
+       call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
+       call MPI_COMM_SIZE(MPI_COMM_WORLD, nranks, ierr)
+       first_row = rank + 1;  row_stride = nranks
+       return
+    end if
+#endif
+    first_row = 1;  row_stride = 1
+  end subroutine table_row_division
+
+  subroutine table_row_sum(lam)
+#ifdef MPI
+    use mpi
+#endif
+    real(kind=wp), intent(inout) :: lam(:,:)
+#ifdef MPI
+    logical :: started
+    integer :: ierr
+    call MPI_INITIALIZED(started, ierr)
+    if (started) call MPI_ALLREDUCE(MPI_IN_PLACE, lam, size(lam), &
+                                    MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+#endif
+  end subroutine table_row_sum
 
   !=========================================================================
   ! Runtime cooling coefficient (the D2 combiner).  idx <= 0 -> lam_fit.
@@ -169,16 +224,52 @@ contains
     implicit none
     integer,       intent(in) :: idx
     real(kind=wp), intent(in) :: lam_fit, T, ne
-    real(kind=wp) :: fcov, S, lamref
+    real(kind=wp) :: lamref, lam_se
     if (idx <= 0) then
        lam = lam_fit
        return
     end if
     lamref = low_density_cooling(idx, T)
-    S      = cooling_coeff(idx, T, ne)/max(lamref, tiny(1.0_wp))
-    fcov   = min(1.0_wp, lamref/max(lam_fit, tiny(1.0_wp)))
-    lam    = lam_fit*(fcov*S + (1.0_wp - fcov))
+    lam_se = cooling_coeff(idx, T, ne)
+    ! A complete or source-converged atom supplies the density dependence
+    ! of the entire fitted cooling. Fit/interpolation errors cannot be
+    ! interpreted as unsuppressed emission from omitted levels. Truncated
+    ! models require full-source convergence before setting DENSITY_RATIO.
+    ! Current convergence checks cover 1000--100000 K and ne <= 1e10 cm^-3;
+    ! table evaluations outside that range do not establish source accuracy.
+    if (reg(idx)%density_ratio_cooling) then
+       if (lamref > 0.0_wp) then
+          lam = density_scaled_cooling(lam_fit, lam_se, lamref)
+       else
+          lam = lam_se
+       end if
+       return
+    end if
+    if (lamref <= lam_fit) then
+       lam = lam_se + (lam_fit - lamref)
+    else
+       lam = density_scaled_cooling(lam_fit, lam_se, lamref)
+    end if
   end function nlevel_cooling_apply
+
+  !=========================================================================
+  ! lam_fit*lam_se/lamref with no intermediate product outside the normal
+  ! range. Under -fp-model fast=2 the compiler may reassociate
+  ! lam_fit*(lam_se/lamref) into (lam_fit*lam_se)/lamref; for coefficients
+  ! below ~1e-154 (sqrt of tiny), e.g. CHIANTI C V at 1e4 K (4.7e-169), that
+  ! product underflows and is flushed to zero although the result is a
+  ! representable positive coefficient. The mantissas (in [0.5, 1)) and the
+  ! binary exponents are combined separately; scale cannot be reassociated,
+  ! and the result is zero only when the coefficient itself is below tiny.
+  !=========================================================================
+  real(kind=wp) function density_scaled_cooling(lam_fit, lam_se, lamref) result(lam)
+    implicit none
+    real(kind=wp), intent(in) :: lam_fit, lam_se, lamref
+    lam = 0.0_wp
+    if (lam_fit == 0.0_wp .or. lam_se == 0.0_wp) return
+    lam = scale(fraction(lam_fit)*fraction(lam_se)/fraction(lamref), &
+                exponent(lam_fit) + exponent(lam_se) - exponent(lamref))
+  end function density_scaled_cooling
 
   !=========================================================================
   ! Reconstructed cooling coefficient Lambda_SE(T, ne) from the table (the
@@ -197,26 +288,26 @@ contains
 
   !=========================================================================
   ! Cooling coefficient Lambda_SE(T, ne) [erg cm^3 s^-1] by 2-D interpolation
-  ! of the stored table.  Within a log-T cell: ln(Lambda) linear in 1/T --
-  ! exact for a single line (Lambda ~ exp(-Tx/T)), so the exp-suppressed tails
-  ! that linear-in-log-T cannot represent are captured, INCLUDING the high-ne
-  ! corner where one high-Tx line survives after the low-n_crit lines saturate
-  ! (there the leading exp does not cancel out of the suppression).  Then
+  ! of the stored table. Within a log-T cell: shape-preserving cubic
+  ! ln(Lambda) in -1/T, reproducing a linear Boltzmann exponent while retaining
+  ! bounded extrema and positive coefficients. Zero endpoints use the
+  ! nonnegative linear rule in log T without taking log zero. Then
   ! log-linear in log ne between the two bracketing columns.  Edge clamping:
   ! log ne below the floor -> the floor (reference) column, above the ceiling
-  ! -> the last column; T clamped to the grid.
+  ! -> the last column. T is clamped below the grid; source-table ceilings
+  ! reject unsupported higher temperatures.
   !=========================================================================
   real(kind=wp) function cooling_coeff(idx, T, ne) result(lam)
     implicit none
     integer,       intent(in) :: idx
     real(kind=wp), intent(in) :: T, ne
-    real(kind=wp) :: lt, lne, w1, wt, wn, L0, L1
+    real(kind=wp) :: lne, w1, wt, wn, L0, L1
     integer :: it, je
-    lt = min(max(log10(T), gT(1)), gT(NT))
-    it = min(int((lt - gT(1))/DT_L) + 1, NT-1)
-    w1 = (1.0_wp/10.0_wp**lt       - 1.0_wp/10.0_wp**gT(it)) &
-       / (1.0_wp/10.0_wp**gT(it+1) - 1.0_wp/10.0_wp**gT(it))
-    wt = min(max((lt - gT(it))/(gT(it+1) - gT(it)), 0.0_wp), 1.0_wp)
+    call cooling_temperature_cell(idx, T, it, w1, wt)
+    if (.not. ieee_is_finite(ne)) &
+       error stop 'NLCOOL: electron density must be positive and finite'
+    if (ne <= 0.0_wp) &
+       error stop 'NLCOOL: electron density must be positive and finite'
     lne = log10(ne)
     if (lne <= gne(1)) then
        lam = col_cooling(idx, it, 1, w1, wt)
@@ -236,51 +327,165 @@ contains
   end function cooling_coeff
 
   !=========================================================================
-  ! Cooling coefficient at (T, ne-column j): ln(Lambda) linear in 1/T between
-  ! the two log-T rows (weight w1); a zero endpoint (never in practice: the
-  ! lowest-Tx line does not underflow down to 100 K) falls back to linear in
-  ! log T (weight wt).  Lambda_grid(i,j) = lamref(i) Ssup(i,j).
+  ! Cooling coefficient at (T, ne-column j): shape-preserving cubic ln(Lambda)
+  ! in -1/T. A constant Boltzmann excitation energy has linear ln(Lambda)
+  ! in this coordinate. Linear interpolation alone exceeded the 0.5% density-
+  ! ratio criterion for supplied atoms on the 401-temperature grid. Keep
+  ! nonnegative linear interpolation in log T when either endpoint is zero.
+  ! Positive subnormal grid values are retained directly.
   !=========================================================================
   real(kind=wp) function col_cooling(idx, it, j, w1, wt) result(val)
     implicit none
     integer,       intent(in) :: idx, it, j
     real(kind=wp), intent(in) :: w1, wt
-    real(kind=wp) :: Li, Lip
-    Li  = reg(idx)%lamref(it)  *reg(idx)%Ssup(it,j)
-    Lip = reg(idx)%lamref(it+1)*reg(idx)%Ssup(it+1,j)
+    real(kind=wp) :: Li, Lip, h, y0, y1, m0, m1, y, w2, w3
+    Li  = reg(idx)%lambda(it,j)
+    Lip = reg(idx)%lambda(it+1,j)
     if (Li > 0.0_wp .and. Lip > 0.0_wp) then
-       val = exp(log(Li) + w1*(log(Lip) - log(Li)))
+       y0 = log(Li); y1 = log(Lip)
+       h = 10.0_wp**(-reg(idx)%logT(it)) - 10.0_wp**(-reg(idx)%logT(it+1))
+       m0 = cooling_log_inverse_temperature_slope(idx,it,j)
+       m1 = cooling_log_inverse_temperature_slope(idx,it+1,j)
+       w2 = w1*w1; w3 = w2*w1
+       y = (2*w3-3*w2+1)*y0 + (w3-2*w2+w1)*h*m0 &
+         + (-2*w3+3*w2)*y1 + (w3-w2)*h*m1
+       ! The monotone Hermite polynomial is bounded by its endpoints.
+       ! Enforce that bound against floating-point cancellation only.
+       y = min(max(y,min(y0,y1)),max(y0,y1))
+       val = exp(y)
     else
        val = Li*(1.0_wp - wt) + Lip*wt
     end if
   end function col_cooling
 
+  ! Derivative of ln(Lambda) with respect to -1/T at an existing table node.
+  ! Weighted harmonic slopes preserve shape and a linear Boltzmann exponent.
+  ! A zero neighboring coefficient restricts the slope to the positive pair;
+  ! its logarithm is never evaluated. No additional temperature solves occur.
+  real(kind=wp) function cooling_log_inverse_temperature_slope(idx,i,j) result(m)
+    integer, intent(in) :: idx,i,j
+    integer :: n
+    real(kind=wp) :: h0,h1,h2,d0,d1,d2,w0,w1
+    n = size(reg(idx)%logT)
+    m = 0.0_wp
+    if (i == 1) then
+       if (reg(idx)%lambda(2,j) <= 0.0_wp) return
+       h0 = 10.0_wp**(-reg(idx)%logT(1))-10.0_wp**(-reg(idx)%logT(2))
+       d0 = (log(reg(idx)%lambda(2,j))-log(reg(idx)%lambda(1,j)))/h0
+       m = d0
+       if (n == 2) return
+       if (reg(idx)%lambda(3,j) <= 0.0_wp) return
+       h1 = 10.0_wp**(-reg(idx)%logT(2))-10.0_wp**(-reg(idx)%logT(3))
+       d1 = (log(reg(idx)%lambda(3,j))-log(reg(idx)%lambda(2,j)))/h1
+       m = cooling_log_inverse_temperature_end_slope(h0,h1,d0,d1)
+    else if (i == n) then
+       if (reg(idx)%lambda(n-1,j) <= 0.0_wp) return
+       h0 = 10.0_wp**(-reg(idx)%logT(n-1))-10.0_wp**(-reg(idx)%logT(n))
+       d0 = (log(reg(idx)%lambda(n,j))-log(reg(idx)%lambda(n-1,j)))/h0
+       m = d0
+       if (n == 2) return
+       if (reg(idx)%lambda(n-2,j) <= 0.0_wp) return
+       h1 = 10.0_wp**(-reg(idx)%logT(n-2))-10.0_wp**(-reg(idx)%logT(n-1))
+       d1 = (log(reg(idx)%lambda(n-1,j))-log(reg(idx)%lambda(n-2,j)))/h1
+       m = cooling_log_inverse_temperature_end_slope(h0,h1,d0,d1)
+    else
+       h0 = 10.0_wp**(-reg(idx)%logT(i-1))-10.0_wp**(-reg(idx)%logT(i))
+       h1 = 10.0_wp**(-reg(idx)%logT(i))-10.0_wp**(-reg(idx)%logT(i+1))
+       if (reg(idx)%lambda(i-1,j) <= 0.0_wp) then
+          if (reg(idx)%lambda(i+1,j) <= 0.0_wp) return
+          d1 = (log(reg(idx)%lambda(i+1,j))-log(reg(idx)%lambda(i,j)))/h1
+          m = d1
+          if (i+2 <= n) then
+             if (reg(idx)%lambda(i+2,j) > 0.0_wp) then
+                h2 = 10.0_wp**(-reg(idx)%logT(i+1))-10.0_wp**(-reg(idx)%logT(i+2))
+                d2 = (log(reg(idx)%lambda(i+2,j))-log(reg(idx)%lambda(i+1,j)))/h2
+                m = cooling_log_inverse_temperature_end_slope(h1,h2,d1,d2)
+             end if
+          end if
+          return
+       end if
+       if (reg(idx)%lambda(i+1,j) <= 0.0_wp) then
+          d0 = (log(reg(idx)%lambda(i,j))-log(reg(idx)%lambda(i-1,j)))/h0
+          m = d0
+          if (i-2 >= 1) then
+             if (reg(idx)%lambda(i-2,j) > 0.0_wp) then
+                h2 = 10.0_wp**(-reg(idx)%logT(i-2))-10.0_wp**(-reg(idx)%logT(i-1))
+                d2 = (log(reg(idx)%lambda(i-1,j))-log(reg(idx)%lambda(i-2,j)))/h2
+                m = cooling_log_inverse_temperature_end_slope(h0,h2,d0,d2)
+             end if
+          end if
+          return
+       end if
+       d0 = (log(reg(idx)%lambda(i,j))-log(reg(idx)%lambda(i-1,j)))/h0
+       d1 = (log(reg(idx)%lambda(i+1,j))-log(reg(idx)%lambda(i,j)))/h1
+       if (d0 == 0.0_wp .or. d1 == 0.0_wp) return
+       if ((d0 > 0.0_wp) .neqv. (d1 > 0.0_wp)) return
+       w0 = 2*h1+h0; w1 = h1+2*h0
+       m = (w0+w1)/(w0/d0+w1/d1)
+    end if
+  end function cooling_log_inverse_temperature_slope
+
+  real(kind=wp) function cooling_log_inverse_temperature_end_slope(h0,h1,d0,d1) result(m)
+    real(kind=wp), intent(in) :: h0,h1,d0,d1
+    m = ((2*h0+h1)*d0-h0*d1)/(h0+h1)
+    if ((m > 0.0_wp) .neqv. (d0 > 0.0_wp)) then
+       m = 0.0_wp
+    else if ((d0 > 0.0_wp) .neqv. (d1 > 0.0_wp)) then
+       if (abs(m) > abs(3*d0)) m = 3*d0
+    end if
+  end function cooling_log_inverse_temperature_end_slope
+
   !=========================================================================
-  ! lam_se_ref(T): the low-density cooling limit (the ne-floor column), used
-  ! for f_cov and the report; same ln-linear-in-1/T interpolation in T.
+  ! Low-density reference from the ne-floor column, using the same T rule.
   !=========================================================================
   real(kind=wp) function low_density_cooling(idx, T) result(val)
     implicit none
     integer,       intent(in) :: idx
     real(kind=wp), intent(in) :: T
-    real(kind=wp) :: lt, w1, wt
+    real(kind=wp) :: w1, wt
     integer :: it
-    lt = min(max(log10(T), gT(1)), gT(NT))
-    it = min(int((lt - gT(1))/DT_L) + 1, NT-1)
-    w1 = (1.0_wp/10.0_wp**lt       - 1.0_wp/10.0_wp**gT(it)) &
-       / (1.0_wp/10.0_wp**gT(it+1) - 1.0_wp/10.0_wp**gT(it))
-    wt = min(max((lt - gT(it))/(gT(it+1) - gT(it)), 0.0_wp), 1.0_wp)
+    call cooling_temperature_cell(idx, T, it, w1, wt)
     val = col_cooling(idx, it, 1, w1, wt)
   end function low_density_cooling
 
   !=========================================================================
-  ! Ssup(T, ne) = Lambda_SE(T, ne) / lam_se_ref(T), for the setup report.
+  ! Locate a temperature cell on this ion's source-limited log-T grid.
+  !=========================================================================
+  subroutine cooling_temperature_cell(idx, T, it, w1, wt)
+    implicit none
+    integer, intent(in) :: idx
+    real(kind=wp), intent(in) :: T
+    integer, intent(out) :: it
+    real(kind=wp), intent(out) :: w1, wt
+    real(kind=wp) :: lt
+    integer :: ntemp
+    if (.not. ieee_is_finite(T)) &
+       error stop 'NLCOOL: temperature must be positive and finite'
+    if (T <= 0.0_wp) &
+       error stop 'NLCOOL: temperature must be positive and finite'
+    ntemp = size(reg(idx)%logT)
+    lt = min(max(log10(T), reg(idx)%logT(1)), reg(idx)%logT(ntemp))
+    it = min(int((lt - T_LO)/DT_L) + 1, ntemp-1)
+    w1 = (1.0_wp/10.0_wp**lt - 1.0_wp/10.0_wp**reg(idx)%logT(it)) &
+       / (1.0_wp/10.0_wp**reg(idx)%logT(it+1) - &
+          1.0_wp/10.0_wp**reg(idx)%logT(it))
+    wt = min(max((lt - reg(idx)%logT(it))/ &
+         (reg(idx)%logT(it+1) - reg(idx)%logT(it)), 0.0_wp), 1.0_wp)
+  end subroutine cooling_temperature_cell
+
+  !=========================================================================
+  ! Cooling ratio for the setup report. A zero reference has no defined ratio.
   !=========================================================================
   real(kind=wp) function suppression_ratio(idx, T, ne) result(S)
     implicit none
     integer,       intent(in) :: idx
     real(kind=wp), intent(in) :: T, ne
-    S = cooling_coeff(idx, T, ne)/max(low_density_cooling(idx, T), tiny(1.0_wp))
+    S = low_density_cooling(idx, T)
+    if (S > 0.0_wp) then
+       S = cooling_coeff(idx, T, ne)/S
+    else
+       S = 0.0_wp
+    end if
   end function suppression_ratio
 
   !=========================================================================

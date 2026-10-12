@@ -1,0 +1,3 @@
+&parameters
+ par%metal_excitation_model='invalid'
+/

@@ -28,6 +28,28 @@ in \code{docs/MoCHII\_physics.pdf}; the atomic-data fitting code
 in \code{docs/MoCHII\_fitting.pdf}.
 \end{abstract}
 
+\noindent\textbf{Current atomic-data scope (2026-10-11).}
+Every metal element carries ionization stages I--VII (77 stages, 66
+transitions); a band (\code{eion\_max}) above the ionization potential of
+the stage-VII ion of an element present is refused (the lowest is
+Cl\,\textsc{vii}, 114.2~eV, so the default 13.6--100~eV band runs).  Metal
+photoabsorption is Verner's \code{phfit2} subshell sum, with the Nahar
+(2019) R-matrix table for the Ne\,\textsc{iii} ground term.  The default
+\code{metal\_excitation\_model = 'chianti'} takes the cooling fits, the
+$n$-level atoms and the atomic-hydrogen collision files from
+\code{data/atomic/excitation/chianti/}: full CHIANTI 11.0.2 atoms for 67
+stages and Stout atoms for Cl\,\textsc{vii}, Ar\,\textsc{ii},
+Ca\,\textsc{iv} (70 atoms, 6629 levels, 70 fits); \code{'mocassin\_v2'}
+(55 atoms, 571 levels, 49 fits) is for parity runs.  Every stage with an
+atom cools and emits.  The items removed on 2026-10-11 (\code{'extended'},
+\code{additional\_line\_cooling}, \code{fe\_levels\_full},
+\code{metal\_inner\_shell\_absorption}, \code{high\_charge\_exchange},
+\code{pe\_scale}) are refused with their replacement named.  Benchmark
+values quoted from runs before the restoration of 2026-10-11 (m11 or
+earlier) are kept until the converged \code{m13\_restoration} runs replace
+them; the record is
+\code{md/ATOMIC\_PHYSICS\_RESTORATION\_RESULTS\_2026-10-11.md}.
+
 \tableofcontents
 
 %==========================================================================
@@ -75,7 +97,14 @@ Run:
    mpirun -np 8 ./MoCHII.x input.in
 \end{verbatim}
 MoCHII is MPI-only.  The octree, the opacities and the gas state live in
-MPI-3 shared memory, one copy on each node.  What each rank keeps for
+MPI-3 shared memory, one copy on each node, and so (since 2026-10-12) do
+the arrays computed from the reduced transport tallies that every rank
+would otherwise hold identically: the H, He and metal photoionization and
+heating rates, the metal stage fractions behind the opacity, the He\,\textsc{i}
+$2^3S$ rate $\Phi_3$, and the diffuse-field leaf tables; the ranks of a
+node fill disjoint leaves of each.  The leaf emissivities of the metal
+lines (\code{emis\_output}) are summed onto rank 0 in chunks, so only rank
+0 holds that table.  What each rank keeps for
 itself is what the photons deposit during a transport pass: the
 energy-integrated path estimators of the photoionization and heating rates
 (a few values per leaf and absorber) and, only with \code{jnu\_output} or
@@ -113,7 +142,15 @@ item is checked whether or not the run reads it (\code{car\_walk},
 \code{amr\_type}, \code{ext\_geometry}, \code{slab\_faces},
 \code{slab\_top\_mode}, \code{slab\_bot\_mode}, \code{src\_geometry}
 in every slot, together with the items whose tables below list their
-values); any of the MoCafe items of \S\ref{sec:mocafe_items}; and the
+values); any of the MoCafe items of \S\ref{sec:mocafe_items}; an item
+that was removed or renamed, with the replacement named
+(\code{setup.f90::refuse\_removed\_items}: \code{metal\_inner\_shell\_absorption},
+\code{additional\_line\_cooling}, \code{high\_charge\_exchange},
+\code{fe\_levels\_full} and \code{pe\_scale} on 2026-10-11, \code{case\_ab},
+\code{diffuse\_field} and \code{line\_case} on 2026-09-25), and
+\code{metal\_excitation\_model = 'extended'}; a band (\code{eion\_max})
+above the ionization potential of the last carried stage (VII) of an
+element present (lowest: Cl\,\textsc{vii}, 114.2~eV); and the
 combinations the tables below call refused.  A missing \code{amr\_file}
 ends the run the same way (every rank reads it, so every rank reports).
 The switches compose: \code{gas\_niter = 0} gives a single rates-only
@@ -197,7 +234,7 @@ parameter & default & meaning \\
 \code{taumax}, \code{tauhomo} & $-999$ & optional renormalization of the gray dust opacity at \code{lambda\_ref}, applied once at grid setup: \code{taumax}$>0$ scales every leaf so the optical depth from the center along $+z$ to the box face is this value, else \code{tauhomo}$>0$ so the opacity averaged over the dusty volume times the box half-width is; unset keeps \code{cext\_dust} as it is.  The run prints both realized values \\
 \code{DGR}, \code{Z\_global}, \code{Z\_ref} & 1e-2, 0.0134, 0.0134 & dust-model scalings \\
 \code{f\_ion\_dust} & 0.01 & laursen09 survival of dust in ionized gas \\
-\code{f\_pah}, \code{f\_ion\_pah} & 0, 0 & PAH share of the reference extinction and its own ionized-gas survival (laursen09\_live) \\
+\code{f\_pah}, \code{f\_ion\_pah} & 0, 0 & PAH share of the reference extinction (laursen09\_live) and the PAH survival in ionized gas: the PAH grains are weighted by $x_{\rm HI} + f_{\rm ion,pah}\,x_{\rm HII}$ in the \code{grain\_pe} heating always and in the emission with \code{sed\_pah\_live}; 0 = PAHs destroyed in ionized gas \\
 \end{longtable}
 }
 
@@ -217,8 +254,8 @@ parameter & default & meaning \\
 \code{nnu\_ion} & 16 & diagnostic ionizing-energy bins (gates use 32).  Packet energies are sampled from the source CDF and every cross section is evaluated at the sampled energy, so changing this count changes only the resolution of the saved tallies, never the physical solution \\
 \code{eion\_min}, \code{eion\_max} & 13.598, 100 & ionizing band edges [eV] \\
 \code{ion\_align\_edges} & T & align diagnostic bin edges to the ionization thresholds, so no bin straddles an edge; segments are log-uniform and low-priority metal edges are dropped safely when necessary.  Affects the tally resolution only, not the transport.  Set F for a single log grid \\
-\code{add\_fuv} & F or T & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating, FUV photoionization of low-threshold metals (Mg\,\textsc{i}, C\,\textsc{i}, S\,\textsc{i}, Fe\,\textsc{i}) and the 2$^3$S photoionization rate $\Phi_3$ below 13.6~eV; \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top).  An input that leaves it out gets T when the He\,\textsc{i} 2$^3$S population is used (\code{hei\_metastable} or \code{hei\_metastable\_coupling}, the latter on by default) and \code{abund\_He}$>0$, because $\Phi_3$ is scored from the transported band and its threshold is 4.78~eV; F otherwise \\
-\code{efuv\_min} & 6.0 or 4.78 & FUV lower edge [eV].  Left out of the input, it is 4.78~eV (the edge of $\sigma_3$ as the code evaluates it; the NIST ionization energy of 2$^3$S is 4.7677~eV) when the 2$^3$S population is used (as for \code{add\_fuv}), else 6.0 \\
+\code{add\_fuv} & F or T & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and grain photoelectric emission, FUV photoionization of low-threshold metals (Ca\,\textsc{i} 6.11, Mg\,\textsc{i} 7.65, Fe\,\textsc{i} 7.90, Si\,\textsc{i} 8.15, S\,\textsc{i} 10.36, C\,\textsc{i} 11.26, Cl\,\textsc{i} 12.97~eV) and the 2$^3$S photoionization rate $\Phi_3$ below 13.6~eV; \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top).  An input that leaves it out gets T whenever something in the run absorbs below the H\,\textsc{i} edge: the He\,\textsc{i} 2$^3$S population (\code{hei\_metastable} or \code{hei\_metastable\_coupling}, on by default, with \code{abund\_He}$>0$), a metal with its neutral ionization potential below 13.598~eV (C, S, Mg, Fe, Si, Cl, Ca), or dust (\code{ion\_add\_dust}); F otherwise.  Setup prints which of the three set it \\
+\code{efuv\_min} & 6.0 or 4.78 & FUV lower edge [eV].  Left out of the input, it is 4.78~eV (the edge of $\sigma_3$ as the code evaluates it; the NIST ionization energy of 2$^3$S is 4.7677~eV; below every metal edge) in the same cases as \code{add\_fuv}, else 6.0 \\
 \code{fuv\_sampling} & 'separate' & how the source packets are shared between the two parts of the band when \code{add\_fuv} is on.  \code{'separate'}: two strata, \code{no\_photons} packets drawn from each source spectrum conditioned on [\code{eion\_min}, \code{eion\_max}] and \code{no\_photons\_fuv} drawn from [\code{efuv\_min}, \code{eion\_min}); each packet carries its stratum's luminosity over its stratum's count, and a source is chosen within a stratum by its luminosity there (a spectrum starting above \code{eion\_min} launches no FUV packet; an ISRF preset stops at the H\,\textsc{i} edge, so a preset-only run has no ionizing stratum and launches only FUV packets).  The ionizing solution keeps all \code{no\_photons} packets.  \code{'proportional'}: one CDF over the whole band and \code{no\_photons} packets in all, so the ionizing share is the luminosity share --- 45\% for a 40~kK blackbody from 4.78~eV, 6\% for 20~kK --- and the ionizing noise grows by 1/$\sqrt{\rm share}$; kept so runs made with it reproduce bit for bit \\
 \code{no\_photons\_fuv} & \code{no\_photons}/4 & FUV-stratum packets in each transport pass (\code{fuv\_sampling='separate'}); left out of the input it is a quarter of \code{no\_photons}, or all of \code{no\_photons} when no source has ionizing luminosity (an FUV-only field such as an ISRF preset, where the FUV packets are the only packets).  With \code{launch\_sequence='sobol'} the FUV packets are a Sobol prefix of their own stream, so a power of 2 is preferable.  An FUV packet crosses more of the grid than an ionizing one (measured 2026-09-25: 1.6$\times$ the path segments, 2.0$\times$ with dust scattering), so the default adds $\sim$40--50\% to a pass --- about what \code{'proportional'} costs at the same \code{no\_photons} for a 40~kK star \\
 \code{nnu\_fuv} & 8 & FUV bins (16 recommended with metals) \\
@@ -423,13 +460,14 @@ parameter & default & meaning \\
 \endlastfoot
 \code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
 \code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
-\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$ and the metal photoionization rates, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations.  Gate \code{tests/restart/} \\
+\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations.  Gate \code{tests/restart/} \\
+\code{rates\_write\_interval} & 0 & every this many gas iterations, write the iterate to \code{<base>\_rates\_iterate} (the \code{\_rates} layout; header \code{CONVERGD} F, \code{STATESOL} F, \code{NITERDON} the iteration, \code{FINALDX}/\code{FINALDTE} that iteration's step), replacing the previous one through a temporary file and a rename, so a run stopped at any point can be resumed with \code{restart\_file}.  Not written at the last iteration or after convergence, where \code{\_rates} follows.  0 or negative = never \\
 \code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
 \code{gas\_niter} & 0 & iterations (0 = a single rates-only pass) \\
 \code{gas\_tol} & 1e-3 & convergence tolerance on the ionization state (measure set by \code{conv\_crit}; with 'vol' it bounds the drift still to come in $x_{\rm HII}$ and helium) \\
 \code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended); any other value is refused (it used to run as 'cell').  See \S\ref{sec:convergence} \\
 \code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
-\code{recombination\_continuum} & 'transported' & what becomes of the ground-state recombination photons (the H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii} ground continua): 'on\_the\_spot' absorbed where they are made, the balance uses $\alpha_B$ (Baker \& Menzel case B for the continuum; the He\,\textsc{i} photons that can ionize H are given to H by \code{hei\_on\_the\_spot}, the He\,\textsc{ii} ones to H and He$^0$ by \code{heii\_on\_the\_spot}); 'transported' (default since 2026-09-26; 'on\_the\_spot' before, which the tests/ and results/ inputs that relied on it pin) emitted as diffuse-field packets and followed through the grid, the balance uses $\alpha_A$, and the He\,\textsc{i}/He\,\textsc{iii} cascade channels follow it when the input leaves them out; 'escaping' lost from an optically thin nebula, $\alpha_A$ and no packets.  Replaces \code{case\_ab} and \code{diffuse\_field} (2026-09-25) \\
+\code{recombination\_continuum} & 'transported' & what becomes of the ground-state recombination photons (the H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii} ground continua): 'on\_the\_spot' absorbed where they are made, the balance uses $\alpha_B$ (Baker \& Menzel case B for the continuum; the He\,\textsc{i} photons that can ionize H are given to H by \code{hei\_on\_the\_spot}, the He\,\textsc{ii} ones to H and He$^0$ by \code{heii\_on\_the\_spot}); 'transported' (default since 2026-09-26; 'on\_the\_spot' before, which the tests/ and results/ inputs that relied on it pin) emitted as diffuse-field packets and followed through the grid, the balance uses $\alpha_A$, and the He\,\textsc{i}/He\,\textsc{iii} cascade channels follow it when the input leaves them out; the metal ground free--bound continua (channel 6) and the free--free emission inside the band (channel 7, H$^+$, He$^+$, He$^{2+}$ and, with \code{metal\_freefree}, the metal ions) are transported with it and are not transported in the other two modes (their photons leave); 'escaping' lost from an optically thin nebula, $\alpha_A$ and no packets.  Replaces \code{case\_ab} and \code{diffuse\_field} (2026-09-25) \\
 \code{lyman\_lines} & 'on\_the\_spot' & what becomes of the Lyman-\emph{line} photons ($n\ge3\to1$) of H\,\textsc{i} and He\,\textsc{ii}, which selects the SH95 recombination-line tables: 'on\_the\_spot' (default) absorbed by the ground state and re-emitted as Balmer lines and Ly$\alpha$ (case B; the photon is converted, not turned into heat), 'escaping' optically thin Lyman lines (case A).  The same case sets the H\,\textsc{i} and He\,\textsc{ii} two-photon continua (the $2s$ share of one Storey \& Hummer cascade) and the He\,\textsc{iii} cascade of the diffuse field (\code{heii\_diffuse}: in case A every He\,\textsc{ii} Lyman line to the series limit is emitted, which needs \code{eion\_max} $\ge54.36$~eV).  Independent of \code{recombination\_continuum}: a nebula whose continuum is transported still traps its Lyman lines.  Replaces \code{line\_case} \\
 \code{recomb\_model} & 'detailed\_balance' & H/He recombination coefficients: 'detailed\_balance' (default; 'badnell\_milne' until 2026-09-26, now refused) takes the ground-level $\alpha_1$ from the Milne relation on the transport cross sections, $\alpha_A$ of He\,\textsc{i} from the Badnell RR$+$DR fit ($\alpha_B = \alpha_A - \alpha_1$), and $\alpha_B$ of H\,\textsc{i} and He\,\textsc{ii} from a zero-density Storey \& Hummer $nl$-resolved cascade ($\alpha_A = \alpha_B + \alpha_1$; since 2026-09-26, 1.1\% below the earlier Badnell-minus-Milne value for H at $10^4$~K); 'hui\_gnedin' the Hui \& Gnedin (1997) fits, kept to reproduce earlier gates \\
 \code{require\_convergence} & F & if the gas iteration has not converged at \code{gas\_niter}, print a warning; when T, abort before writing output.  The convergence status is recorded in the \code{\_rates} header either way (\code{CONVERGD}, \code{NITERDON}, \code{FINALDX}, \code{FINALDTE}) \\
@@ -537,6 +575,10 @@ parameter & default & meaning \\
 \code{te\_fixed} & 1e4 & $T_e$ [K] of every leaf when \code{solve\_te} is off; with it on, only the starting $T_e$ of the first pass \\
 \code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
 \code{gas\_tol\_te} & 1e-3 & convergence tolerance on $T_e$ (with \code{solve\_te}): $\max|\Delta T_e|/T_e$ under \code{conv\_crit = 'cell'}, the $n_e$-weighted volume measure under \code{'vol'} (\S\ref{sec:convergence}) \\
+\code{metal\_excitation\_model} & 'chianti' & the metal atoms (\code{data/atomic/excitation/<model>/}: levels, radiative and collision rows, the matching cooling fits, the atomic-H collision files), used for the cooling, the level populations, the lines and the charge-exchange product populations.  'chianti' (default): full CHIANTI 11.0.2 atoms for 67 stages and Stout atoms for Cl\,\textsc{vii}, Ar\,\textsc{ii}, Ca\,\textsc{iv} (70 atoms, 6629 levels); no line cooling for C\,\textsc{vii}, Ar\,\textsc{i}, Cl\,\textsc{i}, Ca\,\textsc{i}, Fe\,\textsc{i}, Cl\,\textsc{v}, Ca\,\textsc{iii} (no data).  'mocassin\_v2': the MOCASSIN v2 atoms (55) plus the CHIANTI Fe\,\textsc{ii} forbidden rows, for parity runs.  Every stage with an atom cools and emits.  Measured cost of 'chianti' against 'mocassin\_v2' (262144 leaves, 11 metals, 72 ranks, 2026-10-11): setup $+0.5$~min, one iteration $+0.45$~min, line output $+2.7$~min, 672 against 647~MB on each rank.  'extended' (removed 2026-10-11) is refused, as are \code{fe\_levels\_full} and \code{additional\_line\_cooling} \\
+\code{neutral\_hydrogen\_excitation} & T & atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii}, O\,\textsc{i} ground-term fine structure (Abrahamsson et al.\ 2007, Barinovs et al.\ 2005; \code{hcoll\_<el>\_<stage>.txt} beside the atom) in the same level equilibrium as the electrons, for cooling and lines; the dominant excitation of these coolants in neutral gas.  F only for parity with electron-only codes \\
+\code{metal\_collisional\_ionization} & T & electron-impact ionization of the metal stages (Voronov 1997, or with \code{ci\_model}) in the stage balance and its ionization-energy loss in the thermal balance.  F only for parity with a code that omits it (\textsc{Mocassin} v2 reads the data and sets the rate to zero) \\
+\code{langevin\_charge\_exchange} & F & X$^q$ + H $\to$ X$^{q-1}$ + H$^+$ for $q \ge 5$ (22 reactions with all eleven elements) at the Langevin capture rate with unit transfer probability, an upper limit, not a measured rate; kinetic heat $2.86(q-1)$~eV.  Renamed from \code{high\_charge\_exchange} (2026-10-11), which is refused \\
 \code{cooling\_model} & 'local\_ne' & line cooling in the thermal loop: 'local\_ne' (default) suppresses each ion's cooling fit to the local $n_e$ with a $(T, n_e)$ table built from its $n$-level solve, so the thermal balance and the emergent lines are one physics; 'low\_density' uses the $n_e\to0$ fits directly (the coronal limit, exact in diffuse gas; reproduces earlier gates) \\
 \code{twophoton\_quenching} & 'colliders' & collisional $2s\to2p$ suppression of the H\,\textsc{i} two-photon continuum: 'colliders' (default) gives electrons, protons, He$^+$ and He$^{2+}$ each their own Pengelly \& Seaton (1964) rate, normalized to Osterbrock \& Ferland Table 4.10, with $A_{2s}=8.2246$~s$^{-1}$ (Drake 1986; \code{data/atomic/h\_2s\_2p\_mixing.txt}); 'lumped\_ne' is the \textsc{Mocassin} form $1+n_e q/8.23$ (reproduces earlier gates).  Affects \code{\_nebcont.txt} only \\
 \code{hei\_on\_the\_spot} & T & with \code{recombination\_continuum = 'on\_the\_spot'} only: the He$^+\to$He$^0$ recombination photons that can ionize H are absorbed on the spot --- the excited cascade (19.82~eV, 584~\AA\ with the $p_{584}$ split, $2^1$S two-photon) by H$^0$, the ground captures shared between H$^0$ and He$^0$ by opacity --- with $E-13.598$~eV of heat each (Osterbrock \& Ferland eqs.~2.24--2.25).  \code{.false.} is the earlier case B, which gave every He recombination photon back to helium \\
@@ -547,11 +589,11 @@ parameter & default & meaning \\
 \code{ci\_model} & 'voronov' & collisional ionization: 'voronov' (default) or 'dere\_hybrid' (Voronov $\times$ the Dere 2007/Voronov ratio; matters only in shielded low-ionization zones) \\
 \code{abund\_C/N/O/Ne/S} & 0 & $n({\rm X})/n({\rm H})$; an element is active when $>0$.  Every metal abundance defaults to 0 (since 2026-09-25), so an input names the metals it carries; the inputs written before then pin the HII20 values they relied on (C $2.2\times10^{-4}$, N $4\times10^{-5}$, O $3.3\times10^{-4}$, Ne $5\times10^{-5}$, S $9\times10^{-6}$) \\
 \code{abund\_Ar/Mg/Fe} & 0 & further registry elements (gas-phase values; Mg/Fe are heavily depleted) \\
-\code{abund\_Si/Cl/Ca} & 0 & five-stage registry elements (gas-phase; Si and especially Ca heavily depleted, Cl nearly undepleted --- Orion-like 3e-6 / 3e-7 / 2e-8); adds [Si\,\textsc{ii}] 34.8\,$\mu$m, Si\,\textsc{iii/iv}, [Cl\,\textsc{ii/iii/iv}] (5518/5538 density pair), Ca\,\textsc{ii}, [Ca\,\textsc{v}] \\
+\code{abund\_Si/Cl/Ca} & 0 & further registry elements (gas-phase; Si and especially Ca heavily depleted, Cl nearly undepleted --- Orion-like 3e-6 / 3e-7 / 2e-8); adds [Si\,\textsc{ii}] 34.8\,$\mu$m, Si\,\textsc{iii/iv}, [Cl\,\textsc{ii/iii/iv}] (5518/5538 density pair), Ca\,\textsc{ii}, [Ca\,\textsc{v}] among others.  Every element carries stages I--VII (77 stages, 66 transitions); a band above the ionization potential of its stage-VII ion is refused (Cl\,\textsc{vii} 114.2~eV is the lowest) \\
 \code{ion\_metal\_abs} & T & metal photoionization absorption in the band opacity (active with \code{use\_metals}); the only gas opacity in the FUV bins \\
-\code{charge\_exchange} & 'two\_way' & charge exchange $\mathrm{X}^{i+}+\mathrm{H}^+ \leftrightarrow \mathrm{X}^{(i+1)+}+\mathrm{H}^0$ in hydrogen's balance as well as the cascade's, so the charge each reaction moves is conserved in the reacting pair: $n_{\rm HI}(\Gamma_{\rm H}+n_eC_{\rm H}+R_{\rm cx}^{\rm out}) = (\alpha_{\rm H}n_e+R_{\rm cx}^{\rm in})n_{\rm HII}$ with the sums over the active reactions (29 with all eleven elements).  'metal\_only' keeps them in the cascade alone (the earlier bookkeeping, which does not conserve charge); it is a reproduction value, not a physics option.  N$^{2+}$ and O$^{2+}$ + H use the Barragan et al.\ (2006) tables \\
+\code{charge\_exchange} & 'two\_way' & charge exchange $\mathrm{X}^{i+}+\mathrm{H}^+ \leftrightarrow \mathrm{X}^{(i+1)+}+\mathrm{H}^0$ in hydrogen's balance as well as the cascade's, so the charge each reaction moves is conserved in the reacting pair: $n_{\rm HI}(\Gamma_{\rm H}+n_eC_{\rm H}+R_{\rm cx}^{\rm out}) = (\alpha_{\rm H}n_e+R_{\rm cx}^{\rm in})n_{\rm HII}$ with the sums over the active reactions (45 with all eleven elements: 7 ionization, 38 recombination; \code{langevin\_charge\_exchange} adds 22).  'metal\_only' keeps them in the cascade alone (the earlier bookkeeping, which does not conserve charge); it is a reproduction value, not a physics option.  N$^{2+}$ and O$^{2+}$ + H use the Barragan et al.\ (2006) tables, N$^{4+}$ and Si$^{2+}$ + H the updated KF96 database distributed with \textsc{Cloudy} (Ferland et al.\ 2013), the other higher stages KF96 over their published intervals \\
 \code{helium\_charge\_exchange} & T & He--H charge exchange in the H/He balance: He$^+$ + H $\to$ He + H$^+$ as the sum of a radiative channel (Stancil, Lepp \& Dalgarno 1998 reaction 19, the Zygelman et al.\ 1989 calculation times the singlet approach probability 1/4; Glover \& Jappsen 2007 R26, 4\% higher, until 2026-09-26) and a non-radiative one (Loreau et al.\ 2014 by microscopic reversibility, tabulated by \code{tools/fitting/make\_heii\_h\_charge\_exchange.py}; the Kingdon \& Ferland 1996 fit, 93$\times$ higher at $10^4$~K, until 2026-09-26); He$^{2+}$ + H $\to$ He$^+$ + H$^+$ (Kingdon \& Ferland 1996); and the two reverses He + H$^+$ $\to$ He$^+$ + H (of the non-radiative channel alone) and He$^+$ + H$^+$ $\to$ He$^{2+}$ + H by detailed balance.  Each reaction enters the H and the He balance, so charge is conserved in the pair.  Needs nothing else (independent of \code{use\_metals}).  F drops all four; it reproduces runs made before 2026-09-24 and is not a physics option \\
-\code{charge\_exchange\_heating} & T & the kinetic energy the charge-exchange reactions give the gas, $\Delta E = [{\rm IP}(\text{acceptor's product}) - {\rm IP}(\text{donor})] - E_{\rm rad}$, $E_{\rm rad}$ the product excitation that radiates (for radiative charge transfer the photon; the Coulomb energy of products that repel, several eV for He$^{2+}$ + H, is left out, an approximation marked in \code{ion\_balance\_mod}); negative for endothermic reactions.  Mg + H$^+$ is branched in temperature between Mg$^+$ 3p and the endothermic 4s by Allan et al.\ (1988) (\code{CXHEATTAB}), carried below the table's 5000~K by the 4s threshold Boltzmann factor.  Added to the thermal balance for the metal--H reactions under \code{use\_metals} and for the He--H reactions under \code{helium\_charge\_exchange}.  The defects are the \code{CXHEAT} rows of \code{element\_<el>.txt} (\code{make\_element\_data.py}, which names each product state and its source); an element file without them is refused while this is T.  At the converged Lexington states it was $3.6{\times}10^{-4}$ (HII40) and $3.0{\times}10^{-6}$ (HII20) of the photoheating, mostly O$^{2+}$ + H (measured 2026-09-25).  F reproduces the thermal balance of runs made before 2026-09-25 \\
+\code{charge\_exchange\_heating} & T & the kinetic energy the charge-exchange reactions give the gas, $\Delta E = [{\rm IP}(\text{acceptor's product}) - {\rm IP}(\text{donor})] - E_{\rm rad}$, $E_{\rm rad}$ the product excitation that radiates (for radiative charge transfer the photon; the Coulomb energy of products that repel, several eV for He$^{2+}$ + H, is left out, an approximation marked in \code{ion\_balance\_mod}); negative for endothermic reactions.  Mg + H$^+$ is branched in temperature between Mg$^+$ 3p and the endothermic 4s by Allan et al.\ (1988) (\code{CXHEATTAB}), carried below the table's 5000~K by the 4s threshold Boltzmann factor.  Added to the thermal balance for the metal--H reactions under \code{use\_metals} and for the He--H reactions under \code{helium\_charge\_exchange}.  The defects are the \code{CXHEAT} rows of \code{element\_<el>.txt} (\code{make\_element\_data.py}, which names each product state and its source); an element file without them is refused while this is T.  At the converged Lexington states it was $3.6{\times}10^{-4}$ (HII40) and $3.0{\times}10^{-6}$ (HII20) of the photoheating, mostly O$^{2+}$ + H (measured 2026-09-25).  The $q = 3$, 4 reactions added with the stages of 2026-10-11 take the Kingdon \& Ferland (1999) mean energies.  F reproduces the thermal balance of runs made before 2026-09-25 \\
 \end{longtable}
 }
 {\small
@@ -568,18 +610,18 @@ parameter & default & meaning \\
 \endlastfoot
 \code{jnu\_output} & F & write \code{J\_nu} (band mean intensity per bin and leaf) into \code{\_rates}.  The tally behind it is $n_{\rm bin}\times n_{\rm leaf}$ values on \emph{every} MPI rank, and nothing else reads it except the SEDust emission, so it is kept only with this item or \code{dust\_sed} (off by default since 2026-09-26; the tally was always kept before).  The rates never use it \\
 \code{emis\_output} & F & write \code{\_emis} (HDF5/FITS): leaf-by-leaf line emissivities + the state needed for maps (Section~\ref{sec:outputs}) \\
+\code{emis\_line\_floor} & 1e-4 & the metal blocks of \code{\_emis} carry the lines with $L \ge$ this times $L({\rm H}\beta)$ (a full CHIANTI atom has up to $\sim10^4$ lines); \code{\_lines.txt} carries every line \\
 \code{hei\_metastable} & F & write \code{\_heimeta} (HDF5/FITS): the He\,\textsc{i} 2$^3$S metastable density $n_3$, its photoionization rate $\Phi_3$ and heating $\Gamma_3$, the recombination coefficient into 2$^3$S $\alpha_3$, plus $n_{\rm H}$, $n_e$, $T_e$, and leaf geometry (the 10833~\AA\ absorption diagnostic; Section~\ref{sec:outputs}).  An input that leaves \code{add\_fuv} and \code{efuv\_min} out transports the FUV extension from 4.78~eV, so the soft-UV part of $\Phi_3$ is included \\
-\code{hei\_metastable\_coupling} & T & couple the He\,\textsc{i} 2$^3$S population (the same $n_3$ \code{hei\_metastable} writes; Bray et al.\ 2000 electron-impact rates, $\alpha_3 = f_{3S}\alpha_B$(He\,\textsc{ii})) into the ionization balance (2$^3$S ionization by electrons and photons returns He to He$^+$; Penning + associative ionization by H$^0$, Garc\'{\i}a Mu\~noz 2025, ionizes H), the thermal balance (the excitations into and out of 2$^3$S, its ionization, its photoionization heating and Penning, with a closed energy ledger), and, with \code{hei\_diffuse}, the He\,\textsc{i} diffuse channel (19.82~eV photons $= n_3A_{31}$; the collisional transfers feed the 2$^1$S two-photon and 584~\AA\ branches).  $\Phi_3$ covers the transported band only: without \code{add\_fuv} the $[4.78, 13.6)$~eV part is missing, which for a 40~kK star is $\sim$10$\times$ the part above 13.6~eV --- hence the \code{add\_fuv}/\code{efuv\_min} defaults above.  F reproduces the earlier solve bit for bit \\
+\code{hei\_metastable\_coupling} & T & couple the He\,\textsc{i} 2$^3$S population (the same $n_3$ \code{hei\_metastable} writes; Bray et al.\ 2000 electron-impact rates, $\alpha_3 = f_{3S}\alpha_B$(He\,\textsc{ii})) into the ionization balance (2$^3$S ionization by electrons and photons returns He to He$^+$; Penning + associative ionization by H$^0$, Garc\'{\i}a Mu\~noz 2025, ionizes H), the thermal balance (the excitations into and out of 2$^3$S, its ionization, its photoionization heating and Penning, with a closed energy ledger), and, with \code{hei\_diffuse}, the He\,\textsc{i} diffuse channel (19.82~eV photons $= n_3A_{31}$; the collisional transfers feed the 2$^1$S two-photon and 584~\AA\ branches).  $\Phi_3$ covers the transported band only: without \code{add\_fuv} the $[4.78, 13.6)$~eV part is missing, which for a 40~kK star is $\sim$10$\times$ the part above 13.6~eV --- hence the \code{add\_fuv}/\code{efuv\_min} defaults above.  F drops the coupling (the diagnostic \code{hei\_metastable} uses the same population either way) and reproduces the earlier solve bit for bit; it was F between 2026-10-09 and 2026-10-11 \\
 \code{h\_coll\_effects} & F & add the collisional H\,\textsc{i} Balmer component (excitation of neutral H) as separate \code{hc} rows/blocks; matters at fronts and hot cells \\
-\code{fe\_levels\_full} & F & load the expanded Fe\,\textsc{ii}/\textsc{iii} models (\code{nlevel\_fe\_\{2,3\}\_full.txt}, 16/34 levels) instead of the compact 13/14 for iron-line studies; the \code{'local\_ne'} cooling table is built from the same files \\
 \code{diffuse\_energy\_model} & 'milne' & spectrum of the three ground continua (needs \code{recombination\_continuum = 'transported'}): 'milne' (default) is the detailed-balance free--bound spectrum $E^2\sigma_{\rm pi}(E)e^{-(E-E_{\rm th})/kT}$ with the transport cross sections; 'exponential' the historical $E_{\rm th}+kT[-\ln u]$ approximation (reproduces earlier runs); 'threshold' a sensitivity bracket, not a model \\
 \code{hei\_diffuse} & on if transported & fourth diffuse channel (needs \code{recombination\_continuum = 'transported'}; left out of the input it is on then, since nothing is absorbed on the spot and these photons would otherwise be lost): He\,\textsc{i} excited-level recombination photons.  The $2^3$S\,:\,$2^1$S\,:\,$2^1$P branch fractions come from one consistent set of $\alpha_{\rm eff}$ (Benjamin, Skillman \& Smits 1999 Table~1 with J.~S.\ Mathis, as in K.~Wood's \code{ionize}) normalized by its own sum --- $0.762 : 0.076 : 0.162$ at 8000~K against the statistical $0.750 : 0.083 : 0.167$ --- and the $2^1$S photons from the Drake et al.\ (1969) two-photon shape.  Against the statistical weights with a flat two-photon spectrum this is $+0.12\%$ in H-ionizing energy and $+0.30\%$ in photons for each case-B He\,\textsc{ii} recombination at 8000~K; in transport (2026-07-30) the branch fractions moved $L({\rm H}\beta)$ at HII40 by $+0.012\%$.  The trapped $2^1$P (584~\AA) photon is split locally between photoionizing hydrogen and conversion to $2^1$S (the 2.06~$\mu$m $2^1{\rm P}\rightarrow2^1{\rm S}$ decay that ends its resonance walk), with $p_{584}=[1+77\,(y_{\rm He}/0.1)\,x({\rm He^0})/(\sqrt{T}x({\rm H^0}))]^{-1}$ (their 77 assumes He/H $=0.1$) (Wood, Mathis \& Ercolano 2004) --- the same split the He\,\textsc{i} two-photon nebular continuum uses.  Measured when the split was added (2026-07-30, against the same channel without it), it lowered $L({\rm H}\beta)$ at HII40 by 0.2\% and moved the He\,\textsc{i} front inward by 0.0036~pc \\
 \code{heii\_diffuse} & on if transported & fifth diffuse channel: what a He\,\textsc{iii} recombination radiates on its way down through He\,\textsc{ii}, in the case of the Lyman lines (\code{lyman\_lines}).  With \code{recombination\_continuum = 'transported'} it joins the other channels (left out of the input it is on then when \code{eion\_max} $\ge$ 40.813~eV, and left off with a note below that, where the band cannot make He\,\textsc{iii}).  With \code{'on\_the\_spot'} it is off unless the input sets it; set, the cascade alone is transported and \code{heii\_on\_the\_spot} keeps only the He$^{2+}$ ground captures --- for a He\,\textsc{iii} zone optically thin at 40.8~eV, where absorbing the cascade in place deposits its $E - {\rm IP}$ (up to $\sim27$~eV a photon) where the photons in fact leave (a NOTE each iteration counts such leaves).  No effect with \code{'escaping'}.  Unlike \code{hei\_diffuse} this is not a small correction --- the He\,\textsc{ii} $n=2$ threshold at 13.604~eV sits just above the hydrogen edge, so the whole Balmer continuum ionizes H, and the $2^2$S pair spans 40.813~eV.  Three paths: free--bound into $n\ge2$ ($7.5$--$10.3\%$ of the channel over $10^4$--$3{\times}10^4$~K, from the same fb$+$ff tables the written continuum uses, minus free--free), $2^2$P Ly$\alpha$ at 40.813~eV ($64.1$--$70.0\%$), and the $2^2$S two-photon continuum ($22.5$--$25.6\%$, 36.090~eV of the pair landing in band); case B, from \code{tests/heii\_cascade/}.  The $n=2$ exit branching $f_{2s}=\alpha_{\rm eff}(2^2{\rm S})/\alpha_B$ takes both parts from one zero-density Storey \& Hummer cascade (\code{hydrogenic\_recombination\_mod}) so the ratio closes one calculation; it reproduces MOCASSIN's independent He\,\textsc{ii} Ly$\alpha$ fit to $2.3$--$6.2\%$.  Matters only where He$^{2+}$ exists: on a $10^5$~K blackbody in the HII40 geometry it raised the diffuse-field luminosity 44\% and $L({\rm H}\beta)$ $0.98\%$ (measured 2026-08-09, with the SH95 branching of then); on both Lexington benchmarks, which have no He$^{2+}$, it changes nothing \\
 \code{gaunt\_vh14} & F & free--free Gaunt factors from the van Hoof et al.\ (2014) table (\code{data/gauntff\_vh14.dat}) instead of Hummer (1988); the two agree to $\lesssim$0.5\% in $T_e$ \\
 \code{metal\_ne} & = \code{use\_metals} & electrons from the metal cascade join the $n_e$ closure.  Solved as a fixed point, since the stage fractions depend on $n_e$ themselves: a single evaluation at the H/He-only electron density would be the $n_e\to0$ limit, in which nothing recombines and every low-IP metal comes out fully ionized.  Switching it off cost only $0.002\%$ of $\langle T[N_{\rm p}N_{\rm e}]\rangle$ on the Lexington benchmarks (measured 2026-07-31) --- but beyond the ionization front the metal stages are the ONLY electron source, so there it is not optional \\
-\code{metal\_heat} & = \code{use\_metals} & metal photoheating in the thermal balance, accumulated with the same $\Gamma$'s the cascade uses; above an inner-shell edge each subshell's photoelectron carries $E - E_{{\rm th},s}$.  The metal recombination and collisional-ionization energy losses (\code{species\_mod::metal\_ionization\_cooling}) are under the same switch.  Switching it off lowered $\langle T[N_{\rm p}N_{\rm e}]\rangle$ by 21.1~K at HII40 and 5.7~K at HII20 (measured 2026-07-31, before the metal recombination and collisional-ionization losses joined this switch on 2026-09-24) \\
-\code{grain\_pe} & F & grain photoelectric heating + grain recombination cooling (Bakes \& Tielens 1994) from the local FUV field (needs \code{add\_fuv}); scaled by \code{pe\_scale} and the leaf dust amount; refused without \code{add\_fuv} or without \code{ion\_add\_dust}.  The neutral-gas coolant it needs, atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and O\,\textsc{i} fine-structure lines, is not part of this switch: it is always in the \code{use\_metals} cooling (and in the line output), solved with the electrons in one statistical equilibrium from \code{data/atomic/hcoll\_*.txt} \\
-\code{pe\_scale} & 1.0 & photoelectric-efficiency scale factor \\
+\code{metal\_heat} & = \code{use\_metals} & metal photoheating in the thermal balance, accumulated with the same $\Gamma$'s the cascade uses, $\sum_s \sigma_s(1 - E_{{\rm th},s}/E)$ over the absorbing subshells of \code{phfit2} (an inner-shell hole is assumed to leave by fluorescence and one stage is gained; the Auger second electron of Mg\,\textsc{i} $2p$, Ca\,\textsc{i} $3p$ and Fe\,\textsc{i}--\textsc{iii} $3p$ is not carried, a known defect).  The metal recombination energy losses and, if enabled, collisional-ionization losses (\code{species\_mod::metal\_ionization\_cooling}) are under the same switch.  Switching it off lowered $\langle T[N_{\rm p}N_{\rm e}]\rangle$ by 21.1~K at HII40 and 5.7~K at HII20 (measured 2026-07-31, before the metal recombination and collisional-ionization losses joined this switch on 2026-09-24) \\
+\code{grain\_pe} & with dust & grain charge distribution, photoelectric heating (with photodetachment) and the cooling by captured electrons and ions (Weingartner \& Draine 2001) for the grains of \code{dust\_model}, scaled to the leaf's dust opacity, in the leaf's band field; PAH grains weighted by $x_{\rm HI} + $ \code{f\_ion\_pah}$\,x_{\rm HII}$; astrodust takes the WD01 silicate photoemission parameters (no published astrodust yield).  Left out of the input, on when \code{ion\_add\_dust} and \code{add\_fuv} are; set without either, refused.  It keeps the band tally behind \code{J\_nu}.  Replaces the Bakes \& Tielens (1994) fits and their \code{pe\_scale}, which is refused.  Gate \code{tests/grain\_photoelectric/} \\
+\code{gas\_grain\_energy\_exchange} & with dust & energy neutral H and He exchange with the grains they strike, $\propto \alpha\,2k(T - T_d)$ (Hollenbach \& McKee 1979 accommodation; $T_d$ the equilibrium mixture temperature); left out of the input, on with \code{ion\_add\_dust}; set without it, refused \\
 \code{use\_sec\_ion} & F & secondary ionization by fast photoelectrons (\code{photoelectron\_degradation\_mod}): a photoelectron with $E_0 = h\nu - E_{\rm th} > 30$~eV from H\,\textsc{i}, He\,\textsc{i} or He\,\textsc{ii} deposits $f_{\rm heat}(x,E_0)$ as heat (Dalgarno, Yan \& Liu 1999 eq.~14 with a $(1-x)$ closure) and spends $f_{\rm ion}(x,E_0)$ ionizing H\,\textsc{i}/He\,\textsc{i} (Shull \& van Steenberg 1985 amplitudes with DYL99's $E_0$ dependence), divided over the neutrals present; $x = n_e/(n_{\rm H}+n_{\rm He})$ of the current cell-solve iterate; below 30~eV all heat, metal photoelectrons all heat; $\sim$0 in fully ionized gas, matters at fronts and in hard fields\\
 \code{metal\_freefree} & T & include the trace metals in the free--free cooling with the net ion charge $Z_{\rm ion}=$ (stage $-1$), not the nuclear $Z$; a trace ($\sim$10$^{-4}$ of the H/He free--free) correctness term, on by default \\
 \end{longtable}
@@ -730,6 +772,7 @@ extension & content \\
 \code{Heat\_dust} & grain heating [erg\,s$^{-1}$\,cm$^{-3}$] (when \code{ion\_add\_dust}) \\
 \code{T\_dust} & equilibrium mixture dust temperature [K] (when \code{ion\_add\_dust}) \\
 \code{x\_HI}, \code{x\_HII}, \code{x\_HeI}, \code{x\_HeII}, \code{x\_HeIII}, \code{n\_e}, \code{T\_e} & converged state; every fraction to its own relative precision ($x_{\rm HI} + x_{\rm HII} = 1$ and $x_{\rm HeI} + x_{\rm HeII} + x_{\rm HeIII} = 1$ to rounding): beyond the ionization fronts $x_{\rm HII}$ and $x_{\rm HeIII}$ fall to $10^{-10}$--$10^{-100}$, where $1 - x_{\rm HI}$ and $1 - x_{\rm HeI} - x_{\rm HeII}$ keep none of their digits, so read \code{x\_HII} and \code{x\_HeIII} \\
+\code{Phi\_HeI\_23S} & He\,\textsc{i} $2^3S$ photoionization rate $\Phi_3$ [s$^{-1}$] of the last transport pass (with \code{hei\_metastable\_coupling}); \code{restart\_file} reads it back, since the $2^3S$ split of the He\,\textsc{i} diffuse channel of the first pass is solved with it (a file without it restarts with $\Phi_3 = 0$, with a note) \\
 \code{x\_<el>\_stages} & metal ion fractions (stage, leaf), with the keyword \code{ABUND} $= n({\rm X})/n({\rm H})$ (with \code{use\_metals}) \\
 \code{Gamma\_<el>\_stages}, \code{Heat\_<el>\_stages} & metal photoionization rates [s$^{-1}$] and photoheating [erg\,s$^{-1}$ per ion] (transition, leaf) (with \code{use\_metals}); \code{restart\_file} reads the rates back \\
 \code{J\_nu} & band mean intensity (bin, leaf) [erg/s/cm$^2$/Hz/sr], with \code{jnu\_output} \\
@@ -740,10 +783,13 @@ extension & content \\
 \end{center}
 The file header also carries the convergence record of the gas
 iteration: \code{CONVERGD} (did it converge), \code{NITERDON}
-(iterations run), \code{FINALDX} (final $\max|\Delta x_{\rm HII}|$), and
-\code{FINALDTE} (final $\max|\Delta T_e|/T_e$) --- the cell maxima whichever
-\code{conv\_crit} is set --- and \code{FLDCONS} (the rates were rebuilt by
-transporting the written state).  The rest of the header records the run:
+(iterations run), \code{FINALDX} and \code{FINALDTE} (the cell maxima
+$\max|\Delta x_{\rm HII}|$ and $\max|\Delta T_e|/T_e$ of the final
+solve, or of the last iteration in a \code{\_rates\_iterate} file, whichever \code{conv\_crit} is set), and \code{STATESOL} (the
+written state was solved in the written field: after the loop the last
+state is transported once more and the gas solved once more in that
+field, so the written rates and the written state, metal stages
+included, belong together; false for rates-only runs).  The rest of the header records the run:
 \code{NNU\_ION}, \code{NNU\_BAND}, \code{EION\_MIN}, \code{EION\_MAX},
 \code{TOT\_LUM}, \code{DIST\_CM}, \code{nphotons}, with \code{add\_fuv}
 \code{EFUV\_MIN}, \code{FUVSAMP} and \code{NPHOTFUV}; the sampling
@@ -802,11 +848,15 @@ case A while He\,\textsc{i} stays case B.\normalsize
 \medskip
 The metal line blocks \code{emis\_<el>\_<stage>} follow the $n$-level solve.
 One block is written for every active registry ion (element abundance $>0$)
-that has an \code{nlevel\_<el>\_<stage>} data file (stage 1 is the neutral
-atom).  Every metal abundance defaults to 0, so an element is active only
+that has an atom in the selected model,
+\code{data/atomic/excitation/<model>/\allowbreak nlevel\_<el>\_<stage>.txt}
+(stage 1 is the neutral atom), with the lines of
+$L \ge$ \code{emis\_line\_floor}$\,L({\rm H}\beta)$.  Every metal abundance defaults to 0, so an element is active only
 when the input sets its \code{par\%abund\_<El>} $>0$ (and \code{use\_metals},
 which then follows by default).  Only the principal lines are listed below
 --- the full transition list of each block is in \code{<base>\_lines.txt}.
+The list below dates from the first atoms (2026-07); with the full
+\code{'chianti'} atoms every stage I--VII with an atom has a block.
 
 \begingroup\small
 \begin{longtable}{@{}l p{12.6cm}@{}}
@@ -843,8 +893,8 @@ ion (block) & principal lines \\
 \code{ar\_3} [Ar\,\textsc{iii}]& 3006/3110, 5193, 7138, 7753, 8.99\,$\mu$m, 21.8\,$\mu$m \\
 \code{ar\_4} [Ar\,\textsc{iv}] & 2854/2869, 4713, 4741, 7170 (multiplet), 56\,$\mu$m, 78\,$\mu$m \\
 \code{mg\_2} Mg\,\textsc{ii}   & 2796, 2804 \\
-\code{fe\_2} [Fe\,\textsc{ii}] & 1.26/1.32\,$\mu$m, 5.34\,$\mu$m, 17.9\,$\mu$m, 26\,$\mu$m (40 lines total) \\
-\code{fe\_3} [Fe\,\textsc{iii}]& 4659, 4703, 4881, 5011, 22.9\,$\mu$m (38 lines; 16/34-level with \code{fe\_levels\_full}) \\
+\code{fe\_2} [Fe\,\textsc{ii}] & 1.26/1.32\,$\mu$m, 5.34\,$\mu$m, 17.9\,$\mu$m, 26\,$\mu$m (historical 40-line list) \\
+\code{fe\_3} [Fe\,\textsc{iii}]& 4659, 4703, 4881, 5011, 22.9\,$\mu$m (historical 38-line list) \\
 \code{si\_2} [Si\,\textsc{ii}] & 2335 (multiplet), 34.8\,$\mu$m \\
 \code{si\_3} Si\,\textsc{iii}] & 1206, 1883, 1892, 38\,$\mu$m \\
 \code{si\_4} Si\,\textsc{iv}   & 1394, 1403 \\
@@ -1059,7 +1109,14 @@ directory & what it demonstrates / gate \\
 \code{qmc} & quasi-random launch: Sobol generator vs.\ \code{scipy} + Owen-net balance; the fixed-state variance gate (cell-wise $\Gamma_{\rm HI}$ gain $29\times$ at $2^{17}$, $222\times$ at $2^{20}$) \\
 \code{hei\_meta} & He\,\textsc{i} 2$^3$S metastable: analytic limits of the balance, module $n_3$ vs.\ the Python evaluation of the data file on each run's state, $\Phi_3$ against an independent $J_\nu$ integration, and the 10833~\AA\ column/optical-depth diagnostic (conservation + hand integral) \\
 \code{hei\_metastable\_coupling} & the 2$^3$S coupling: Bray et al.\ (2000) Tables 2/3 at their nodes, $\alpha_3 = f_{3S}\alpha_B$, closed-form $n_3$ vs.\ a $2\times2$ solve, energy-ledger closure, the diffuse low-density limit, and \code{solve\_ion\_cell} balances with the 2$^3$S terms in partially neutral gas \\
-\code{photo\_shells} & metal photoionization cross section and photoelectron heating of every registry ion against Verner's \code{phfit2.f} on 5--1000~eV (outer-shell fit below the first inner edge, subshell sum above) \\
+\code{photo\_shells} & metal photoionization cross section and photoelectron heating of all 66 metal transitions against Verner's \code{phfit2.f} on 5--1000~eV (outer-shell fit below the first inner edge, subshell sum above; the Ne\,\textsc{iii} table at its nodes and its join) \\
+\code{ne3\_ground\_term\_photoionization} & the Ne\,\textsc{iii} \code{PHTABLE} against the three NORAD level tables: the cross section, the channel-6 $\alpha_1$ by the Milne relation, the sampled spectrum across the resonances \\
+\code{metal\_recombination\_continuum} & diffuse channel 6 on all 66 transitions: the outer-shell cross section against \code{phfit2.f}, the band coefficient against quadrature, energy bookkeeping, the packet photon rate, the hydrogenic C\,\textsc{vi} check \\
+\code{freefree\_emission} & diffuse channel 7 and the free--free cooling: the frequency integral of the spectral coefficient against the cooling ($Z = 1$--6), the band coefficient, the packet photon rate \\
+\code{freefree\_absorption} & diagnostic: the share free--free absorption would have in the band opacity of a run (an upper bound) \\
+\code{grain\_photoelectric} & WD01 grain charging, photoelectric heating and accretion cooling (their Tables 4 and 5, eqs.~44--45), the charge distribution against Draine's charging routine, the HM79 exchange, the cost of the 4.78~eV band cut \\
+\code{ion\_stages} & stages I--VII: the stage solvers, the registry, rates, inputs, the thermal and charge-exchange consumers and every excitation atom of both models, linked against the production objects (\code{run\_checks.py}) \\
+\code{fitting} & unit tests of the offline generators under \code{tools/fitting/} \\
 \code{hcoll} & atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii}, O\,\textsc{i} ground terms: low-density photon rates vs.\ the published tables, Boltzmann populations at high $n_{\rm HI}$, thermal increment = emissivity difference \\
 \code{charge\_exchange} & metal--H charge exchange conserved in each reacting pair, the hydrogen root solve, detailed balance; He--H charge exchange (rate forms, balances, charge neutrality); charge-exchange heating (a defect for every carried reaction, defects against the ionization potentials and product terms, detailed-balance pairs cancel) \\
 \code{hei\_on\_the\_spot} & case-B on-the-spot He\,\textsc{i} photons: the ground-capture share $y$ against a direct quadrature, the excited exits against the cascade, the heat assembled independently, \code{solve\_ion\_cell} balances with the sources, and the Osterbrock \& Ferland $p\simeq0.96$ limit (0.966) \\
@@ -1113,11 +1170,18 @@ abundances, \code{cext\_dust} is taken from the default astrodust grains, and
 \section{Adding an ion}
 Adding an ion touches only data:
 \begin{enumerate}
-\item \code{tools/fitting/fit\_cooling.py}: add the ion with a
-  $T_i$ ladder guessed from its \code{.elvlc} level energies; run; check
-  the reported max error and the overlay figure.
-\item \code{tools/fitting/fit\_nlevel.py}: add the ion with the
-  level count needed for its diagnostics; run.
+\item The atom and its cooling fit: for the \code{'chianti'} model the
+  full CHIANTI atom is written by
+  \code{tools/fitting/\allowbreak chianti\_cooling.py} (every bound
+  collision-connected level and every row) and its low-density cooling
+  fitted by \code{tools/fitting/\allowbreak fit\_cooling.py}, into
+  \code{data/atomic/\allowbreak excitation/\allowbreak chianti/} with the
+  \code{manifest.json} updated
+  (\code{tools/fitting/\allowbreak chianti\_excitation\_model\_coverage.py};
+  checks \code{validate\_chianti\_\allowbreak excitation\_model.py};
+  \code{md/atomic\_stage\_expansion/\allowbreak chianti\_model\_2026-10-11/}).  Check
+  the reported maximum fit error.  \code{fit\_nlevel.py} writes the older
+  Chebyshev form, which the reader still accepts.
 \item \code{tools/fitting/make\_element\_data.py}: add the element to
   \code{ELEMENTS} (Z, stage count) and its thresholds; charge exchange
   entries where sources exist; run.  The CHIANTI
@@ -1132,9 +1196,16 @@ Adding an ion touches only data:
   $l\,E_{\rm th}\,E_0\,\sigma_0\,y_a\,P\,y_w$ row for each occupied subshell
   (Verner \& Yakovlev 1995), summed at and above $E_{\rm inn}$.  The reader
   refuses a transition with no \code{PHSHELL} rows, or with
-  $E_{\rm inn} > 0$ and no \code{PHOTO} row.  A charge-exchange rate given
+  $E_{\rm inn} > 0$ and no \code{PHOTO} row.  A \code{PHTABLE} $n$ record followed by $n$
+  rows $\epsilon\;\sigma$ (photoelectron energy $\epsilon = E - E_{\rm th}$
+  [eV], cross section [Mb], linear in $\epsilon$) replaces \code{PHOTO}
+  below its last node, where it must end on the \code{PHOTO} fit; only
+  Ne\,\textsc{iii} carries one (Nahar 2019 R-matrix, written by
+  \code{tools/fitting/ground\_term\_photoionization\_table.py}), and the
+  reader refuses a table that is short, not increasing from $\epsilon = 0$,
+  negative, reaches $E_{\rm inn}$ or does not join the fit.  A charge-exchange rate given
   as a table is \code{CXR 8} followed by
-  \code{CXRTAB} $n\;T_1..T_n\;k_1..k_n$ ($n \le 40$; K and cm$^3$\,s$^{-1}$,
+  \code{CXRTAB} $n\;T_1..T_n\;k_1..k_n$ ($n \le 1024$; K and cm$^3$\,s$^{-1}$,
   interpolated log--log, $T$ held at the table ends), as for the Barragan
   et al.\ (2006) N$^{2+}$ and O$^{2+}$ rows.  A transition resolved by the
   product term of the ion is \code{CXI 9} and \code{CXR 9} followed by
@@ -1146,13 +1217,15 @@ Adding an ion touches only data:
   channel's detailed balance weighted by the term's population from that
   $n$-level atom at the local $(T, n_e)$ (sulfur, Zhao et al.\ 2005).
 \item Atomic-hydrogen impact (optional, for a neutral-gas coolant): a
-  \code{data/atomic/hcoll\_<el>\_<stage>.txt} beside the $n$-level file,
+  \code{hcoll\_<el>\_<stage>.txt} beside the $n$-level file in
+  \code{data/atomic/excitation/<model>/},
   written by \code{tools/fitting/make\_hcoll\_fine\_structure.py}: a
   \code{NHCOL} $n$ line, then $n$ rows
   \code{lo hi form Tmin Tmax c\_1..c\_10} with the level indices of the
   $n$-level file; form~1 is the Abrahamsson et al.\ (2007) Eq.~1 excitation
   fit ($c_1 = b$, $c_{2\ldots} = a_i$), form~2 a de-excitation power law
-  $c_1 (T/100)^{c_2}$.  It is picked up automatically.
+  $c_1 (T/100)^{c_2}$.  It is picked up automatically and used under
+  \code{neutral\_hydrogen\_excitation} (default on).
 \item Fortran (only for a NEW element; new stages of a known element need
   nothing): a \code{par\%abund\_<El>} component of \code{params\_type} in
   \code{define.f90}, one entry in the name/abundance lists of
@@ -1164,8 +1237,11 @@ Adding an ion touches only data:
   ratio where PyNeb has data; run a smoke test and check the new lines
   in \code{\_lines.txt}.
 \end{enumerate}
-Data caveats met so far: Ar\,\textsc{ii} has no CHIANTI v11
-level/collision data (stage tracked without lines); Fe\,\textsc{iii}
+Data caveats met so far: Ar\,\textsc{ii}, Ca\,\textsc{iv} and
+Cl\,\textsc{vii} have no CHIANTI 11 valence collision data (Stout atoms are
+used); Ar\,\textsc{i}, Cl\,\textsc{i}, Ca\,\textsc{i}, Fe\,\textsc{i},
+Cl\,\textsc{v} and Ca\,\textsc{iii} have no atom (stages tracked without
+lines); Fe\,\textsc{iii}
 collision strengths differ from PyNeb's BB14 by up to $\sim$16\% in
 4658/4702 (known spread for iron); charge-exchange stage labels differ
 between the Huang (2023) and MOCASSIN transcriptions for Mg/Fe (the
@@ -1192,9 +1268,10 @@ Huang labels are adopted; see \code{make\_element\_data.py}).
   together with dust --- only where those metals are already ionized does
   dust extinction alone remain.  The metal stage fractions iterate with this
   opacity self-consistently, and the corresponding metal photoheating is in
-  the thermal balance (\code{metal\_heat}, on by default); the grain
-  photoelectric heating needs \code{grain\_pe}, and without H$_2$/CO
-  chemistry PDR-zone temperatures are first-order estimates.
+  the thermal balance (\code{metal\_heat}, on by default); with dust the
+  WD01 grain photoelectric heating (\code{grain\_pe}) and the gas--grain
+  exchange are on by default, and without H$_2$/CO chemistry PDR-zone
+  temperatures are first-order estimates.
 \item \textbf{Convergence}: use \code{conv\_crit = 'vol'} for
   production --- the cell-max criterion stalls at the front-cell noise
   floor (and, with \code{add\_fuv}, at no-heating cells where $T_e$

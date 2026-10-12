@@ -1,0 +1,30 @@
+# MOCASSIN v2 supplied excitation model: ar_2
+# source SHA-256 /home/kiseon/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/data/arii.dat: c80cfcafdabd9be0b7076ff0bdde749affa711cdbd7495ac8ec260ef7e1d7045
+# Atomic accuracy and original publication correspondence remain unverified.
+# Preserve source levels, positive spontaneous rates, and effective collision strengths.
+# Interpolation: log(T)-log(Upsilon) PCHIP; differs from the v2 cubic spline.
+# Below the first node hold Upsilon constant; Maxwellian rates use actual T.
+# Cold continuation is an approximation; no continuation above the final node.
+# Supplied temperature nodes: 1585..158489 K.
+NLEVEL_VERSION 2
+NLEV 2
+1 4 0
+2 2 1431.5799999999999
+NRAD 1
+1 2 0.052999999999999999
+NODES 11
+NUPS 1
+1 2 TEMPERATURE_TABLE 0 0 0 LOG_PCHIP_T 11
+1585 2.48
+2512 2.54
+3981 2.6299999999999999
+6310 2.77
+10000 2.9300000000000002
+15849 3.0899999999999999
+25119 3.1899999999999999
+39811 3.2000000000000002
+63096 3.1299999999999999
+100000 2.9700000000000002
+158489 2.71
+# Density ratio refers only to the complete supplied finite-level model.
+DENSITY_RATIO 1

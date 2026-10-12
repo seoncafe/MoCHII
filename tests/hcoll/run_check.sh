@@ -1,6 +1,7 @@
 #!/bin/bash
 #--- Build and run the atomic-hydrogen impact gate against the compiled
-#--- MoCHII objects (nlevel_mod reading data/atomic/hcoll_*.txt).
+#--- MoCHII objects (nlevel_mod reading data/atomic/excitation/<model>/
+#--- nlevel_*.txt and the hcoll_*.txt beside them, for both models).
 #--- Exits nonzero when the gate fails.
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,5 +17,5 @@ $FC -cpp -DMPI -DHDF5 -ipo -O2 -module src -Isrc -I"$SEDUST_LIBDIR" \
     tests/hcoll/check_hcoll.f90 $OBJS \
     -lcfitsio -L/usr/local/lib \
     "$HDF5_PREFIX/lib/libhdf5_fortran.a" "$HDF5_PREFIX/lib/libhdf5.a" \
-    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp
+    -lsz -ldl -lz -lm "$SEDUST_LIBDIR/libsedust.a" -qopenmp -qmkl=sequential
 cd tests/hcoll && ./check_hcoll.x

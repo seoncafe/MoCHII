@@ -16,9 +16,11 @@ program check_charge_exchange_heating
 ! helium_charge_exchange_heating turn them into heat.
 !
 ! Checks:
-!  (a) census: every carried reaction (29: 7 ionization + 22 recombination,
-!      all 11 elements active) has an entry in the product-state table
-!      below, and no entry names a reaction that is not carried;
+!  (a) census: every carried reaction (45: 7 ionization + 38 recombination,
+!      all 11 elements active on the 77-stage roster; with the argument
+!      'langevin', par%langevin_charge_exchange adds X^q + H for q = 5, 6,
+!      22 more) has an entry in the product-state table below, and no entry
+!      names a reaction that is not carried;
 !  (b) detailed balance: for a pair that is one channel and its
 !      detailed-balance reverse -- N and O (ground terms both ways), the
 !      non-radiative part of C + H+ against C+ + H, and the non-radiative
@@ -26,8 +28,9 @@ program check_charge_exchange_heating
 !      the populations where they balance, to TOL_DB relative;
 !  (c) each file defect equals the ionization-potential difference minus the
 !      product excitation typed below (transcribed independently from the
-!      CHIANTI observed level energies, or the KF96 electronic defect where
-!      the product is not identified), to TOL_DE eV;
+!      CHIANTI observed level energies, or the Kingdon & Ferland (1999, ApJ
+!      516, L107) Table 1 mean energy defect where the product is not
+!      identified), to TOL_DE eV;
 !  (e) metal_charge_exchange_heating equals the sum of the reactions formed
 !      here from species_fractions, species_cx_coefficients and
 !      species_cx_kinetic_energy, to TOL_SUM relative -- the stage indices
@@ -67,34 +70,57 @@ program check_charge_exchange_heating
   real(kind=wp), parameter :: TOL_DB   = 1.0e-12_wp
   real(kind=wp), parameter :: TOL_DE   = 1.0e-6_wp
   real(kind=wp), parameter :: TOL_SUM  = 1.0e-13_wp
-  integer,       parameter :: NCXI_EXPECT = 7, NCXR_EXPECT = 22
-  integer,       parameter :: MST = 6
+  integer,       parameter :: NCXI_EXPECT = 7, NCXR_EXPECT = 38, NLANGEVIN = 22
+  !--- Langevin rows (q >= 5): KF99 Sec. 2, a mean avoided crossing at
+  !--- 9.5 bohr gives the exit channel X^(q-1)+ + H+ a Coulomb energy
+  !--- (q-1) E_h / 9.5 = 2.86 (q-1) eV.  KF99's text writes "2.86q eV" for
+  !--- q > 4, but every avoided-crossing entry of its Table 1 is 2.86 (q-1)
+  !--- (5.73 at q = 3, 8.60 at q = 4), and Cloudy c25.00 applies
+  !--- 2.86*(double)ion to the recombining ion of charge ion+1
+  !--- (atmdat_char_tran.cpp, ChargTranSumHeat), i.e. 2.86 (q-1).
+  real(kind=wp), parameter :: LANGEVIN_DE_EV = 2.86_wp
+  integer,       parameter :: MST = MAX_ION_STAGES
 
   !--- product-state table, one row per carried reaction:
   !--- element, transition, direction (1 ion, 2 rec), kind, value
   !---   kind 0 ground-term products          E_rad = 0
   !---   kind 1 radiative charge transfer     E_rad = dIP
   !---   kind 2 product term                  E_rad = value [cm^-1]
-  !---   kind 3 KF96 electronic defect        dE = value [eV], product
+  !---   kind 3 KF99 Table 1 mean defect      dE = value [eV], product
   !---                                        not identified
+  ! KF96 gives total rates only; the mean energy defect of a reaction whose
+  ! product is not resolved is KF99 Table 1 (read from the publisher PDF,
+  ! md/atomic_stage_expansion/references/Kingdon_Ferland_1999_ApJ_516_L107.pdf).
+  ! Kind 3 checks the file against that table; it does not verify an
+  ! unresolved product state.
   !--- Term energies: CHIANTI observed energies, (2J+1)-weighted over the J
   !--- levels (O II 2s2p4 4P, N II 2s2p3 3D, Mg II 3p 2P, Si II 3s3p2 4P,
   !--- Si IV 4s 2S); S + H+ weighted over S+ 4S/2D/2P with Zhao et al.
   !--- (2005) Table III at 1e4 K (8.90e-16, 1.19e-12, 1.63e-11); Fe + H+
   !--- the z4D (g = 20) and z4F (g = 28) mean, 44743.6587 and 44714.0716.
-  integer, parameter :: NTAB = 29
+  !--- rows 30-45: the q = 3, 4 recombinations the 77-stage roster added,
+  !--- all KF99 Table 1 means (C4+ 11.30, N3+ 6.40, N4+ 11.00, O3+ 5.00,
+  !--- O4+ 8.47, Ne3+ 5.82, Ne4+ 8.60, Mg3+ 5.73, Mg4+ 8.60, S4+ 8.60,
+  !--- Ar4+ 8.60, Fe4+ 10.00 -- printed "Fe12" twice, the second in the
+  !--- q = 3 column -- Cl3+ 8.00, Cl4+ 9.00, Ca3+ 6.60, Ca4+ 9.90)
+  integer, parameter :: NTAB = 45
   character(len=9), parameter :: KIND_NAME(0:3) = &
-     ['ground   ', 'radiative', 'term     ', 'KF96 dE  ']
+     ['ground   ', 'radiative', 'term     ', 'KF99 dE  ']
   character(len=2), parameter :: TEL(NTAB) = [character(len=2) :: &
      'c ','c ','c ','c ', 'n ','n ','n ', 'o ','o ','o ', 'ne', &
      's ','s ','s ','s ', 'ar','ar', 'mg','mg','mg', &
-     'fe','fe','fe','fe', 'si','si','si','si','si']
+     'fe','fe','fe','fe', 'si','si','si','si','si', &
+     'c ', 'n ','n ', 'o ','o ', 'ne','ne', 'mg','mg', 's ', 'ar', 'fe', &
+     'cl','cl', 'ca','ca']
   integer, parameter :: TIT(NTAB) = [1,1,2,3, 1,1,2, 1,1,2, 2, &
-     1,1,2,3, 2,3, 1,1,2, 1,1,2,3, 1,1,2,3,4]
+     1,1,2,3, 2,3, 1,1,2, 1,1,2,3, 1,1,2,3,4, &
+     4, 3,4, 3,4, 3,4, 3,4, 4, 4, 4, 3,4, 3,4]
   integer, parameter :: TDIR(NTAB) = [1,2,2,2, 1,2,2, 1,2,2, 2, &
-     1,2,2,2, 2,2, 1,2,2, 1,2,2,2, 1,2,2,2,2]
+     1,2,2,2, 2,2, 1,2,2, 1,2,2,2, 1,2,2,2,2, &
+     2, 2,2, 2,2, 2,2, 2,2, 2, 2, 2, 2,2, 2,2]
   integer, parameter :: TKIND(NTAB) = [0,0,3,3, 0,0,2, 0,0,2, 1, &
-     2,0,1,3, 1,3, 2,0,0, 2,0,0,3, 2,0,0,3,2]
+     2,0,1,3, 1,3, 2,0,0, 2,0,0,3, 2,0,0,3,2, &
+     3, 3,3, 3,3, 3,3, 3,3, 3, 3, 3, 3,3, 3,3]
   real(kind=wp), parameter :: S_BRANCH_CM = &
      (8.90e-16_wp*0.0_wp + 1.19e-12_wp*14872.0140_wp + 1.63e-11_wp*24555.9693_wp) &
      / (8.90e-16_wp + 1.19e-12_wp + 1.63e-11_wp)
@@ -120,7 +146,10 @@ program check_charge_exchange_heating
      0.0_wp, 5.73_wp, &
      MG_ALLAN_1E4_CM, 0.0_wp, 0.0_wp, &
      FE_Z4_CM, 0.0_wp, 0.0_wp, 6.3_wp, &
-     43002.2100_wp, 0.0_wp, 0.0_wp, 4.23_wp, 193978.8910_wp]
+     43002.2100_wp, 0.0_wp, 0.0_wp, 4.23_wp, 193978.8910_wp, &
+     11.30_wp, 6.40_wp, 11.00_wp, 5.00_wp, 8.47_wp, 5.82_wp, 8.60_wp, &
+     5.73_wp, 8.60_wp, 8.60_wp, 8.60_wp, 10.00_wp, 8.00_wp, 9.00_wp, &
+     6.60_wp, 9.90_wp]
   !--- detailed-balance classes of the transition-1 pairs: 1 = one channel
   !--- and its reverse, 2 = radiative ionization with its non-radiative part
   !--- the reverse of the recombination (g_split), 0 = not one channel.
@@ -130,15 +159,24 @@ program check_charge_exchange_heating
   real(kind=wp) :: k_i, k_r, de_i, de_r, gs, dip, erad, dexp, kT, frac(MST)
   real(kind=wp) :: T, nH, ne, nHI, nHII, hi, hr, net, gross, knr, s, hsum, hfun
   real(kind=wp) :: nHeI, nHeII, heat_ph, tot_cx
-  integer :: ie, it, idir, j, ierr, ncxi, ncxr, found, k, ist
-  logical :: ok, carried
+  integer :: ie, it, idir, j, ierr, ncxi, ncxr, found, k, ist, ncxr_required
+  integer :: kind_found
+  logical :: ok, carried, langevin
+  real(kind=wp) :: value_found
   character(len=2) :: nm
+  character(len=16) :: arg
   real(kind=wp), parameter :: TT(3) = [3.0e3_wp, 1.0e4_wp, 2.0e4_wp]
 
   call MPI_INIT(ierr);  mpar%p_rank = 0
+  call get_command_argument(1, arg)
+  langevin = trim(arg) == 'langevin'
+  par%langevin_charge_exchange = langevin
   par%atomic_dir = 'data/atomic'
   par%use_metals = .true.
   par%charge_exchange_heating = .true.
+  !--- the n-level (T, n_e) cooling tables play no part here; 'low_density'
+  !--- keeps species_setup from building them for every stage
+  par%cooling_model = 'low_density'
   par%abund_C  = 2.2e-4_wp;  par%abund_N  = 4.0e-5_wp
   par%abund_O  = 3.3e-4_wp;  par%abund_Ne = 5.0e-5_wp
   par%abund_S  = 9.0e-6_wp;  par%abund_Ar = 3.0e-6_wp
@@ -169,6 +207,13 @@ program check_charge_exchange_heating
               if (trim(TEL(j)) == trim(nm) .and. TIT(j) == it .and. &
                   TDIR(j) == idir) found = j
            end do
+           if (found > 0) then
+              kind_found = TKIND(found);  value_found = TVAL(found)
+           end if
+           if (langevin .and. it >= 5 .and. idir == 2) then
+              found = NTAB + 1
+              kind_found = 3;  value_found = LANGEVIN_DE_EV*real(it - 1, wp)
+           end if
            if (carried .neqv. (found > 0)) then
               write(*,'(a,a,a,i0,a,i0,a,l2,a,l2)') '  FAIL (a): ', nm, ' it=', it, &
                  ' dir=', idir, ' carried=', carried, ' in table=', found > 0
@@ -186,11 +231,11 @@ program check_charge_exchange_heating
            !--- energy released when the ELECTRON moves as written
            dip = elem_eth(ie, it) - IP_H
            if (idir == 1) dip = -dip
-           select case (TKIND(found))
+           select case (kind_found)
            case (0);  erad = 0.0_wp
            case (1);  erad = dip
-           case (2);  erad = TVAL(found)*HC_EV_CM
-           case (3);  erad = dip - TVAL(found)
+           case (2);  erad = value_found*HC_EV_CM
+           case (3);  erad = dip - value_found
            end select
            dexp = dip - erad
            if (abs(merge(de_i, de_r, idir == 1) - dexp) > TOL_DE) then
@@ -200,7 +245,7 @@ program check_charge_exchange_heating
            end if
            write(*,'(a4,i4,a5,es12.3,f12.6,f12.6,f12.6,a10)') nm, it, &
               merge(' ion',' rec', idir == 1), merge(k_i, k_r, idir == 1), &
-              dip, erad, merge(de_i, de_r, idir == 1), trim(KIND_NAME(TKIND(found)))
+              dip, erad, merge(de_i, de_r, idir == 1), trim(KIND_NAME(kind_found))
         end do
      end do
   end do
@@ -239,9 +284,12 @@ program check_charge_exchange_heating
         ok = .false.
      end if
   end do
-  write(*,'(a,i0,a,i0,a,i0,a,i0,a)') ' carried: ', ncxi, ' ionization (expect ', &
-     NCXI_EXPECT, '), ', ncxr, ' recombination (expect ', NCXR_EXPECT, ')'
-  if (ncxi /= NCXI_EXPECT .or. ncxr /= NCXR_EXPECT) then
+  ncxr_required = NCXR_EXPECT
+  if (langevin) ncxr_required = NCXR_EXPECT + NLANGEVIN
+  write(*,'(a,i0,a,i0,a,i0,a,i0,a,l2)') ' carried: ', ncxi, ' ionization (expect ', &
+     NCXI_EXPECT, '), ', ncxr, ' recombination (expect ', ncxr_required, &
+     '); langevin_charge_exchange =', langevin
+  if (ncxi /= NCXI_EXPECT .or. ncxr /= ncxr_required) then
      write(*,'(a)') '  FAIL (a): reaction census'
      ok = .false.
   end if

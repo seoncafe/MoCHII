@@ -41,7 +41,7 @@ contains
   ! leaf; the ionization state at T is solved self-consistently.
   !=========================================================================
   subroutine net_rate(il, T, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net, &
-                      heat_star, heat_heii_ots)
+                      heat_star, heat_heii_ots, grain_terms)
     integer,       intent(in)    :: il
     real(kind=wp), intent(in)    :: T
     logical,       intent(in)    :: caseA
@@ -54,6 +54,9 @@ contains
     !--- validity count: the photoheating by the transported field and the
     !--- heat of the on-the-spot He II cascade [erg cm^-3 s^-1]
     real(kind=wp), intent(out), optional :: heat_star, heat_heii_ots
+    !--- the grain terms [erg cm^-3 s^-1]: photoelectric heating, accretion
+    !--- cooling, neutral gas-grain cooling
+    real(kind=wp), intent(out), optional :: grain_terms(3)
     real(kind=wp) :: nH, heat, yHe, dgHI, dgHeI, dhHI, dhHeI, dhHeII, f_h_only
 
     nH = gas_nH(il)
@@ -85,7 +88,8 @@ contains
          !--- populations of the table above, from one statistical
          !--- equilibrium with both colliders; the dominant coolant wherever
          !--- the gas is neutral, whatever heats it.
-         net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*xHII)
+         if (par%neutral_hydrogen_excitation) &
+            net = net - metal_cooling_H(il, T, nH, ne, nH*xHI, nH*xHII)
          !--- metal free-free cooling, net-charge weighted (par%metal_freefree)
          if (par%metal_freefree) &
             net = net - metal_freefree(il, T, nH, ne, nH*xHI, nH*xHII)
@@ -154,46 +158,31 @@ contains
          if (present(heat_heii_ots)) heat_heii_ots = h2
        end block
     end if
-    !--- PDR: grain photoelectric heating + grain recombination cooling
-    !--- (Bakes & Tielens 1994 fits) driven by the local FUV field.
-    !--- Two guards, both found by the PDR gate (runaway to 12-35 kK
-    !--- without them): (i) the BT94 fits are evaluated at
-    !--- min(T, 1e4 K) — outside their fit range the T^0.7 term of
-    !--- epsilon diverges and heating runs away through the H
-    !--- collisional-ionization feedback; (ii) both terms carry an
-    !--- x_HI weight — the BT94 charging parameter knows only the FUV
-    !--- field, so in ionized gas (EUV-charged grains, and the grain
-    !--- energy already routed to the IR via Heat_dust) it would badly
-    !--- overestimate; grain photoelectric GAS heating belongs to the
-    !--- predominantly neutral zone.
-    if (par%grain_pe) then
+    !--- grains (par%grain_pe, par%gas_grain_energy_exchange): the WD01
+    !--- photoelectric heating and the cooling by captured electrons and ions
+    !--- at the charge distribution of this state (grain_photoelectric_mod),
+    !--- and the energy neutral atoms exchange with the grains at T_d
+    !--- (gas_grain_collision_mod)
+    if (present(grain_terms)) grain_terms = 0.0_wp
+    if (par%grain_pe .or. par%gas_grain_energy_exchange) then
        block
-         use gas_rates_mod, only : g0_fuv
-         use octree_mod,    only : amr_grid
-         !--- MW reference dust extinction per H (D03 V band) — the
-         !--- normalization of the BT94 fits.
-         real(kind=wp), parameter :: CEXT_MW_V = 4.868e-22_wp
-         real(kind=wp) :: g0, xpe, eps, beta, dscale, Tpe
-         g0 = g0_fuv(il)
-         if (g0 > 0.0_wp) then
-            !--- dust amount relative to MW from the leaf opacity itself
-            !--- (robust against the DGR-vs-cext_dust input conventions;
-            !--- the first gate run had DGR=1 with the MW extinction
-            !--- already folded into cext_dust — the naive DGR/0.01
-            !--- scale made the PE heating 100x too strong and drove
-            !--- the PDR zone to a false 12 kK Ly-alpha-capped
-            !--- equilibrium).
-            dscale = par%pe_scale * xHI &
-                     * (amr_grid%rhokap(il)/par%distance2cm) &
-                     / (max(nH, tinest)*CEXT_MW_V)
-            Tpe = min(T, 1.0e4_wp)
-            xpe = g0*sqrt(Tpe)/max(ne, NE_FLOOR_PER_H*nH)
-            eps = 4.87e-2_wp/(1.0_wp + 4.0e-3_wp*xpe**0.73_wp) &
-                + 3.65e-2_wp*(Tpe/1.0e4_wp)**0.7_wp/(1.0_wp + 2.0e-4_wp*xpe)
-            net = net + 1.3e-24_wp*eps*g0*nH*dscale
-            beta = 0.74_wp/Tpe**0.068_wp
-            net = net - 4.65e-30_wp*Tpe**0.94_wp*xpe**beta*ne*nH*dscale
+         use grain_size_bins_mod,     only : grain_leaf_scale
+         use grain_photoelectric_mod, only : grain_photoelectric_leaf
+         use gas_grain_collision_mod, only : gas_grain_neutral_cooling
+         use dust_temp_mod,           only : t_dust
+         real(kind=wp) :: gpe, lgr, lgd, td, s_other, s_pah
+         gpe = 0.0_wp;  lgr = 0.0_wp;  lgd = 0.0_wp
+         td = t_dust(il)
+         if (par%grain_pe) &
+            call grain_photoelectric_leaf(il, T, td, nH, ne, nH*xHII, &
+                 yHe*nH*xHeII, yHe*nH*xHeIII, xHI, xHII, gpe, lgr)
+         if (par%gas_grain_energy_exchange) then
+            call grain_leaf_scale(il, nH, xHI, xHII, s_other, s_pah)
+            lgd = gas_grain_neutral_cooling(T, td, nH*xHI, yHe*nH*xHeI, &
+                                            nH*s_other, nH*s_pah)
          end if
+         net = net + gpe - lgr - lgd
+         if (present(grain_terms)) grain_terms = [gpe, lgr, lgd]
        end block
     end if
   end subroutine net_rate
@@ -246,6 +235,7 @@ contains
     real(kind=wp) :: sum_local(11), sum_host(11), metrics(9)
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(5), flag_host(5)
+    real(kind=wp) :: gterm(3), grain_local(4), grain_host(4)
     real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp, TAU_THIN = 1.0e-2_wp
     logical :: caseA, at_te_max
     integer :: il, it, ierr
@@ -262,6 +252,17 @@ contains
 
     max_local = 0.0_wp
     sum_local = 0.0_wp
+    grain_local = 0.0_wp
+    !--- the grain terms read T_d and the band field of this iteration
+    if (par%grain_pe .or. par%gas_grain_energy_exchange) then
+       block
+         use dust_temp_mod,           only : dust_temp_compute
+         use gas_rates_mod,           only : heat_dust
+         use grain_photoelectric_mod, only : grain_field_forget
+         call dust_temp_compute(heat_dust)
+         call grain_field_forget()
+       end block
+    end if
     !--- validity counts: gas volume; leaves and volume at te_max; leaves and
     !--- volume where the on-the-spot He II cascade out-heats the field in
     !--- optically thin gas
@@ -307,8 +308,10 @@ contains
        end if
        !--- final consistent state at te.
        call net_rate(il, te, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_mid, &
-                     h_star, h_ots)
+                     h_star, h_ots, gterm)
        vol = (2.0_wp*leaf_half(il))**3
+       grain_local(1) = grain_local(1) + vol*h_star
+       grain_local(2:4) = grain_local(2:4) + vol*gterm
        flag_local(1) = flag_local(1) + vol
        if (at_te_max) then
           flag_local(2) = flag_local(2) + 1.0_wp
@@ -372,6 +375,16 @@ contains
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(flag_local, flag_host, 5, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
+    call MPI_ALLREDUCE(grain_local, grain_host, 4, MPI_DOUBLE_PRECISION, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
+    !--- volume integrals of the grain terms at the solved states, against
+    !--- the H/He photoheating by the transported field
+    if (mpar%p_rank == 0 .and. (par%grain_pe .or. par%gas_grain_energy_exchange)) &
+       write(*,'(a,4es11.3,a,3es10.2)') &
+          '                  GRAIN: Sum V [H/He photoheating, photoelectric '// &
+          'heating, accretion cooling, neutral gas-grain cooling] =', grain_host, &
+          ' (code length^3 erg cm^-3 s^-1); per photoheating', &
+          grain_host(2:4)/max(grain_host(1), tinest)
     if (mpar%p_rank == 0 .and. flag_host(1) > 0.0_wp) then
        if (flag_host(2) > 0.0_wp) write(*,'(a,i0,a,es9.2,a,f9.1,a)') &
           '                  NOTE: ', nint(flag_host(2)), ' leaves (', &

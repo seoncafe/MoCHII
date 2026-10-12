@@ -6,7 +6,7 @@
  ! extra low-energy photons raise the 2^3S photoionization rate Phi_3, adding
  ! a sink to the metastable balance and depleting n_3 where the field is
  ! strong (near the star).  par%hei_metastable = .true. writes the 2^3S
- ! population, which par%hei_metastable_coupling (default on) also feeds back
+ ! population, which par%hei_metastable_coupling (explicitly enabled below) also feeds back
  ! into the ionization balance and the He I recombination photons.  These two
  ! band settings are what the default gives when the 2^3S population is used;
  ! they are written out because hei_low_density turns the extension off.

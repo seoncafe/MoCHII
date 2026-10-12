@@ -33,7 +33,7 @@ module recomb_mod
 ! He II:  k(T) = A (1 + P sqrt(U)) U^K exp(-U) / (X + U),  U = dE/T_eV.
 ! Negligible next to photoionization at ~1e4 K but kept in the balance.
 !---------------------------------------------------------------------------
-  use define, only : wp, kboltz_cgs, ev2erg, nan64, par
+  use define, only : wp, kboltz_cgs, ev2erg, nan64, par, MAX_ION_STAGES
   use hydrogenic_recombination_mod, only : hydrogenic_alpha_B
   implicit none
   private
@@ -294,32 +294,32 @@ contains
 
   !=========================================================================
   ! Dere (2007) / Voronov ('Dima') collisional-ionization ratio.  Cloudy
-  ! c23.01's HYBRID model multiplies the Voronov rate by this constant per
-  ! (element, stage) factor (source/atmdat_adfa.cpp DereRatio, "evaluated
+  ! c25.00's HYBRID model multiplies the Voronov rate by a constant for each
+  ! (element, stage) (source/atmdat_adfa.cpp DereRatio, "evaluated
   ! where the ion is abundant").  stage = MoCHII transition index
   ! (1 = X0 -> X+).  Returns 1 unless par%ci_model = 'dere_hybrid'.
   !=========================================================================
   pure real(kind=wp) function ci_dere_ratio(Z, stage) result(r)
     integer, intent(in) :: Z, stage
-    real(kind=wp) :: tab(4)
+    real(kind=wp) :: tab(MAX_ION_STAGES-1)
     integer :: n
     r = 1.0_wp
     if (trim(par%ci_model) /= 'dere_hybrid') return
     tab = 1.0_wp;  n = 0
     select case (Z)
-    case (1);  tab(1)   = 0.9063_wp;                                    n = 1  ! H
-    case (2);  tab(1:2) = [1.0389_wp, 1.0686_wp];                       n = 2  ! He
-    case (6);  tab(1:3) = [1.0499_wp, 0.913_wp, 1.0377_wp];             n = 3  ! C
-    case (7);  tab(1:2) = [1.0421_wp, 1.1966_wp];                       n = 2  ! N
-    case (8);  tab(1:2) = [1.041_wp,  1.1181_wp];                       n = 2  ! O
-    case (10); tab(1:2) = [0.8089_wp, 1.1395_wp];                       n = 2  ! Ne
-    case (12); tab(1:2) = [0.3793_wp, 0.9857_wp];                       n = 2  ! Mg
-    case (14); tab(1:4) = [0.7328_wp, 0.8798_wp, 0.4492_wp, 0.8221_wp]; n = 4  ! Si
-    case (16); tab(1:3) = [1.3572_wp, 0.8925_wp, 0.8119_wp];            n = 3  ! S
-    case (17); tab(1:4) = [0.5412_wp, 0.8428_wp, 0.9237_wp, 0.819_wp];  n = 4  ! Cl
-    case (18); tab(1:3) = [0.9242_wp, 0.8644_wp, 0.9752_wp];            n = 3  ! Ar
-    case (20); tab(1:4) = [0.7652_wp, 1.1668_wp, 1.0422_wp, 0.8705_wp]; n = 4  ! Ca
-    case (26); tab(1:3) = [0.9904_wp, 1.0568_wp, 1.824_wp];             n = 3  ! Fe
+    case (1); tab(1:1) = [0.9063_wp]; n = 1
+    case (2); tab(1:2) = [1.0389_wp, 1.0686_wp]; n = 2
+    case (6); tab(1:6) = [1.0499_wp, 0.913_wp, 1.0377_wp, 1.299_wp, 1.2874_wp, 1.0656_wp]; n = 6
+    case (7); tab(1:6) = [1.0421_wp, 1.1966_wp, 1.0842_wp, 0.9619_wp, 1.0583_wp, 1.155_wp]; n = 6
+    case (8); tab(1:6) = [1.041_wp, 1.1181_wp, 1.0164_wp, 1.0271_wp, 0.9789_wp, 0.6829_wp]; n = 6
+    case (10); tab(1:6) = [0.8089_wp, 1.1395_wp, 1.1041_wp, 1.0449_wp, 1.1365_wp, 1.089_wp]; n = 6
+    case (12); tab(1:6) = [0.3793_wp, 0.9857_wp, 1.1152_wp, 1.2826_wp, 1.3006_wp, 1.2416_wp]; n = 6
+    case (14); tab(1:6) = [0.7328_wp, 0.8798_wp, 0.4492_wp, 0.8221_wp, 1.7874_wp, 1.5418_wp]; n = 6
+    case (16); tab(1:6) = [1.3572_wp, 0.8925_wp, 0.8119_wp, 0.8991_wp, 0.6633_wp, 1.4519_wp]; n = 6
+    case (17); tab(1:6) = [0.5412_wp, 0.8428_wp, 0.9237_wp, 0.819_wp, 0.9151_wp, 0.7909_wp]; n = 6
+    case (18); tab(1:6) = [0.9242_wp, 0.8644_wp, 0.9752_wp, 0.8562_wp, 0.6998_wp, 0.6273_wp]; n = 6
+    case (20); tab(1:6) = [0.7652_wp, 1.1668_wp, 1.0422_wp, 0.8705_wp, 0.9193_wp, 0.9982_wp]; n = 6
+    case (26); tab(1:6) = [0.9904_wp, 1.0568_wp, 1.824_wp, 1.6578_wp, 1.5033_wp, 0.9704_wp]; n = 6
     end select
     if (stage >= 1 .and. stage <= n) r = tab(stage)
   end function ci_dere_ratio

@@ -1341,11 +1341,14 @@ contains
     real(kind=wp), intent(inout) :: eedge(:)
     integer,       intent(in)    :: nfuv, nnu, nmetal
     real(kind=wp), intent(in)    :: metal_eth(:)
-    real(kind=wp) :: cand(256), thr(256), points(256), w(64)
+    !--- MAXEDGE holds H/He plus every metal threshold (66 transitions with
+    !--- stages I-VII) and the sub-segments between them
+    integer, parameter :: MAXEDGE = 256
+    real(kind=wp) :: cand(MAXEDGE), thr(MAXEDGE), points(MAXEDGE), w(MAXEDGE)
     real(kind=wp) :: tmp, lo, hi, wsum, frac
     integer :: ncand, nthr, nseg, nion, i, j, ipt, ib, r
-    integer :: nb(64), off, best, ierr, ntot, itmp, ndrop
-    integer :: cpri(256), tpri(256)
+    integer :: nb(MAXEDGE), off, best, ierr, ntot, itmp, ndrop
+    integer :: cpri(MAXEDGE), tpri(MAXEDGE)
     logical :: dup
     real(kind=wp), parameter :: MERGE_TOL = 0.01_wp   ! |ln(T2/T1)| merge
 

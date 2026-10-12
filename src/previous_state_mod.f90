@@ -22,6 +22,16 @@ module previous_state_mod
 !                         starts them at zero, i.e. with metals in their low
 !                         stages -- where x_HI ~ 1e-3 that metal absorption is
 !                         as large as hydrogen's.
+!   Phi_HeI_23S           the He I 2^3S photoionization rate of the last
+!                         pass (with par%hei_metastable_coupling): the 2^3S
+!                         population that splits the He I diffuse channel of
+!                         the first pass is solved with it.  Without it (a
+!                         file written before 2026-10-12, or a run without
+!                         the coupling) the first pass takes Phi_3 = 0, as a
+!                         fresh run does, and a restart is not the
+!                         continuation of the run that wrote the file.
+!                         It is held here and set after ion_score_setup
+!                         (restore_hei_phi3), which clears the leaf rates.
 ! Everything else is rebuilt every pass from these: the H/He rates and heat,
 ! the diffuse emission, the metal stage fractions, the PAH survival factor.
 ! All of them are written to the rates file already.
@@ -42,7 +52,9 @@ module previous_state_mod
   implicit none
   private
 
-  public :: load_previous_state
+  public :: load_previous_state, restore_hei_phi3
+  !--- Phi_3 on the new leaves, held until restore_hei_phi3
+  real(kind=wp), allocatable :: restart_phi3(:)
 
   integer, parameter :: MAX_SIZES = 32
   integer(kind=int64), parameter :: EMPTY = -1_int64
@@ -62,7 +74,8 @@ contains
     type(io_file_type) :: file
     character(len=64)  :: extname
     real(kind=wp), allocatable :: oxyz(:,:), osize(:), ox1(:), ox1p(:), ox2(:), &
-                                  ox3(:), ox4(:), one(:), ote(:), g(:,:)
+                                  ox3(:), ox4(:), one(:), ote(:), g(:,:), &
+                                  ophi3(:)
     real(kind=wp), allocatable :: nx1(:), nx1p(:), nx2(:), nx3(:), nx4(:), &
                                   nne(:), nte(:)
     type :: rate_block
@@ -73,11 +86,16 @@ contains
     integer, allocatable :: match(:)
     integer :: status, n1, n2, nold, il, j, ie, k, nr, nmatched, ngas_new, &
                nunmatched_gas, ierr, nst
-    logical :: have(8), have_xhii, have_xheiii
+    logical :: have(8), have_xhii, have_xheiii, have_phi3
+    logical :: restored_rates(n_elements)
 
     nold = 0;  nr = 0;  have = .false.;  have_xhii = .false.
-    have_xheiii = .false.
-    allocate(orates(max(n_elements,1)))
+    have_xheiii = .false.;  have_phi3 = .false.
+    ! The old run can contain more elements than this run. Read its full
+    ! supported roster so earlier, now-disabled elements do not hide the
+    ! rate block of an active element later in the file.
+    allocate(orates(MAX_METAL_ELEMENTS))
+    restored_rates = .false.
 
     !--- world rank 0 reads the previous state
     if (mpar%p_rank == 0) then
@@ -114,6 +132,9 @@ contains
              allocate(one(n1));  call io_read_image(file, one, status);  have(6) = .true.
           case ('T_e')
              allocate(ote(n1));  call io_read_image(file, ote, status);  have(7) = .true.
+          case ('Phi_HeI_23S')
+             allocate(ophi3(n1));  call io_read_image(file, ophi3, status)
+             have_phi3 = .true.
           case default
              if (extname(1:6) == 'Gamma_' .and. index(extname, '_stages') > 0 &
                  .and. nr < size(orates)) then
@@ -200,6 +221,28 @@ contains
     end if
     call gas_state_sync()
 
+    !--- the He I 2^3S photoionization rate (0 on unmatched leaves)
+    call MPI_BCAST(have_phi3, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr)
+    if (par%hei_metastable_coupling) then
+       allocate(restart_phi3(gas_nleaf));  restart_phi3 = 0.0_wp
+       if (have_phi3) then
+          if (mpar%p_rank == 0) then
+             do il = 1, gas_nleaf
+                if (match(il) > 0) restart_phi3(il) = ophi3(match(il))
+             end do
+          end if
+          call MPI_BCAST(restart_phi3, gas_nleaf, MPI_DOUBLE_PRECISION, 0, &
+                         MPI_COMM_WORLD, ierr)
+          if (mpar%p_rank == 0) write(*,'(a)') &
+             ' RESTART: He I 2^3S photoionization rate Phi_3'
+       else if (mpar%p_rank == 0) then
+          write(*,'(a)') ' RESTART: NOTE: '//trim(fname)//' carries no'// &
+             ' Phi_HeI_23S; the first pass takes Phi_3 = 0, as a fresh run'// &
+             ' does, so the 2^3S split of the He I diffuse channel differs'// &
+             ' from the run that wrote the file for that pass'
+       end if
+    end if
+
     !--- metal photoionization rates, element by element (by name)
     call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     do k = 1, nr
@@ -215,6 +258,7 @@ contains
        end do
        if (ie == 0) cycle                     ! element not in this run
        nst = min(n1, elem_nstage(ie) - 1)
+       restored_rates(ie) = n1 >= elem_nstage(ie)-1
        allocate(g(elem_nstage(ie) - 1, gas_nleaf));  g = 0.0_wp
        if (mpar%p_rank == 0) then
           do il = 1, gas_nleaf
@@ -227,7 +271,28 @@ contains
           trim(orates(k)%name), ' photoionization rates, ', nst, ' transitions'
        deallocate(g)
     end do
+    if (any(.not. restored_rates) .and. mpar%p_rank == 0) then
+       write(*,'(a)') ' RESTART: incomplete metal transition rates; added rates start at zero.'
+       write(*,'(a)') ' RESTART: fresh transport and gas reconvergence are required before output.'
+       if (par%gas_niter < 1) &
+          call fatal_error('restart with missing metal rates requires gas_niter >= 1')
+       ! The ordinary main-loop convergence check now refuses an output
+       ! whose warm start has not reconverged after the stage change.
+       par%require_convergence = .true.
+    end if
   end subroutine load_previous_state
+
+  !--- set the restored Phi_3 on the leaves once ion_score_setup has
+  !--- allocated (and cleared) the transport estimators; its heating is
+  !--- read only after the next transport, which replaces both.
+  subroutine restore_hei_phi3()
+    use hei_metastable_mod, only : hei_phi3_assign
+    real(kind=wp), allocatable :: zero(:)
+    if (.not. allocated(restart_phi3)) return
+    allocate(zero(size(restart_phi3)));  zero = 0.0_wp
+    call hei_phi3_assign(restart_phi3, zero)
+    deallocate(restart_phi3, zero)
+  end subroutine restore_hei_phi3
 
   !=========================================================================
   ! match(il) = the previous leaf whose cube contains the center of new leaf

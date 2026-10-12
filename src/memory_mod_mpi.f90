@@ -33,6 +33,7 @@ module memory_mod
   public create_shared_mem, create_mem, reduce_mem, &
          destroy_shared_mem_window, destroy_shared_mem_all, get_window, destroy_mem, &
          destroy_shared_mem
+  public shared_host_rank, shared_host_size, shared_host_comm
 
   !--- destroy_shared_mem(array): the counterpart of create_shared_mem —
   !--- looks the window up from the array pointer (get_window), frees it
@@ -43,6 +44,7 @@ module memory_mod
   !--- (MoCHII, 2026-07-12; extend with further ranks/kinds as needed.)
   interface destroy_shared_mem
      module procedure destroy_shared_mem_1D_real64, destroy_shared_mem_2D_real64, &
+                      destroy_shared_mem_3D_real64, &
                       destroy_shared_mem_1D_int32,  destroy_shared_mem_2D_int32
   end interface destroy_shared_mem
 
@@ -106,6 +108,23 @@ contains
   mpi_parameters_defined = .true.
   call MPI_BARRIER(MPI_COMM_WORLD, ierr)
   end subroutine init_mpi_parameters
+  !---------------------------
+  !--- MoCHII (2026-10-12): the rank, size and communicator of the node that
+  !--- shares the windows create_shared_mem makes, so a caller filling a
+  !--- shared array divides its elements over exactly the ranks that share it
+  integer function shared_host_rank() result(r)
+  if (.not.mpi_parameters_defined) call init_mpi_parameters()
+  r = h_rank
+  end function shared_host_rank
+  integer function shared_host_size() result(n)
+  integer :: ierr
+  if (.not.mpi_parameters_defined) call init_mpi_parameters()
+  call MPI_COMM_SIZE(hostcomm, n, ierr)
+  end function shared_host_size
+  integer function shared_host_comm() result(c)
+  if (.not.mpi_parameters_defined) call init_mpi_parameters()
+  c = hostcomm
+  end function shared_host_comm
   !---------------------------
   subroutine create_shared_mem_1D_real64(array,arrshape)
   implicit none
@@ -2819,6 +2838,15 @@ contains
   if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
   array => null()
   end subroutine destroy_shared_mem_2D_real64
+  !---------------------------
+  subroutine destroy_shared_mem_3D_real64(array)
+  implicit none
+  real(kind=real64), pointer, intent(inout) :: array(:,:,:)
+  integer :: win
+  call get_window(array, win)
+  if (win /= MPI_WIN_NULL) call destroy_shared_mem_window(win)
+  array => null()
+  end subroutine destroy_shared_mem_3D_real64
   !---------------------------
   subroutine destroy_shared_mem_1D_int32(array)
   implicit none

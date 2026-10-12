@@ -43,12 +43,26 @@ temperature.  Above 1000 K (2000 K for C II) the H-impact rate is therefore
 held fixed; where gas that warm is also partly ionized, electrons dominate
 the excitation anyway.
 
-Run:  python3 make_hcoll_fine_structure.py
+Run:  python3 make_hcoll_fine_structure.py [--output-dir DIR]
+The level indices are checked against nlevel_<el>_<stage>.txt in the output
+directory (statistical weight and energy of each addressed level) before a
+file is written, so a rate cannot be attached to the wrong level.
 """
+import argparse
+from datetime import datetime
 import os
 import math
+from zoneinfo import ZoneInfo
 
-DATE = "2026-09-24"
+DATE = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+# Ground-term levels the rows address: index -> (g, energy [cm^-1], label),
+# energies from NIST ASD (C I 3P 0/16.40/43.40, C II 2P 0/63.42,
+# O I 3P 0/158.265/226.977).
+GROUND_TERM_LEVELS = {
+    "c_1": {1: (1.0, 0.0, "3P0"), 2: (3.0, 16.40, "3P1"), 3: (5.0, 43.40, "3P2")},
+    "c_2": {1: (2.0, 0.0, "2P1/2"), 2: (4.0, 63.42, "2P3/2")},
+    "o_1": {1: (5.0, 0.0, "3P2"), 2: (3.0, 158.265, "3P1"), 3: (1.0, 226.977, "3P0")},
+}
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "..", "data", "atomic")
 
@@ -110,8 +124,29 @@ def self_check():
     assert worst < 0.012, worst
 
 
-def write(name, header, rows):
-    path = os.path.join(OUTDIR, name)
+def verify_ground_term_indices(outdir, tag):
+    """Check the addressed levels of nlevel_<tag>.txt in outdir.
+
+    Each index must carry the expected statistical weight and an energy
+    within 0.5 cm^-1 of the NIST ground-term value.
+    """
+    path = os.path.join(outdir, f"nlevel_{tag}.txt")
+    records = [line.split() for line in open(path)
+               if line.strip() and not line.lstrip().startswith("#")]
+    start = next(i for i, r in enumerate(records) if r[0] == "NLEV")
+    levels = {int(r[0]): (float(r[1]), float(r[2]))
+              for r in records[start+1:start+1+int(records[start][1])]}
+    for index, (g, energy, label) in GROUND_TERM_LEVELS[tag].items():
+        found = levels.get(index)
+        if found is None or found[0] != g or abs(found[1] - energy) > 0.5:
+            raise ValueError(f"{path}: level {index} is {found}, expected {label} "
+                             f"g={g:g} E={energy} cm^-1")
+        print(f"  {tag} level {index}: g={found[0]:g} E={found[1]:.3f} cm^-1 = {label}")
+
+
+def write(name, header, rows, outdir=OUTDIR):
+    verify_ground_term_indices(outdir, name.removeprefix("hcoll_").removesuffix(".txt"))
+    path = os.path.join(outdir, name)
     with open(path, "w") as fh:
         for line in header:
             fh.write("# " + line + "\n")
@@ -142,26 +177,30 @@ def rows_abr(table, tmin, tmax):
     return out
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", default=OUTDIR,
+                        help="directory holding the nlevel atoms the rows address")
+    outdir = parser.parse_args(argv).output_dir
     self_check()
     write("hcoll_o_1.txt",
           ["O I ground-term fine-structure excitation by atomic hydrogen:",
            "Abrahamsson, Krems & Dalgarno (2007), ApJ 654, 1171, Table 4",
            "(eq. 1; valid 30-1000 K).  3P2->3P1 is [O I] 63 um, 3P1->3P0",
            "[O I] 145 um."] + FORMAT,
-          rows_abr(ABR_O, 30.0, 1000.0))
+          rows_abr(ABR_O, 30.0, 1000.0), outdir)
     write("hcoll_c_1.txt",
           ["C I ground-term fine-structure excitation by atomic hydrogen:",
            "Abrahamsson, Krems & Dalgarno (2007), ApJ 654, 1171, Table 2",
            "(eq. 1; valid 5-1000 K).  3P0->3P1 is [C I] 609 um, 3P1->3P2",
            "[C I] 370 um."] + FORMAT,
-          rows_abr(ABR_C, 5.0, 1000.0))
+          rows_abr(ABR_C, 5.0, 1000.0), outdir)
     write("hcoll_c_2.txt",
           ["C II 2P1/2-2P3/2 ([C II] 158 um) de-excitation by atomic",
            "hydrogen: Barinovs et al. (2005), ApJ 620, 537, as the power law",
            "7.6e-10 (T/100)^0.14, held outside 20-2000 K."] + FORMAT,
           [["1", "2", "2", "20.0", "2000.0",
-            f"{7.6e-10:.10e}", f"{0.14:.10e}"] + [f"{0.0:.10e}"] * 8])
+            f"{7.6e-10:.10e}", f"{0.14:.10e}"] + [f"{0.0:.10e}"] * 8], outdir)
 
 
 if __name__ == "__main__":

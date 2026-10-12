@@ -215,6 +215,15 @@ contains
      call refuse_input('par%recomb_model must be ''detailed_balance'' '// &
         '(default) or ''hui_gnedin''.')
   endif
+  if (trim(par%metal_excitation_model) == 'extended') call refuse_input( &
+     'par%metal_excitation_model = ''extended'' was removed 2026-10-11: '// &
+     'use ''chianti'' (full CHIANTI 11.0.2 atoms, the default).')
+  if (trim(par%metal_excitation_model) /= 'chianti' .and. &
+      trim(par%metal_excitation_model) /= 'mocassin_v2') then
+     call refuse_input('par%metal_excitation_model must be ''chianti'' '// &
+        '(default; full CHIANTI 11.0.2 atoms) or ''mocassin_v2'' (MOCASSIN '// &
+        'v2 atoms, for parity runs).')
+  endif
   if (trim(par%diffuse_energy_model) /= 'exponential' .and. &
       trim(par%diffuse_energy_model) /= 'threshold'   .and. &
       trim(par%diffuse_energy_model) /= 'milne') then
@@ -576,6 +585,10 @@ contains
      call refuse_input( &
         'par%grain_pe needs par%ion_add_dust (grain opacity carries the field).')
   endif
+  if (par%gas_grain_energy_exchange .and. .not. par%ion_add_dust) then
+     call refuse_input('par%gas_grain_energy_exchange needs par%ion_add_dust '// &
+        '(the grains and their temperature come from the dust model).')
+  endif
 
   select case(trim(par%distance_unit))
      case ('kpc')
@@ -662,13 +675,20 @@ contains
   !                         (eion_max), else .false. with a note; set in
   !                         the input with 'on_the_spot', it transports the
   !                         He III cascade alone (heii_cascade_transported);
-  !   add_fuv               not in the input: .true. when the He I 2^3S
-  !                         population is used (hei_metastable or
-  !                         hei_metastable_coupling), else .false.: Phi_3
-  !                         is a path estimator over the transported band
-  !                         and starts at 4.78 eV;
+  !   add_fuv               not in the input: .true. when something absorbs
+  !                         below 13.6 eV -- the He I 2^3S population
+  !                         (hei_metastable or hei_metastable_coupling,
+  !                         abund_He > 0; Phi_3 is a path estimator over the
+  !                         transported band and starts at 4.78 eV), a metal
+  !                         with a first ionization potential below the H I
+  !                         edge, or dust -- else .false.;
   !   efuv_min              not in the input: E_HEI_23S_SIGMA_EDGE = 4.78 eV
-  !                         when the 2^3S population is used, else 6.0 eV;
+  !                         under the same condition, else the define.f90
+  !                         default;
+  !   grain_pe              not in the input: ion_add_dust .and. add_fuv
+  !                         (WD01 photoelectric heating and accretion
+  !                         cooling, grain_photoelectric_mod);
+  !   gas_grain_energy_exchange  not in the input: ion_add_dust;
   !   no_photons_fuv        not in the input: no_photons/4, or no_photons when
   !                         no source has ionizing luminosity (resolved in
   !                         ion_band_mod once the band luminosities are known).
@@ -682,16 +702,21 @@ contains
   subroutine read_parameters_with_implicit_defaults(fname)
     use define
     use mpi
+    use metal_ionization_potential_mod, only : metal_ionization_potential
     implicit none
     character(len=*), intent(in) :: fname
     integer, parameter :: NAB = 11
     character(len=2), parameter :: ABNAME(NAB) = &
        ['C ', 'N ', 'O ', 'Ne', 'S ', 'Ar', 'Mg', 'Fe', 'Si', 'Cl', 'Ca']
+    integer, parameter :: ABZ(NAB) = [6, 7, 8, 10, 16, 18, 12, 26, 14, 17, 20]
     type(params_type) :: par0, par_hi
-    real(kind=wp) :: ab_hi(NAB), ab_lo(NAB), ab_default(NAB)
+    real(kind=wp) :: ab_hi(NAB), ab_lo(NAB), ab_default(NAB), ab_now(NAB)
     logical :: given_um, given_ne, given_heat, given_ab(NAB), any_positive
     logical :: given_hei, given_heii, transported
     logical :: given_fuv, given_efuv, given_nfuv, uses_23s
+    logical :: given_pe, given_gge
+    logical :: metal_below_hi_edge, fuv_absorbers
+    character(len=128) :: fuv_reasons
     !--- the He II Ly-alpha energy [eV] (heii_cascade_mod::E_HEII_LYA)
     real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp
     character(len=64) :: names
@@ -718,6 +743,9 @@ contains
     given_hei  = par_hi%hei_diffuse  .eqv. par%hei_diffuse
     given_heii = par_hi%heii_diffuse .eqv. par%heii_diffuse
     given_fuv  = par_hi%add_fuv      .eqv. par%add_fuv
+    given_pe   = par_hi%grain_pe     .eqv. par%grain_pe
+    given_gge  = par_hi%gas_grain_energy_exchange .eqv. &
+                 par%gas_grain_energy_exchange
     given_efuv = par_hi%efuv_min       == par%efuv_min
     given_nfuv = par_hi%no_photons_fuv == par%no_photons_fuv
 
@@ -735,15 +763,35 @@ contains
     if (.not. given_hei)  par%hei_diffuse  = transported
     if (.not. given_heii) par%heii_diffuse = transported .and. &
                                              par%eion_max >= E_HEII_LYA
-    !--- the FUV extension follows the He I 2^3S population: Phi_3 is scored
-    !--- from the transported band and its threshold is 4.78 eV
-    !--- no helium, no 2^3S population (solve_ion_cell and thermal_mod run the
-    !--- coupling only for abund_He > 0), so no band for it either
+    !--- the FUV extension is on whenever something in the run absorbs below
+    !--- the H I edge: the He I 2^3S population (Phi_3, threshold 4.78 eV;
+    !--- no helium, no 2^3S population -- solve_ion_cell and thermal_mod run
+    !--- the coupling only for abund_He > 0), a metal with its neutral
+    !--- ionization potential below 13.598 eV, or dust
     uses_23s = (par%hei_metastable .or. par%hei_metastable_coupling) .and. &
                par%abund_He > 0.0_wp
-    if (.not. given_fuv)  par%add_fuv = uses_23s
+    metal_below_hi_edge = .false.
+    ab_now = abundances()
+    if (par%use_metals) then
+       do k = 1, NAB
+          if (ab_now(k) > 0.0_wp .and. &
+              metal_ionization_potential(ABZ(k), 1) < eth_HI) &
+             metal_below_hi_edge = .true.
+       end do
+    end if
+    fuv_absorbers = uses_23s .or. metal_below_hi_edge .or. par%ion_add_dust
+    fuv_reasons = ''
+    if (uses_23s) fuv_reasons = trim(fuv_reasons)//' He I 2^3S,'
+    if (metal_below_hi_edge) fuv_reasons = trim(fuv_reasons)//' metals,'
+    if (par%ion_add_dust) fuv_reasons = trim(fuv_reasons)//' dust,'
+    if (len_trim(fuv_reasons) > 0) fuv_reasons = fuv_reasons(1:len_trim(fuv_reasons)-1)
+    if (.not. given_fuv)  par%add_fuv = fuv_absorbers
+    !--- the gas-grain physics is on wherever there are grains: photoelectric
+    !--- emission and electron and ion capture need the FUV band as well
+    if (.not. given_pe)   par%grain_pe = par%ion_add_dust .and. par%add_fuv
+    if (.not. given_gge)  par%gas_grain_energy_exchange = par%ion_add_dust
     if (.not. given_efuv) par%efuv_min = merge(E_HEI_23S_SIGMA_EDGE, &
-                                               par0%efuv_min, uses_23s)
+                                               par0%efuv_min, fuv_absorbers)
     !--- resolved once the band luminosities are known (ion_band_mod):
     !--- no_photons/4, or no_photons when no source has ionizing luminosity
     if (.not. given_nfuv) par%no_photons_fuv = -1.0_wp
@@ -770,13 +818,20 @@ contains
           ' DIFFUSE: heii_diffuse left off: the band stops at eion_max =', &
           par%eion_max, ' eV, below the 40.813 eV He II Ly-alpha, so no He III'
     end if
-    if (world_rank == 0 .and. uses_23s .and. .not. given_fuv) &
-       write(*,'(a)') ' FUV: add_fuv = T for the He I 2^3S population '// &
-          '(the input leaves it out)'
-    if (world_rank == 0 .and. uses_23s .and. par%add_fuv .and. .not. given_efuv) &
+    if (world_rank == 0 .and. par%ion_add_dust .and. &
+        .not. (given_pe .and. given_gge)) &
+       write(*,'(2(a,l1),a)') ' GRAIN: set with the dust (items the input '// &
+          'leaves out): grain_pe = ', par%grain_pe, &
+          ', gas_grain_energy_exchange = ', par%gas_grain_energy_exchange, &
+          merge(' (grain_pe needs add_fuv)', '                         ', &
+                .not. par%add_fuv .and. .not. given_pe)
+    if (world_rank == 0 .and. fuv_absorbers .and. .not. given_fuv) &
+       write(*,'(3a)') ' FUV: add_fuv = T for the absorbers below 13.6 eV:', &
+          trim(fuv_reasons), ' (the input leaves it out)'
+    if (world_rank == 0 .and. fuv_absorbers .and. par%add_fuv .and. .not. given_efuv) &
        write(*,'(a,f7.3,a)') ' FUV: efuv_min = ', par%efuv_min, &
-          ' eV, where the 2^3S photoionization cross section starts'// &
-          ' (threshold 4.768 eV; the input leaves it out)'
+          ' eV, where the 2^3S photoionization cross section starts,'// &
+          ' below every metal edge (the input leaves it out)'
 
   contains
 
@@ -793,6 +848,9 @@ contains
            iostat=ios_open, iomsg=msg)
       if (ios_open /= 0) call refuse_input('cannot open the input file '''// &
          fname//''': '//trim(msg))
+      close(unit)
+      call refuse_removed_items()
+      open(newunit=unit, file=fname, status='old', action='read')
       read(unit, nml=parameters, iostat=ios, iomsg=msg)
       close(unit)
       if (ios < 0) call refuse_input('no namelist group &parameters ... / '// &
@@ -802,6 +860,69 @@ contains
          'value that does not fit its item):'//new_line('a')//'       '// &
          trim(msg)//input_lines_near(msg))
     end subroutine read_namelist_file
+
+    !--- Items removed or renamed are refused with the name of what replaced
+    !--- them (the namelist read alone would only say "unknown item").
+    subroutine refuse_removed_items()
+      use utility, only : refuse_input
+      integer, parameter :: NREMOVED = 8
+      character(len=32), parameter :: removed(NREMOVED) = [character(len=32) :: &
+         'metal_inner_shell_absorption', 'additional_line_cooling', &
+         'high_charge_exchange', 'fe_levels_full', 'case_ab', &
+         'diffuse_field', 'line_case', 'pe_scale']
+      character(len=200), parameter :: replacement(NREMOVED) = [character(len=200) :: &
+         'removed 2026-10-11: metal absorption always sums every subshell '// &
+            '(phfit2); multi-stage Auger products are the planned '// &
+            'par%auger_ionization', &
+         'removed 2026-10-11: every stage with an atom in '// &
+            'par%metal_excitation_model contributes cooling and lines', &
+         'renamed 2026-10-11: use par%langevin_charge_exchange', &
+         'removed 2026-10-11: the Fe II/III atoms come from '// &
+            'par%metal_excitation_model', &
+         'removed 2026-09-25: use par%recombination_continuum '// &
+            '(''transported'', ''on_the_spot'' or ''escaping'')', &
+         'removed 2026-09-25: use par%recombination_continuum '// &
+            '(''transported'', ''on_the_spot'' or ''escaping'')', &
+         'removed 2026-09-25: use par%lyman_lines '// &
+            '(''on_the_spot'' or ''escaping'')', &
+         'removed 2026-10-11 with the Bakes & Tielens (1994) fits it '// &
+            'scaled: par%grain_pe (Weingartner & Draine 2001) takes the '// &
+            'grains of par%dust_model at the leaf''s dust opacity']
+      character(len=1024) :: line, packed
+      integer :: unit, ios, i, j, at, nline, n
+      open(newunit=unit, file=fname, status='old', action='read', iostat=ios)
+      if (ios /= 0) return
+      nline = 0
+      do
+         read(unit, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         nline = nline + 1
+         at = index(line, '!')
+         if (at > 0) line(at:) = ' '
+         !--- lower case, blanks removed
+         packed = ''
+         n = 0
+         do j = 1, len_trim(line)
+            if (line(j:j) == ' ' .or. line(j:j) == char(9)) cycle
+            n = n + 1
+            packed(n:n) = line(j:j)
+            if (packed(n:n) >= 'A' .and. packed(n:n) <= 'Z') &
+               packed(n:n) = achar(iachar(packed(n:n)) + 32)
+         end do
+         do i = 1, NREMOVED
+            at = index(packed, 'par%'//trim(removed(i)))
+            if (at == 0) cycle
+            j = at + 4 + len_trim(removed(i))
+            if (j > n) cycle
+            if (packed(j:j) /= '=' .and. packed(j:j) /= '(') cycle
+            close(unit)
+            call refuse_input('par%'//trim(removed(i))//' (line '// &
+               integer_text(nline)//' of '''//fname//''') was '// &
+               trim(replacement(i))//'.')
+         end do
+      end do
+      close(unit)
+    end subroutine refuse_removed_items
 
     !--- The line the read message names and the one before it, numbered,
     !--- or nothing when the message names no line.
@@ -834,6 +955,7 @@ contains
       par%use_metals = flag;  par%metal_ne = flag;  par%metal_heat = flag
       par%hei_diffuse = flag;  par%heii_diffuse = flag
       par%add_fuv = flag
+      par%grain_pe = flag;  par%gas_grain_energy_exchange = flag
       par%efuv_min = sentinel;  par%no_photons_fuv = sentinel
       call set_abundances([(sentinel, k = 1, NAB)])
     end subroutine set_implicit_items

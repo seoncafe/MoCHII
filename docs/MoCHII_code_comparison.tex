@@ -87,8 +87,9 @@ three-dimensional Monte Carlo transport onto an older MAPPINGS V
 arbitrary Cartesian geometry, but it does not inherit all later 5.2.1
 changes or expose all parent modes through its public 3D driver.
 
-The limitations are correspondingly different.  \MoCHII{} has an
-\HII-region-centered ion inventory; \Mthree{} has no AMR, a
+The limitations are correspondingly different.  \MoCHII{} carries eleven
+metals to stage~VII only, with no coronal stages and no Auger stage
+coupling; \Mthree{} has no AMR, a
 communication-heavy uniform-grid packet algorithm, and a 3D driver that
 hardcodes pure case B; \Mappings{} is restricted to spherical or
 plane-parallel 1D structures and uses an outward-only diffuse field;
@@ -105,6 +106,51 @@ transport and parallel design rather than for gas physics.
 \end{abstract}
 
 \tableofcontents
+
+\paragraph{Current atomic-physics state (2026-10-11).}
+\MoCHII{} carries stages I--VII of all eleven metals (77 stages,
+66 transitions; \code{data/atomic/element\_*.txt}), which is the stage scope
+of \Mocassin{} v2 (\code{nstages = 7}).  A band whose upper edge lies above
+the terminal ionization potential of a present element is refused (the lowest
+is Cl\,\textsc{vii}, 114.2~eV; Ar\,\textsc{vii} 124.4, Fe\,\textsc{vii}
+125.0~eV).  Metal photoabsorption is Verner's \code{phfit2} sum: the VFKY96
+outer-shell fit below the first inner-shell edge, the sum of the Verner \&
+Yakovlev (1995) subshell fits at and above it, with no option to keep the
+outer shell alone; the ground term of Ne\,\textsc{iii} takes the Nahar (2019)
+$R$-matrix cross section below 178.42~eV.  The default excitation model
+(\code{par\%metal\_excitation\_model = 'chianti'}) is the full CHIANTI
+11.0.2 atoms: 70 atoms with 6629 levels and 70 cooling fits, 67 stages from
+CHIANTI and Cl\,\textsc{vii}, Ar\,\textsc{ii}, Ca\,\textsc{iv} from the Stout
+files of \Cloudy{} c25.00; C\,\textsc{vii}, Ar\,\textsc{i}, Cl\,\textsc{i},
+Ca\,\textsc{i}, Fe\,\textsc{i}, Cl\,\textsc{v} and Ca\,\textsc{iii} have no
+line cooling.  \code{'mocassin\_v2'} (the \Mocassin{} v2 atoms, 55 atoms
+with 571 levels and 49 cooling fits, plus the CHIANTI Fe\,\textsc{ii}
+forbidden rows) is kept for parity runs; \code{'extended'} is refused.
+Every stage with an atom cools and emits.  Metal collisional ionization,
+atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and
+O\,\textsc{i} fine structure, charge-exchange heating and the \HeI{} $2^3$S
+coupling are on by default; the FUV band (from 4.78~eV) is on whenever
+\HeI{} $2^3$S, a metal with a neutral edge below 13.598~eV, or dust is
+present.  The transported diffuse field adds the metal ground free--bound
+continua (channel~6) and the free--free of every ion inside the band
+(channel~7).  Grain photoelectric heating is Weingartner \& Draine (2001)
+and the neutral gas--grain exchange Hollenbach \& McKee (1979), both on with
+dust.  The record is \code{md/\allowbreak ATOMIC\_PHYSICS\_\allowbreak RESTORATION\_\allowbreak RESULTS\_\allowbreak 2026-10-11.md}.
+
+\begin{sloppypar}
+\emph{Benchmark numbers.}  The converged Lexington runs on this state,
+in \code{results/\allowbreak continuous\_energy/\allowbreak m13\_restoration/}
+(restarted from the converged run \code{m11} of 2026-09-27; 29 and 26
+iterations to the drift test), give $\langle T[N_pN_e]\rangle = 8176$ and 6942~K
+(HII40, HII20; $-0.41\%$ and $+0.46\%$ from \Cloudy{} c25.00),
+$L(\mathrm{H}\beta) = 2.025\times10^{37}$ and
+$4.85\times10^{36}$~erg\,s$^{-1}$.  Values from runs that were not repeated
+--- the line ratios of the \Mthree{} comparison below among them --- are
+tagged ``(m11; not rerun under the 2026-10-11 physics)''.  The PN150 run
+stopped unconverged on 2026-10-12 and is to be rerun, and the places that
+need it say so.  No matched full spatial comparison with
+\Mocassin{} v2 has yet been made.
+\end{sloppypar}
 
 %==============================================================================
 \section{Purpose, scope, and basis of the comparison}
@@ -301,9 +347,11 @@ the band has no scattering; only direction and frequency are sampled. &
 Lucy-style random optical depth, discrete absorption, and immediate local
 re-emission. \\
 
-Diffuse field & Explicit selected H/He recombination channels rebuilt from
-the current state and transported (the default since 2026-09-26); on-the-spot
-remains available. & Local continuum and line
+Diffuse field & Explicit H/He recombination channels, the metal ground
+free--bound continua and the free--free of every ion inside the band, rebuilt
+from the current state and transported (the default since 2026-09-26; the
+metal and free--free channels since 2026-10-11); on-the-spot remains
+available.  No metal recombination lines. & Local continuum and line
 emissivity PDF sampled immediately after gas absorption; isotropic
 re-emission. \\
 
@@ -318,8 +366,8 @@ Parallel model & Packet decomposition and shared-memory grid arrays; one
 full grid copy per node. & Spatial domain decomposition; packets crossing
 blocks are synchronized through MPI. \\
 
-Gas microphysics & Modern, provenance-bearing fitted data for an
-H\,\textsc{ii}-region/PDR-centered registry; line cooling in the thermal
+Gas microphysics & Modern, provenance-bearing data for stages I--VII of
+eleven metals; full CHIANTI 11 atoms; line cooling in the thermal
 loop suppressed to the local $\nelec$ through $\Lambda(T,\nelec)$ tables
 built from its own $n$-level solve. & Broad MAPPINGS ion network and multilevel line cooling
 inside the thermal loop; older but extensively exercised atomic-data
@@ -329,7 +377,9 @@ Dust & EUV/FUV absorption and HG scattering, live dust/PAH survival,
 equilibrium temperature, SEDust stochastic emission, transport of the
 reradiated infrared back onto the grains, and IR maps --- all from one
 grain model, whose own size-integrated extinction table feeds the
-transport, so extinction and emission refer to the same grains (gated). & Rich
+transport, so extinction and emission refer to the same grains (gated);
+Weingartner--Draine grain charging and photoelectric heating and the
+neutral gas--grain exchange in the leaf's own field. & Rich
 grain charge, depletion, photoelectric, and PAH microphysics; the public 3D
 dust transport branch treats dust extinction/absorption but does not expose
 an equivalent scattering plus stochastic-IR imaging chain. \\
@@ -693,8 +743,9 @@ packets, shared-memory grid per node \\
 
 Diffuse field & explicit, case A, four He channels & the same scheme,
 opt-in, default off & transported by default; \code{caseB} is a constant
-coefficient & explicit H/He ground continua plus the \HeI{} and \HeIII{}
-excited cascades, transported by default; on-the-spot available \\
+coefficient & explicit H/He ground continua, the \HeI{} and \HeIII{}
+excited cascades, metal ground continua and free--free, transported by
+default; on-the-spot available \\
 
 Global convergence & none (compare iterations by eye) & none (fixed
 iteration count) & cell-maximum $\Delta\Te$, packet doubling on undersampling
@@ -709,7 +760,8 @@ collisional-ionization models \\
 
 Dust & none & none on this path & absorption, Mie scattering, equilibrium
 $T_{\rm dust}$, gas--grain exchange & absorption, scattering, live survival,
-$T_{\rm dust}$, stochastic PAH emission \\
+$T_{\rm dust}$, stochastic PAH emission, grain photoelectric heating,
+gas--grain exchange \\
 
 Images & escaping spectrum by direction bin; emissivity cube & trackers only;
 the line-of-sight integrator is never called & Stokes peel-off,
@@ -821,13 +873,15 @@ continua from the Milne free-bound spectrum with the transport cross
 sections, splits the \HeI{} cascade by temperature-dependent branch
 fractions, and carries the \HeIII{} case-B cascade as a fifth channel
 worth $44\%$ of the diffuse-field luminosity on a $10^5$~K blackbody, none
-of which has a counterpart here.  But \Colt{} is ahead on one channel
-\MoCHII{} does not have at all: \textbf{free--free above 13.598~eV is a
-diffuse ionizing source in \Colt{} and is not one in \MoCHII{}}, which is
-the open item recorded in \code{md/HARD\_SPECTRUM\_PLAN.md}.  It is now
-also a worked example rather than a note: the same cell emissivity
-\MoCHII{} already computes for the written continuum is what \Colt{} feeds
-to its bin cumulative distribution.
+of which has a counterpart here.  \Colt{} was ahead on one channel until
+2026-10-11: free--free above 13.598~eV was a diffuse ionizing source in
+\Colt{} and not in \MoCHII{}.  \MoCHII{} now transports it as diffuse
+channel~7 (H$^+$, He$^+$, He$^{2+}$ and the metal ions), from the same
+coefficient as its written continuum, the arrangement \Colt{} uses; it also
+carries the metal ground free--bound continua as channel~6, which \Colt{}
+does not.  Measured on the HII40 geometry (2 iterations, not converged)
+channel~7 is $4.5\times10^{-10}$ of the diffuse luminosity, and
+$2.1\times10^{-8}$ on a $10^5$~K blackbody.
 
 \textbf{\HI{} and \HeI{} recombination.}  $\alpha_{\rm B}(\HII{})$ is the
 Hui \& Gnedin (1997) fit (\code{rates.h}:101), giving
@@ -951,8 +1005,8 @@ ionization state and the temperature.
 enumeration reaching C\,\textsc{vi}, N\,\textsc{vii}, O\,\textsc{viii},
 Ne\,\textsc{viii}, Mg\,\textsc{x}, Si\,\textsc{xii}, S\,\textsc{xiv} and
 Fe\,\textsc{xvi} (\code{source/proto.h}:331--341), against \MoCHII{}'s
-eleven elements at \HII{}-region stages.  Stage HS2 of
-Section~\ref{sec:hardplan} takes the registry in that direction.
+eleven elements at stages I--VII (since 2026-10-11, stage HS2 of
+Section~\ref{sec:hardplan}).
 
 %==============================================================================
 \section{Radiative-transfer algorithms}
@@ -1009,8 +1063,11 @@ Equation~(\ref{eq:edge}) is a substantial advantage for the present
 normally absorption-dominated.  \Mthree{} pays the variance of discrete
 absorption events even in that limit.  Conversely, the \Mthree{} packet
 cycle is more general for a diffuse spectrum containing many continuum and
-line channels, whereas the current \MoCHII{} diffuse emitter is explicitly
-limited to selected recombination channels.
+line channels, whereas the current \MoCHII{} diffuse emitter carries named
+channels only: the H/He ground continua and excited cascades, the metal
+ground free--bound continua and the free--free, but no metal recombination
+lines and no metal captures into excited levels bound by more than
+13.6~eV.
 
 \Mappings{} has neither Monte Carlo estimator.  Its zone integrator is
 deterministic and therefore essentially noise-free, but achieves that
@@ -1036,10 +1093,23 @@ current state: the H\,\textsc{ii}, He\,\textsc{ii} and He\,\textsc{iii}
 ground continua, the He\,\textsc{i} excited cascade (19.82~eV, 584~\AA{},
 two-photon) and the He\,\textsc{iii} case-B cascade (free--bound into
 $n\ge2$, 40.8-eV Ly$\alpha$, two-photon), the last two on by default in this
-mode.  \code{'escaping'} uses case A and lets the ground-capture photons
-leave.  The packets use the same transport estimator as stellar packets.  This
-split makes case-A/case-B bracketing and energy accounting transparent,
-but it is not yet the full local emissivity inventory sampled by \Mthree{}.
+mode, and since 2026-10-11 two further channels: the ground free--bound
+continuum of every metal transition (channel~6, the Milne spectrum on the
+outer-shell part of the transport cross section, with ground-term weights
+from \code{data/\allowbreak atomic/\allowbreak ground\_term\_weights.txt}) and the free--free of
+H$^+$, He$^+$, He$^{2+}$ and the metal ions inside the band (channel~7).
+Measured on the HII40 geometry (2 iterations, not converged), channel~6 is
+$7.6\times10^{-4}$ of the diffuse luminosity ($4.8\%$ of channel~2) and
+channel~7 $4.5\times10^{-10}$; on a $10^5$~K blackbody $1.7\times10^{-3}$
+and $2.1\times10^{-8}$.  With \code{'on\_the\_spot'} channels~6 and~7 are
+not transported and their photons leave.  \code{'escaping'} uses case A and
+lets the ground-capture photons leave.  The packets use the same transport
+estimator as stellar packets.  This split makes case-A/case-B bracketing and
+energy accounting transparent, but it is not yet the full local emissivity
+inventory sampled by \Mthree{}: metal recombination lines and metal
+captures into excited levels bound by more than 13.6~eV are not emitted.  Free--free absorption is not
+in the opacity; its largest share of the H/He bound--free opacity over the
+band is $5.9\times10^{-17}$ at HII40.
 
 \subsection{Spectral discretization}
 \label{sec:specdisc}
@@ -1161,12 +1231,14 @@ activates 30 elements from H through Zn.  This full preference set, rather
 than the \Mthree{} default, is the relevant breadth reference.
 
 \MoCHII{} currently treats H and He plus an eleven-element metal registry:
-C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, and Ca.  The tracked stages are chosen
-for H\,\textsc{ii} regions and atomic PDR skins, rather than extending to
-the highest charge state of every nucleus.  New ions are added through
-provenance-bearing element, cooling-fit, and $n$-level files.  This is much
-easier to audit and extend than the global MAPPINGS tables, but the present
-inventory is less suitable for hard PN, X-ray, or coronal-ion problems.
+C, N, O, Ne, S, Ar, Mg, Fe, Si, Cl, and Ca, each at stages I--VII (77
+stages, 66 transitions, since 2026-10-11; 43 stages before), the stage
+scope of \Mocassin{} v2.  New ions are added through provenance-bearing
+element-rate files and the atoms of the selected excitation model. This is
+much easier to audit and extend than the global MAPPINGS tables, but the
+present inventory is less suitable for X-ray or coronal-ion problems, and a
+band above the terminal ionization potential of a present element (lowest
+Cl\,\textsc{vii}, 114.2~eV) is refused.
 
 \subsection{Photoionization, recombination, and charge exchange}
 \label{sec:recombdata}
@@ -1175,8 +1247,17 @@ inventory is less suitable for hard PN, X-ray, or coronal-ion problems.
 \HeII{}, the Verner et al.\ \cite{verner1996} fit for \HeI{}, and for the
 metals Verner's \code{phfit2} prescription in full: the outer-shell fit
 below the first inner-shell edge and the sum of the Verner \& Yakovlev
-(1995) subshell fits above it, which brings the Mg $2p$, Ca $3p$ and
-Fe $3p$ edges into the 13.6--100~eV band (since 2026-09-24).
+(1995) subshell fits above it, for the opacity, the rates and the heating
+(restored 2026-10-11; there is no option to keep the outer shell alone, and
+\code{par\%metal\_inner\_shell\_absorption} is refused).  This brings the
+Mg $2p$, Ca $3p$ and Fe $3p$ edges into the 13.6--100~eV band.  The product
+of every absorption is the next stage: the Mg\,\textsc{i} $2p$,
+Ca\,\textsc{i} $3p$ and Fe\,\textsc{i}--\textsc{iii} $3p$ holes autoionize,
+so those absorptions should raise the stage by two and heat with the Auger
+electron, which the adjacent-stage solve cannot carry (a known defect; the
+stage matrix is planned as \code{par\%auger\_ionization}).  The
+Ne\,\textsc{iii} ground term takes the Nahar (2019) $R$-matrix cross
+section, resonances included, below 178.42~eV and \code{phfit2} above.
 Hydrogen and helium recombination (\code{par\%recomb\_model =
 'detailed\_balance'}, the default) takes the ground-state coefficient
 $\alpha_1$ from the Milne relation on the transport cross sections for all
@@ -1185,11 +1266,19 @@ zero-density $nl$-resolved cascade on the Storey \& Hummer (1991) hydrogenic
 routines, with $\alpha_A=\alpha_B+\alpha_1$ (since 2026-09-26), and that of
 He$^+$ is the Badnell (2023) total minus $\alpha_1$; the Hui--Gnedin fits are
 retained as an option.  Metal RR and DR are derived primarily from
-Badnell/CHIANTI v11.0.2 data.  Charge exchange uses the modern first-stage
+Badnell/CHIANTI v11.0.2 data, with Fe$^{3+}$ from Zhang et al.\ (2026, RR
+and DR).  Charge exchange with H carries 45 reactions over all eleven
+elements (7 ionization, 38 recombination), every one also entering
+hydrogen's balance: the modern first-stage
 rates of Huang et al.\ (with N$^0$/N$^+$ from Kingdon \& Ferland 1996 and
 S$^+$ resolved by product term from Zhao et al.\ 2005), the Barragan et
-al.\ (2006) tables for N$^{2+}$ and O$^{2+}$, and the Kingdon--Ferland
-compilation for the other higher stages; He--H charge exchange enters the H/He
+al.\ (2006) tables for N$^{2+}$ and O$^{2+}$, the updated Kingdon--Ferland
+database distributed with \Cloudy{} (Ferland et al.\ 2013) for N$^{4+}$ and
+Si$^{2+}$, and the Kingdon--Ferland fits, tabulated over their published
+intervals, for the other stages up to $q=4$, Cl$^{3+}$, Cl$^{4+}$,
+Ca$^{3+}$ and Ca$^{4+}$ included.  For $q = 5$, 6 the Langevin upper limit
+(\code{par\%langevin\_charge\_exchange}, 22 reactions) is an option, off by
+default.  Charge-exchange heating is on by default.  He--H charge exchange enters the H/He
 balance (\code{par\%helium\_charge\_exchange}, default on since 2026-09-24),
 with He$^+$ + H taken since 2026-09-27 from Loreau et al.\ (2014) by
 reciprocity (non-radiative) and Stancil, Lepp \& Dalgarno (1998)
@@ -1315,7 +1404,8 @@ two-photon, opt-in & none in this tree; $\Te$ from the internal energy \\
 \MoCHII{} & chain for the metals; hydrogen's balance solved for its root in
 $u=\ln(n_{\rm HII}/n_{\rm HI})$ at each $\nelec$ rather than substituted
 into & separate & \textbf{yes}, metal--H and He--H & yes, default on, damped fixed
-point & yes, default on & H/He channels only & outer bisection in
+point & yes, all shells, default on & ground continua and free--free
+transported, no lines & outer bisection in
 $\log\Te$ \\
 \end{longtable}
 \endgroup
@@ -1522,11 +1612,15 @@ is the $\nelec\to0$ limit beyond the front, where the H/He term vanishes,
 nothing recombines, and every low-ionization-potential metal comes out fully
 ionized.
 
-On one axis \MoCHII{} is behind.  Metal recombination continua are not
-transported --- \code{src/diffuse\_\allowbreak mod.f90} contains no metal channel.
-Measured for this memo they are $0.29\%$ of diffuse channel~2, so the
-approximation is justified, but it is an approximation and belongs in the
-record as one, because two codes here do not make it.  \Mocassin{} builds
+On this axis \MoCHII{} was behind until 2026-10-11: its metal recombination
+continua were not transported.  They now are, as diffuse channel~6 of
+\code{src/diffuse\_\allowbreak mod.f90} (ground captures of every metal
+transition, the Milne relation on the outer-shell part of the transport
+cross section), and the free--free of every ion inside the band as
+channel~7.  On the HII40 geometry (2 iterations, not converged) channel~6
+is $4.8\%$ of diffuse channel~2; an earlier estimate in this memo, $0.29\%$,
+is superseded by that transported measurement.  Metal recombination lines
+remain untransported, where \Cloudy{} feeds them back.  \Mocassin{} builds
 \code{gammaHeavies} in \code{fb\_ff} over \code{do elem = 3, 19}
 (\code{emission\_\allowbreak mod.f90}:474, its own comment at \code{:472--473} noting
 that $Z>19$ is neglected) from the Milne relation with the true subshell
@@ -1546,7 +1640,10 @@ Lyman-$\alpha$ and Balmer photons enter the on-the-spot field
 \code{ionbal.Photo\allowbreak Rate\_\allowbreak Shell} (\code{ion\_photo.cpp}:100--110) --- feedback
 onto hydrogen included.
 
-Finally, eight properties of the reference codes surfaced in this audit that
+Finally, thirteen properties of the reference codes surfaced in this audit
+and in the audit of 2026-10-11
+(\code{md/\allowbreak ATOMIC\_STAGE\_\allowbreak EXPANSION\_\allowbreak AUDIT\_\allowbreak 2026-10-11.md}, Section~5; the
+\Mocassin{} line numbers below are those of the 2.02.73.2 tree, read) that
 change what a comparison against them means, and that a reader using them as
 validation references has to know about:
 
@@ -1555,6 +1652,24 @@ validation references has to know about:
   wherever an element's own rate is missing:
   \code{if (diRec(elem,ion) == 0.)\allowbreak   diRec(elem,ion) = diRec(8,ion)}
   (\code{update\_\allowbreak mod.f90}:1648).
+\item \Mocassin{} has no dielectronic recombination for helium: the loop that
+  adds it starts at \code{elem = 3} (\code{update\_\allowbreak mod.f90}:1644--1649).
+\item \Mocassin{}'s metal line cooling sums the forbidden-line array over
+  levels 1--10 only (\code{do j = 1, 10}, \code{do k = 1, 10},
+  \code{update\_\allowbreak mod.f90}:1103--1111), whatever the size of the atom.
+\item Fe\,\textsc{ii} never enters \Mocassin{}'s cooling.  Its populations are
+  solved into the separate \code{forbiddenLinesLarge}
+  (\code{update\_\allowbreak mod.f90}:1277--1293), and the cooling sum reads
+  \code{forbiddenLines} alone.
+\item \Mocassin{}'s He$^+$ recombination cooling uses the hydrogen
+  coefficient: the $\beta_{\rm rec}$ polynomial at \code{update\_\allowbreak mod.f90}:1059--1064
+  is the H$^+$ fit of \code{:989--993}, evaluated at the unscaled
+  temperature.
+\item \Mocassin{}'s free--free opacity is computed in the first frequency
+  bin only.  For every later bin \code{FFOpacity(i)} is set to zero when the
+  previous bin is below $10^{-35}$ and is otherwise never assigned
+  (\code{ionization\_\allowbreak mod.f90}:368--390), so it keeps the zero of its
+  initialization (\code{:111}).
 \item \Mocassin{}'s ionization convergence test examines H$^0$, He$^0$ and
   He$^+$ only (\code{:1598--1604}, \code{limit = 0.01} at \code{:1337}).  No
   metal ion fraction is ever tested, so a converged \Mocassin{} zone carries
@@ -1637,7 +1752,8 @@ The output line ratios therefore respond to density, and since 2026-07-26
 so does the thermal loop: \code{par\%cooling\_model = 'local\_ne'} (the
 default) takes the line cooling from the $n$-level populations at the local
 $\nelec$, tabulated as $\Lambda(T, \nelec)$ for each ion, and the
-zero-density fits remain as the \code{'low\_density'} option.  At the
+low-density fits (to the balance at $\nelec = 10^{-6}$~cm$^{-3}$) remain as
+the \code{'low\_density'} option.  At the
 Lexington densities that is what brings the benchmark temperatures onto
 \textsc{Cloudy}'s (\MoCHII{} physics document, the Lexington benchmark
 section).  What \Mthree{} still does that \MoCHII{} does not is to solve the
@@ -1653,13 +1769,18 @@ $\log \Te$ and re-solves the H/He and metal ionization at every trial
 temperature.  Its current budget includes photoionization heating,
 H/He recombination and collisional losses, free-free emission with a
 tabulated Gaunt integral (H/He and, by default, the trace metals with
-their net ion charge), metal-line cooling, metal photoheating with metal
-recombination and collisional-ionization losses (on by default,
-\code{par\%metal\_heat}), charge-exchange heating (on by default),
+their net ion charge), metal-line cooling for every stage with an atom,
+metal photoheating with metal recombination and collisional-ionization
+losses (\code{par\%metal\_heat}, on when metals are enabled), and, on by
+default (restored 2026-10-11 after being off in the tree of October 9--11), metal
+collisional ionization (Voronov 1997), charge-exchange heating,
 atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii} and
-O\,\textsc{i} fine-structure lines (always on with the metals), the
-He\,\textsc{i} $2^3$S energy exchanges (on by default), and optionally
-secondary ionization and the grain photoelectric and recombination terms
+O\,\textsc{i} fine structure, and the He\,\textsc{i} $2^3$S population
+coupling.  With dust it adds the Weingartner \& Draine (2001) grain
+photoelectric heating and the cooling by charged-particle capture onto
+grains (\code{par\%grain\_pe}), and the Hollenbach \& McKee (1979) exchange
+of neutral H and He with the grains (\code{par\%gas\_grain\_energy\_exchange}),
+both on with dust; secondary ionization remains an option
 (\code{src/thermal\_mod.f90}, \code{src/cooling\_mod.f90}).
 
 The MAPPINGS thermal solver used by \Mappings{} and inherited by \Mthree{}
@@ -1682,10 +1803,20 @@ The MAPPINGS grain microphysics is detailed.  The local source tree carries
 graphite and silicate size distributions, depletion bookkeeping, grain
 charge balance, electron and ion sticking, grain photoelectric heating,
 collisional grain cooling, PAH charge states, and optional thermal or
-ionization-parameter-dependent grain destruction.  For the local exchange
-of energy and charge between gas and a resolved grain population, this is
-more microscopic than the current \MoCHII{} Bakes--Tielens heating
-prescription.
+ionization-parameter-dependent grain destruction.  \MoCHII{} has, since
+2026-10-11, replaced its Bakes--Tielens (1994) fit with the Weingartner \&
+Draine (2001) calculation for the size bins of its own grain model: the
+detailed-balance charge distribution with photodetachment, the
+photoelectric heating in the band field the transport has in each leaf, and
+the cooling by captured electrons and ions (\code{src/grain\_photoelectric\_mod.f90});
+and it adds the Hollenbach \& McKee (1979) exchange of neutral H and He with
+the grains (\code{src/gas\_grain\_collision\_mod.f90}).  PAH grains count in
+the heating with the weight $x_{\rm HI} + f_{\rm ion,PAH}\,x_{\rm HII}$,
+$f_{\rm ion,PAH} = 0$ by default (destroyed inside the ionized gas).  What
+MAPPINGS still has beyond that is depletion bookkeeping and grain
+destruction, which \MoCHII{} does not carry.  \MoCHII{} also has no
+grain-assisted recombination in its ionization balance (whether MAPPINGS
+connects one was not checked).
 
 In \Mappings{}, this layer is connected to the P6/P7 zone integration and
 to \code{dusttemp}, which computes a Draine--Li stochastic temperature
@@ -1745,17 +1876,20 @@ is the clearest overall physical advantage of \MoCHII{}.
 \subsection{PDR scope}
 
 \MoCHII{} extends the band below 13.6 eV so that low-threshold metals and
-dust see the FUV field beyond the H I-front.  Optional switches include
-electrons from the metal cascade and metal photoheating (both on by
-default) and Bakes--Tielens grain photoelectric heating plus recombination
-cooling (off by default); the neutral-gas coolant, atomic-hydrogen impact on
-the ground-term fine structure of C\,\textsc{i}, C\,\textsc{ii} and
-O\,\textsc{i} (all of [C\,\textsc{i}] 609/370 $\mu$m, [C\,\textsc{ii}]
-158 $\mu$m and [O\,\textsc{i}] 63/145 $\mu$m), is always on and is solved
+dust see the FUV field beyond the H I-front; left out of the input, the
+extension is on (from 4.78~eV) whenever \HeI{} $2^3$S, a metal with a
+neutral edge below 13.598~eV, or dust is present.  Electrons from the metal
+cascade, metal photoheating, the Weingartner--Draine grain photoelectric
+heating with capture cooling (with dust and the FUV band), the
+Hollenbach--McKee gas--grain exchange of the neutral atoms (with dust), and
+the neutral-gas coolant, atomic-hydrogen impact on the ground-term fine
+structure of C\,\textsc{i}, C\,\textsc{ii} and O\,\textsc{i} (all of
+[C\,\textsc{i}] 609/370 $\mu$m, [C\,\textsc{ii}] 158 $\mu$m and
+[O\,\textsc{i}] 63/145 $\mu$m), are all on by default; the last is solved
 with the electrons in one statistical equilibrium.
 This is an atomic PDR skin, not a complete PDR code.  H$_2$/CO chemistry,
-molecular self-shielding, molecular cooling, line transfer, and gas--dust
-collisional coupling remain outside the model.
+molecular self-shielding, molecular cooling, line transfer, and
+grain-assisted recombination remain outside the model.
 
 The MAPPINGS trees likewise contain more grain and general plasma physics
 than a minimal H\,\textsc{ii} solver, but the present comparison did not
@@ -1785,9 +1919,13 @@ Carlo sampling noise.  \Mthree{} trades some parent-code recency and 1D
 special modes for arbitrary Cartesian geometry.
 
 \MoCHII{} has a narrower but highly auditable diagnostic layer.  Every
-registered ion with a Tier-2 file is solved by the same partial-pivot
-statistical-equilibrium code using fitted CHIANTI v11 effective collision
-strengths and explicit $A$-values.  H I and He II recombination lines use
+stage with an atom in the selected excitation model is solved by the same
+statistical-equilibrium code (LU with partial pivoting and one step of
+iterative refinement) on the full CHIANTI 11.0.2 atoms by default (70
+atoms, 6629 levels; \code{par\%metal\_excitation\_model = 'chianti'}), with
+the effective collision strengths held at the end of their tabulated
+range beyond it; the line-cooling tables of the thermal loop are built
+with the same solver on the same atoms.  H I and He II recombination lines use
 Storey--Hummer case-A/B tables.  The nebular continuum includes free-bound
 plus free-free and two-photon components.  On an identical state, the
 Fortran line luminosities match the independent Python solver to at least
@@ -1944,10 +2082,11 @@ Because \MoCHII{}'s $L(\mathrm{H}\beta)$ then sat below the published
 benchmark values, that bias was the natural suspect, and it was measured on the
 converged models of that time rather than estimated (the numbers of this
 paragraph and the next are from those runs, before 2026-09-25, and were not
-re-measured; on the current run \code{m11} of 2026-09-27
-$L(\mathrm{H}\beta)$ is $2.02\times10^{37}$ and
+re-measured; on the converged run \code{m13\_restoration} of 2026-10-11
+$L(\mathrm{H}\beta)$ is $2.025\times10^{37}$ and
 $4.85\times10^{36}$~erg\,s$^{-1}$, inside the published $2.01$--$2.10$ and
-$4.83$--$5.04$, at their low ends).  Re-evaluating the same converged state
+$4.83$--$5.04$, at their low ends; \code{m11} gave $2.02\times10^{37}$ and
+$4.85\times10^{36}$).  Re-evaluating the same converged state
 --- leaf by leaf, at each leaf's own $(\Te,\nelec)$ --- with the two
 higher-order schemes in place of the bilinear one changes the
 volume-integrated $L(\mathrm{H}\beta)$ by
@@ -1984,7 +2123,8 @@ the Storey \& Hummer (1995) case-B table.  Rows at 5\,000, 10\,000 and
 20\,000~K and the column at $\nelec = 10^2\,\mathrm{cm^{-3}}$ are grid nodes,
 where all three schemes return the tabulated number and the spread vanishes by
 construction.  7024 and 8211~K were the converged benchmark temperatures of
-2026-07-26 (6940 and 8180~K in the current run \code{m11}).}
+2026-07-26 (6942 and 8176~K in the converged run \code{m13\_restoration}
+of 2026-10-11).}
 \label{tab:interp}
 \begin{tabular}{lcccc}
 \toprule
@@ -2384,7 +2524,10 @@ beside MAPPINGS, \Cloudy{}, \Mocassin{}3D, RR and PH, with the median and
 $1\sigma$ spread of those five \cite{jin2022}.  \MoCHII{}'s column is
 \code{results/\allowbreak continuous\_energy/\allowbreak m11\_hecx\_solver/\allowbreak hii\{40,20\}\_converged}
 (2026-09-27), the production inputs under the defaults of that date, run to the
-converged stopping test, with the blends summed as in the paper's table script
+converged stopping test (m11; not rerun under the 2026-10-11 physics:
+every \MoCHII{} line ratio of this subsection is from that run, before the
+restoration; only the H$\beta$ rows carry the converged \code{m13\_restoration}
+luminosity, which moved $+0.10\%$ and $+0.02\%$), with the blends summed as in the paper's table script
 (an earlier version of this section read \code{m1\_oxfix} of 2026-07-31, a run
 that the old stopping test had ended early); its composition matches Jin
 Table~1 entry for entry
@@ -2411,7 +2554,7 @@ Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
 \endhead
 \bottomrule
 \endfoot
-H$\beta$ [$10^{37}$ erg\,s$^{-1}$] & 1.98 & 2.05 & 0.03 & 2.023 & 1.022 \\
+H$\beta$ [$10^{37}$ erg\,s$^{-1}$] & 1.98 & 2.05 & 0.03 & 2.025 & 1.023 \\
 \HeI{} 5876              & 0.115   & 0.116   & 0.047   & 0.1120 & 0.974 \\
 C\,\textsc{ii}] 2325+    & 0.164   & 0.164   & 0.027   & 0.1761 & 1.074 \\
 C\,\textsc{iii}] 1907+1909 & 0.076 & 0.071   & 0.013   & 0.0556 & 0.732 \\
@@ -2473,6 +2616,16 @@ stopped it (37 iterations) and $0.1130$ after 60.
 And [O\,\textsc{iii}] 5007+4959, 4363 and 52+88 $\mu$m all agree with
 \Mthree{} to $0.3$--$4\%$ while sitting $4.5$--$25\%$ above the median, which
 says the oxygen result is a two-code statement rather than a \MoCHII{} one.
+Under the restored defaults the 5007/4959 split moves for a physical reason:
+the CHIANTI O\,\textsc{iii} atom of the default model carries the
+Storey \& Zeippen (2000, MNRAS 312, 813) Table~3 $A$ values,
+$6.791\times10^{-3}$ and $2.046\times10^{-2}$~s$^{-1}$, with the
+relativistic corrections to the M1 operator, and the two lines share their
+upper level, so their ratio is $A$ times photon energy alone: 2.984 in
+\code{m13\_restoration}, where CHIANTI's own \code{o\_3.wgfa} and \Cloudy{}
+c25.00 give the Galavis et al.\ (1997) 2.89.  At HII40, 5007 rises $2.0\%$
+and 4959 falls $1.2\%$ against \code{m11}; a 5007 difference against
+\Cloudy{} has to be read net of that.
 
 \subsubsection*{The sulfur result, and where it comes from}
 
@@ -2493,7 +2646,7 @@ Line & \Mthree{} & Med & $\sigma$ & \MoCHII{} & $\frac{\rm MoCHII}{\rm M^3}$ \\
 \endhead
 \bottomrule
 \endfoot
-H$\beta$ [$10^{36}$ erg\,s$^{-1}$] & 4.81 & 4.89 & 0.09 & 4.846 & 1.007 \\
+H$\beta$ [$10^{36}$ erg\,s$^{-1}$] & 4.81 & 4.89 & 0.09 & 4.847 & 1.008 \\
 \HeI{} 5876              & 0.0071  & 0.0072  & 0.0016  & 0.00702 & 0.989 \\
 C\,\textsc{ii}] 2325+    & 0.059   & 0.059   & 0.010   & 0.0732 & 1.241 \\
 {}[N\,\textsc{ii}] 122 $\mu$m & 0.072 & 0.071 & 0.001   & 0.0729 & 1.012 \\
@@ -2534,7 +2687,8 @@ S$^+$ outer-shell fit (\code{data/atomic/element\_s.txt},
 \code{TRANSITION 2}: $E_0 = 8.787$, $\sigma_0 = 313.6$~Mb, $y_a = 3.442$,
 $P = 12.81$, $y_w = 0.7354$, $y_0 = 2.782$, $y_1 = 0.1788$) and
 \Mthree{}'s (\code{lab/data/ionisation/PHIONDAT2.txt}:82) are the same
-seven numbers.  Whatever separates the codes on sulfur, it is not the
+seven numbers; \MoCHII{}'s first S$^+$ inner-shell edge is at 184.6~eV
+(\code{PHINNER}), so in the band that fit is its whole cross section.  Whatever separates the codes on sulfur, it is not the
 cross section.
 
 \emph{The recombination is not.}  \MoCHII{} takes
@@ -2635,7 +2789,7 @@ median ratio of $1.031$, fourteen of them within $10\%$ (on the early-stopped
 \code{m1\_oxfix} run, $1.033$ and fifteen), and the volume-weighted
 $\Te({\rm H^+})$ agrees to $0.3\%$ --- $6923.1$~K against \MoCHII{}'s
 $6944.7$~K ($\int \Te n_{\rm p}\,dV / \int n_{\rm p}\,dV$ on the
-current run; $6926$~K on \code{m1\_oxfix}).  \textbf{The [S\,\textsc{ii}] excess and the
+m11 run; $6926$~K on \code{m1\_oxfix}).  \textbf{The [S\,\textsc{ii}] excess and the
 [S\,\textsc{iii}] deficit are what modern low-temperature dielectronic
 recombination of S$^{2+}$ does to the sulfur balance, and the Lexington
 median encodes the older data.  They are not a \MoCHII{} defect.}
@@ -2749,7 +2903,9 @@ Compact high-density nebula & \Mappings{} if 1D; \Mthree{} if 3D & Both
 feed density-dependent multilevel cooling back into $\Te$; geometry decides. \\
 
 Hard PN-like ionizing spectrum & \Mappings{} if 1D; \Mthree{} if 3D & More
-high charge states; \Mthree{} additionally has published PN150 3D validation. \\
+high charge states; \Mthree{} additionally has published PN150 3D validation
+(\MoCHII{} carries stages to VII since 2026-10-11, but its PN150 run has
+not converged yet). \\
 
 Non-Maxwellian $\kappa$ electron experiment & \Mappings{} or \Mthree{} &
 Both MAPPINGS-derived trees have native $\kappa$ rate support. \\
@@ -2798,7 +2954,9 @@ replacement of either code.
   arrangement.
 \item \textbf{Extend the registry upward in ion stage.}  Add the ions needed
   for PN and hard-field applications before adding marginal new low stages.
-  The existing data-operation design is well suited to this.
+  Done 2026-10-11 to stage~VII for all eleven metals, as a data operation
+  (\code{tools/fitting/make\_element\_data.py}); the PN150 gate on it is
+  pending, and stages beyond VII and the Auger stage coupling remain open.
 \item \textbf{Add Na, Al, and Ni only when driven by a diagnostic need.}
   Their MAPPINGS implementations provide useful reference behavior, while
   the \MoCHII{} data files should retain explicit provenance and ion-by-ion
@@ -2885,6 +3043,21 @@ continuously, so the plan's items about the aligned-edge band builder,
 \code{nnu\_ion}, and \code{ion\_bin\_of} concern the diagnostic $J_\nu$
 tally only; and \code{launch\_sequence='sobol'} has been the default since
 2026-09-25.  HS1, HS2, HS4, HS5, and HS6 parts~2--4 are open.
+
+\emph{Status 2026-10-11.}  HS2 is done: stages I--VII of all eleven
+metals (77 stages, 66 transitions; \code{MAX\_ION\_STAGES} $=7$, and
+$\bar g_{\rm ff}$ to $Z_{\rm ion}=6$), with the full CHIANTI 11.0.2 atoms
+as the default excitation model.  The \code{phfit2} subshell sum of HS6
+part~1 is the default and the only form (it had been replaced by the outer
+shell alone in the tree of October 9--11 and is restored).  The metal ground
+free--bound continua and the free--free inside the band are diffuse
+channels~6 and~7 (the M3 item of \code{md/METAL\_COUPLING\_PLAN.md}, and
+the free--free item recorded in \code{md/HARD\_SPECTRUM\_PLAN.md}).  Of HS1,
+the band is refused above the terminal ionization potential of a present
+element.  Open: the HS4 runs (PN150 in
+\code{results/\allowbreak continuous\_energy/\allowbreak m13\_restoration/}, stopped unconverged and to be rerun), HS5,
+and HS6 parts~2--4, the Auger yields, stage matrix and Auger-electron
+energetics, planned as \code{par\%auger\_ionization}.
 
 \subsection{Scope and the two tracks}
 
@@ -3000,11 +3173,16 @@ Mostly validation; the code changes are one-line parameters.
   logic already degrade gracefully), the FUV+ionizing two-segment
   bookkeeping, the diffuse \code{ion\_bin\_of} edge search, and the
   secondary-ionization band integrals whose $E_0>40$ eV branch becomes
-  the COMMON case on a hard field.
+  the COMMON case on a hard field.  \emph{Update 2026-10-11:} with stages
+  to VII the band may rise above 100~eV only up to the lowest terminal
+  ionization potential of the elements present (Cl\,\textsc{vii} 114.2,
+  Ar\,\textsc{vii} 124.4, Fe\,\textsc{vii} 125.0~eV); above it the run is
+  refused with the share of the ionizing luminosity beyond that potential.
 \item $\bar g_{\rm ff}$: raise \code{NGZ} from 4 to 8 in
   \code{cooling\_mod} (the van Hoof table already spans the required
   $\gamma^2$ range; the metal free-free sum then covers the new
-  stages).
+  stages).  \emph{Update 2026-10-11:} \code{NGZ} is now
+  \code{MAX\_ION\_STAGES} $-\,1 = 6$, the highest ion charge carried.
 \item \code{te\_max}: allow $10^5$--$10^6$ K for X-ray-heated zones.
   Any ion used above $10^5$ K needs its Tier-1 fit regenerated over the
   wider range (a flag in \code{chianti\_cooling.py}, not new code); the
@@ -3103,6 +3281,20 @@ the [Ne\,\textsc{v}] 3426/24.3 $\mu$m temperature pair, the
 pairs, [O\,\textsc{iv}] 25.9 $\mu$m against its A-value limit; then an
 end-to-end hard-field smoke showing every new line in
 \code{\_lines.txt} with physically sane ratios.
+
+\emph{Update 2026-10-11:} done, wider than the table: every element,
+Fe, Cl and Ca included, now runs to stage~VII (\code{ELEMENT s 16 7} and
+likewise), so \code{MAX\_ST} is 7.  Charge exchange above $q=4$ was decided
+as recorded in item~1: no reaction by default, and the Langevin upper limit
+(Ferland et al.\ 1997 form) for $q = 5$, 6 as the option
+\code{par\%langevin\_charge\_exchange}.  Items~2 and~3 became one: the
+atoms of the full CHIANTI 11.0.2 model carry both the line cooling and the
+lines (Cl\,\textsc{vii}, Ar\,\textsc{ii} and Ca\,\textsc{iv} from the
+\Cloudy{} Stout files; seven stages without line cooling, listed in the
+status paragraph at the head of this memo).  On a $10^5$~K blackbody with
+\code{eion\_max} $= 150$~eV the new transitions receive rates and heating
+wherever the field reaches them (e.g.\ O\,\textsc{vi}$\rightarrow$\textsc{vii}
+at 138~eV).  The PyNeb ratio part of the gate is not recorded here.
 
 \subsection{HS3: He II excited-channel diffuse photons}
 
@@ -3273,17 +3465,18 @@ $0.72\times$ ($-2.8\sigma$), $L({\rm H}\beta)$ at $1.08\times$
 $1.08\times$.  [O\,\textsc{i}] 6300+6363 is the one that needs no
 correction at all: $0.1538$ against a median of $0.154$.
 
-\emph{And the gate is still blocked on HS2, quantitatively.}  That same
+\emph{And the gate was blocked on HS2, quantitatively.}  That same
 ionization structure puts $10.1\%$ of sulfur above S$^{3+}$
 (S$^{4+}$ $0.075$ + S$^{5+}$ $0.022$ + S$^{6+}$ $0.004$), while
-\MoCHII{}'s registry stops at S\,\textsc{iv}
-(\code{data/atomic/element\_s.txt}, \code{ELEMENT s 16 4}), so S$^{3+}$ is
-its terminal stage and would absorb that $10\%$.  [S\,\textsc{iv}]
-10.5 $\mu$m is meanwhile the strongest sulfur line in the model at $2.46$
-relative to H$\beta$.  The S $4\!\rightarrow\!6$ row of the HS2 table above
-is therefore not optional for this gate, and the same argument reads off
-the other rows: Ne$^{4+}$ and above, O$^{4+}$ and above, and the
-Mg/Si stage tracking are all populated here.
+\MoCHII{}'s registry stopped at S\,\textsc{iv} until 2026-10-11, so
+S$^{3+}$ was its terminal stage and would have absorbed that $10\%$.
+[S\,\textsc{iv}] 10.5 $\mu$m is meanwhile the strongest sulfur line in the
+model at $2.46$ relative to H$\beta$.  The same argument read off the other
+rows: Ne$^{4+}$ and above, O$^{4+}$ and above, and the Mg/Si stage tracking
+are all populated here.  Since 2026-10-11 every element runs to stage~VII
+(\code{data/atomic/element\_s.txt}, \code{ELEMENT s 16 7}), so all of
+Cloudy's sulfur stages above are carried, S$^{6+}$ as the terminal one; the
+PN150 run is among the pending \code{m13} runs.
 
 
 \subsection{HS5: AGN SED input}
@@ -3328,18 +3521,25 @@ The one genuine framework extension of the plan, in four parts:
   \code{sigma\_vy95} evaluator and the \code{PHOTO2} element-file rows
   already exist (the Cl path); the extension is carrying several shells
   with their edges in the aligned-band threshold list.
-  \emph{Update 2026-09-24:} this part is done, in the form \code{phfit2}
-  itself uses, which is not the sum written above: below the first
-  inner-shell edge $E_{\rm inn}$ the outer-shell fit alone, at and above it
-  the sum of the Verner \& Yakovlev subshell fits of \emph{all} occupied
-  subshells, the outer one included (element-file rows \code{PHOTO},
-  \code{PHINNER}, \code{PHSHELL}; \code{PHOTO2} is gone).  The heating is
-  shell-resolved.  Auger yields, the stage matrix and the Auger-electron
-  energetics (parts 2--4) remain open, and they already matter inside the
+  \emph{Update 2026-09-24, restored 2026-10-11:} this part is done, in
+  the form \code{phfit2} itself uses, which is not the sum written above:
+  below the first inner-shell edge $E_{\rm inn}$ the outer-shell fit alone,
+  at and above it the sum of the Verner \& Yakovlev subshell fits of
+  \emph{all} occupied subshells, the outer one included (element-file rows
+  \code{PHOTO}, \code{PHINNER}, \code{PHSHELL}; \code{PHOTO2} is gone), for
+  the opacity, the rates and the shell-resolved heating.  The tree of
+  October 9--11 had replaced it with the outer shell alone, which deleted
+  valid opacity; 2026-10-11 restored the sum, and it is now the only form
+  (\code{par\%metal\_inner\_shell\_absorption} is refused; gate
+  \code{tests/photo\_shells}, worst $2.3\times10^{-6}$).  The product of every
+  absorption is the next stage.  Auger yields, the stage matrix and the
+  Auger-electron energetics (parts 2--4) remain open, planned as
+  \code{par\%auger\_ionization}, and they already matter inside the
   default band: the Mg\,\textsc{i} $2p$, Ca\,\textsc{i} $3p$ and
   Fe\,\textsc{i}--\textsc{iii} $3p$ vacancies emit a second electron with
   probability $\ge 0.995$ (Kaastra \& Mewe 1993 as tabulated by
-  \textsc{Cloudy}), which the one-stage bookkeeping does not carry.
+  \textsc{Cloudy}), which the one-stage bookkeeping does not carry (a
+  known defect, marked at \code{species\_cross\_section}).
 \item \textbf{Auger yields.}  Kaastra \& Mewe (1993) electrons per
   vacancy, shell-resolved, read from the Cloudy data file format
   (\code{mewe\_nelectron.dat}: element, ion, shell, yield
@@ -3482,7 +3682,9 @@ the PN residual the density-dependent cooling must explain --- the same
 one-lever-at-a-time attribution that worked for HII40.  (As drafted; HS7 and
 HS3 have since been done, so that PN150 pass now runs with
 \code{par\%cooling\_model = 'low\_density'} if the attribution is still
-wanted.)
+wanted.)  As of 2026-10-11, HS2, HS3, HS7 and HS6 part~1 are done, the \MoCHII{}
+PN150 run of HS4 is running (\code{m13}), and HS1 beyond the terminal-band refusal, HS5 and
+HS6 parts~2--4 are open.
 
 %==============================================================================
 \section{Feasibility: time dependence, cooling flows, and shocks in

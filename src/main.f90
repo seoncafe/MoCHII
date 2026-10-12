@@ -12,7 +12,7 @@ program main
   use setup_mod
   use grid_mod_amr
   use octree_mod,      only : amr_grid
-  use ion_band_mod,    only : ion_setup, ion_Ltot
+  use ion_band_mod,    only : ion_setup, ion_Ltot, ion_eedge, ion_lum
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill, &
                               dust_reference_extinction
   use jtally_mod,      only : jtally_ion_setup, &
@@ -25,7 +25,7 @@ program main
                               gamma_HI, gamma_HeI, gamma_HeII, &
                               heat_HI, heat_HeI, heat_HeII, &
                               run_converged, run_iters, run_final_dx, &
-                              run_final_dte, run_field_consistent
+                              run_final_dte, run_state_solved_in_field
   use ion_balance_mod, only : gas_equilibrium_update, &
                               hydrogen_balance_residual_grid
   use thermal_mod,     only : gas_thermal_update
@@ -35,7 +35,7 @@ program main
   use cooling_mod,     only : cooling_setup
   use heii_cascade_mod, only : heii_cascade_transported
   use nlevel_cooling_mod, only : nlevel_cooling_report
-  use species_mod,     only : species_setup, &
+  use species_mod,     only : species_setup, species_terminal_photoionization_check, &
                               n_elements, elem_nstage, elem_abund, elem_eth
   use memory_mod,      only : destroy_shared_mem_all
   use utility
@@ -94,6 +94,8 @@ program main
   end if
   call ion_setup(metal_eth, nmetal)
   deallocate(metal_eth)
+  if (par%use_metals) call species_terminal_photoionization_check(par%eion_max, &
+                                                                  ion_eedge, ion_lum)
   !--- a previous run's state, before the first opacity fill reads it
   if (len_trim(par%restart_file) > 0) then
      block
@@ -104,6 +106,12 @@ program main
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
   call ion_score_setup(amr_grid%nleaf)
+  if (len_trim(par%restart_file) > 0) then
+     block
+       use previous_state_mod, only : restore_hei_phi3
+       call restore_hei_phi3()
+     end block
+  end if
   if (trim(par%source_geometry) == 'slab') then
      block
        logical :: ltop, lbot
@@ -112,14 +120,18 @@ program main
        call slab_tally_setup(par%slab_nmu, ion_Ltot, [ltop, lbot])
      end block
   end if
-  !--- Milne ground-continuum tables: built once, after ion_setup has fixed
-  !--- par%eion_max (the tables are truncated at the band edge) and after the
-  !--- atomic data are loaded.  Read-only during transport.
-  if (trim(par%recombination_continuum) == 'transported' .and. &
-      trim(par%diffuse_energy_model) == 'milne') then
+  !--- Milne ground-continuum tables (H, He and, with metals, every metal
+  !--- transition: diffuse channels 1-3 and 6) and the band free-free tables
+  !--- (channel 7): built once, after ion_setup has fixed the band (the
+  !--- tables are truncated at its edges) and after the atomic data are
+  !--- loaded.  Read-only during transport.  The metal and free-free channels
+  !--- need them whatever par%diffuse_energy_model says about H and He.
+  if (trim(par%recombination_continuum) == 'transported') then
      block
        use milne_recomb_spectrum_mod, only : milne_setup
+       use recomb_continuum_mod,      only : freefree_band_setup
        call milne_setup()
+       call freefree_band_setup()
      end block
   end if
   !--- He I 2^1S two-photon shape: needed whenever the excited-cascade
@@ -160,6 +172,19 @@ program main
   !--- par%gas_tol).  gas_niter = 0 = single
   !--- pass (no equilibrium solve, fixed state).  The stellar tally is
   !--- recomputed from zero each iteration (opacity changed).
+  !--- the grains of the gas-grain physics (par%grain_pe,
+  !--- par%gas_grain_energy_exchange): size bins on the band's energy grid,
+  !--- their charge ranges, and the T_dust table they read each iteration
+  if (par%solve_te .and. (par%grain_pe .or. par%gas_grain_energy_exchange)) then
+     block
+       use grain_size_bins_mod,     only : grain_size_bins_setup
+       use grain_photoelectric_mod, only : grain_photoelectric_setup
+       use dust_temp_mod,           only : dust_temp_setup
+       call grain_size_bins_setup()
+       call grain_photoelectric_setup()
+       call dust_temp_setup()
+     end block
+  end if
   niter = max(par%gas_niter, 1)
   call ionizing_field_setup()
   converged = .false.
@@ -247,6 +272,18 @@ program main
            '     converged after ', iter, ' iterations'
         exit
      end if
+     !--- the iterate, for a resume with par%restart_file (rank 0 writes;
+     !--- the header says it is neither converged nor solved in its field)
+     if (par%rates_write_interval > 0 .and. iter < niter) then
+        if (mod(iter, par%rates_write_interval) == 0) then
+           run_converged = .false.
+           run_iters     = iter
+           run_final_dx  = max_dx
+           run_final_dte = max_dte
+           run_state_solved_in_field = .false.
+           call gas_rates_write(iterate=.true.)
+        end if
+     end if
   end do
 
   !--- record the convergence state (written to the rates header) and warn
@@ -271,36 +308,46 @@ program main
      end if
   end if
 
-  !--- Final consistency pass.  The loop above ends on a gas solve followed
-  !--- by gas_opacity_fill, so the state it leaves behind has never been
-  !--- transported through: the rates, the gas heating and heat_dust still
-  !--- belong to the PREVIOUS iterate.  At convergence that mismatch is
-  !--- bounded by par%gas_tol, but at the iteration cap it is not bounded at
-  !--- all.  One more transport with no gas solve puts the written radiation
-  !--- field and the written gas state on the same iterate; it costs 1/niter
-  !--- of the run.  Skipped when par%ion_peel is set, because the imaging
-  !--- pass below rebuilds the same tally from the same state, and when
-  !--- par%gas_niter < 1, where no solve ever ran and the two already agree.
-  !--- The flag starts .false. and is set only where the pairing is actually
-  !--- established, so a path added later that forgets to rebuild the field
-  !--- reports itself in the header instead of claiming consistency.
-  if (par%gas_niter < 1) then
-     run_field_consistent = .true.      ! no solve ran; state never changed
-  else if (.not. par%ion_peel) then
-     call ionizing_field_and_rates('final consistency pass')
-     run_field_consistent = .true.
-  end if
-
-  !--- peel-off imaging pass: one extra transport of the CONVERGED state
-  !--- with observer peeling (direct at emission for stellar and diffuse
-  !--- packets; dust-scattered at every interaction via the hook).  The
-  !--- band tally is rebuilt by this pass, so the written rates reflect
-  !--- the same field the images carry.
+  !--- Final pass and final solve.  The loop above ends on a gas solve, so
+  !--- the state it leaves has never been transported through.  One more
+  !--- transport of that state (the imaging pass when par%ion_peel is set,
+  !--- which rebuilds the same tally with observer peeling) gives the field
+  !--- that is written; the gas is then solved once more in that field, so
+  !--- the written state -- H, He, T_e, n_e and the metal stages that
+  !--- species_write re-derives from the written rates -- is the solution
+  !--- of the written field.  Without the final solve the written H/He
+  !--- state and n_e belonged to the iterate before the written field while
+  !--- the written metal stages belonged to the written field, and before
+  !--- convergence the two disagreed (2026-10-12: channel 6 from the written
+  !--- state 1.354e36 against 2.017e36 transported, after 2 iterations).
+  !--- The field written is then the transport of the state one solve
+  !--- earlier; FINALDX/FINALDTE record that final solve's step, i.e. how
+  !--- far apart the two are.  Skipped when par%gas_niter < 1 (rates only:
+  !--- the written state is the input state, never solved).
   if (par%ion_peel) then
      call ionizing_field_and_rates('imaging pass (peel-off)', with_peel=.true.)
-     !--- this pass transported the written state, so it doubles as the
-     !--- consistency pass skipped above.
-     run_field_consistent = .true.
+  else if (par%gas_niter >= 1) then
+     call ionizing_field_and_rates('final pass')
+  end if
+  if (par%gas_niter >= 1) then
+     if (par%solve_te) then
+        call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
+                                drift_vol)
+     else
+        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol)
+        max_dte = 0.0_wp
+     end if
+     call hydrogen_balance_residual_grid(eps_hmax, eps_hvol)
+     call gas_opacity_fill()
+     run_final_dx  = max_dx
+     run_final_dte = max_dte
+     run_state_solved_in_field = .true.
+     if (mpar%p_rank == 0) then
+        write(6,'(a,2(a,es12.4))') '     final solve in the written field:', &
+           ' max |delta x_HII| = ', max_dx, ',  max |delta Te|/Te = ', max_dte
+        write(6,'(a,2(a,es12.4))') '                 ', &
+           ' vol |delta x_HII| = ', dx_vol, ',  max H balance residual = ', eps_hmax
+     end if
   end if
 
   !--- output

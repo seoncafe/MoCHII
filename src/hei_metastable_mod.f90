@@ -38,7 +38,7 @@ module hei_metastable_mod
 !
 ! One population, four users.  hei_triplet_population is the one n_3 of
 !  (1) the output diagnostic (par%hei_metastable, hei_metastable_run),
-!  and, with par%hei_metastable_coupling (default on),
+!  and, with explicitly enabled par%hei_metastable_coupling (default off),
 !  (2) the ionization balance (ion_balance_mod::solve_ion_cell): C_3 and
 !      Phi_3 return He to He+ -- a share u = (n_e C_3 + Phi_3)/D of every
 !      triplet recombination and collisional triplet excitation is undone --
@@ -101,6 +101,9 @@ module hei_metastable_mod
 !        to 2^3S.
 !---------------------------------------------------------------------------
   use define
+  use mpi
+  use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
+                          shared_host_rank, shared_host_size, shared_host_comm
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use photo_xsec,   only : sigma_vfky96
   implicit none
@@ -162,7 +165,9 @@ module hei_metastable_mod
   !--- Sum(path_lum sigma_3(E) (1 - IP_3/E)), rank local then reduced, and
   !--- the rates [s^-1] and heating [erg s^-1 per 2^3S atom] they give.
   real(kind=wp), allocatable :: phi3_path(:), heat3_path(:)
-  real(kind=wp), allocatable :: phi3_leaf(:), heat3_leaf(:)
+  !--- the rates are the same on every rank: node-shared (2026-10-12)
+  real(kind=wp), pointer, contiguous :: phi3_leaf(:) => null(), heat3_leaf(:) => null()
+  integer :: phi3_win(2) = MPI_WIN_NULL
 
   real(kind=wp), parameter :: kb_eV = kboltz_cgs / ev2erg    ! [eV/K]
 
@@ -338,23 +343,54 @@ contains
   real(kind=wp) function hei_phi3_rate(il) result(p)
     integer, intent(in) :: il
     p = 0.0_wp
-    if (allocated(phi3_leaf)) p = phi3_leaf(il)
+    if (associated(phi3_leaf)) p = phi3_leaf(il)
   end function hei_phi3_rate
 
   real(kind=wp) function hei_phi3_heating(il) result(h)
     integer, intent(in) :: il
     h = 0.0_wp
-    if (allocated(heat3_leaf)) h = heat3_leaf(il)
+    if (associated(heat3_leaf)) h = heat3_leaf(il)
   end function hei_phi3_heating
 
-  !--- set the leaf rates directly (gate programs, which run no transport)
+  !--- set the leaf rates directly (gate programs, which run no transport,
+  !--- and a restart, previous_state_mod::restore_hei_phi3).  Collective on
+  !--- the node; every rank passes the same values, the node's rank 0
+  !--- stores them.
   subroutine hei_phi3_assign(phi3, heat3)
     real(kind=wp), intent(in) :: phi3(:), heat3(:)
-    if (allocated(phi3_leaf)) deallocate(phi3_leaf, heat3_leaf)
-    allocate(phi3_leaf(size(phi3)), heat3_leaf(size(phi3)))
-    phi3_leaf  = phi3
-    heat3_leaf = heat3
+    call phi3_leaf_windows(size(phi3))
+    if (shared_host_rank() == 0) then
+       phi3_leaf  = phi3
+       heat3_leaf = heat3
+    end if
+    call phi3_leaf_sync()
   end subroutine hei_phi3_assign
+
+  !--- the node-shared leaf rates at n leaves (re)created when needed
+  subroutine phi3_leaf_windows(n)
+    integer, intent(in) :: n
+    if (associated(phi3_leaf)) then
+       if (size(phi3_leaf) /= n) call phi3_leaf_free()
+    end if
+    if (.not. associated(phi3_leaf)) then
+       call create_shared_mem(phi3_leaf,  [n]);  call get_window(phi3_leaf,  phi3_win(1))
+       call create_shared_mem(heat3_leaf, [n]);  call get_window(heat3_leaf, phi3_win(2))
+    end if
+  end subroutine phi3_leaf_windows
+
+  subroutine phi3_leaf_free()
+    if (.not. associated(phi3_leaf)) return
+    call destroy_shared_mem(phi3_leaf)
+    call destroy_shared_mem(heat3_leaf)
+    phi3_win = MPI_WIN_NULL
+  end subroutine phi3_leaf_free
+
+  subroutine phi3_leaf_sync()
+    integer :: ierr
+    call MPI_WIN_FENCE(0, phi3_win(1), ierr)
+    call MPI_WIN_FENCE(0, phi3_win(2), ierr)
+    call MPI_BARRIER(shared_host_comm(), ierr)
+  end subroutine phi3_leaf_sync
 
   !=========================================================================
   ! Phi_3 path estimators: allocated with the other transport estimators
@@ -366,7 +402,7 @@ contains
     integer, intent(in) :: nleaf
     call hei_metastable_load()
     if (allocated(phi3_path)) deallocate(phi3_path, heat3_path)
-    if (allocated(phi3_leaf)) deallocate(phi3_leaf, heat3_leaf)
+    call phi3_leaf_free()
     allocate(phi3_path(nleaf), heat3_path(nleaf))
     phi3_path  = 0.0_wp
     heat3_path = 0.0_wp
@@ -392,7 +428,6 @@ contains
   !--- reduce, then turn Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu
   !--- per leaf, as for Gamma_i.
   subroutine hei_metastable_path_reduce()
-    use mpi
     integer :: ierr, il, n
     real(kind=wp) :: fac
     if (.not. allocated(phi3_path)) return
@@ -401,15 +436,13 @@ contains
                        MPI_SUM, MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, heat3_path, n, MPI_DOUBLE_PRECISION, &
                        MPI_SUM, MPI_COMM_WORLD, ierr)
-    if (allocated(phi3_leaf)) then
-       if (size(phi3_leaf) /= n) deallocate(phi3_leaf, heat3_leaf)
-    end if
-    if (.not. allocated(phi3_leaf)) allocate(phi3_leaf(n), heat3_leaf(n))
-    do il = 1, n
+    call phi3_leaf_windows(n)
+    do il = shared_host_rank() + 1, n, shared_host_size()
        fac = 1.0_wp/((2.0_wp*leaf_half(il))**3*par%distance2cm**2)
        phi3_leaf(il)  = phi3_path(il)*fac
        heat3_leaf(il) = heat3_path(il)*fac
     end do
+    call phi3_leaf_sync()
   end subroutine hei_metastable_path_reduce
 
   !=========================================================================

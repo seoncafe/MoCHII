@@ -47,10 +47,12 @@ ifeq ($(FC), $(filter $(FC), mpiifort mpiifx))
     FFLAGS  = -ipo -O3 -no-prec-div -fp-model fast=2 $(FLAGS) $(Fextra)
     MODFLAG = -module $(SRCDIR)
     OMPFLAG = -qopenmp
+    LAPACK  = -qmkl=sequential
 else ifeq ($(FC), mpif90)
     FFLAGS  = -O3 -ffpe-summary=none $(FLAGS) $(EXTRAFLAG)
     MODFLAG = -J$(SRCDIR) -I$(SRCDIR)
     OMPFLAG = -fopenmp
+    LAPACK  = -llapack -lblas
 endif
 
 ifeq ($(DEBUG), 1)
@@ -66,7 +68,8 @@ endif
 # it is libsedust that needs those symbols.  The other order leaves ~100
 # undefined references.  A text-only archive (HDF5=0 ./build_lib.sh) needs
 # none of them and links either way.
-LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(SEDUST_LIB) $(HDF5_LIBS) $(OMPFLAG)
+# LAPACK: dgesv for the level populations (nlevel_mod::level_populations).
+LDFLAGS = $(extra) $(FFLAGS) -lcfitsio -L/usr/local/lib $(SEDUST_LIB) $(HDF5_LIBS) $(OMPFLAG) $(LAPACK)
 #*********************************************************************
 .SUFFIXES: .f .f90 .o
 
@@ -104,11 +107,14 @@ OBJS	= \
 	hydrogenic_recombination_mod.o \
 	gaunt.o \
 	gaunt_vh14_mod.o \
+	free_free_mod.o \
 	recomb_continuum_mod.o \
 	nlevel_mod.o \
 	nlevel_cooling_mod.o \
 	cooling_mod.o \
 	gas_state_mod.o \
+	ion_stage_equilibrium_mod.o \
+	metal_ionization_potential_mod.o \
 	species_mod.o \
 	gas_opacity_mod.o \
 	ion_packet_mod.o \
@@ -120,6 +126,9 @@ OBJS	= \
 	grid_mod_amr.o \
 	amr_refine_mod.o \
 	dust_temp_mod.o \
+	grain_size_bins_mod.o \
+	grain_photoelectric_mod.o \
+	gas_grain_collision_mod.o \
 	sedust_mod.o \
 	dust_emis_transport_mod.o \
 	hei_cascade_mod.o \
@@ -140,6 +149,18 @@ OBJS	= \
 	main.o
 
 OBJECTS = $(patsubst %.o, $(SRCDIR)/%.o, $(OBJS))
+
+# Compiler settings are part of every object. In particular, an IPO object
+# cannot be mixed into a native debug link. Preserve the timestamp when the
+# settings are unchanged so ordinary incremental builds remain incremental.
+BUILD_CONFIG = $(SRCDIR)/.build_configuration
+$(BUILD_CONFIG): FORCE
+	@printf '%s\n' '$(FC)' '$(FFLAGS)' '$(MODFLAG)' '$(OMPFLAG)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv $@.tmp $@; fi
+
+$(OBJECTS): $(BUILD_CONFIG)
+
+FORCE:
 
 # Module dependencies.  src/Makefile.dep lists, for every object, the objects
 # that define the modules it USEs (tools/fortran_module_dependencies.py), and
@@ -166,7 +187,7 @@ clean:
 	# root-level modules as well so an old manual build cannot shadow them.
 	rm -f $(SRCDIR)/*.o $(SRCDIR)/*.mod *.mod MoCHII.x
 
-.PHONY: default clean
+.PHONY: default clean FORCE
 
 # Last, so that no rule of the generated file becomes the default goal.
 .DEFAULT_GOAL := default

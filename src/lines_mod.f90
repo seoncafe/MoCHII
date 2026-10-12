@@ -3,7 +3,8 @@ module lines_mod
 ! MoCHII: collisional line luminosities on the converged state.
 !
 ! For every registry (element, stage) with an n-level file
-! data/atomic/nlevel_<el>_<stage>.txt, solve the n-level atom per leaf at
+! data/atomic/excitation/<par%metal_excitation_model>/nlevel_<el>_<stage>.txt
+! (H I: data/atomic/nlevel_h_1.txt), solve the n-level atom per leaf at
 ! the converged (T_e, n_e), multiply by the cascade stage density, and
 ! integrate over the grid:  L_line = sum_leaf j_line n_ion V  [erg/s].
 ! H beta (the normalization of every L/L(Hbeta) column) and the other H I
@@ -15,8 +16,9 @@ module lines_mod
 !
 ! With par%emis_output, also writes '<base>_emis' (HDF5/FITS): the same
 ! line set leaf by leaf as emissivity blocks emis_h (SH95 H I lines) and
-! emis_<el>_<stage> [erg/s/cm^3; sum(emis*V) = L_line; row order matches
-! the text table], wl_* wavelength arrays, and the state needed to build
+! emis_<el>_<stage> [erg/s/cm^3; sum(emis*V) = L_line; for the metals the
+! lines with L >= par%emis_line_floor L(Hbeta), in text-table order], wl_*
+! wavelength arrays, and the state needed to build
 ! maps without the rates file: LeafXYZ, n_H, n_e, T_e, x_HI/HII/HeI/HeII/HeIII,
 ! and the x_<el>_stages fraction blocks.
 !---------------------------------------------------------------------------
@@ -24,7 +26,9 @@ module lines_mod
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, &
-                            gas_ne, gas_Te, gas_nleaf
+                            gas_ne, gas_Te, gas_nleaf, &
+                            gas_leaf_owner_first, gas_leaf_owner_stride
+  use mpi
   use species_mod,   only : n_elements, elem_name, elem_nstage, elem_abund, &
                             species_fractions, species_write
   use nlevel_mod
@@ -47,16 +51,26 @@ contains
     character(len=PATH_LEN) :: fname
     character(len=PATH_LEN) :: outname
     character(len=64)  :: extname
-    character(len=8)   :: nlsuf
-    real(kind=wp) :: Lline(600), emis(600), frac(6), wl(600)
+    real(kind=wp) :: frac(MAX_ION_STAGES)
+    real(kind=wp), allocatable :: Lline(:), emis(:), wl(:)
     real(kind=wp) :: T, ne, nH, vol, nion, LHb, t4, nHI, nHII
-    real(kind=wp), allocatable :: em(:,:)
-    integer :: ie, ist, il, k, unit, nl, status, ic
+    real(kind=wp), allocatable :: em(:,:), emk(:,:)
+    integer :: ie, ist, il, k, unit, nl, status, ic, nsel, ierr
+    integer :: i0, nk, nchunk
+    !--- leaf emissivities of the metal lines are summed onto rank 0 in
+    !--- chunks of at most this many values, so only rank 0 holds the whole
+    !--- (line, leaf) table (every rank held it until 2026-10-12: ~5 GB per
+    !--- rank for ~300 lines on 2.1M leaves)
+    integer, parameter :: EMIS_CHUNK_VALUES = 2**24
+    integer, allocatable :: sel(:)
     logical :: ok, do_emis
 
-    if (mpar%p_rank /= 0) return
     do_emis = par%emis_output
     status  = 0
+    LHb = 0.0_wp
+    !--- the recombination lines and every file operation on rank 0; the
+    !--- metal n-level lines below on all ranks, leaves divided
+    if (mpar%p_rank == 0) then
 
     !--- the SH95 H I / He II tables follow par%lyman_lines, the fate of the
     !--- Lyman-LINE photons, which is deliberately independent of
@@ -77,6 +91,7 @@ contains
 
     !--- H I recombination lines (Storey & Hummer 1995 case B).
     call sh95_setup()
+    allocate(emis(12))
     block
       real(kind=wp) :: LH(12), wlh(12)
       integer :: kk, iHb, nlh
@@ -124,7 +139,7 @@ contains
       write(unit,'(a,es14.6,a)') '# L(Hbeta) = ', LHb, ' erg/s'
       write(unit,'(a)') '# elem stage  lambda[A]      L[erg/s]     L/L(Hbeta)'
       do kk = 1, nlh
-         write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'h', 1, wlh(kk), &
+         write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'h', 1, wlh(kk), &
             LH(kk), LH(kk)/LHb, trim(sh95_label(kk))
       end do
     end block
@@ -159,7 +174,7 @@ contains
             if (do_emis) em(1:nlhe, il) = emis(1:nlhe)
          end do
          do kk = 1, nlhe
-            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'he', 2, wlhe(kk), &
+            write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'he', 2, wlhe(kk), &
                LHe(kk), LHe(kk)/LHb, trim(sh95_label(kk, ion=2))
          end do
          if (do_emis) then
@@ -206,7 +221,7 @@ contains
             if (do_emis) em(1:nlhe1, il) = emis(1:nlhe1)
          end do
          do kk = 1, nlhe1
-            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'he', 1, wlhe1(kk), &
+            write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'he', 1, wlhe1(kk), &
                LHe1(kk), LHe1(kk)/LHb, trim(sh95_label(kk, ion=3))
          end do
          if (do_emis) then
@@ -241,6 +256,8 @@ contains
             integer :: kk, ig
             real(kind=wp), allocatable :: emc(:,:)
             nl = nlevel_nlines(atom)
+            deallocate(emis)
+            allocate(emis(atom%nrad))
             Lc = 0.0_wp
             wlhc = [6564.60_wp, 4862.65_wp, 4341.66_wp]  ! Halpha/Hbeta/Hgamma
             if (do_emis) then
@@ -275,11 +292,11 @@ contains
             write(unit,'(a)') '# hc: collisional H I Balmer component'// &
                ' (excitation of neutral H from the ground level;'// &
                ' separate from the SH95 recombination H lines)'
-            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(1), &
+            write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'hc', 1, wlhc(1), &
                Lc(1), Lc(1)/LHb, 'Halpha_c'
-            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(2), &
+            write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'hc', 1, wlhc(2), &
                Lc(2), Lc(2)/LHb, 'Hbeta_c'
-            write(unit,'(a4,i4,f12.2,2es14.5,2x,a)') 'hc', 1, wlhc(3), &
+            write(unit,'(a4,i4,f12.2,2es15.5e3,2x,a)') 'hc', 1, wlhc(3), &
                Lc(3), Lc(3)/LHb, 'Hgamma_c'
             if (do_emis) then
                call io_append_image(efile, emc, status, bitpix=-64)
@@ -294,57 +311,91 @@ contains
        end if
     end if
 
+    end if
+    call MPI_BCAST(LHb, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+
+    !--- metal lines: every rank solves the atom in its own leaves
+    !--- (gas_leaf_owner_first/stride, as the thermal solve) and the line
+    !--- luminosities are summed on rank 0.  With par%emis_output, the leaf
+    !--- emissivities of the lines with L >= par%emis_line_floor L(Hbeta)
+    !--- are recomputed in a second pass and summed on rank 0 (a full atom
+    !--- carries up to ~1e4 lines; all of them leaf by leaf would be 22 GB
+    !--- for Fe III on a 262144-leaf grid).
     do ie = 1, n_elements
        do ist = 1, elem_nstage(ie)
-          !--- optional expanded Fe II/III model (par%fe_levels_full).
-          nlsuf = ''
-          if (par%fe_levels_full .and. trim(elem_name(ie)) == 'fe') &
-             nlsuf = '_full'
-          write(fname,'(a,a,a,i0,a,a)') trim(par%atomic_dir)//'/nlevel_', &
-             trim(elem_name(ie)), '_', ist, trim(nlsuf), '.txt'
+          fname=metal_excitation_data_file('nlevel',trim(elem_name(ie)),ist)
           call nlevel_load(trim(fname), atom, ok)
           if (.not. ok) cycle
           nl = nlevel_nlines(atom)
+          if (allocated(Lline)) deallocate(Lline, emis, wl)
+          if (allocated(emis)) deallocate(emis)
+          allocate(Lline(atom%nrad), emis(atom%nrad), wl(atom%nrad))
           Lline(1:nl) = 0.0_wp
           do k = 1, nl
              wl(k) = nlevel_line_ident(atom, k)
           end do
-          if (do_emis) then
-             allocate(em(nl, gas_nleaf))
-             em = 0.0_wp
-          end if
-          do il = 1, gas_nleaf
-             nH = gas_nH(il)
-             if (nH <= 0.0_wp) cycle
-             T = gas_Te(il);  ne = gas_ne(il)
-             nHI = nH*gas_xHI(il);  nHII = nH*gas_xHII(il)
-             call species_fractions(ie, il, T, ne, nHI, nHII, frac)
-             nion = elem_abund(ie)*nH*frac(ist)
-             if (nion <= 1.0e-30_wp) cycle
-             vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
-             !--- nHI: atomic-hydrogen impact on the ground-term fine
-             !--- structure of C I, C II, O I (hcoll_<el>_<stage>.txt).
-             call nlevel_emissivities(atom, T, ne, emis, nHI)
+          do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
+             if (.not. metal_ion_density(il, nion, T, ne, nHI, vol)) cycle
+             call atom_emissivities(T, ne, nHI)
              Lline(1:nl) = Lline(1:nl) + emis(1:nl)*nion*vol
-             if (do_emis) em(1:nl, il) = emis(1:nl)*nion
           end do
-          do k = 1, nl
-             write(unit,'(a4,i4,f12.2,2es14.5)') trim(elem_name(ie)), ist, &
-                wl(k), Lline(k), Lline(k)/LHb
-          end do
+          call MPI_ALLREDUCE(MPI_IN_PLACE, Lline, nl, MPI_DOUBLE_PRECISION, &
+                             MPI_SUM, MPI_COMM_WORLD, ierr)
+          if (mpar%p_rank == 0) then
+             do k = 1, nl
+                write(unit,'(a4,i4,f12.2,2es15.5e3)') trim(elem_name(ie)), ist, &
+                   wl(k), Lline(k), Lline(k)/LHb
+             end do
+          end if
           if (do_emis) then
-             write(extname,'(a,a,a,i0)') 'emis_', trim(elem_name(ie)), '_', ist
-             call io_append_image(efile, em, status, bitpix=-64)
-             call io_put_keyword(efile,'EXTNAME',trim(extname), &
-                  'line emissivities [erg/s/cm^3]; sum(emis*V)=L',status)
-             write(extname,'(a,a,a,i0)') 'wl_', trim(elem_name(ie)), '_', ist
-             call io_append_image(efile, wl(1:nl), status, bitpix=-64)
-             call io_put_keyword(efile,'EXTNAME',trim(extname), &
-                  'line wavelengths [A]',status)
-             deallocate(em)
+             nsel = count(Lline(1:nl) >= par%emis_line_floor*LHb .and. Lline(1:nl) > 0.0_wp)
+             if (nsel > 0) then
+                allocate(sel(nsel))
+                sel = pack([(k, k = 1, nl)], Lline(1:nl) >= par%emis_line_floor*LHb &
+                           .and. Lline(1:nl) > 0.0_wp)
+                if (mpar%p_rank == 0) then
+                   allocate(em(nsel, gas_nleaf))
+                else
+                   allocate(em(1, 1))
+                end if
+                nchunk = max(1, min(gas_nleaf, EMIS_CHUNK_VALUES/nsel))
+                allocate(emk(nsel, nchunk))
+                do i0 = 1, gas_nleaf, nchunk
+                   nk = min(nchunk, gas_nleaf - i0 + 1)
+                   emk(:, 1:nk) = 0.0_wp
+                   !--- this rank's leaves in [i0, i0+nk-1]
+                   do il = i0 + modulo(gas_leaf_owner_first() - i0, gas_leaf_owner_stride()), &
+                           i0 + nk - 1, gas_leaf_owner_stride()
+                      if (.not. metal_ion_density(il, nion, T, ne, nHI, vol)) cycle
+                      call atom_emissivities(T, ne, nHI)
+                      emk(:, il - i0 + 1) = emis(sel)*nion
+                   end do
+                   !--- one nonzero contribution per leaf: the sum is exact
+                   if (mpar%p_rank == 0) then
+                      call MPI_REDUCE(emk, em(1, i0), nsel*nk, MPI_DOUBLE_PRECISION, &
+                                      MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+                   else
+                      call MPI_REDUCE(emk, emk, nsel*nk, MPI_DOUBLE_PRECISION, &
+                                      MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+                   end if
+                end do
+                deallocate(emk)
+                if (mpar%p_rank == 0) then
+                   write(extname,'(a,a,a,i0)') 'emis_', trim(elem_name(ie)), '_', ist
+                   call io_append_image(efile, em, status, bitpix=-64)
+                   call io_put_keyword(efile,'EXTNAME',trim(extname), &
+                        'line emissivities [erg/s/cm^3]; sum(emis*V)=L',status)
+                   write(extname,'(a,a,a,i0)') 'wl_', trim(elem_name(ie)), '_', ist
+                   call io_append_image(efile, wl(sel), status, bitpix=-64)
+                   call io_put_keyword(efile,'EXTNAME',trim(extname), &
+                        'line wavelengths [A] (lines with L >= emis_line_floor L(Hbeta))',status)
+                end if
+                deallocate(sel, em)
+             end if
           end if
        end do
     end do
+    if (mpar%p_rank /= 0) return
     close(unit)
     write(*,'(2a)') ' LINE: line luminosities written to: ', trim(outname)
     if (do_emis) then
@@ -354,6 +405,39 @@ contains
           trim(get_base_name(par%out_file))//'_emis'// &
           trim(io_file_extension(par%file_format))
     end if
+  contains
+
+    !--- n(ion) and the leaf state for (element ie, stage ist) in leaf il;
+    !--- .false. where the leaf is empty or the ion absent
+    logical function metal_ion_density(il, nion, T, ne, nHI, vol) result(present_ion)
+      integer,       intent(in)  :: il
+      real(kind=wp), intent(out) :: nion, T, ne, nHI, vol
+      real(kind=wp) :: nH, nHII
+      present_ion = .false.
+      nion = 0.0_wp;  T = 0.0_wp;  ne = 0.0_wp;  nHI = 0.0_wp;  vol = 0.0_wp
+      nH = gas_nH(il)
+      if (nH <= 0.0_wp) return
+      T = gas_Te(il);  ne = gas_ne(il)
+      nHI = nH*gas_xHI(il);  nHII = nH*gas_xHII(il)
+      call species_fractions(ie, il, T, ne, nHI, nHII, frac)
+      nion = elem_abund(ie)*nH*frac(ist)
+      if (nion <= 1.0e-30_wp) return
+      vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+      present_ion = .true.
+    end function metal_ion_density
+
+    !--- emis(1:nl) of the loaded atom; nHI adds atomic-hydrogen impact on
+    !--- the ground-term fine structure of C I, C II, O I
+    !--- (hcoll_<el>_<stage>.txt)
+    subroutine atom_emissivities(T, ne, nHI)
+      real(kind=wp), intent(in) :: T, ne, nHI
+      if (par%neutral_hydrogen_excitation) then
+         call nlevel_emissivities(atom, T, ne, emis, nHI)
+      else
+         call nlevel_emissivities(atom, T, ne, emis)
+      end if
+    end subroutine atom_emissivities
+
   end subroutine lines_write
 
   !=========================================================================

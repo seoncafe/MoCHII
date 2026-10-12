@@ -7,7 +7,7 @@
  ! hei_low_density_heimeta.h5 with the 2^3S number density n_2s3, the 2^3S
  ! photoionization rate Phi_3, n_e, and T_e.  The 2^3S population (a ~1e-7
  ! trace of helium) also feeds back into the ionization balance and the He I
- ! recombination photons through par%hei_metastable_coupling (default on).
+ ! recombination photons through par%hei_metastable_coupling (explicitly enabled below).
  !
  ! What this run shows: in the ionized core n_e ~ 110 cm^-3, far below the
  ! critical density n_crit = A_31/(q_31g+q_31a+q_31b+q_31s+C_3) = 3502 cm^-3

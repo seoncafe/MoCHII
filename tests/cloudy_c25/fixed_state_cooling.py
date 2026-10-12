@@ -230,8 +230,12 @@ def cloudy_channels(s):
 # ---------------------------------------------------------------------------
 # MoCHII terms
 # ---------------------------------------------------------------------------
-def run_driver(T, ne, nHI):
-    """Coefficients of every ion from fixed_state_nlevel.x -> {ion: {col: array}}."""
+def run_driver(T, ne, nHI, excitation_model=None):
+    """Coefficients of every ion from fixed_state_nlevel.x -> {ion: {col: array}}.
+
+    excitation_model selects par%metal_excitation_model for every metal file
+    the driver reads; None leaves the code's default.
+    """
     if not os.path.exists(DRIVER):
         raise RuntimeError(DRIVER + ' not built; use run_fixed_state.sh')
     with tempfile.TemporaryDirectory() as tmp:
@@ -240,9 +244,14 @@ def run_driver(T, ne, nHI):
             f.write('# T[K] ne[cm-3] nHI[cm-3]\n%d\n' % len(T))
             for a, b, c in zip(T, ne, nHI):
                 f.write('%.16e %.16e %.16e\n' % (a, b, c))
-        subprocess.run([DRIVER, fin, fout], cwd=ROOT, check=True)
+        command = [DRIVER, fin, fout]
+        if excitation_model:
+            command.append(excitation_model)
+        subprocess.run(command, cwd=ROOT, check=True)
         with open(fout) as f:
+            model = f.readline()[1:].split()[1]
             hdr = f.readline()[1:].split()
+        print('MoCHII metal excitation model: ' + model)
         data = np.loadtxt(fout, ndmin=2)
     out = {}
     for j, name in enumerate(hdr[1:]):
@@ -481,10 +490,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--no-scaling', action='store_true',
                     help='skip the temperature-scaling estimate')
+    ap.add_argument('--excitation-model', choices=['chianti', 'mocassin_v2'],
+                    help='par%%metal_excitation_model of every metal file '
+                         '(default: the code default)')
     args = ap.parse_args()
     s = cloudy_state()
     L, Hint, Cint = cloudy_channels(s)
-    t = mochii_terms(s, s['T'], run_driver(s['T'], s['ne'], s['nHI']))
+    t = mochii_terms(s, s['T'], run_driver(s['T'], s['ne'], s['nHI'],
+                                                 args.excitation_model))
     report_fixed_state(s, t, L, Hint, Cint)
     if not args.no_scaling:
         report_scaling(s, Hint)

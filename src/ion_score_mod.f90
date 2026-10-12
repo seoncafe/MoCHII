@@ -12,6 +12,7 @@ module ion_score_mod
 ! while the jt_ion(inu,leaf) tally is only a diagnostic spectrum.
 !---------------------------------------------------------------------------
   use define
+  use memory_mod, only : shared_host_rank, shared_host_size
   use photoelectron_degradation_mod, only : N_EDEP, E_SECONDARY, &
                                             photoelectron_energy_weights
   implicit none
@@ -22,7 +23,6 @@ module ion_score_mod
   public :: ion_score_apply_hhe
   public :: ion_score_apply_dust_heat
   public :: ion_score_apply_sec
-  public :: ion_score_apply_g0
   public :: ion_score_energy_packet, ion_score_energy_totals
   public :: ion_score_report_energy_closure, ion_score_report_metal_rates
 
@@ -51,10 +51,6 @@ module ion_score_mod
                                                    ! reduced; the photoelectron
                                                    ! energy deposited above 30 eV,
                                                    ! by absorber and energy node.
-  real(kind=wp), allocatable :: fuv_field_path(:)  ! (nleaf), rank local then
-                                                   ! reduced; Sum(path_lum) over
-                                                   ! FUV segments (E < eion_min),
-                                                   ! the Habing G0 integral.
   integer :: score_nleaf = 0
   integer(kind=int64) :: direct_segments = 0_int64
   integer(kind=int64) :: scattered_segments = 0_int64
@@ -74,7 +70,6 @@ contains
     if (allocated(hhe_rate_path)) deallocate(hhe_rate_path)
     if (allocated(dust_abs_path)) deallocate(dust_abs_path)
     if (allocated(sec_ion_path)) deallocate(sec_ion_path)
-    if (allocated(fuv_field_path)) deallocate(fuv_field_path)
     score_nleaf = nleaf
     allocate(hhe_rate_path(NHHE,nleaf))
     hhe_rate_path = 0.0_wp
@@ -91,12 +86,6 @@ contains
     if (par%use_sec_ion) then
        allocate(sec_ion_path(NSEC,nleaf))
        sec_ion_path = 0.0_wp
-    end if
-
-    !--- Habing-G0 integral: allocated only when the FUV band is on.
-    if (par%add_fuv) then
-       allocate(fuv_field_path(nleaf))
-       fuv_field_path = 0.0_wp
     end if
 
     if (par%use_metals) then
@@ -125,7 +114,6 @@ contains
     if (allocated(hhe_rate_path)) hhe_rate_path = 0.0_wp
     if (allocated(dust_abs_path)) dust_abs_path = 0.0_wp
     if (allocated(sec_ion_path)) sec_ion_path = 0.0_wp
-    if (allocated(fuv_field_path)) fuv_field_path = 0.0_wp
     direct_segments = 0_int64
     scattered_segments = 0_int64
     energy_emitted = 0.0_wp
@@ -162,7 +150,7 @@ contains
     if (path_lum == 0.0_wp) return
     !--- Dust thermal re-emission packets sit below every gas photoionization
     !--- threshold, so they carry no photoionization, no photoheating, no
-    !--- secondary ionization and no Habing G0, and their energies lie outside
+    !--- secondary ionization, and their energies lie outside
     !--- the ionizing-band bin grid jt_ion is defined on.  Their only
     !--- interaction is grain absorption, which is scored into the infrared
     !--- band's own estimator; every ionizing-band estimator is left untouched.
@@ -194,12 +182,6 @@ contains
                + path_lum*sig(ia)*(1.0_wp - eth(ia)/en)*w
          end do
        end block
-    end if
-    !--- Habing-G0 integral: accumulate path_lum for FUV segments, i.e. those
-    !--- whose photon energy sits below the ionization floor.
-    if (allocated(fuv_field_path)) then
-       if (photon%ionphys%energy_eV < par%eion_min) &
-          fuv_field_path(il) = fuv_field_path(il) + path_lum
     end if
     if (photon%nscatt > 0) then
        scattered_segments = scattered_segments + 1_int64
@@ -275,9 +257,6 @@ contains
     if (allocated(sec_ion_path)) &
        call MPI_ALLREDUCE(MPI_IN_PLACE, sec_ion_path, NSEC*score_nleaf, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    if (allocated(fuv_field_path)) &
-       call MPI_ALLREDUCE(MPI_IN_PLACE, fuv_field_path, score_nleaf, &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
     counts = [direct_segments, scattered_segments]
     call MPI_ALLREDUCE(MPI_IN_PLACE, counts, 2, MPI_INTEGER8, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
@@ -307,14 +286,16 @@ contains
   subroutine ion_score_apply_hhe(gHI, gHeI, gHeII, hHI, hHeI, hHeII)
     use octree_mod, only : leaf_half
     implicit none
-    real(kind=wp), intent(out) :: gHI(:), gHeI(:), gHeII(:)
-    real(kind=wp), intent(out) :: hHI(:), hHeI(:), hHeII(:)
+    !--- inout: each rank writes its share of a node-shared array
+    real(kind=wp), intent(inout) :: gHI(:), gHeI(:), gHeII(:)
+    real(kind=wp), intent(inout) :: hHI(:), hHeI(:), hHeII(:)
     real(kind=wp) :: fac
     integer :: il
 
     if (.not. allocated(hhe_rate_path)) &
        error stop 'H/He path estimators are not allocated'
-    do il = 1, score_nleaf
+    !--- node-shared output: the node's ranks take disjoint leaves
+    do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
        gHI(il)   = hhe_rate_path(I_GHI,il)*fac
        gHeI(il)  = hhe_rate_path(I_GHEI,il)*fac
@@ -345,23 +326,6 @@ contains
                        * amr_grid%rhokap(il)/par%distance2cm
     end do
   end subroutine ion_score_apply_dust_heat
-
-  subroutine ion_score_apply_g0(g0_fuv)
-    !--- Habing FUV field G0 [dimensionless] per leaf.  fuv_field_path
-    !--- = Sum(path_lum) over the segments carried by photons below eion_min,
-    !--- and the factor below turns it into 4 pi J_FUV / 1.6e-3 erg/s/cm^2.
-    use octree_mod, only : leaf_half
-    implicit none
-    real(kind=wp), intent(out) :: g0_fuv(:)
-    real(kind=wp) :: fac
-    integer :: il
-    if (.not. allocated(fuv_field_path)) &
-       error stop 'FUV-field path estimator is not allocated'
-    do il = 1, score_nleaf
-       fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
-       g0_fuv(il) = fuv_field_path(il)*fac/1.6e-3_wp
-    end do
-  end subroutine ion_score_apply_g0
 
   subroutine ion_score_energy_totals(emitted, absorbed, escaped)
     real(kind=wp), intent(out) :: emitted, absorbed, escaped
@@ -405,13 +369,14 @@ contains
     !--- photoelectrons exceed E_SECONDARY.
     use octree_mod, only : leaf_half
     implicit none
-    real(kind=wp), intent(out) :: edep(:,:,:)
+    real(kind=wp), intent(inout) :: edep(:,:,:)   ! node-shared, this rank's share
     real(kind=wp) :: fac
     integer :: il
 
     if (.not. allocated(sec_ion_path)) &
        error stop 'secondary-ionization path estimators are not allocated'
-    do il = 1, score_nleaf
+    !--- node-shared output: the node's ranks take disjoint leaves
+    do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
        edep(:,:,il) = reshape(sec_ion_path(:,il)*fac, [N_EDEP, 3])
     end do

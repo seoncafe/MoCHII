@@ -13,11 +13,12 @@ driver:
                   He III at par%recomb_model = 'detailed_balance'.  Both sides
                   evaluate the same closed form, so they must agree to
                   roundoff;
-  free-free       cooling_mod's gbar_ff(T, Z) for Z = 1..4.  The Python side
-                  carries the nodes dumped from the Fortran table and repeats
-                  its linear-in-log10 T interpolation, so this too is a
-                  roundoff comparison -- it catches a stale table, a changed
-                  node grid, or a changed u-quadrature in gaunt_ff_mean;
+  free-free       cooling_mod's gbar_ff(T, Z) for Z = 1..6.  The Python side
+                  carries an independent high-accuracy integral of the same
+                  Gaunt rule on the same 0.01 dex grid
+                  (tools/python/make_gbar_ff_table.py) and repeats the
+                  linear-in-log10 T interpolation, so this measures the
+                  accuracy of the u-quadrature in gaunt_ff_mean;
   cross sections  photo_xsec's sigma_HI, sigma_HeI, sigma_HeII.  Same closed
                   forms again.  The grid deliberately starts at each threshold,
                   where sigma_HI was 0.775% off while the gates used the VFKY96
@@ -39,17 +40,24 @@ import mochii_rates as R
 
 #--- both sides evaluate the same closed form or the same table
 TOL = 1.0e-10
+# The Python nodes are the exact thermal average to 1.3e-7
+# (make_gbar_ff_table.py). cooling_mod::gaunt_ff_mean, a 400-point trapezoid
+# in ln u on [1e-9, 300] with g_ff in default REAL, reproduces them to 8.1e-6
+# at worst (Z = 1, 1e6 K; 3.5e-6 .. 8.1e-6 over Z = 6 .. 1, measured
+# 2026-10-11 on the production objects). The tolerance bounds that
+# quadrature error; the earlier quadrature on a 0.1 dex grid was 3.3e-4 off.
+TOL_GFF = 1.0e-5
 NAMES = ["alphaA_HII", "alphaB_HII", "alpha1_HII",
          "alphaA_HeII", "alphaB_HeII", "alpha1_HeII",
          "alphaA_HeIII", "alphaB_HeIII", "alpha1_HeIII"]
-GNAMES = ["gbar_ff(Z=1)", "gbar_ff(Z=2)", "gbar_ff(Z=3)", "gbar_ff(Z=4)"]
+GNAMES = [f"gbar_ff(Z={z})" for z in range(1, 7)]
 SNAMES = ["sigma_HI", "sigma_HeI", "sigma_HeII"]
 CNAMES = ["betaA_HII", "betaB_HII", "beta_HeII", "beta_HeIII",
           "ci_HI", "ci_HeI", "ci_HeII"]
 
 OBJS = ("define.o", "utility.o", "photo_xsec.o", "hydrogenic_recombination_mod.o",
         "recomb_mod.o", "gaunt.o",
-        "gaunt_vh14_mod.o", "nlevel_mod.o", "nlevel_cooling_mod.o",
+        "gaunt_vh14_mod.o", "free_free_mod.o", "nlevel_mod.o", "nlevel_cooling_mod.o",
         "cooling_mod.o")
 
 DRIVER = r"""
@@ -85,7 +93,7 @@ program rates_dump
   !--- gbar_ff over the full table span, on and off the nodes
   do i = 1, NG
      T = 10.0_wp**(2.0_wp + 4.0_wp*real(i-1,wp)/real(NG-1,wp))
-     write(12,'(5es24.16)') T, (gbar_ff(T, iz), iz = 1, 4)
+     write(12,'(7es24.16)') T, (gbar_ff(T, iz), iz = 1, 6)
   end do
 
   !--- cross sections: from each threshold up to 1 keV
@@ -126,10 +134,19 @@ def fortran_tables():
     with open(src, "w") as fh:
         fh.write(text)
     objs = [os.path.join(ROOT, "src", o) for o in OBJS]
-    cmd = [os.environ.get("FC", "mpiifort"), "-cpp", "-DMPI", "-ipo", "-O2",
+    mode = os.environ.get("MOCHII_TEST_BUILD_MODE")
+    if mode is None:
+        config = os.path.join(ROOT, "src", ".build_configuration")
+        with open(config) as settings:
+            mode = "optimized" if "-ipo" in settings.read() else "debug"
+    flags = (["-O3", "-ipo", "-no-prec-div", "-fp-model", "fast=2"]
+             if mode == "optimized" else ["-O0", "-no-ipo"])
+    cmd = [os.environ.get("FC", "mpiifort"), "-cpp", "-DMPI", *flags,
            "-module", os.path.join(ROOT, "src"), "-I" + os.path.join(ROOT, "src"),
-           "-o", exe, src] + objs
-    subprocess.run(cmd, check=True, capture_output=True)
+           "-o", exe, src] + objs + ["-qmkl=sequential"]
+    built = subprocess.run(cmd, capture_output=True, text=True)
+    if built.returncode != 0:
+        raise RuntimeError("rates_dump link failed:\n" + built.stdout + built.stderr)
     subprocess.run([exe], check=True, capture_output=True, text=True, cwd=d)
     out = []
     for unit in (11, 12, 13, 14):
@@ -139,7 +156,7 @@ def fortran_tables():
     return out
 
 
-def report(label, names, fort, py):
+def report(label, names, fort, py, tolerance=TOL):
     """Print one block of max relative deviations; return True if all pass."""
     ok = True
     print(f"  {label}")
@@ -148,7 +165,7 @@ def report(label, names, fort, py):
         keep = f != 0.0
         dev = np.max(np.abs(py[keep, j] / f[keep] - 1.0)) if keep.any() else 0.0
         zero_ok = np.all(py[~keep, j] == 0.0)
-        flag = "" if (dev <= TOL and zero_ok) else "   FAIL"
+        flag = "" if (dev <= tolerance and zero_ok) else "   FAIL"
         if flag:
             ok = False
         print(f"    {nm:16s}  {dev:.3e}{flag}")
@@ -164,7 +181,7 @@ def main():
                               R.alphaA_HeIII(T), R.alphaB_HeIII(T), R.alpha1_HeIII(T)])
 
     Tg = gff[:, 0]
-    py_gff = np.column_stack([R.gbar_ff(Tg, z) for z in (1, 2, 3, 4)])
+    py_gff = np.column_stack([R.gbar_ff(Tg, z) for z in range(1, 7)])
 
     E = sig[:, 1]
     py_sig = np.column_stack([R.sigma_HI(E), R.sigma_HeI(E), R.sigma_HeII(E)])
@@ -176,7 +193,7 @@ def main():
 
     print("  max |python/fortran - 1|")
     ok = report("recombination, 1e3-1e5 K", NAMES, rec[:, 1:], py_rec)
-    ok &= report("free-free Gaunt, 1e2-1e6 K", GNAMES, gff[:, 1:], py_gff)
+    ok &= report("free-free Gaunt, 1e2-1e6 K", GNAMES, gff[:, 1:], py_gff, tolerance=TOL_GFF)
     ok &= report("cross sections, threshold-1 keV", SNAMES, sig[:, 2:], py_sig)
     ok &= report("cooling and collisional ionization, 1e3-1e5 K",
                  CNAMES, cool[:, 1:], py_cool)

@@ -5,7 +5,7 @@
  ! nH=1e4 cm^-3.  Since R_S ~ (Q/nH^2)^(1/3), the same ionizing luminosity now
  ! gives R_S ~ 3.15 (100/1e4)^(2/3) ~ 0.146 pc, so the box shrinks to
  ! xmax=0.16 pc, rmax=0.15 pc.  par%hei_metastable = .true. again writes the
- ! 2^3S population; with par%hei_metastable_coupling (default on) it also
+ ! 2^3S population; with par%hei_metastable_coupling (explicitly enabled below) it also
  ! feeds back, and the band extends to the 4.78 eV 2^3S edge by default
  ! (add_fuv and efuv_min are left out), so Phi_3 carries the soft UV.
  !

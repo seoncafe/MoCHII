@@ -1,0 +1,40 @@
+# MoCHII source-node atom: ca_4
+# numerical use: 1000..100000 K; source validity may differ
+# levels: 2 written of 2 source levels; levels at or above the ionization limit (autoionizing) and levels unreachable from the ground by collisions or decays are excluded
+# Pelan and Berrington (1995), Table 3: source temperature nodes 10000..1000000 K
+# Adopted constant Upsilon below the first node; no continuation above the last node
+# Ground fine-structure electron pair only; higher excited-state cooling is not established
+# source level IDs: 1 2
+# source SHA-256 /home/kiseon/CLOUDY/c25.00/data/stout/ca/ca_4/ca_4.nrg: 333ea9ead15655b240d573036201aea288c0b4f898d05b96599f816bb7aefaaf
+# source SHA-256 /home/kiseon/CLOUDY/c25.00/data/stout/ca/ca_4/ca_4.tp: fc71397bc3cc9b9225c180a987143fc5ec82bdf1a77d630e0563032dfea77e32
+# source SHA-256 /home/kiseon/CLOUDY/c25.00/data/stout/ca/ca_4/ca_4.coll: e68cce06232964d061e6ef945b353ad7aaaff68ea5522a10aee767b33828587f
+# source SHA-256 /home/kiseon/CLOUDY/c25.00/data/ionization_potentials.dat: c5ec0528f09b794b538fff80a2d416b800583a94f92588fc654d3468cff63235
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/write_excitation_atom.py: 9dadce5c87ac898b27a2ea0a6d89c459964a0e19a30c888e3ba6c8eb3e3b6861
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/chianti_cooling.py: c32054fcf54cf6f2086b606359e6e39a06e933a5119274b83ee5f1506df1bb9e
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/atomic_excitation_energies.py: 42bd9a86af8f874228a3e443f89623a5468ce51f807b6b7b46d06cdfe0f959db
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/ionization_potentials.py: 83031ec4cac3d75693828df305f0268b7b6e5cb64a06bff8569cea0ca35616c1
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/stout_excitation_cooling.py: 8aa85d55785905d4fa5c1a2aa29520c8edc381aceb56abca69078e588869b234
+# selection code SHA-256 /nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/fitting/stout_fine_structure_atoms.py: d170f291a09e85a1ac248c9eef47a9a91656b7720c01e4941c388f38d5cc70fd
+# NODES is the total number of (x, y) records across all collision rows
+NLEVEL_VERSION 2
+NLEV 2
+1 4 0
+2 2 3118.1999999999998
+NRAD 1
+1 2 0.54300000000000004
+NODES 11
+NUPS 1
+1 2 TEMPERATURE_TABLE 0 0 0 LOG_PCHIP_T 11
+10000 1
+15800 1.1200000000000001
+25100 1.3500000000000001
+39800 1.77
+63100 2.3900000000000001
+100000 2.7999999999999998
+158000 2.98
+251000 2.8199999999999998
+398000 2.4300000000000002
+631000 1.97
+1000000 1.53
+# Full collision-connected bound source: use its density ratio for fitted cooling
+DENSITY_RATIO 1

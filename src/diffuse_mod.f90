@@ -13,7 +13,27 @@ module diffuse_mod
 ! which are ionizing because the decay energies exceed 13.598 eV:
 !     He I  n=2 terms        : channel 4, par%hei_diffuse  (hei_cascade_mod)
 !     He III cascade         : channel 5, par%heii_diffuse (heii_cascade_mod)
-! Channels 1-4 run with par%recombination_continuum = 'transported'.
+! and two continua of every ion that the transported continuum carries too
+! (since 2026-10-11; plan md/ATOMIC_PHYSICS_RESTORATION_PLAN_2026-10-11.md
+! Phase 4, both on because the photons exist and ionize: in MOCASSIN v2's
+! diffuse field, and absent here before):
+!     X^(i+1) + e -> X^i(ground), every metal transition: channel 6
+!         (milne_recomb_spectrum_mod: the Milne spectrum on the outer-shell
+!         transport cross section, rate and spectrum from the same integral)
+!     free-free of H+, He+, He2+ and (par%metal_freefree) the metal ions
+!         inside the band: channel 7 (recomb_continuum_mod::freefree_band_*,
+!         the coefficient of the written continuum)
+! Channels 1-4, 6 and 7 run with par%recombination_continuum = 'transported'.
+! With 'escaping' none is transported (every recombination photon leaves).
+! With 'on_the_spot' channels 6 and 7 are not transported and their photons
+! are not absorbed on the spot either: they leave the nebula, as with
+! 'escaping'.  The on-the-spot mode absorbs locally the H and He photons
+! the case-B rates assume; the metal ground photons are absorbed mostly by
+! H0 and He0, not by the ion that emits them, so a local metal case B would
+! be wrong, and an on-the-spot deposition into H0/He0 was not built for an
+! approximation kept for comparison.  Their size is the channel 6 + 7 share
+! the transported run prints (results in
+! md/ATOMIC_PHYSICS_RESTORATION_RESULTS_2026-10-11.md, Phase 4).
 ! Channel 5 runs with it too, and also alone with 'on_the_spot' when
 ! par%heii_diffuse is set (heii_cascade_transported): the He III cascade
 ! transported, every other recombination photon absorbed on the spot.
@@ -33,6 +53,9 @@ module diffuse_mod
 ! total leaf luminosity, then a channel CDF within the leaf.
 !---------------------------------------------------------------------------
   use define
+  use mpi
+  use memory_mod,    only : create_shared_mem, destroy_shared_mem, get_window, &
+                           shared_host_rank, shared_host_size, shared_host_comm
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, gas_ne, gas_Te, gas_nleaf
@@ -47,21 +70,33 @@ module diffuse_mod
   use heii_cascade_mod,  only : heii_branch_luminosity, heii_fb_sample_energy, &
                                 heii_2q_sample_energy, heii_lyman_sample_energy, &
                                 heii_cascade_transported
+  use milne_recomb_spectrum_mod, only : milne_metal_count, &
+                                        milne_metal_band_coefficient, &
+                                        milne_metal_sample_energy
+  use recomb_continuum_mod, only : freefree_band_coefficient, &
+                                   freefree_band_sample_energy, FF_ZMAX
   implicit none
   private
 
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
   public :: hei_branch_energies, hei_branch_energies_coupled
+  public :: diffuse_channel_luminosity
 
-  integer, parameter :: NCH = 5                 ! diffuse emission channels
-  real(kind=wp), allocatable :: dif_cdf(:)      ! leaf CDF (total energy)
-  real(kind=wp), allocatable :: dif_ch(:,:)     ! (NCH, nleaf) channel luminosities
+  integer, parameter :: NCH = 7                 ! diffuse emission channels
+  integer, parameter :: CH_METAL_GROUND = 6, CH_FREEFREE = 7
+  !--- total luminosity of each channel in the last diffuse_build [erg/s]
+  real(kind=wp) :: diffuse_channel_luminosity(NCH) = 0.0_wp
+  !--- the leaf tables are the same on every rank: node-shared (2026-10-12),
+  !--- the node's ranks filling disjoint leaves
+  real(kind=wp), pointer, contiguous :: dif_cdf(:) => null()    ! leaf CDF (total energy)
+  real(kind=wp), pointer, contiguous :: dif_ch(:,:) => null()   ! (NCH, nleaf) channel luminosities
   !--- channel-4 branch weights (2^3S, 2^1P, 2^1S) of each leaf when the
   !--- 2^3S population is coupled (par%hei_metastable_coupling): they depend
   !--- on n_3 and Phi_3, so the launchers read what diffuse_build computed
   !--- instead of recomputing them.
-  real(kind=wp), allocatable :: dif_hei(:,:)    ! (3, nleaf) [eV cm^-3 s^-1]
+  real(kind=wp), pointer, contiguous :: dif_hei(:,:) => null()  ! (3, nleaf) [eV cm^-3 s^-1]
+  integer :: dif_win(3) = MPI_WIN_NULL     ! dif_cdf, dif_ch, dif_hei
   real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
   !--- luminosity carried by one diffuse packet [erg/s]: the diffuse
   !--- luminosity over the packet count diffuse_build set from the lpacket it
@@ -94,30 +129,36 @@ contains
     real(kind=wp) :: be3s, be1p, be1s
     real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
-    integer :: il, ic
+    integer :: il, ic, ierr
     logical :: all_channels
 
-    if (allocated(dif_cdf)) then
-       if (size(dif_cdf) /= gas_nleaf) deallocate(dif_cdf, dif_ch)
+    if (associated(dif_cdf)) then
+       if (size(dif_cdf) /= gas_nleaf) then
+          call destroy_shared_mem(dif_cdf);  call destroy_shared_mem(dif_ch)
+       end if
     end if
-    if (.not. allocated(dif_cdf)) then
-       allocate(dif_cdf(gas_nleaf), dif_ch(NCH, gas_nleaf))
+    if (.not. associated(dif_cdf)) then
+       call create_shared_mem(dif_cdf, [gas_nleaf]);  call get_window(dif_cdf, dif_win(1))
+       call create_shared_mem(dif_ch, [NCH, gas_nleaf]);  call get_window(dif_ch, dif_win(2))
     end if
     if (par%hei_diffuse .and. par%hei_metastable_coupling) then
-       if (allocated(dif_hei)) then
-          if (size(dif_hei, 2) /= gas_nleaf) deallocate(dif_hei)
+       if (associated(dif_hei)) then
+          if (size(dif_hei, 2) /= gas_nleaf) call destroy_shared_mem(dif_hei)
        end if
-       if (.not. allocated(dif_hei)) allocate(dif_hei(3, gas_nleaf))
+       if (.not. associated(dif_hei)) then
+          call create_shared_mem(dif_hei, [3, gas_nleaf])
+          call get_window(dif_hei, dif_win(3))
+       end if
     end if
 
     !--- the ground continua and the He I cascade are transported only with
     !--- the transported continuum; with the on-the-spot one channel 5 may be
     !--- transported alone (heii_cascade_transported)
     all_channels = trim(par%recombination_continuum) == 'transported'
-    do il = 1, gas_nleaf
+    do il = shared_host_rank() + 1, gas_nleaf, shared_host_size()
        nH = gas_nH(il)
        dif_ch(:,il) = 0.0_wp
-       if (allocated(dif_hei)) dif_hei(:,il) = 0.0_wp
+       if (associated(dif_hei)) dif_hei(:,il) = 0.0_wp
        if (nH <= 0.0_wp) cycle
        T  = gas_Te(il)
        ne = gas_ne(il)
@@ -154,6 +195,12 @@ contains
              dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
           end if
        end if
+       !--- channels 6 and 7: the metal ground continua and the free-free
+       !--- emission inside the band
+       if (all_channels) then
+          dif_ch(CH_METAL_GROUND,il) = ne*vol*sum(metal_ground_weights(il, T))
+          dif_ch(CH_FREEFREE,il)     = ne*vol*sum(freefree_weights(il, T))
+       end if
        !--- channel 5: He III cascade through He II (par%heii_diffuse), in
        !--- the case of the Lyman lines.  The free-bound term already carries
        !--- its own coefficient [erg cm^3/s]; the Lyman-line and 2^2S exits
@@ -164,20 +211,36 @@ contains
        end if
     end do
 
-    !--- leaf CDF over total energy
+    call diffuse_shared_sync()
+
+    !--- leaf CDF over total energy; every rank forms the same sums from the
+    !--- shared table, the node's rank 0 stores the CDF
     diffuse_lum = 0.0_wp
+    diffuse_channel_luminosity = 0.0_wp
     do il = 1, gas_nleaf
        diffuse_lum = diffuse_lum + sum(dif_ch(:,il))
-       dif_cdf(il) = diffuse_lum
+       if (shared_host_rank() == 0) dif_cdf(il) = diffuse_lum
+       diffuse_channel_luminosity = diffuse_channel_luminosity + dif_ch(:,il)
     end do
+    if (diffuse_lum > 0.0_wp .and. shared_host_rank() == 0) dif_cdf = dif_cdf/diffuse_lum
+    call diffuse_shared_sync()
     if (diffuse_lum > 0.0_wp) then
-       dif_cdf = dif_cdf/diffuse_lum
        diffuse_nphot = max(1_int64, nint(diffuse_lum/lpacket, int64))
        diffuse_packet_lum = diffuse_lum/real(diffuse_nphot, wp)
     else
        diffuse_nphot = 0
        diffuse_packet_lum = lpacket
     end if
+  contains
+
+    subroutine diffuse_shared_sync()
+      integer :: k
+      do k = 1, 3
+         if (dif_win(k) /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, dif_win(k), ierr)
+      end do
+      call MPI_BARRIER(shared_host_comm(), ierr)
+    end subroutine diffuse_shared_sync
+
   end subroutine diffuse_build
 
   !=========================================================================
@@ -255,7 +318,13 @@ contains
        !--- launcher in that order.
        ub = rand_number()
        u  = rand_number()
-       eph = heii_cascade_energy(gas_Te(il), ub, u)
+       if (ch == 5) then
+          eph = heii_cascade_energy(gas_Te(il), ub, u)
+       else if (ch == CH_METAL_GROUND) then
+          eph = metal_ground_energy(il, gas_Te(il), ub, u)
+       else
+          eph = freefree_energy(il, gas_Te(il), ub, u)
+       end if
     end if
 
     !--- bin index by binary search of the band edges (the one source of truth
@@ -287,11 +356,13 @@ contains
   !          (ground_photon_energy: the Milne CDF inverse by default);
   !          channel 4 the He I decay-branch pick; channel 5 the He II
   !          cascade-path pick (free-bound / Ly-alpha / two-photon);
+  !          channel 6 the metal transition; channel 7 the ion charge;
   !   u(9)   second energy variate: the He I two-photon energy from the
-  !          tabulated Drake shape, or the channel-5 free-bound / two-photon
+  !          tabulated Drake shape, the channel-5 free-bound / two-photon
+  !          energy, the channel-6 Milne energy or the channel-7 free-free
   !          energy (else unused).
-  ! The fifth channel reuses dimensions 8 and 9 rather than adding any, since
-  ! its path pick and its energy draw are the same two decisions channel 4
+  ! Channels 5-7 reuse dimensions 8 and 9 rather than adding any, since
+  ! their pick and their energy draw are the same two decisions channel 4
   ! makes.
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
   !=========================================================================
@@ -361,8 +432,12 @@ contains
        else
           eph = hei_2ph_sample_energy(u(9))
        end if
-    else
+    else if (ch == 5) then
        eph = heii_cascade_energy(gas_Te(il), u(8), u(9))
+    else if (ch == CH_METAL_GROUND) then
+       eph = metal_ground_energy(il, gas_Te(il), u(8), u(9))
+    else
+       eph = freefree_energy(il, gas_Te(il), u(8), u(9))
     end if
 
     photon%inu = ion_bin_of(eph)
@@ -436,6 +511,94 @@ contains
        if (u*tot <= acc) return
     end do
   end function pick_channel
+
+  !--- In-band luminosity of each metal ground continuum of leaf il per n_e
+  !--- per unit volume [erg cm^-3 s^-1 per cm^-3]: n(X^(i+1)) times the
+  !--- band coefficient of transition k.  One routine for the emission table
+  !--- and both launchers, so the channel luminosity and the transition pick
+  !--- cannot disagree; the stage fractions are the ones the packet opacity
+  !--- uses (species_stage_cache_refresh, current gas state).
+  function metal_ground_weights(il, T) result(w)
+    use species_mod, only : species_transition, species_stage_fraction, elem_abund
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: w(MAX_METAL_TRANSITIONS)
+    integer :: k, ie, it
+    w = 0.0_wp
+    if (.not. par%use_metals) return
+    do k = 1, milne_metal_count()
+       call species_transition(k, ie, it)
+       w(k) = gas_nH(il)*elem_abund(ie)*species_stage_fraction(ie, it+1, il) &
+              *milne_metal_band_coefficient(k, T)
+    end do
+  end function metal_ground_weights
+
+  !--- In-band free-free luminosity of leaf il by net ion charge Z = 1..
+  !--- FF_ZMAX, per n_e per unit volume: Z = 1 H+ and He+ (and the metal
+  !--- stages II), Z = 2 He2+ (and stages III), Z >= 3 the metal stages
+  !--- Z+1, the metals with par%metal_freefree (the switch of their cooling).
+  function freefree_weights(il, T) result(w)
+    use species_mod, only : n_elements, elem_nstage, elem_abund, &
+                            species_stage_fraction
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: w(FF_ZMAX), nz(FF_ZMAX), nH
+    integer :: ie, j, z
+    nH = gas_nH(il)
+    nz = 0.0_wp
+    nz(1) = nH*(gas_xHII(il) + par%abund_He*gas_xHeII(il))
+    nz(2) = nH*par%abund_He*gas_xHeIII(il)
+    if (par%use_metals .and. par%metal_freefree) then
+       do ie = 1, n_elements
+          do j = 2, elem_nstage(ie)
+             z = j - 1
+             nz(z) = nz(z) + nH*elem_abund(ie)*species_stage_fraction(ie, j, il)
+          end do
+       end do
+    end if
+    do z = 1, FF_ZMAX
+       w(z) = nz(z)*freefree_band_coefficient(z, T)
+    end do
+  end function freefree_weights
+
+  !--- Photon energy [eV] of one channel-6 packet: the transition picked by
+  !--- u_pick over metal_ground_weights, the energy from its Milne CDF.
+  real(kind=wp) function metal_ground_energy(il, T_K, u_pick, u_energy) result(eph)
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T_K, u_pick, u_energy
+    real(kind=wp) :: w(MAX_METAL_TRANSITIONS)
+    integer :: k
+    w = metal_ground_weights(il, T_K)
+    k = pick_index(w(1:milne_metal_count()), u_pick)
+    eph = milne_metal_sample_energy(k, T_K, u_energy)
+  end function metal_ground_energy
+
+  !--- Photon energy [eV] of one channel-7 packet: the charge picked by
+  !--- u_pick over freefree_weights, the energy from its free-free CDF.
+  real(kind=wp) function freefree_energy(il, T_K, u_pick, u_energy) result(eph)
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T_K, u_pick, u_energy
+    integer :: z
+    z = pick_index(freefree_weights(il, T_K), u_pick)
+    eph = freefree_band_sample_energy(z, T_K, u_energy)
+  end function freefree_energy
+
+  !--- the first entry of w whose cumulative weight passes u (entries with
+  !--- no weight skipped, as in pick_channel)
+  integer function pick_index(w, u) result(k)
+    real(kind=wp), intent(in) :: w(:), u
+    real(kind=wp) :: acc, tot
+    integer :: i
+    tot = sum(w)
+    acc = 0.0_wp
+    k   = 1
+    do i = 1, size(w)
+       if (w(i) <= 0.0_wp) cycle
+       acc = acc + w(i)
+       k   = i
+       if (u*tot <= acc) return
+    end do
+  end function pick_index
 
   !--- Photon energy [eV] of one He III cascade packet (channel 5).  The path
   !--- is picked by ENERGY luminosity from the same three terms

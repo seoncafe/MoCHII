@@ -9,6 +9,14 @@ module amr_refine_mod
 !     par%refine_dx in x_HI (gas cells only);
 !   - the new tree is level par%refine_lmax wherever a cell overlaps a
 !     front-flagged old leaf, par%refine_lbase elsewhere;
+!   - the photoionization rates the next pass reads before its own
+!     transport -- the metal rates behind the stage-fraction cache of the
+!     metal opacity, and the He I 2^3S rate Phi_3 behind the 2^3S split of
+!     the He I diffuse channel -- are carried as volume averages: a rate
+!     per atom is the field's average over the leaf, which is what the
+!     path estimator of a merged leaf would score.  They were zeroed until
+!     2026-10-12, so the first pass after an event started with every
+!     metal in its lowest stages and Phi_3 = 0;
 !   - the gas state (and rhokap) are remapped by OVERLAP VOLUME, so the
 !     box integrals of H nuclei, each ion stage, electrons, thermal energy
 !     and the dust extinction survive the rebuild.  Where a leaf is only
@@ -48,7 +56,10 @@ contains
     use gas_opacity_mod, only : gas_opacity_setup
     use jtally_mod,      only : jtally_ion_resize
     use ion_score_mod,   only : ion_score_resize
-    use species_mod,     only : species_resize
+    use species_mod,     only : species_resize, n_elements, elem_nstage, elem_name, &
+                                species_photoionization_rates, &
+                                species_set_photoionization_rates
+    use hei_metastable_mod, only : hei_phi3_rate, hei_phi3_assign
     use gas_state_mod,   only : gas_nH_p => gas_nH, gas_xHI_p => gas_xHI, &
                                 gas_xHII_p => gas_xHII, gas_xHeI_p => gas_xHeI, &
                                 gas_xHeII_p => gas_xHeII, &
@@ -59,7 +70,14 @@ contains
     real(kind=wp), allocatable :: s_nH(:), s_x1(:), s_x1p(:), s_x2(:), &
                                   s_x3(:), s_x4(:), s_ne(:), s_te(:), s_rk(:)
     real(kind=wp) :: half, xr, dx
-    integer :: il, jl, icell, jcell, iface, nold, nfront, ierr
+    integer :: il, jl, icell, jcell, iface, nold, nfront, ierr, ie, nst
+    !--- photoionization rates (rate, leaf), old grid and new grid
+    type :: rate_pair
+       real(kind=wp), allocatable :: old(:,:), new(:,:)
+    end type rate_pair
+    type(rate_pair), allocatable :: mrate(:)
+    type(rate_pair) :: phi3
+    logical :: carry_phi3
 
     nold = amr_grid%nleaf
     half = 0.5_wp*amr_grid%L_box
@@ -124,6 +142,27 @@ contains
                        s_x4(il), s_ne(il), s_te(il), s_rk(il))
     end do
 
+    !--- 4'. the photoionization rates read before the next transport,
+    !--- carried as volume averages (header)
+    if (par%use_metals) then
+       allocate(mrate(n_elements))
+       do ie = 1, n_elements
+          nst = elem_nstage(ie) - 1
+          allocate(mrate(ie)%old(nst, nold), mrate(ie)%new(nst, nnew))
+          call species_photoionization_rates(ie, mrate(ie)%old)
+          call volume_average_rates(nnew, half, mrate(ie)%old, mrate(ie)%new, &
+                                    trim(elem_name(ie))//' photoionization rates')
+       end do
+    end if
+    carry_phi3 = par%hei_metastable_coupling
+    if (carry_phi3) then
+       allocate(phi3%old(1, nold), phi3%new(1, nnew))
+       do il = 1, nold
+          phi3%old(1, il) = hei_phi3_rate(il)
+       end do
+       call volume_average_rates(nnew, half, phi3%old, phi3%new, 'Phi_3')
+    end if
+
     !--- 4a. conservation report.  These are integrals over the whole box
     !--- and are preserved exactly by the overlap weights, so anything above
     !--- roundoff is a coding error rather than a modeling choice.
@@ -173,10 +212,26 @@ contains
                             s_ne, s_te)
     !--- species BEFORE opacity: the stage-fraction refresh inside
     !--- gas_opacity_fill reads the Gamma blocks at the NEW leaf count.
-    if (par%use_metals) call species_resize(nnew)
+    if (par%use_metals) then
+       call species_resize(nnew)
+       do ie = 1, n_elements
+          call species_set_photoionization_rates(ie, mrate(ie)%new)
+       end do
+       deallocate(mrate)
+    end if
     call gas_opacity_setup()
     call jtally_ion_resize(nnew)
     call ion_score_resize(nnew)
+    !--- Phi_3 after ion_score_resize, which clears the leaf rates; its
+    !--- heating is read only after the next transport, which sets both
+    if (carry_phi3) then
+       block
+         real(kind=wp), allocatable :: zero(:)
+         allocate(zero(nnew));  zero = 0.0_wp
+         call hei_phi3_assign(phi3%new(1,:), zero)
+       end block
+       deallocate(phi3%old, phi3%new)
+    end if
 
     if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a,i0,a,i0,a)') &
        ' AMR: re-refined on the I-front: ', nold, ' -> ', nnew, &
@@ -307,6 +362,78 @@ contains
        te = par%te_min
     end if
   end subroutine remap_leaf
+
+  !=========================================================================
+  ! Volume average over the overlapping old leaves of rates given on the
+  ! old leaves, g_old(component, old leaf) -> g_new(component, new leaf).
+  ! A photoionization rate per atom is the leaf's average of the field, so
+  ! a merged leaf takes the volume average and a subdivided one its parent's
+  ! value.  Old leaves are found by the descent remap_leaf uses.
+  !=========================================================================
+  ! The box integral sum(V g) of each component is preserved exactly; the
+  ! largest relative change is printed with label.
+  subroutine volume_average_rates(nnew_, half, g_old, g_new, label)
+    use mpi
+    implicit none
+    integer,       intent(in)  :: nnew_
+    real(kind=wp), intent(in)  :: half, g_old(:,:)
+    real(kind=wp), intent(out) :: g_new(:,:)
+    character(len=*), intent(in) :: label
+    integer, parameter :: MAXSTK = 512
+    integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl, il, ierr
+    real(kind=wp) :: x, y, z, h, hw, ov, sv
+    real(kind=wp) :: int_old(size(g_old,1)), int_new(size(g_old,1)), worst
+
+    do il = 1, nnew_
+       x = nx_(il);  y = ny_(il);  z = nz_(il);  h = half/2.0_wp**nlev_(il)
+       g_new(:, il) = 0.0_wp;  sv = 0.0_wp
+       nstk = 1;  stack(1) = 1
+       do while (nstk > 0)
+          icell = stack(nstk);  nstk = nstk - 1
+          hw = old_ch(icell)
+          if (abs(old_cx(icell) - x) >= hw + h) cycle
+          if (abs(old_cy(icell) - y) >= hw + h) cycle
+          if (abs(old_cz(icell) - z) >= hw + h) cycle
+          if (old_ileaf(icell) > 0) then
+             jl = old_ileaf(icell)
+             ov = overlap_1d(old_cx(icell), hw, x, h) &
+                * overlap_1d(old_cy(icell), hw, y, h) &
+                * overlap_1d(old_cz(icell), hw, z, h)
+             if (ov <= 0.0_wp) cycle
+             g_new(:, il) = g_new(:, il) + ov*g_old(:, jl)
+             sv = sv + ov
+             cycle
+          end if
+          do ioct = 1, 8
+             jc = old_children(ioct, icell)
+             if (jc > 0) then
+                nstk = nstk + 1
+                if (nstk > MAXSTK) then
+                   if (mpar%p_rank == 0) write(*,'(a)') &
+                      'ERROR: amr rate remap descent stack overflow'
+                   call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+                end if
+                stack(nstk) = jc
+             end if
+          end do
+       end do
+       if (sv > 0.0_wp) g_new(:, il) = g_new(:, il)/sv
+    end do
+
+    if (mpar%p_rank == 0) then
+       int_old = 0.0_wp;  int_new = 0.0_wp
+       do icell = 1, size(old_ileaf)
+          jl = old_ileaf(icell)
+          if (jl > 0) int_old = int_old + (2.0_wp*old_ch(icell))**3*g_old(:, jl)
+       end do
+       do il = 1, nnew_
+          int_new = int_new + (2.0_wp*half/2.0_wp**nlev_(il))**3*g_new(:, il)
+       end do
+       worst = maxval(abs(int_new - int_old)/max(abs(int_old), tiny(1.0_wp)))
+       write(*,'(3a,es10.3)') ' AMR: ', label, &
+          ' carried by volume average, max |d sum(V rate)|/sum = ', worst
+    end if
+  end subroutine volume_average_rates
 
   !=========================================================================
   ! Box integrals before and after the rebuild.  The overlap weights make

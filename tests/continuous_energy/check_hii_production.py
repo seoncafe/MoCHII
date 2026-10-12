@@ -78,7 +78,7 @@ def read_mochii(path):
             "_attrs": {
                 key: attr(header, key)
                 for key in (
-                    "CONVERGD", "FLDCONS", "NITERDON", "FINALDX", "FINALDTE",
+                    "CONVERGD", "STATESOL", "NITERDON", "FINALDX", "FINALDTE",
                     "IONEMODE", "NUBINUSE", "ENRGSAMP", "L_EMIT", "L_ABS",
                     "L_ESC",
                 )
@@ -176,7 +176,7 @@ def check_case(tag, continuous_path, grouped_path):
 
     checks = (
         ("converged", bool_attr(meta.get("CONVERGD", False))),
-        ("final field consistency pass", bool_attr(meta.get("FLDCONS", False))),
+        ("written state solved in the written field", bool_attr(meta.get("STATESOL", False))),
         ("continuous energy mode", meta.get("IONEMODE") == "continuous"),
         ("diagnostic-only energy bins", meta.get("NUBINUSE") == "diagnostic_only"),
         ("Sobol launch sequence", meta.get("ENRGSAMP") == "sobol"),

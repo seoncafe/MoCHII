@@ -196,8 +196,12 @@ contains
   !--- the rate integrals live in gas_rates_mod (they need the gas state).
   !--- whether anything reads the binned tally: the J_nu output
   !--- (par%jnu_output) or the SEDust leaf spectrum (par%dust_sed with dust)
+  !--- kept for J_nu output, for the SEDust emission, and for the grain
+  !--- charge distribution of par%grain_pe (grain_photoelectric_mod), all of
+  !--- which read the band-resolved field of each leaf
   logical function jtally_ion_needed() result(need)
-  need = par%jnu_output .or. (par%ion_add_dust .and. par%dust_sed)
+  need = par%jnu_output .or. (par%ion_add_dust .and. par%dust_sed) .or. &
+         par%grain_pe
   end function jtally_ion_needed
 
   subroutine jtally_ion_setup(nleaf)
@@ -211,8 +215,8 @@ contains
   if (.not. jtally_ion_needed()) then
      jt_ion_on = .false.
      if (mpar%p_rank == 0) write(*,'(a,f8.3,a)') &
-        ' ION: J tally off (neither jnu_output nor the SEDust emission'// &
-        ' reads it; ', mem_gb, ' GB per MPI rank saved)'
+        ' ION: J tally off (neither jnu_output, the SEDust emission nor'// &
+        ' grain_pe reads it; ', mem_gb, ' GB per MPI rank saved)'
      return
   end if
   if (mpar%p_rank == 0) write(*,'(a,i0,a,f8.3,a)') &

@@ -1,0 +1,3 @@
+&parameters
+ par%charge_exchange_heating=.true.
+/

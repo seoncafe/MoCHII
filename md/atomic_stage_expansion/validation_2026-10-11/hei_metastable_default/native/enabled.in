@@ -1,0 +1,3 @@
+&parameters
+ par%hei_metastable_coupling=.true.
+/
