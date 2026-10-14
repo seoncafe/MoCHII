@@ -372,6 +372,17 @@ contains
     call io_put_keyword(file,'EXTNAME','LeafSize','leaf full width (code units)',status)
     deallocate(leafsize)
 
+    !--- the stopping-test histories (fixed_point_distance_mod), oldest
+    !--- iteration first, columns d and s; par%restart_iteration_history
+    !--- reads them back
+    block
+      use fixed_point_distance_mod, only : iteration_history, hist_dx, &
+                                           hist_dhe1, hist_dhe3
+      call write_history(hist_dx,   'ConvHist_x_HII')
+      call write_history(hist_dhe1, 'ConvHist_HeI_HeII')
+      call write_history(hist_dhe3, 'ConvHist_HeII_HeIII')
+    end block
+
     !--- converged metal stage fractions.
     if (par%use_metals) then
        block
@@ -391,6 +402,22 @@ contains
     else
        write(*,'(2a)') ' ION: rates written to: ', trim(filename)
     end if
+  contains
+
+    subroutine write_history(h, name)
+      use fixed_point_distance_mod, only : iteration_history
+      type(iteration_history), intent(in) :: h
+      character(len=*),        intent(in) :: name
+      real(kind=wp), allocatable :: tab(:,:)
+      if (h%n < 1) return
+      allocate(tab(h%n, 2))
+      tab(:,1) = h%d(1:h%n);  tab(:,2) = h%s(1:h%n)
+      call io_append_image(file, tab, status, bitpix=-64)
+      call io_put_keyword(file,'EXTNAME',name, &
+           'stopping-test history: step d, signed step s',status)
+      deallocate(tab)
+    end subroutine write_history
+
   end subroutine gas_rates_write
 
 end module gas_rates_mod

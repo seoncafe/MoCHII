@@ -11,7 +11,7 @@ src/fixed_point_distance_mod.o: src/define.o
 src/free_free_mod.o: src/define.o src/gaunt_vh14_mod.o src/utility.o
 src/gas_grain_collision_mod.o: src/define.o src/grain_size_bins_mod.o
 src/gas_opacity_mod.o: src/define.o src/gas_state_mod.o src/grain_model_mod.o src/ion_band_mod.o src/octree_mod.o src/physics_amr_mod.o src/species_mod.o
-src/gas_rates_mod.o: src/define.o src/dust_temp_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/iofile_mod.o src/ion_band_mod.o src/ion_score_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/photoelectron_degradation_mod.o src/species_mod.o src/utility.o
+src/gas_rates_mod.o: src/define.o src/dust_temp_mod.o src/fixed_point_distance_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/iofile_mod.o src/ion_band_mod.o src/ion_score_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/photoelectron_degradation_mod.o src/species_mod.o src/utility.o
 src/gas_state_mod.o: src/define.o src/memory_mod_mpi.o
 src/gaunt_vh14_mod.o: src/define.o src/utility.o
 src/grain_model_mod.o: src/define.o src/utility.o
@@ -50,7 +50,7 @@ src/photo_xsec.o: src/define.o
 src/photoelectron_degradation_mod.o: src/define.o
 src/photon_schedule_mod.o: src/define.o src/utility.o
 src/physics_amr_mod.o: src/define.o
-src/previous_state_mod.o: src/define.o src/gas_state_mod.o src/hei_metastable_mod.o src/iofile_mod.o src/octree_mod.o src/species_mod.o src/utility.o
+src/previous_state_mod.o: src/define.o src/fixed_point_distance_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/iofile_mod.o src/octree_mod.o src/species_mod.o src/utility.o
 src/raytrace_amr.o: src/define.o src/ion_packet_mod.o src/ion_score_mod.o src/jtally_mod.o src/octree_mod.o src/random_mt.o
 src/read_generic_amr.o: src/define.o src/iofile_mod.o src/utility.o
 src/read_mod.o: src/define.o src/iofile_mod.o

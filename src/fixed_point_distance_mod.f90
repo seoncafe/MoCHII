@@ -38,7 +38,9 @@ module fixed_point_distance_mod
 !                                             drift the window can resolve),
 ! with mean and sigma(s) the sample mean and standard deviation of the last
 ! NWIN values and T_DRIFT the two-sided 95% point of Student's t for NWIN - 1
-! degrees of freedom.
+! degrees of freedom.  The drift condition is par%conv_drift_test (default
+! on, the optional argument drift_test); without it the floor passes on
+! d_n < tol alone.
 !
 ! Why (2026-09-26).  The test of 2026-09-25 took rho as the median of the
 ! last three ratios d_k/d_(k-1) and read the floor from any of those ratios
@@ -61,6 +63,7 @@ module fixed_point_distance_mod
 
   public :: iteration_history, history_push, fixed_point_distance, &
             fixed_point_converged, history_reset, net_drift, NWIN
+  public :: history_set, hist_dx, hist_dhe1, hist_dhe3
 
   integer, parameter :: NHIST = 512
   !--- iterations in the window of the fits and of the drift test
@@ -74,6 +77,11 @@ module fixed_point_distance_mod
      real(kind=wp) :: d(NHIST) = 0.0_wp     ! step, L1
      real(kind=wp) :: s(NHIST) = 0.0_wp     ! signed step
   end type iteration_history
+
+  !--- the run's histories of x_HII, He0-He+ and He+-He2+ (main.f90 pushes
+  !--- them each iteration; the rates file carries them as ConvHist_*, and
+  !--- par%restart_iteration_history restores them, previous_state_mod)
+  type(iteration_history) :: hist_dx, hist_dhe1, hist_dhe3
 
 contains
 
@@ -90,25 +98,42 @@ contains
     h%s(h%n) = s
   end subroutine history_push
 
+  !--- a history as written by a previous run (d(1:n), s(1:n) oldest first)
+  subroutine history_set(h, d, s)
+    type(iteration_history), intent(inout) :: h
+    real(kind=wp),           intent(in)    :: d(:), s(:)
+    integer :: n
+    n = min(size(d), NHIST)
+    h%n = n
+    h%d(1:n) = d(size(d)-n+1:)
+    h%s(1:n) = s(size(s)-n+1:)
+  end subroutine history_set
+
   subroutine history_reset(h)
     type(iteration_history), intent(inout) :: h
     h%n = 0
   end subroutine history_reset
 
   !--- the stopping test of the header, for one measure
-  logical function fixed_point_converged(h, tol) result(done)
+  logical function fixed_point_converged(h, tol, drift_test) result(done)
     type(iteration_history), intent(in) :: h
     real(kind=wp),           intent(in) :: tol
+    logical, optional,       intent(in) :: drift_test
     real(kind=wp) :: rho, dist, smean, tstat
-    logical :: available
+    logical :: available, test_drift
+    test_drift = .true.
+    if (present(drift_test)) test_drift = drift_test
     done = .false.
     if (h%n < NWIN) return
     call fixed_point_distance(h, rho, dist, available)
     if (available) then
        done = dist < tol
     else
-       call net_drift(h, smean, tstat)
-       done = h%d(h%n) < tol .and. tstat < T_DRIFT
+       done = h%d(h%n) < tol
+       if (test_drift) then
+          call net_drift(h, smean, tstat)
+          done = done .and. tstat < T_DRIFT
+       end if
     end if
   end function fixed_point_converged
 

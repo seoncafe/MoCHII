@@ -151,6 +151,11 @@ contains
      call refuse_input( &
         'par%car_walk must be ''dda'' (default) or ''amr''.')
   endif
+  if (par%restart_iteration_history .and. len_trim(par%restart_file) == 0) &
+     call refuse_input('par%restart_iteration_history needs par%restart_file.')
+  if (.not. par%conv_drift_test .and. trim(par%conv_crit) /= 'vol' &
+      .and. mpar%p_rank == 0) write(*,'(a)') &
+     ' NOTE: par%conv_drift_test is read only with par%conv_crit = ''vol''.'
   if (trim(par%conv_crit) /= 'cell' .and. trim(par%conv_crit) /= 'vol') then
      call refuse_input('par%conv_crit must be ''cell'' (default; the cell '// &
         'maxima) or ''vol'' (the volume-integrated drift test).')

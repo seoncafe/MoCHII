@@ -97,8 +97,8 @@ Measurements in this memo carry their dates.  The converged Lexington
 benchmarks were rerun on this state
 (\code{results/\allowbreak continuous\_energy/\allowbreak m13\_restoration/},
 restarted from \code{m11\_hecx\_solver}, 29 and 26 iterations to the drift
-test; \S\ref{sec:hii}); the PN150 run stopped unconverged and is to be
-rerun (\S\ref{sec:limits}).  Variants not
+test; \S\ref{sec:hii}); the PN150 run converged on 2026-10-14 without
+metal recombination radiation in the diffuse field (\S\ref{sec:limits}).  Variants not
 rerun (the zero-density cooling, on-the-spot, low-density and no-He--H
 charge-exchange runs) keep their m11 values, marked as such.
 \end{sloppypar}
@@ -2421,7 +2421,9 @@ only when the signed step
 \end{equation}
 (and its helium counterparts) has a mean over those 8 iterations that does
 not stand out of its scatter, $|\bar s| < 2.365\,\sigma_s/\sqrt{8}$ (Student's
-$t$, two-sided 95\%, 7 degrees of freedom).  On the floor the leaves
+$t$, two-sided 95\%, 7 degrees of freedom; \code{par\%conv\_drift\_test},
+on by default, and without it the floor passes on $d_n <$ \code{gas\_tol}
+alone).  On the floor the leaves
 fluctuate about their fixed point and their changes cancel in $s$; a front
 still moving changes the ionized volume with one sign every iteration.  The
 floor had been read off the step ratios alone (any of the last three
@@ -6053,11 +6055,18 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   Mg, Ca and Fe in gas that sees 35--100~eV photons are affected; the fix
   needs the stage matrix of HS6, planned as \code{par\%auger\_ionization}
   (Kaastra \& Mewe yields, Auger electron heat, fluorescence accounting).
-\item \emph{The PN150 benchmark on the restored defaults has not converged.}
-  The run (\code{m13\_restoration}, $2^{25}$ packets, 2097152 leaves) was
-  stopped after 77 iterations: the He$^+$--He$^{2+}$ step sat at
-  $8$--$9\times10^{-3}$ with no drift, above the tolerance $5\times10^{-3}$;
-  a rerun with more packets is pending.  The Lexington variants named in
+\item \emph{Metal recombination radiation is not a diffuse source.}  Only
+  the ground-state recombination continuum of the metals (channel~6) is
+  returned to the ionizing field; the photons above 13.598~eV of the
+  cascade that follows a radiative or dielectronic recombination into an
+  excited level are not, as in \textsc{Mocassin}.  \textsc{Cloudy} returns
+  one photon at $0.75$ of the ionization potential per metal
+  recombination.  At PN150 (\code{m13\_restoration/pn150\_p27\_nodrift},
+  converged, $2^{27}$ packets) metals absorb $8\%$ of $Q({\rm H})$ and
+  $L({\rm H}\beta)$ is $0.893$ of \textsc{Cloudy}'s (the line ratios agree,
+  median $1.054$; the H front $3\%$ inside); with the metals off the two
+  codes agree to $0.7\%$ in H recombinations per $Q$.  Plan:
+  \code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}.  The Lexington variants named in
   \S\ref{sec:hii} (zero-density cooling, on the spot) keep m11 values.
 \item \emph{Charge-exchange heating rests on unidentified products for six
   reactions} (C$^{2+}$, C$^{3+}$, S$^{3+}$, Ar$^{3+}$, Si$^{3+}$, Fe$^{3+}$ + H),

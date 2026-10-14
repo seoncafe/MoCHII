@@ -44,8 +44,10 @@ module previous_state_mod
 ! the integer position of the containing cell, one table per distinct leaf
 ! size, so a deep octree costs no dense lattice.
 !
-! The convergence history (fixed_point_distance_mod) starts empty: the
-! stopping test needs NWIN = 8 iterations of the new run before it can pass.
+! The convergence history (fixed_point_distance_mod) starts empty, and the
+! stopping test needs NWIN = 8 iterations of the new run before it can pass,
+! unless par%restart_iteration_history takes the histories the file carries
+! (ConvHist_*; written since 2026-10-13), for a resume of the same physics.
 !---------------------------------------------------------------------------
   use define
   use mpi
@@ -75,7 +77,7 @@ contains
     character(len=64)  :: extname
     real(kind=wp), allocatable :: oxyz(:,:), osize(:), ox1(:), ox1p(:), ox2(:), &
                                   ox3(:), ox4(:), one(:), ote(:), g(:,:), &
-                                  ophi3(:)
+                                  ophi3(:), hx(:,:), hhe1(:,:), hhe3(:,:)
     real(kind=wp), allocatable :: nx1(:), nx1p(:), nx2(:), nx3(:), nx4(:), &
                                   nne(:), nte(:)
     type :: rate_block
@@ -108,7 +110,8 @@ contains
           if (status /= 0) exit
           n1 = 0;  n2 = 1
           call io_get_keyword(file, 'NAXIS1', n1, status)
-          if (index(extname, '_stages') > 0 .or. trim(extname) == 'LeafXYZ') &
+          if (index(extname, '_stages') > 0 .or. trim(extname) == 'LeafXYZ' &
+              .or. index(extname, 'ConvHist_') == 1) &
              call io_get_keyword(file, 'NAXIS2', n2, status)
           select case (trim(extname))
           case ('LeafXYZ')
@@ -132,6 +135,12 @@ contains
              allocate(one(n1));  call io_read_image(file, one, status);  have(6) = .true.
           case ('T_e')
              allocate(ote(n1));  call io_read_image(file, ote, status);  have(7) = .true.
+          case ('ConvHist_x_HII')
+             allocate(hx(n1, n2));  call io_read_image(file, hx, status)
+          case ('ConvHist_HeI_HeII')
+             allocate(hhe1(n1, n2));  call io_read_image(file, hhe1, status)
+          case ('ConvHist_HeII_HeIII')
+             allocate(hhe3(n1, n2));  call io_read_image(file, hhe3, status)
           case ('Phi_HeI_23S')
              allocate(ophi3(n1));  call io_read_image(file, ophi3, status)
              have_phi3 = .true.
@@ -243,6 +252,9 @@ contains
        end if
     end if
 
+    !--- the stopping-test histories (par%restart_iteration_history)
+    if (par%restart_iteration_history) call restore_histories()
+
     !--- metal photoionization rates, element by element (by name)
     call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     do k = 1, nr
@@ -280,6 +292,38 @@ contains
        ! whose warm start has not reconverged after the stage change.
        par%require_convergence = .true.
     end if
+  contains
+
+    subroutine restore_histories()
+      use fixed_point_distance_mod, only : history_set, hist_dx, hist_dhe1, hist_dhe3
+      if (mpar%p_rank == 0) then
+         if (.not. (allocated(hx) .and. allocated(hhe1))) call fatal_error( &
+            'restart_file: '//trim(fname)//' carries no stopping-test history'// &
+            ' (ConvHist_x_HII, ConvHist_HeI_HeII; written since 2026-10-13);'// &
+            ' set par%restart_iteration_history = .false. to refill the window')
+      end if
+      call bcast_history(hx, hist_dx)
+      call bcast_history(hhe1, hist_dhe1)
+      call bcast_history(hhe3, hist_dhe3)
+      if (mpar%p_rank == 0) write(*,'(a,3(i0,a))') &
+         ' RESTART: stopping-test histories of ', hist_dx%n, ' / ', hist_dhe1%n, &
+         ' / ', hist_dhe3%n, ' iterations (x_HII / He0-He+ / He+-He2+)'
+    end subroutine restore_histories
+
+    subroutine bcast_history(tab, h)
+      use fixed_point_distance_mod, only : iteration_history, history_set
+      real(kind=wp), allocatable, intent(inout) :: tab(:,:)
+      type(iteration_history),    intent(inout) :: h
+      integer :: n
+      n = 0
+      if (mpar%p_rank == 0 .and. allocated(tab)) n = size(tab, 1)
+      call MPI_BCAST(n, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+      if (n < 1) return
+      if (.not. allocated(tab)) allocate(tab(n, 2))
+      call MPI_BCAST(tab, 2*n, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+      call history_set(h, tab(:,1), tab(:,2))
+    end subroutine bcast_history
+
   end subroutine load_previous_state
 
   !--- set the restored Phi_3 on the leaves once ion_score_setup has

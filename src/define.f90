@@ -876,6 +876,13 @@ public
      !--- the HII40 benchmark 21 iterations early with its He I front
      !--- 0.17 pc short.  All measures are printed each iteration.
      character(len=8)   :: conv_crit    = 'cell'
+     !--- with conv_crit = 'vol': whether a measure on its Monte Carlo floor
+     !--- must also show no net drift of the ionized volume over the window
+     !--- (|mean s| < 2.365 sigma(s)/sqrt(8), fixed_point_distance_mod).
+     !--- .false. accepts the floor on d < gas_tol alone, which does not see
+     !--- a front still moving slowly under the noise (2026-09-26: an HII40
+     !--- restart so stopped after 4 iterations, the H front 0.011 pc short).
+     logical            :: conv_drift_test = .true.
      !--- abort (nonzero exit) if the gas iteration hits gas_niter without
      !--- converging; default off -> warn but still write the output.
      logical            :: require_convergence = .false.
@@ -940,8 +947,17 @@ public
      !--- 2026-09-26/27, restarts from x_HII = 1 - x_HI and x_HeIII =
      !--- max(0, 1 - x_HeI - x_HeII), with a note); leaves with no
      !--- previous counterpart keep the *_init values below
-     !--- (previous_state_mod).  Blank = a fresh start.
+     !--- (previous_state_mod).  Blank = a fresh start.  The stopping-test
+     !--- histories are restored only with restart_iteration_history.
      character(len=PATH_LEN) :: restart_file = ''
+     !--- with restart_file: also take the stopping-test histories the file
+     !--- carries (ConvHist_x_HII, _HeI_HeII, _HeII_HeIII: the step d and the
+     !--- signed step s of each iteration), so a resumed run of the same
+     !--- physics continues the 8-iteration window instead of refilling it.
+     !--- Default off: after a change of binary, physics or packet count the
+     !--- old steps say nothing about the new iteration.  A file without the
+     !--- histories is refused when this is on.
+     logical            :: restart_iteration_history = .false.
      !--- gas-state initialization (overridden by AMR file columns where
      !--- present): ion fractions and the He abundance n_He/n_H.
      real(kind=wp)      :: xHI_init     = 1.0_wp

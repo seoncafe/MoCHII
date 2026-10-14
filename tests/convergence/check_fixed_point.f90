@@ -81,6 +81,17 @@ program check_fixed_point
   else
      write(*,'(a)') ' (e) floor with a resolved net drift: does not pass'
   end if
+  !--- (e') the same history with the drift test off (par%conv_drift_test
+  !--- = .false.) passes on d < tol alone; on explicitly passes as (e) does not
+  if (.not. fixed_point_converged(h, TOL, drift_test=.false.)) then
+     write(*,'(a)') " (e') FAIL: drift test off, floor below tol did not pass"
+     ok = .false.
+  else if (fixed_point_converged(h, TOL, drift_test=.true.)) then
+     write(*,'(a)') " (e') FAIL: drift_test = .true. differs from the default"
+     ok = .false.
+  else
+     write(*,'(a)') " (e') drift test off: passes on d < tol; explicit on: as (e)"
+  end if
 
   !--- (f) a floor seen for NWIN - 1 iterations only
   call history_reset(h)

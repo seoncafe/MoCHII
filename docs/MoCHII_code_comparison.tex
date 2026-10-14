@@ -147,8 +147,9 @@ $L(\mathrm{H}\beta) = 2.025\times10^{37}$ and
 $4.85\times10^{36}$~erg\,s$^{-1}$.  Values from runs that were not repeated
 --- the line ratios of the \Mthree{} comparison below among them --- are
 tagged ``(m11; not rerun under the 2026-10-11 physics)''.  The PN150 run
-stopped unconverged on 2026-10-12 and is to be rerun, and the places that
-need it say so.  No matched full spatial comparison with
+converged on 2026-10-14; it is computed without metal recombination radiation in the diffuse field (as \Mocassin{}),
+which sets its $L(\mathrm{H}\beta)$ $10.7\%$ below \Cloudy{}'s (Section on
+HS4 below).  No matched full spatial comparison with
 \Mocassin{} v2 has yet been made.
 \end{sloppypar}
 
@@ -2904,8 +2905,8 @@ feed density-dependent multilevel cooling back into $\Te$; geometry decides. \\
 
 Hard PN-like ionizing spectrum & \Mappings{} if 1D; \Mthree{} if 3D & More
 high charge states; \Mthree{} additionally has published PN150 3D validation
-(\MoCHII{} carries stages to VII since 2026-10-11, but its PN150 run has
-not converged yet). \\
+(\MoCHII{} carries stages to VII since 2026-10-11; its PN150 run, without
+metal recombination radiation in the diffuse field, is in the HS4 section). \\
 
 Non-Maxwellian $\kappa$ electron experiment & \Mappings{} or \Mthree{} &
 Both MAPPINGS-derived trees have native $\kappa$ rate support. \\
@@ -2955,8 +2956,9 @@ replacement of either code.
 \item \textbf{Extend the registry upward in ion stage.}  Add the ions needed
   for PN and hard-field applications before adding marginal new low stages.
   Done 2026-10-11 to stage~VII for all eleven metals, as a data operation
-  (\code{tools/fitting/make\_element\_data.py}); the PN150 gate on it is
-  pending, and stages beyond VII and the Auger stage coupling remain open.
+  (\code{tools/fitting/make\_element\_data.py}); the PN150 gate on it ran
+  on 2026-10-14 (HS4 section), and stages beyond VII and the Auger stage
+  coupling remain open.
 \item \textbf{Add Na, Al, and Ni only when driven by a diagnostic need.}
   Their MAPPINGS implementations provide useful reference behavior, while
   the \MoCHII{} data files should retain explicit provenance and ion-by-ion
@@ -3054,8 +3056,8 @@ free--bound continua and the free--free inside the band are diffuse
 channels~6 and~7 (the M3 item of \code{md/METAL\_COUPLING\_PLAN.md}, and
 the free--free item recorded in \code{md/HARD\_SPECTRUM\_PLAN.md}).  Of HS1,
 the band is refused above the terminal ionization potential of a present
-element.  Open: the HS4 runs (PN150 in
-\code{results/\allowbreak continuous\_energy/\allowbreak m13\_restoration/}, stopped unconverged and to be rerun), HS5,
+element.  Open: the metal recombination radiation that the HS4 PN150 run
+showed missing (\code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}), HS5,
 and HS6 parts~2--4, the Auger yields, stage matrix and Auger-electron
 energetics, planned as \code{par\%auger\_ionization}.
 
@@ -3475,8 +3477,77 @@ model at $2.46$ relative to H$\beta$.  The same argument read off the other
 rows: Ne$^{4+}$ and above, O$^{4+}$ and above, and the Mg/Si stage tracking
 are all populated here.  Since 2026-10-11 every element runs to stage~VII
 (\code{data/atomic/element\_s.txt}, \code{ELEMENT s 16 7}), so all of
-Cloudy's sulfur stages above are carried, S$^{6+}$ as the terminal one; the
-PN150 run is among the pending \code{m13} runs.
+Cloudy's sulfur stages above are carried, S$^{6+}$ as the terminal one.
+
+\emph{The run (2026-10-14).}  \MoCHII{} on the level-7 grid
+(\code{tests/g2\_hii/pn150\_L7.fits}, 2097152 leaves, $0.0324$--$0.16$~pc,
+$18\%$ beyond \Cloudy{}'s outer radius), the 13.598--200~eV band
+($3.4646{\times}10^{37}$~erg\,s$^{-1}$, $Q({\rm H}) = 5.416{\times}10^{47}$
+s$^{-1}$, as \Cloudy{}'s; $200$~eV lies below the Ne\,\textsc{vii} edge),
+the restored defaults, $2^{25}$ packets for 36 iterations and $2^{27}$
+after (the He$^+$--He$^{2+}$ step floor went from $8.9{\times}10^{-3}$ to
+$4.7{\times}10^{-3}$, the $N^{-1/2}$ of Monte Carlo noise), converged
+with the drift test off after a further $32 + 8$ iterations (the H front
+was still moving outward by ${\sim}10^{-5}$ of the ionized volume per
+iteration; \code{results/\allowbreak continuous\_energy/\allowbreak
+m13\_restoration/\allowbreak pn150\_p27\_nodrift}, \code{compare\_pn150.py}).
+Line intensities relative to H\,\textsc{i} 4861 for all three:
+
+\begingroup\small
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+& \MoCHII{} & \Cloudy{} c25.00 & Jin med & \MoCHII{}/\Cloudy{} & \MoCHII{}/med \\
+\midrule
+$L({\rm H}\beta)$ [$10^{35}$ erg\,s$^{-1}$] & 2.587 & 2.897 & 2.68 & 0.893 & 0.965 \\
+He\,\textsc{i} 5876              & 0.1147 & 0.1045 & 0.099 & 1.098 & 1.158 \\
+He\,\textsc{ii} 4686             & 0.3308 & 0.2644 & 0.324 & 1.251 & 1.021 \\
+{}[O\,\textsc{iii}] 5007+4959    & 23.62  & 23.78  & 22    & 0.993 & 1.073 \\
+{}[O\,\textsc{iii}] 4363         & 0.1878 & 0.1881 & 0.168 & 0.999 & 1.118 \\
+{}[O\,\textsc{ii}] 3726+3729     & 2.172  & 2.226  & 2.28  & 0.976 & 0.953 \\
+{}[O\,\textsc{i}] 6300+6363      & 0.1872 & 0.1538 & 0.154 & 1.217 & 1.216 \\
+{}[N\,\textsc{ii}] 6584+6548     & 1.296  & 1.284  & 1.18  & 1.010 & 1.098 \\
+{}[Ne\,\textsc{iii}] 3869+3968   & 2.347  & 1.901  & 2.63  & 1.235 & 0.892 \\
+{}[Ne\,\textsc{v}] 3426+3346     & 0.6745 & 0.6059 & 0.591 & 1.113 & 1.141 \\
+{}[S\,\textsc{ii}] 6716+6731     & 0.6601 & 0.6163 & 0.359 & 1.071 & 1.839 \\
+{}[S\,\textsc{iii}] 9532+9069    & 1.972  & 1.985  & 2.02  & 0.993 & 0.976 \\
+{}[S\,\textsc{iv}] 10.5 $\mu$m   & 2.534  & 2.463  & 2.25  & 1.029 & 1.126 \\
+C\,\textsc{iv} 1549+             & 2.488  & 2.110  & 2.25  & 1.179 & 1.106 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\endgroup
+
+\noindent
+Over the 40 rows of \code{compare\_pn150.txt} the median
+\MoCHII{}/\Cloudy{} is $1.054$, 22 within $10\%$ and 33 within $25\%$; the
+sulfur signature predicted above holds ([S\,\textsc{ii}] $1.84\times$ the
+median, [S\,\textsc{iii}] on it).  The largest departures are lines of the
+neutral edge ([O\,\textsc{i}] 63~$\mu$m $4.2\times$, Mg\,\textsc{ii} 2798
+and Si\,\textsc{ii}] 2335 $1.9\times$), where \MoCHII{} counts the neutral
+gas out to $0.16$~pc while \Cloudy{} stops at 4000~K, and Mg\,\textsc{ii}
+is a resonance line.  Structure: H front ($x({\rm H^0}) = 0.5$) $0.1285$
+against $0.1326$~pc, He\,\textsc{iii} front $0.0879$ against $0.0893$~pc,
+$\langle T[{\rm N_pN_e}]\rangle$ $12407$ against $12300$~K.
+
+\emph{The $L({\rm H}\beta)$ residual is metal recombination radiation.}  H$\beta$
+per H recombination agrees ($0.1162$ against $0.1171$), metals absorb the
+same share of the stellar photons in both codes ($0.082$ and $0.087\,Q$,
+\Cloudy{}'s from its own photoionization rates), and with the metals off
+the H and He recombinations per $Q$ agree to $0.7\%$ ($1.1105$ against
+$1.1028$ for H).  With them on, \Cloudy{} returns about one H-ionizing
+photon per metal recombination --- a ``recombination Ly$\alpha$'' at $0.75$
+of the recombined ion's ionization potential for every radiative and
+dielectronic recombination, absorbed on the spot (\code{ion\_recomb.cpp},
+\code{cont\_createpointers.cpp}, \code{rt\_ots.cpp}), an approximation
+without level-resolved data --- so its H recombinations per $Q$ stay at
+$1.118$, while \MoCHII{}, like \Mocassin{} (\code{emission\_mod.f90}:
+heavy elements contribute their ground-state recombination continuum only,
+and line photons escape), returns the ground-state continuum alone and
+falls to $1.007$.  The measurements, the code reading and the plan to add
+the recombination cascade of the metals as a diffuse source are in
+\code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}; the numbers
+above stand for the present physics.
 
 
 \subsection{HS5: AGN SED input}

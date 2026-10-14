@@ -1,0 +1,127 @@
+Input conditions, MoCHII against Cloudy c25.00
+  source                     MoCHII: blackbody 1.5e5 K, R = 1e10 cm
+                             Cloudy: black body 150000 K, radius 10
+                             matched: yes
+  bolometric L               MoCHII: 3.607336e37 erg/s (4 pi R^2 sigma T^4)
+                             Cloudy: same R and T
+                             matched: yes
+  transported band           MoCHII: 4.78-200 eV (FUV from 4.78 eV; band L 3.464554e37 in 13.598-200)
+                             Cloudy: whole continuum
+                             matched: no: 1.4e-4 of the H-ionizing L (2.6e-5 of the photons) above 200 eV is absent; refused above Ne VII 207.27 eV
+  Q(H)                       MoCHII: 5.417e47 s^-1 minus the 2.6e-5 above 200 eV
+                             Cloudy: 5.417e47 s^-1 (same blackbody)
+                             matched: yes, to 2.6e-5
+  n_H                        MoCHII: 3000 cm^-3, uniform
+                             Cloudy: hden 3.4771213, constant density
+                             matched: yes
+  inner radius               MoCHII: 1e17 cm (0.0324078 pc)
+                             Cloudy: radius 17
+                             matched: yes
+  geometry                   MoCHII: 3D Cartesian octree, level 7, dx = 2.5e-3 pc
+                             Cloudy: 1D sphere, 187 zones
+                             matched: no: front sampled by ~2 cells (10-90% of x(H0))
+  outer boundary             MoCHII: gas to 0.16 pc, te_min 3000 K, all gas counted
+                             Cloudy: stops at 4000 K (default), 0.13516 pc, x(H0) = 0.967
+                             matched: no: MoCHII counts the neutral gas beyond
+  He, C, N, O, Ne, Mg, Si, S MoCHII: 0.1, 2.999e-4, 1e-4, 5.998e-4, 1.500e-4, 2.999e-5, 2.999e-5, 1.500e-5
+                             Cloudy: pn_paris abund line (same numbers)
+                             matched: yes
+  other elements             MoCHII: none (Cl, Ar, Fe, Ca at 0)
+                             Cloudy: ism.ini + element off: all but H He C N O Ne Mg Si S off
+                             matched: yes
+  metal stages               MoCHII: I-VII for every element
+                             Cloudy: all stages
+                             matched: no for stages above VII (Ne VIII .. reached only above 207 eV, outside the band)
+  dust                       MoCHII: none
+                             Cloudy: no grains command
+                             matched: yes
+  CMB                        MoCHII: none
+                             Cloudy: not included (Cloudy warns)
+                             matched: yes
+  diffuse field              MoCHII: transported (H, He I, He II cascades, metal free-bound, free-free)
+                             Cloudy: outward-only, Cloudy's own
+                             matched: method differs
+  H I lines                  MoCHII: SH95 case B (on the spot Lyman lines)
+                             Cloudy: H I 4861 total from the model atom
+                             matched: method differs
+  line intensities           MoCHII: sum over the leaves, no line transfer
+                             Cloudy: intrinsic (save line list default), 1 iteration
+                             matched: not checked for the resonance lines
+  age                        MoCHII: steady state
+                             Cloudy: age 1e4 yr (a check on equilibrium time scales)
+                             matched: yes
+  convergence                MoCHII: drift test, conv_crit vol, gas_tol 5e-3
+                             Cloudy: single iteration, no iterate
+                             matched: differs
+
+PN150 line table: L/L(Hbeta), Hbeta = H I 4861 total in all three
+(Cloudy's own deck normalizes to Ca B 4861; Ca B / H I = 0.99296, so a
+ Ca B-normalized Cloudy value is 1.0071 x the one below)
+
+line                                MoCHII       C25   Jin med   Mo/C25  Mo/Jin C25/Jin  n(Mo)
+L(Hbeta) [1e35 erg/s]               2.5867    2.8966      2.68    0.893   0.965   1.081  
+He I 5876                           0.1147    0.1045     0.099    1.098   1.158   1.055  1
+He II 4686                          0.3308    0.2644     0.324    1.251   1.021   0.816  1
+C II] 2325+                          0.276    0.2833     0.216    0.974   1.278   1.312  6
+C II 1335                          0.01943   0.02313     0.119    0.840   0.163   0.194  3
+C III] 1907+1909                     1.687     1.602      1.89    1.053   0.892   0.848  2
+C IV 1549+                           2.488      2.11      2.25    1.179   1.106   0.938  2
+[N I] 5200+5198                     0.0211   0.01276      0.02    1.654   1.055   0.638  2
+[N II] 6584+6548                     1.296     1.284      1.18    1.010   1.098   1.088  2
+[N II] 5755                        0.02053   0.02105     0.018    0.975   1.141   1.170  1
+N III] 1750 (Jin: N II] 1749+)      0.1226    0.1128     0.106    1.087   1.157   1.064  8
+[N III] 57.3um                      0.1299    0.1279      0.13    1.016   0.999   0.984  1
+N IV] 1487+                         0.3191    0.2856     0.199    1.118   1.604   1.435  5
+N V 1240+                           0.1395    0.1332     0.147    1.047   0.949   0.906  2
+[O I] 63.1um                       0.09328   0.02239     0.028    4.166   3.331   0.800  1
+[O I] 6300+6363                     0.1872    0.1538     0.154    1.217   1.216   0.999  2
+[O II] 3726+3729                     2.172     2.226      2.28    0.976   0.953   0.976  2
+[O III] 51.8um                       1.423     1.393      1.39    1.021   1.024   1.002  1
+[O III] 88.3um                      0.2845    0.2816     0.274    1.010   1.038   1.028  1
+[O III] 5007+4959                    23.62     23.78        22    0.993   1.073   1.081  2
+[O III] 4363                        0.1878    0.1881     0.168    0.999   1.118   1.120  1
+[O IV] 25.9um                        4.334     3.835      4.09    1.130   1.060   0.938  1
+O IV] 1403+                         0.2262    0.1822     0.183    1.242   1.236   0.995  5
+O V] 1218+                          0.1762    0.1669     0.193    1.056   0.913   0.865  4
+[Ne II] 12.8um                     0.03652    0.0319     0.042    1.145   0.870   0.760  1
+[Ne III] 15.5um                      1.839     1.394      2.02    1.319   0.910   0.690  1
+[Ne III] 3869+3968                   2.347     1.901      2.63    1.235   0.892   0.723  2
+[Ne IV] 2423+                       0.9122    0.7865     0.723    1.160   1.262   1.088  2
+[Ne V] 3426+3346                    0.6745    0.6059     0.591    1.113   1.141   1.025  2
+[Ne V] 24.2um                        0.854    0.8448     0.936    1.011   0.912   0.903  1
+Mg II 2798+                          2.194     1.154      2.24    1.902   0.979   0.515  4
+[Mg IV] 4.49um                       0.114    0.1105     0.121    1.031   0.942   0.913  1
+Si II] 2335+                        0.3335     0.174      0.16    1.916   2.085   1.088  5
+Si III] 1892+                       0.3662    0.5238     0.325    0.699   1.127   1.612  3
+Si IV 1397+                         0.2319    0.1914     0.172    1.211   1.348   1.113  2
+[S II] 6716+6731                    0.6601    0.6163     0.359    1.071   1.839   1.717  2
+[S II] 4069+4076                    0.1175    0.1169     0.064    1.005   1.836   1.827  2
+[S III] 18.7um                      0.5026    0.5067     0.527    0.992   0.954   0.961  1
+[S III] 33.5um                      0.1867    0.1878      0.21    0.994   0.889   0.894  1
+[S III] 9532+9069                    1.972     1.985      2.02    0.993   0.976   0.983  2
+[S IV] 10.5um                        2.534     2.463      2.25    1.029   1.126   1.095  1
+
+MoCHII/C25 over the 40 rows: median 1.054, within 10% 22, within 25% 33
+
+Known c25.00 offsets from the Jin median, measured on this Cloudy run
+(H I 4861 normalization):
+  [S II] 6716+6731       C25/Jin 1.717   MoCHII/Jin 1.839
+  [S II] 4069+4076       C25/Jin 1.827   MoCHII/Jin 1.836
+  [S III] 9532+9069      C25/Jin 0.983   MoCHII/Jin 0.976
+  He II 4686             C25/Jin 0.816   MoCHII/Jin 1.021
+  [Ne III] 3869+3968     C25/Jin 0.723   MoCHII/Jin 0.892
+  [O III] 5007+4959      C25/Jin 1.081   MoCHII/Jin 1.073
+  L(Hbeta)               C25/Jin 1.081   MoCHII/Jin 0.965
+
+Structure (MoCHII: volume-weighted shell averages, 120 shells)
+quantity                               MoCHII        C25   Mo/C25
+H front x(H0)=0.1 [pc]                0.12481    0.12921   0.9660
+H front x(H0)=0.5 [pc]                0.12845    0.13260   0.9687
+H front x(H0)=0.9 [pc]                0.13102    0.13445   0.9745
+He III front x(He2+)=0.9 [pc]         0.07725    0.07923   0.9749
+He III front x(He2+)=0.5 [pc]         0.08789    0.08932   0.9840
+He III front x(He2+)=0.1 [pc]         0.09364    0.09484   0.9873
+<T[Np Ne]> [K]                        12406.6    12300.0   1.0087
+T_e at the inner edge [K] (200 leaves)    18132.9    18801.0   0.9645
+<He+>/<H+> (n_e weighted, x n_H/n_He)     0.6968
+<He2+>/<H+>                            0.3291

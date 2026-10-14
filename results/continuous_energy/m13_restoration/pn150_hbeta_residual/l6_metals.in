@@ -1,0 +1,80 @@
+&parameters
+ par%charge_exchange = 'two_way'
+ ! Continuous-energy production validation: Lexington/Meudon PN150 (the
+ ! "Paris meeting PN" of Cloudy c25.00 tsuite/auto/pn_paris.in), under the
+ ! restored atomic physics of 2026-10-11.  Run from this directory.  Derived
+ ! from hii40_converged.in; the Cloudy reference is
+ ! tests/cloudy_c25/pn150_c25.in.  No restart: the run starts from the
+ ! initial fractions below.
+
+ par%no_photons      = 16777216
+ par%no_print        = 16777216
+ par%iseed           = 1234
+ par%launch_sequence = 'sobol'
+ par%qmc_seed        = 20260728
+
+ ! Hollow sphere, n_H = 3000 cm^-3 (Cloudy hden 3.4771213) from
+ ! R_in = 1e17 cm = 0.0324078 pc to 0.16 pc, octree level 7 (dx = 2.5e-3 pc).
+ ! Cloudy c25.00 ends at 0.13516 pc (4000 K), its H front x(H0) = 0.5 at
+ ! 0.1327 pc, so the grid edge is 18% beyond Cloudy's outer radius.
+ par%grid_type       = 'amr'
+ par%amr_file        = 'pn150_L6.fits'
+ par%dust_density_law = 'none'
+ par%distance_unit   = 'pc'
+
+ ! Blackbody T = 1.5e5 K, R = 1e10 cm: L_bol = 4 pi R^2 sigma T^4
+ ! = 3.607336e37 erg/s.  par%luminosity is the [eion_min, eion_max] band
+ ! luminosity: 3.464554e37 erg/s for 13.598-200 eV (Q(H) = 5.417e47 s^-1
+ ! over the whole blackbody).  eion_max = 200 eV stays below the lowest
+ ! terminal ionization potential of the carried elements (Ne VII,
+ ! 207.27 eV); the blackbody above 200 eV holds 2.6e-5 of the H-ionizing
+ ! photons and 1.4e-4 of the H-ionizing luminosity, which this run omits.
+ par%source_cdf_tol  = 1.0e-8
+ par%nnu_ion         = 32
+ par%eion_min        = 13.598
+ par%eion_max        = 200.0
+ par%tstar           = 1.5e5
+ par%luminosity      = 3.464554e37
+
+ par%xHI_init        = 1.0e-3
+ par%xHeI_init       = 0.5
+ par%xHeII_init      = 0.5
+ par%abund_He        = 0.1
+ par%ion_add_dust    = .false.
+
+ par%gas_niter       = 60
+ par%rates_write_interval = 1
+ par%conv_crit       = 'vol'
+ par%gas_tol         = 5.0e-3
+ par%gas_tol_te      = 1.0e-2
+ par%ion_relax       = 1.0
+ par%recombination_continuum = 'transported'
+ par%diffuse_energy_model = 'milne'
+ par%hei_diffuse     = .true.
+ par%heii_diffuse    = .true.
+ par%solve_te        = .true.
+ par%te_min          = 3.0e3
+ par%te_max          = 5.0e4
+ par%require_convergence = .false.
+
+ par%atomic_dir      = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
+ par%data_dir        = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
+ par%use_metals      = .true.
+ par%ion_metal_abs   = .true.
+ par%metal_ne        = .true.
+ par%metal_heat      = .true.
+ par%metal_excitation_model = 'chianti'
+ ! pn_paris: C -3.523, N -4, O -3.222, Ne -3.824, Mg -4.523, Si -4.523,
+ ! S -4.824 (log n/n_H); Cl, Ar, Fe off (left at 0 here).
+ par%abund_C         = 2.999163e-4
+ par%abund_N         = 1.000000e-4
+ par%abund_O         = 5.997911e-4
+ par%abund_Ne        = 1.499685e-4
+ par%abund_Mg        = 2.999163e-5
+ par%abund_Si        = 2.999163e-5
+ par%abund_S         = 1.499685e-5
+
+ par%source_geometry = 'point'
+ par%file_format     = 'hdf5'
+ par%out_file        = 'l6_metals.h5'
+/

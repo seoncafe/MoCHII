@@ -31,7 +31,8 @@ program main
   use thermal_mod,     only : gas_thermal_update
   use fixed_point_distance_mod, only : iteration_history, history_push, &
                                        history_reset, fixed_point_distance, &
-                                       fixed_point_converged, net_drift, NWIN
+                                       fixed_point_converged, net_drift, NWIN, &
+                                       hist_dx, hist_dhe1, hist_dhe3
   use cooling_mod,     only : cooling_setup
   use heii_cascade_mod, only : heii_cascade_transported
   use nlevel_cooling_mod, only : nlevel_cooling_report
@@ -45,7 +46,6 @@ program main
   type(grid_type)     :: grid
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
   real(kind=wp)       :: drift_vol(3)
-  type(iteration_history) :: hist_dx, hist_dhe1, hist_dhe3
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
   logical             :: converged, use_vol
@@ -239,7 +239,8 @@ program main
      !--- distance from the fixed point, H and He (fixed_point_distance_mod):
      !--- the step d, the decay ratio rho fitted over the last NWIN steps,
      !--- the drift still to come e = d rho/(1 - rho), and the mean signed
-     !--- step s with its Student statistic t (the floor needs t < 2.365).
+     !--- step s with its Student statistic t (the floor needs t < 2.365
+     !--- with par%conv_drift_test, the default).
      if (mpar%p_rank == 0 .and. par%gas_niter >= 1) then
         call report_fixed_point_distance(' x_HII ', hist_dx)
         call report_fixed_point_distance(' He0-He+', hist_dhe1)
@@ -455,15 +456,16 @@ contains
   !--- drift still to come is below par%gas_tol for x_HII, for He0 <-> He+,
   !--- and for He+ <-> He2+ where He2+ is at least 1% of the ionized helium,
   !--- or each sits on its Monte Carlo floor with no net drift of the
-  !--- ionized volume (fixed_point_distance_mod; the test on the step alone
+  !--- ionized volume (par%conv_drift_test; fixed_point_distance_mod; the test on the step alone
   !--- stopped the HII40 benchmark with its He I front 0.17 pc short, and
   !--- a floor read from the step ratios alone stopped a restart after 4
   !--- iterations with its H front still moving).
   logical function composition_converged() result(done)
-    done = fixed_point_converged(hist_dx, par%gas_tol) .and. &
-           fixed_point_converged(hist_dhe1, par%gas_tol)
+    done = fixed_point_converged(hist_dx, par%gas_tol, par%conv_drift_test) .and. &
+           fixed_point_converged(hist_dhe1, par%gas_tol, par%conv_drift_test)
     if (dhe_vol(2) >= 0.0_wp) &
-       done = done .and. fixed_point_converged(hist_dhe3, par%gas_tol)
+       done = done .and. fixed_point_converged(hist_dhe3, par%gas_tol, &
+                                               par%conv_drift_test)
   end function composition_converged
 
   !--- one log line: the latest step d, the decay ratio rho, the drift still
