@@ -158,6 +158,10 @@ public
      !--- energy (J_lambda) tally so stellar and dust-emission photons with
      !--- different packet energies combine correctly (1.0 in mono mode).
      real(kind=wp) :: Lpacket = 1.0_wp
+     !--- MoCHII: where the ionizing-band packet came from, for the absorption
+     !--- ledger (par%absorption_ledger): 0 the stellar ionizing band, 1-8 the
+     !--- diffuse channel (diffuse_mod), 9 the stellar band below eion_min.
+     integer       :: source_channel = 0
      !--- MoCHII: entry-surface inward normal and origin flag, used ONLY by
      !--- the direct peel of external-field packets.  A Lambert-emitted
      !--- external packet peels a direct contribution weighted by
@@ -1218,6 +1222,29 @@ public
      !--- approximation retained to reproduce earlier runs; 'threshold'
      !--- emits at Eth and is a sensitivity diagnostic, not a model.
      character(len=16)  :: diffuse_energy_model = 'milne'
+     !--- photons a metal recombination releases besides its ground-state
+     !--- continuum (channel 6), transported as diffuse channel 8 with the
+     !--- transported continuum.  'none' (default): none.
+     !--- 'valence_fractions': the approximation of Cloudy c25.00
+     !--- (ion_recomb.cpp, cont_createpointers.cpp, rt_ots.cpp): every
+     !--- RR + DR recombination X^(i+1) + e -> X^i with X^i keeping >= 3
+     !--- electrons emits one photon at 0.75 and one at 0.25 of the
+     !--- ionization potential of X^i; the photons inside
+     !--- [eion_min, eion_max) are transported.  It carries no atomic data:
+     !--- the true yield depends on the capture spectrum and the cascade, and
+     !--- with channel 6 a ground capture is counted twice.  It is kept to
+     !--- measure how much of a difference from Cloudy this term carries, and
+     !--- is not a physical model (md/METAL_RECOMBINATION_DIFFUSE_PLAN_2026-10-14.md).
+     character(len=24)  :: metal_recombination_photons = 'none'
+     !--- absorption ledger (diagnostic, default off): every transport pass
+     !--- prints, for each source (stellar band, diffuse channels 1-8, stellar
+     !--- band below eion_min), the photons emitted and escaping and the
+     !--- photons absorbed by H0, He0, He+, the metals and dust [s^-1], from
+     !--- the same path estimators as the rates (ion_score_mod), and writes
+     !--- the H0, He0, He+ absorptions of every leaf by source to the rates
+     !--- file (Ledger_H0, Ledger_He0, Ledger_He+).  Costs one metal-opacity
+     !--- sum for each scored segment and 30 doubles a leaf on every rank.
+     logical            :: absorption_ledger = .false.
      !--- trace-metal registry.  Every abundance defaults to 0 (since
      !--- 2026-09-25; the inputs written before then pin the MOCASSIN
      !--- HII20/HII40 values C 2.2e-4, N 4.0e-5, O 3.3e-4, Ne 5.0e-5,

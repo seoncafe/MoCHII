@@ -349,6 +349,28 @@ contains
       deallocate(tmp)
     end block
 
+    !--- absorption ledger by leaf (par%absorption_ledger): photons/s absorbed
+    !--- by H0, He0, He+ in each leaf from each source (columns: 0 stellar
+    !--- band, 1-8 diffuse channels, 9 stellar band below eion_min)
+    if (par%absorption_ledger) then
+       block
+         use ion_score_mod, only : ion_score_ledger_leaf, LEDGER_NSRC
+         real(kind=wp), allocatable :: led(:,:)
+         character(len=10), parameter :: lname(3) = ['Ledger_H0 ', 'Ledger_He0', 'Ledger_He+']
+         integer :: ia, is
+         allocate(led(nleaf, 0:LEDGER_NSRC-1))
+         do ia = 1, 3
+            do is = 0, LEDGER_NSRC-1
+               call ion_score_ledger_leaf(ia, is, led(:,is))
+            end do
+            call io_append_image(file, led, status, bitpix=-64)
+            call io_put_keyword(file,'EXTNAME',trim(lname(ia)), &
+                 'photons/s absorbed, by leaf and source',status)
+         end do
+         deallocate(led)
+       end block
+    end if
+
     call io_append_image(file, ion_e, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','E_bin','bin centers [eV]',status)
     call io_append_image(file, ion_de, status, bitpix=-64)

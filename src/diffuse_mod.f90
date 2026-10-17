@@ -23,7 +23,15 @@ module diffuse_mod
 !     free-free of H+, He+, He2+ and (par%metal_freefree) the metal ions
 !         inside the band: channel 7 (recomb_continuum_mod::freefree_band_*,
 !         the coefficient of the written continuum)
-! Channels 1-4, 6 and 7 run with par%recombination_continuum = 'transported'.
+! and, under par%metal_recombination_photons = 'valence_fractions' only,
+!     X^(i+1) + e -> X^i, RR + DR, X^i with >= 3 electrons: channel 8, one
+!         photon at 0.75 and one at 0.25 of the ionization potential of X^i
+!         (the Cloudy c25.00 approximation, kept for comparison, not a
+!         physical model: no atomic data; with channel 6 a ground capture is
+!         counted twice; see define.f90).  Photons outside
+!         [eion_min, eion_max) are not launched and their luminosity is
+!         printed.
+! Channels 1-4 and 6-8 run with par%recombination_continuum = 'transported'.
 ! With 'escaping' none is transported (every recombination photon leaves).
 ! With 'on_the_spot' channels 6 and 7 are not transported and their photons
 ! are not absorbed on the spot either: they leave the nebula, as with
@@ -81,12 +89,18 @@ module diffuse_mod
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
   public :: hei_branch_energies, hei_branch_energies_coupled
-  public :: diffuse_channel_luminosity
+  public :: diffuse_channel_luminosity, metal_valence_luminosity_outside
 
-  integer, parameter :: NCH = 7                 ! diffuse emission channels
-  integer, parameter :: CH_METAL_GROUND = 6, CH_FREEFREE = 7
+  integer, parameter :: NCH = 8                 ! diffuse emission channels
+  integer, parameter :: CH_METAL_GROUND = 6, CH_FREEFREE = 7, CH_METAL_VALENCE = 8
+  !--- channel-8 photon energies as fractions of the ionization potential of
+  !--- the recombined ion (Cloudy c25.00 cont_createpointers.cpp)
+  real(kind=wp), parameter :: VALENCE_FRACTION(2) = [0.75_wp, 0.25_wp]
   !--- total luminosity of each channel in the last diffuse_build [erg/s]
   real(kind=wp) :: diffuse_channel_luminosity(NCH) = 0.0_wp
+  !--- channel-8 luminosity below eion_min and at or above eion_max in the
+  !--- last diffuse_build [erg/s], world rank 0 only (not launched)
+  real(kind=wp) :: metal_valence_luminosity_outside(2) = 0.0_wp
   !--- the leaf tables are the same on every rank: node-shared (2026-10-12),
   !--- the node's ranks filling disjoint leaves
   real(kind=wp), pointer, contiguous :: dif_cdf(:) => null()    ! leaf CDF (total energy)
@@ -200,6 +214,8 @@ contains
        if (all_channels) then
           dif_ch(CH_METAL_GROUND,il) = ne*vol*sum(metal_ground_weights(il, T))
           dif_ch(CH_FREEFREE,il)     = ne*vol*sum(freefree_weights(il, T))
+          if (trim(par%metal_recombination_photons) == 'valence_fractions') &
+             dif_ch(CH_METAL_VALENCE,il) = ne*vol*sum(metal_valence_weights(il, T))
        end if
        !--- channel 5: He III cascade through He II (par%heii_diffuse), in
        !--- the case of the Lyman lines.  The free-bound term already carries
@@ -224,6 +240,16 @@ contains
     end do
     if (diffuse_lum > 0.0_wp .and. shared_host_rank() == 0) dif_cdf = dif_cdf/diffuse_lum
     call diffuse_shared_sync()
+    metal_valence_luminosity_outside = 0.0_wp
+    if (all_channels .and. mpar%p_rank == 0 .and. &
+        trim(par%metal_recombination_photons) == 'valence_fractions') then
+       do il = 1, gas_nleaf
+          if (gas_nH(il) <= 0.0_wp) cycle
+          vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+          metal_valence_luminosity_outside = metal_valence_luminosity_outside &
+             + gas_ne(il)*vol*metal_valence_outside(il, gas_Te(il))
+       end do
+    end if
     if (diffuse_lum > 0.0_wp) then
        diffuse_nphot = max(1_int64, nint(diffuse_lum/lpacket, int64))
        diffuse_packet_lum = diffuse_lum/real(diffuse_nphot, wp)
@@ -322,6 +348,8 @@ contains
           eph = heii_cascade_energy(gas_Te(il), ub, u)
        else if (ch == CH_METAL_GROUND) then
           eph = metal_ground_energy(il, gas_Te(il), ub, u)
+       else if (ch == CH_METAL_VALENCE) then
+          eph = metal_valence_energy(il, gas_Te(il), ub, u)
        else
           eph = freefree_energy(il, gas_Te(il), ub, u)
        end if
@@ -336,6 +364,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = diffuse_packet_lum
+    photon%source_channel = ch
     !--- the packet carries the energy the emission channel actually sampled;
     !--- inu is only the diagnostic bin it lands in.
     photon%energy_eV = eph
@@ -357,11 +386,13 @@ contains
   !          channel 4 the He I decay-branch pick; channel 5 the He II
   !          cascade-path pick (free-bound / Ly-alpha / two-photon);
   !          channel 6 the metal transition; channel 7 the ion charge;
+  !          channel 8 the metal transition;
   !   u(9)   second energy variate: the He I two-photon energy from the
   !          tabulated Drake shape, the channel-5 free-bound / two-photon
   !          energy, the channel-6 Milne energy or the channel-7 free-free
-  !          energy (else unused).
-  ! Channels 5-7 reuse dimensions 8 and 9 rather than adding any, since
+  !          energy, or the channel-8 line (0.75 or 0.25 of the ionization
+  !          potential) (else unused).
+  ! Channels 5-8 reuse dimensions 8 and 9 rather than adding any, since
   ! their pick and their energy draw are the same two decisions channel 4
   ! makes.
   ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
@@ -436,6 +467,8 @@ contains
        eph = heii_cascade_energy(gas_Te(il), u(8), u(9))
     else if (ch == CH_METAL_GROUND) then
        eph = metal_ground_energy(il, gas_Te(il), u(8), u(9))
+    else if (ch == CH_METAL_VALENCE) then
+       eph = metal_valence_energy(il, gas_Te(il), u(8), u(9))
     else
        eph = freefree_energy(il, gas_Te(il), u(8), u(9))
     end if
@@ -444,6 +477,7 @@ contains
 
     photon%wgt     = 1.0_wp
     photon%Lpacket = diffuse_packet_lum
+    photon%source_channel = ch
     photon%energy_eV = eph
     photon%nscatt  = 0
     photon%inside  = .true.
@@ -599,6 +633,95 @@ contains
        if (u*tot <= acc) return
     end do
   end function pick_index
+
+  !--- In-band channel-8 luminosity of each metal transition of leaf il per
+  !--- n_e per unit volume [erg cm^-3 s^-1 per cm^-3]: n(X^(i+1)) times the
+  !--- total (RR + DR) coefficient times the energy of the two photons, each
+  !--- counted where it falls in [eion_min, eion_max).  X^i with fewer than
+  !--- 3 electrons is left out, as in Cloudy (its iso-sequence ions).  One
+  !--- routine for the emission table and both launchers.
+  function metal_valence_weights(il, T) result(w)
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: w(MAX_METAL_TRANSITIONS), e(2), rate
+    integer :: k, ie, it
+    w = 0.0_wp
+    do k = 1, metal_valence_count()
+       if (.not. metal_valence_recombination(k, il, T, ie, it, rate, e)) cycle
+       w(k) = rate*ev2erg*sum(e, mask=valence_line_in_band(e))
+    end do
+  end function metal_valence_weights
+
+  !--- the same luminosity below eion_min (1) and at or above eion_max (2)
+  function metal_valence_outside(il, T) result(lout)
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T
+    real(kind=wp) :: lout(2), e(2), rate
+    integer :: k, ie, it
+    lout = 0.0_wp
+    do k = 1, metal_valence_count()
+       if (.not. metal_valence_recombination(k, il, T, ie, it, rate, e)) cycle
+       lout(1) = lout(1) + rate*ev2erg*sum(e, mask=e < par%eion_min)
+       lout(2) = lout(2) + rate*ev2erg*sum(e, mask=e >= par%eion_max)
+    end do
+  end function metal_valence_outside
+
+  integer function metal_valence_count() result(n)
+    use species_mod, only : species_transition_count
+    n = 0
+    if (par%use_metals) n = species_transition_count()
+  end function metal_valence_count
+
+  !--- transition k: its recombination rate per n_e [s^-1 per cm^-3, i.e.
+  !--- n(X^(i+1)) alpha_RR+DR] and its two photon energies [eV]; .false. when
+  !--- the recombined ion has fewer than 3 electrons
+  logical function metal_valence_recombination(k, il, T, ie, it, rate, e) result(ok)
+    use species_mod, only : species_transition, species_stage_fraction, &
+                            species_recombination_coefficient, elem_abund, &
+                            elem_eth, elem_atomic_number
+    integer,       intent(in)  :: k, il
+    real(kind=wp), intent(in)  :: T
+    integer,       intent(out) :: ie, it
+    real(kind=wp), intent(out) :: rate, e(2)
+    call species_transition(k, ie, it)
+    rate = 0.0_wp;  e = 0.0_wp
+    !--- stage it (X^(it-1)+) keeps Z - it + 1 electrons
+    ok = elem_atomic_number(ie) - it + 1 >= 3
+    if (.not. ok) return
+    rate = gas_nH(il)*elem_abund(ie)*species_stage_fraction(ie, it+1, il) &
+           *species_recombination_coefficient(ie, it, T)
+    e = VALENCE_FRACTION*elem_eth(ie, it)
+  end function metal_valence_recombination
+
+  elemental logical function valence_line_in_band(e) result(inb)
+    real(kind=wp), intent(in) :: e
+    inb = e >= par%eion_min .and. e < par%eion_max
+  end function valence_line_in_band
+
+  !--- Photon energy [eV] of one channel-8 packet: the transition picked by
+  !--- u_pick over metal_valence_weights, then of its in-band lines the one
+  !--- picked by u_line over their energy luminosities (equal photon rates,
+  !--- so in proportion to the energies).
+  real(kind=wp) function metal_valence_energy(il, T_K, u_pick, u_line) result(eph)
+    use utility, only : fatal_error
+    integer,       intent(in) :: il
+    real(kind=wp), intent(in) :: T_K, u_pick, u_line
+    real(kind=wp) :: w(MAX_METAL_TRANSITIONS), e(2), rate
+    logical :: inb(2)
+    integer :: k, ie, it
+    w = metal_valence_weights(il, T_K)
+    k = pick_index(w(1:metal_valence_count()), u_pick)
+    if (.not. metal_valence_recombination(k, il, T_K, ie, it, rate, e)) &
+       call fatal_error('channel 8 picked a transition without photons')
+    inb = valence_line_in_band(e)
+    if (inb(1) .and. inb(2)) then
+       eph = merge(e(1), e(2), u_line*(e(1) + e(2)) <= e(1))
+    else if (inb(1)) then
+       eph = e(1)
+    else
+       eph = e(2)
+    end if
+  end function metal_valence_energy
 
   !--- Photon energy [eV] of one He III cascade packet (channel 5).  The path
   !--- is picked by ENERGY luminosity from the same three terms

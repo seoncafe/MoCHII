@@ -3360,7 +3360,8 @@ the Milne $\alpha_1(T)$ of Eq.~(\ref{eq:milne-alpha1}), which is
 $\alpha_A(T)-\alpha_B(T)$ by construction (\S\ref{sec:hherec}); channels
 4 and 5 carry the He\,\textsc{i} and He\,\textsc{iii} excited cascades,
 and, since 2026-10-11, channel 6 the metal ground continua and channel 7
-the free--free emission inside the band (all below).  At the start of every gas
+the free--free emission inside the band; channel 8, off by default, the
+\textsc{Cloudy} valence-fraction photons kept for comparison (all below).  At the start of every gas
 iteration the code rebuilds the energy-luminosity table
 \begin{equation}
  L_{{\rm ch},l} = n_{e,l}n_{{\rm rec},l}\alpha_{1,\rm ch}(T_l)
@@ -4297,6 +4298,33 @@ $+1.4{\times}10^{-4}$, lines median $5.7{\times}10^{-4}$); the $10^5$~K
 case exceeded it in the line median ($2.1{\times}10^{-3}$) and in
 [S\,\textsc{iii}] ($+0.78\%$ at 33.5~$\mu$m).  The Ne\,\textsc{iii}
 R-matrix table raised its channel-6 luminosity by $63\%$ in that case.
+
+\paragraph{Channel 8: the \textsc{Cloudy} valence-fraction photons
+(comparison only).}  The photons of the cascade after a metal
+recombination into an excited level, and the dielectronic stabilization
+photons, are not in the default diffuse field (\S\ref{sec:limits}).  For
+comparison, \code{par\%metal\_recombination\_photons = 'valence\_fractions'}
+adds as channel~8 the approximation of \textsc{Cloudy} c25.00
+(\code{ion\_recomb.cpp}, \code{cont\_createpointers.cpp},
+\code{rt\_ots.cpp}, \code{rt\_diffuse.cpp}): every radiative and
+dielectronic recombination ${\rm X}^{i+1} + e \to {\rm X}^{i}$ whose
+product keeps three or more electrons emits one photon at $0.75\,\chi_i$
+and one at $0.25\,\chi_i$, $\chi_i$ the ionization potential of ${\rm
+X}^{i}$, at the rate $n_e n({\rm X}^{i+1}) \alpha_{\rm RR+DR}(T)$ of the
+ionization balance.  The photons inside [\code{eion\_min},
+\code{eion\_max}) are launched (the transition picked by $u_8$ over the
+in-band luminosities, the line by $u_9$ over the two energies); the rest
+is printed.  It carries no atomic data, and with channel~6 a ground
+capture is counted twice; it is not a physical model and is off by
+default.  Checks: with \code{'none'} the binary reproduces the one before
+bit for bit (PN150 level~6, 2 iterations, 42/42 \code{rates.h5} datasets,
+lines identical); the channel-8 luminosity of the first pass,
+$1.983{\times}10^{36}$~erg\,s$^{-1}$ in band and
+$2.057{\times}10^{35}$ below 13.598~eV, equals an independent evaluation
+from the restored state ($1.9825$ and $2.0570{\times}10^{35}$,
+\code{vf\_check/channel8\_check.py}).  At PN150 it moves $L({\rm
+H}\beta)$ from $0.893$ to $0.958$ of \textsc{Cloudy}'s (level 6, converged;
+\S\ref{sec:limits}).
 
 \subsection{Solution-driven I-front re-refinement}
 \label{sec:refine}
@@ -6060,14 +6088,32 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   returned to the ionizing field; the photons above 13.598~eV of the
   cascade that follows a radiative or dielectronic recombination into an
   excited level are not, as in \textsc{Mocassin}.  \textsc{Cloudy} returns
-  one photon at $0.75$ of the ionization potential per metal
-  recombination.  At PN150 (\code{m13\_restoration/pn150\_p27\_nodrift},
+  one photon at $0.75$ and one at $0.25$ of the ionization potential per
+  metal recombination.  At PN150 (\code{m13\_restoration/pn150\_p27\_nodrift},
   converged, $2^{27}$ packets) metals absorb $8\%$ of $Q({\rm H})$ and
   $L({\rm H}\beta)$ is $0.893$ of \textsc{Cloudy}'s (the line ratios agree,
   median $1.054$; the H front $3\%$ inside); with the metals off the two
-  codes agree to $0.7\%$ in H recombinations per $Q$.  Plan:
+  codes agree to $0.8\%$ in H recombinations per $Q$.  \textsc{Cloudy}'s
+  approximation, available for comparison as diffuse channel~8
+  (\code{par\%metal\_recombination\_photons = 'valence\_fractions'},
+  \S\ref{sec:metalcont}), brings the level-6 run to $0.958$ of
+  \textsc{Cloudy}'s $L({\rm H}\beta)$ (the comparison of the remainder is in
+  the code-comparison document, HS4).  Plan:
   \code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}.  The Lexington variants named in
   \S\ref{sec:hii} (zero-density cooling, on the spot) keep m11 values.
+\item \emph{He\,\textsc{ii} Ly$\alpha$ is not trapped and has no Bowen
+  conversion.}  The 40.813~eV photons of channel~5 are transported through
+  the continuum opacity only (resonance scattering by He$^+$ is not
+  followed), and their conversion by the O\,\textsc{iii} Bowen
+  fluorescence (304~\AA{} pumping O\,\textsc{iii} $2p3d$, which cascades
+  through the optical Bowen lines and an EUV line at 374~\AA{}) is absent,
+  so neither the redistribution of the photon to lower energies nor the
+  Bowen lines are computed.  \textsc{Cloudy} approximates it by turning
+  each destroyed He\,\textsc{ii} Ly$\alpha$ into about 1.5 on-the-spot
+  photons, one of them at 660~\AA{} (\code{rt\_ots.cpp}); at PN150 that
+  raises its H recombinations per $Q$ by $1\%$ (a diagnostic build).  The
+  physical yield is to be taken from the literature (not yet read); plan
+  in \code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}.
 \item \emph{Charge-exchange heating rests on unidentified products for six
   reactions} (C$^{2+}$, C$^{3+}$, S$^{3+}$, Ar$^{3+}$, Si$^{3+}$, Fe$^{3+}$ + H),
   which take the KF96 electronic defect as distributed with \textsc{Cloudy}

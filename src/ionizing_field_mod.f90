@@ -37,13 +37,14 @@ module ionizing_field_mod
                                slab_tally_on, slab_Iesc
   use ion_score_mod,    only : ion_score_reset, ion_score_reduce, &
                                ion_score_report_energy_closure, &
+                               ion_score_report_ledger, &
                                ion_score_report_metal_rates
   use raytrace_amr_mod, only : transport_ion_packet
   use gas_rates_mod,    only : gas_rates_compute
   use species_mod,      only : species_gamma_compute
   use diffuse_mod,      only : diffuse_build, gen_diffuse_photon, &
                                gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum, &
-                               diffuse_channel_luminosity
+                               diffuse_channel_luminosity, metal_valence_luminosity_outside
   use heii_cascade_mod, only : heii_cascade_transported
   use ion_peel_mod,     only : ion_peel_setup, ion_peel_direct, ion_peel_scatter
   use photon_schedule_mod, only : photon_schedule_begin, photon_schedule_next, &
@@ -155,9 +156,14 @@ contains
              '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
              diffuse_nphot, ' packets'
           !--- by channel: H I, He I, He II ground; He I, He III cascades;
-          !--- metal ground continua; free-free
-          write(6,'(a,7es11.3)') '     diffuse L by channel 1-7 [erg/s]:', &
+          !--- metal ground continua; free-free; metal valence-fraction
+          !--- photons (par%metal_recombination_photons)
+          write(6,'(a,8es11.3)') '     diffuse L by channel 1-8 [erg/s]:', &
              diffuse_channel_luminosity
+          if (trim(par%metal_recombination_photons) /= 'none') &
+             write(6,'(a,2es11.3)') '     channel 8 not launched, below '// &
+                'eion_min / at or above eion_max [erg/s]:', &
+                metal_valence_luminosity_outside
        end if
        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
@@ -182,6 +188,7 @@ contains
     call ion_score_reduce()
     call gas_rates_compute()
     call ion_score_report_energy_closure()
+    if (.not. peel) call ion_score_report_ledger()
     if (par%use_metals) call species_gamma_compute()
     call ion_score_report_metal_rates()
 
@@ -208,6 +215,7 @@ contains
          end if
          photon%id      = ip
          photon%istream = istream
+         photon%source_channel = merge(9, 0, photon%energy_eV < par%eion_min)
          Lsum = Lsum + real(photon%Lpacket*photon%wgt, LEDGER_WP)
          if (peel) call ion_peel_direct(photon)
          call transport_ion_packet(photon)

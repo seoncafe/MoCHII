@@ -1,0 +1,27 @@
+He2+ rec / H rec (case B, whole model): 0.17102798522397808
+He II fb (n>=2) 0.35/rec at 13.7 eV: H ionizations / R_B(H) total  cloudy 0.0599  iso 0.0599
+   0.0324-0.0600 pc  cloudy/R_H 0.1335  iso/R_H 0.1569  diff -0.0234
+   0.0600-0.0900 pc  cloudy/R_H 0.1881  iso/R_H 0.1624  diff +0.0257
+   0.0900-0.1360 pc  cloudy/R_H 0.0104  iso/R_H 0.0166  diff -0.0062
+He II 2q 0.30 decays x (0.5 at 16 + 0.5 at 24 eV) [~1 ionizing photon per decay]: H ionizations / R_B(H) total  cloudy 0.0513  iso 0.0513
+   0.0324-0.0600 pc  cloudy/R_H 0.0386  iso/R_H 0.0819  diff -0.0433
+   0.0600-0.0900 pc  cloudy/R_H 0.0999  iso/R_H 0.0976  diff +0.0022
+   0.0900-0.1360 pc  cloudy/R_H 0.0365  iso/R_H 0.0330  diff +0.0035
+He II Ly-alpha 0.70/rec, Pdest share 0: H ionizations / R_B(H) total  cloudy 0.0932  iso 0.0938
+   0.0324-0.0600 pc  cloudy/R_H 0.0052  iso/R_H 0.0312  diff -0.0259
+   0.0600-0.0900 pc  cloudy/R_H 0.0210  iso/R_H 0.0459  diff -0.0249
+   0.0900-0.1360 pc  cloudy/R_H 0.1257  iso/R_H 0.1158  diff +0.0099
+He II Ly-alpha 0.70/rec, Pdest share 0.10: H ionizations / R_B(H) total  cloudy 0.0949  iso 0.0938
+   0.0324-0.0600 pc  cloudy/R_H 0.0469  iso/R_H 0.0312  diff +0.0157
+   0.0600-0.0900 pc  cloudy/R_H 0.0519  iso/R_H 0.0459  diff +0.0060
+   0.0900-0.1360 pc  cloudy/R_H 0.1138  iso/R_H 0.1158  diff -0.0019
+H I ground continuum (alpha_1) at 13.7 eV: H ionizations / R_B(H) total  cloudy 0.6459  iso 0.6459
+   0.0324-0.0600 pc  cloudy/R_H 0.4417  iso/R_H 0.5349  diff -0.0932
+   0.0600-0.0900 pc  cloudy/R_H 0.6882  iso/R_H 0.6287  diff +0.0595
+   0.0900-0.1360 pc  cloudy/R_H 0.6520  iso/R_H 0.6625  diff -0.0105
+
+Combined, (cloudy - iso)/R_B(H) in the bins of the fixed-structure test
+  He II, Pdest 0                     0.032-0.060: -0.0926   0.060-0.090: +0.0030   0.090-0.136: +0.0072
+  He II, Pdest 0.10                  0.032-0.060: -0.0510   0.060-0.090: +0.0340   0.090-0.136: -0.0046
+  H I ground                         0.032-0.060: -0.0932   0.060-0.090: +0.0595   0.090-0.136: -0.0105
+  H I ground + He II (Pdest 0.10)    0.032-0.060: -0.1442   0.060-0.090: +0.0935   0.090-0.136: -0.0151

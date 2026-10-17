@@ -3530,24 +3530,69 @@ is a resonance line.  Structure: H front ($x({\rm H^0}) = 0.5$) $0.1285$
 against $0.1326$~pc, He\,\textsc{iii} front $0.0879$ against $0.0893$~pc,
 $\langle T[{\rm N_pN_e}]\rangle$ $12407$ against $12300$~K.
 
-\emph{The $L({\rm H}\beta)$ residual is metal recombination radiation.}  H$\beta$
-per H recombination agrees ($0.1162$ against $0.1171$), metals absorb the
-same share of the stellar photons in both codes ($0.082$ and $0.087\,Q$,
-\Cloudy{}'s from its own photoionization rates), and with the metals off
-the H and He recombinations per $Q$ agree to $0.7\%$ ($1.1105$ against
-$1.1028$ for H).  With them on, \Cloudy{} returns about one H-ionizing
-photon per metal recombination --- a ``recombination Ly$\alpha$'' at $0.75$
-of the recombined ion's ionization potential for every radiative and
-dielectronic recombination, absorbed on the spot (\code{ion\_recomb.cpp},
-\code{cont\_createpointers.cpp}, \code{rt\_ots.cpp}), an approximation
-without level-resolved data --- so its H recombinations per $Q$ stay at
-$1.118$, while \MoCHII{}, like \Mocassin{} (\code{emission\_mod.f90}:
-heavy elements contribute their ground-state recombination continuum only,
-and line photons escape), returns the ground-state continuum alone and
-falls to $1.007$.  The measurements, the code reading and the plan to add
-the recombination cascade of the metals as a diffuse source are in
-\code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}; the numbers
-above stand for the present physics.
+\emph{Most of the $L({\rm H}\beta)$ residual is the metal recombination
+radiation \Cloudy{} returns to the field.}  H$\beta$ per H recombination
+agrees ($0.1162$ against $0.1171$; \Cloudy{}'s case-B part $0.1163$), metals
+absorb a similar share of the stellar photons in both codes ($0.081$ and
+$0.087\,Q$, \Cloudy{}'s from its own photoionization rates), and with the
+metals off the H recombinations per $Q$ agree to $0.8\%$ ($1.1114$, a
+converged level-6 run, against $1.1028$).  With them on, \Cloudy{} returns
+for every radiative and dielectronic recombination of a heavy ion that
+keeps three or more electrons one photon at $0.75$ and one at $0.25$ of the
+recombined ion's ionization potential (\code{ion\_recomb.cpp},
+\code{cont\_createpointers.cpp}, \code{rt\_ots.cpp},
+\code{rt\_diffuse.cpp}), an approximation without level-resolved data, so
+its H recombinations per $Q$ stay at $1.118$; \MoCHII{}, like \Mocassin{}
+(\code{emission\_mod.f90}: heavy elements contribute their ground-state
+recombination continuum only, and line photons escape), returns the
+ground-state continuum alone and falls to $1.007$.  The same approximation
+put into \MoCHII{} as diffuse channel~8
+(\code{par\%metal\_recombination\_photons = 'valence\_fractions'}, a
+comparison option, not a physical model; level-6 grid, $2^{24}$ packets,
+converged from the converged level-6 state in 45 iterations) moves
+$R_B({\rm H})/Q$ from $1.0068$ to $1.0796$, $L({\rm H}\beta)$ from $0.893$
+to $0.958$ of \Cloudy{}'s, the H front ($x({\rm H^0}) = 0.5$) from $0.969$
+to $0.990$ of \Cloudy{}'s radius, the He\,\textsc{iii} front from $0.981$
+to $0.999$, and the median line ratio to \Cloudy{} over the 40 rows from
+$1.063$ to $1.028$
+(\code{m13\_restoration/pn150\_hbeta\_residual/compare\_l6vf\_metals.txt}).
+Conversely, a diagnostic build of \Cloudy{} with those photons off
+(\code{ion\_recomb.cpp} \code{FRAC\_LINE} $=10^{-20}$, deck unchanged)
+gives $R_B({\rm H})/Q = 1.0444$ and $L({\rm H}\beta) = 2.704{\times}10^{35}$
+erg\,s$^{-1}$: the term moves $R_B({\rm H})/Q$ by $+0.074$ in \Cloudy{} and
+$+0.073$ in \MoCHII{}, and $L({\rm H}\beta)$ by $+7.1\%$ and $+7.3\%$, so the
+two codes treat it alike.  It accounts for about $60\%$ of the
+$L({\rm H}\beta)$ difference.
+
+Two further approximations of \Cloudy{} enter the remainder, both read in its
+source and the first measured with a diagnostic build
+(\code{md/heii\_diffuse\_cloudy\_comparison\_2026-10-17.md}).
+(i) \emph{Bowen photons}: the destroyed share of He\,\textsc{ii} Ly$\alpha$
+becomes one on-the-spot photon at 660~\AA{} (18.8~eV) plus half a photon at
+40.8~eV (\code{rt\_ots.cpp}, \code{BOWEN = 0.5}), about 1.5 photons for each
+destroyed Ly$\alpha$, whether or not oxygen is present; made photon
+conserving ($\code{bwnfac} = 1$, the 660~\AA{} photons off), $R_B({\rm
+H})/Q$ falls from $1.1184$ to $1.1075$ ($1.1028$ to $1.0924$ without metals)
+and $L({\rm H}\beta)$ by $0.9\%$.  \MoCHII{} has no Bowen conversion: its
+He\,\textsc{ii} Ly$\alpha$ is transported through the continuum opacity.
+(ii) \emph{Outward-only diffuse field}: escaping line photons travelling
+inward are put into the outward beam at the same radius
+(\code{lines\_service.cpp}), and each recombination continuum is split once,
+at the emitting zone, into an on-the-spot part and an outward beam.  This
+moves H ionizations outward without changing their number; an estimate on
+\Cloudy{}'s structure ($-14\%$ of the local $R_B({\rm H})$ at 0.032--0.06~pc,
+$+9\%$ at 0.06--0.09~pc) matches the sign and size of the radial difference
+measured when \Cloudy{}'s converged structure is given to \MoCHII{} with the
+state held (the field supplies $8\%$ more H ionizations than that structure
+needs inside 0.06~pc and $10\%$ fewer at the He\,\textsc{iii} front,
+within $2\%$ elsewhere; the metal absorption then agrees, $0.0866$ against
+$0.0869\,Q$).  With the Bowen photons removed from \Cloudy{}, \MoCHII{} is
+$1.7\%$ above it without metals ($1.1114$ against $1.0924$) and $2.5\%$
+below it with metals and channel~8 ($1.0796$ against $1.1075$); that
+metal-dependent difference of about $4\%$ is not attributed.  The physical term (excited-level captures,
+dielectronic stabilization and cascades from atomic data) is planned in
+\code{md/METAL\_RECOMBINATION\_DIFFUSE\_PLAN\_2026-10-14.md}; the table
+above stands for the present default physics, which has no channel~8.
 
 
 \subsection{HS5: AGN SED input}

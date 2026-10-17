@@ -1,0 +1,37 @@
+title "Paris meeting PN"
+# standard" PN model of the Pequignot Meudon Conference
+#
+# commands controlling continuum =========
+black body, T = 150000 K, radius = 10
+#
+# commands for density & abundances =========
+hden = 3.4771213
+init file="ism.ini"
+# these elements were not part of the workshop models
+element chlorine off
+element argon off
+element iron off
+abund he=-1 C=-3.523 N=-4. O=-3.222 ne=-3.824 mg=-4.523 
+continue si=-4.523 s=-4.824 cl=-7 ar=-10 fe=-10 
+#
+# commands controlling geometry  =========
+radius = 17
+sphere
+#
+# other commands for details     =========
+age 10^2^2 years
+# ---------------------------------------------------------------------------
+# Everything above this line is the unmodified physics block of the Cloudy
+# c25.00 test-suite input tsuite/auto/pn_paris.in (lines 1 and 3-23; its
+# line 2, "set save prefix", is left out so that the save files below carry
+# the names given).  Only output commands were added, so the model is
+# Cloudy's own maintained version of the Lexington/Meudon PN150 benchmark.
+# The distributed deck has no stopping command; the run ends on Cloudy's
+# default lower temperature limit (4000 K).
+# ---------------------------------------------------------------------------
+print line faint -5 log
+print column densities
+# Radial ionization structure: depth to the zone center [cm] followed by the
+# fraction of the element in each ionization stage; radius = 1e17 cm + depth.
+save overview "nofrac.ovr"
+# Run with a diagnostic Cloudy c25.00 build whose ion_recomb.cpp FRAC_LINE is 1e-20 (heavy-ion recombination Lya/Balmer photons off); the build lives outside the repository (scratch), 2026-10-17.

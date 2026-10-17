@@ -25,6 +25,8 @@ module ion_score_mod
   public :: ion_score_apply_sec
   public :: ion_score_energy_packet, ion_score_energy_totals
   public :: ion_score_report_energy_closure, ion_score_report_metal_rates
+  public :: ion_score_report_ledger, ion_score_ledger_leaf
+  public :: LEDGER_NSRC
 
   integer, parameter :: I_GHI = 1, I_GHEI = 2, I_GHEII = 3
   integer, parameter :: I_HHI = 4, I_HHEI = 5, I_HHEII = 6
@@ -60,6 +62,21 @@ module ion_score_mod
   real(kind=ENERGY_ACC_WP) :: energy_emitted_acc = 0.0_ENERGY_ACC_WP
   real(kind=ENERGY_ACC_WP) :: energy_absorbed_acc = 0.0_ENERGY_ACC_WP
   real(kind=ENERGY_ACC_WP) :: energy_escaped_acc = 0.0_ENERGY_ACC_WP
+  !--- absorption ledger (par%absorption_ledger) [photons/s]: by source
+  !--- (photon%source_channel 0..LEDGER_NSRC-1) the photons emitted and
+  !--- escaping at the edge, and the photons absorbed by each absorber,
+  !--- path_lum kappa_a / (E erg) on the scored segments
+  integer, parameter :: LEDGER_NSRC = 10, LEDGER_NABS = 5
+  character(len=6), parameter :: LEDGER_ABS_NAME(LEDGER_NABS) = &
+     ['H0    ', 'He0   ', 'He+   ', 'metals', 'dust  ']
+  real(kind=ENERGY_ACC_WP) :: ledger_emitted(0:LEDGER_NSRC-1) = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ledger_escaped(0:LEDGER_NSRC-1) = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ledger_absorbed(LEDGER_NABS,0:LEDGER_NSRC-1) = 0.0_ENERGY_ACC_WP
+  !--- the same for H0, He0, He+ in every leaf [photons/s]:
+  !--- (absorber, source, leaf), rank local then reduced, written to the
+  !--- rates file as Ledger_H0 / Ledger_He0 / Ledger_He+ (nleaf, source)
+  integer, parameter :: LEDGER_NLEAF_ABS = 3
+  real(kind=wp), allocatable :: ledger_leaf(:,:,:)
 
 contains
 
@@ -94,6 +111,11 @@ contains
          call species_rate_path_setup(nleaf)
        end block
     end if
+    if (allocated(ledger_leaf)) deallocate(ledger_leaf)
+    if (par%absorption_ledger) then
+       allocate(ledger_leaf(LEDGER_NLEAF_ABS, 0:LEDGER_NSRC-1, nleaf))
+       ledger_leaf = 0.0_wp
+    end if
     !--- He I 2^3S photoionization rate Phi_3 and its heating (the output
     !--- diagnostic par%hei_metastable and the coupling
     !--- par%hei_metastable_coupling)
@@ -122,6 +144,10 @@ contains
     energy_emitted_acc = 0.0_ENERGY_ACC_WP
     energy_absorbed_acc = 0.0_ENERGY_ACC_WP
     energy_escaped_acc = 0.0_ENERGY_ACC_WP
+    ledger_emitted = 0.0_ENERGY_ACC_WP
+    ledger_escaped = 0.0_ENERGY_ACC_WP
+    ledger_absorbed = 0.0_ENERGY_ACC_WP
+    if (allocated(ledger_leaf)) ledger_leaf = 0.0_wp
     if (par%use_metals) then
        block
          use species_mod, only : species_rate_path_reset
@@ -213,7 +239,45 @@ contains
          call hei_metastable_path_score(il, photon%ionphys%energy_eV, path_lum)
        end block
     end if
+    if (par%absorption_ledger) call ledger_score(photon, il, path_lum)
   end subroutine score_ion_path
+
+  !--- photons absorbed on one scored segment, by absorber, with the
+  !--- opacity terms of ion_packet_opacity (dust: absorption only)
+  subroutine ledger_score(photon, il, path_lum)
+    use octree_mod,    only : amr_grid
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII
+    type(photon_type), intent(in) :: photon
+    integer,           intent(in) :: il
+    real(kind=wp),     intent(in) :: path_lum
+    real(kind=wp) :: kap(LEDGER_NABS), nH
+    integer :: is
+    nH = gas_nH(il)
+    kap = 0.0_wp
+    kap(1) = nH*gas_xHI(il)*photon%ionphys%sigma_HI*par%distance2cm
+    kap(2) = nH*par%abund_He*gas_xHeI(il)*photon%ionphys%sigma_HeI*par%distance2cm
+    kap(3) = nH*par%abund_He*gas_xHeII(il)*photon%ionphys%sigma_HeII*par%distance2cm
+    if (par%use_metals .and. par%ion_metal_abs) then
+       block
+         use species_mod, only : species_cached_opacity
+         kap(4) = nH*species_cached_opacity(photon%ionphys%sigma_metal, &
+                  photon%ionphys%n_metal, il)*par%distance2cm
+       end block
+    end if
+    if (par%ion_add_dust) kap(5) = amr_grid%rhokap(il)*photon%ionphys%dust_abs
+    is = min(max(photon%source_channel, 0), LEDGER_NSRC-1)
+    kap = path_lum*kap/(photon%ionphys%energy_eV*ev2erg)
+    ledger_absorbed(:,is) = ledger_absorbed(:,is) + real(kap, ENERGY_ACC_WP)
+    ledger_leaf(:,is,il) = ledger_leaf(:,is,il) + kap(1:LEDGER_NLEAF_ABS)
+  end subroutine ledger_score
+
+  !--- photons/s absorbed by absorber ia (1 H0, 2 He0, 3 He+) in every leaf
+  !--- from source is, after ion_score_reduce
+  subroutine ion_score_ledger_leaf(ia, is, out)
+    integer,       intent(in)  :: ia, is
+    real(kind=wp), intent(out) :: out(:)
+    out = ledger_leaf(ia, is, 1:size(out))
+  end subroutine ion_score_ledger_leaf
 
   subroutine ion_score_energy_packet(photon, tau_edge)
     use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
@@ -234,6 +298,16 @@ contains
        luminosity*(1.0_wp-transmission), ENERGY_ACC_WP)
     energy_escaped_acc = energy_escaped_acc + real( &
        luminosity*transmission, ENERGY_ACC_WP)
+    if (par%absorption_ledger) then
+       block
+         integer :: is
+         real(kind=wp) :: nphot
+         is = min(max(photon%source_channel, 0), LEDGER_NSRC-1)
+         nphot = luminosity/(photon%energy_eV*ev2erg)
+         ledger_emitted(is) = ledger_emitted(is) + real(nphot, ENERGY_ACC_WP)
+         ledger_escaped(is) = ledger_escaped(is) + real(nphot*transmission, ENERGY_ACC_WP)
+       end block
+    end if
   end subroutine ion_score_energy_packet
 
   subroutine ion_score_reduce()
@@ -269,6 +343,7 @@ contains
     energy_emitted = energy_totals(1)
     energy_absorbed = energy_totals(2)
     energy_escaped = energy_totals(3)
+    if (par%absorption_ledger) call ledger_reduce()
     if (par%use_metals) then
        block
          use species_mod, only : species_rate_path_reduce
@@ -282,6 +357,59 @@ contains
        end block
     end if
   end subroutine ion_score_reduce
+
+  !--- the ledger sums over ranks, in double precision (the per-rank sums
+  !--- were accumulated in the extended kind)
+  subroutine ledger_reduce()
+    use mpi
+    real(kind=wp) :: buf((2 + LEDGER_NABS)*LEDGER_NSRC)
+    integer :: ierr, n
+    n = LEDGER_NSRC
+    buf(1:n)         = real(ledger_emitted, wp)
+    buf(n+1:2*n)     = real(ledger_escaped, wp)
+    buf(2*n+1:)      = reshape(real(ledger_absorbed, wp), [LEDGER_NABS*n])
+    call MPI_ALLREDUCE(MPI_IN_PLACE, buf, size(buf), MPI_DOUBLE_PRECISION, &
+                       MPI_SUM, MPI_COMM_WORLD, ierr)
+    ledger_emitted  = real(buf(1:n), ENERGY_ACC_WP)
+    ledger_escaped  = real(buf(n+1:2*n), ENERGY_ACC_WP)
+    ledger_absorbed = real(reshape(buf(2*n+1:), [LEDGER_NABS, n]), ENERGY_ACC_WP)
+    block
+      integer :: i0, nl, nchunk
+      nchunk = max(1, 100000000/(LEDGER_NLEAF_ABS*LEDGER_NSRC))
+      i0 = 1
+      do while (i0 <= score_nleaf)
+         nl = min(nchunk, score_nleaf-i0+1)
+         call MPI_ALLREDUCE(MPI_IN_PLACE, ledger_leaf(:,:,i0:i0+nl-1), &
+                            LEDGER_NLEAF_ABS*LEDGER_NSRC*nl, MPI_DOUBLE_PRECISION, &
+                            MPI_SUM, MPI_COMM_WORLD, ierr)
+         i0 = i0 + nl
+      end do
+    end block
+  end subroutine ledger_reduce
+
+  !--- one row for each source that emitted: emitted, absorbed by each
+  !--- absorber, escaped [photons/s], and the closure
+  !--- (absorbed + escaped)/emitted - 1, which the path estimators meet in
+  !--- expectation (exactly without dust scattering, to Monte Carlo noise
+  !--- with it)
+  subroutine ion_score_report_ledger()
+    character(len=8), parameter :: SRC_NAME(0:LEDGER_NSRC-1) = &
+       ['star    ', 'dif1 HI ', 'dif2 HeI', 'dif3HeII', 'dif4 HeI', &
+        'dif5HeII', 'dif6 met', 'dif7 ff ', 'dif8 val', 'star FUV']
+    integer :: is
+    real(kind=wp) :: em, ab(LEDGER_NABS), es
+    if (.not. par%absorption_ledger .or. mpar%p_rank /= 0) return
+    write(*,'(a,5(3x,a6),3x,a,3x,a)') ' LEDGER: source   emitted      ', &
+       LEDGER_ABS_NAME, 'escaped    ', '(abs+esc)/em-1'
+    do is = 0, LEDGER_NSRC-1
+       em = real(ledger_emitted(is), wp)
+       if (em <= 0.0_wp) cycle
+       ab = real(ledger_absorbed(:,is), wp)
+       es = real(ledger_escaped(is), wp)
+       write(*,'(a,a8,7es12.4e3,es11.2)') ' LEDGER: ', SRC_NAME(is), em, ab, es, &
+          (sum(ab) + es)/em - 1.0_wp
+    end do
+  end subroutine ion_score_report_ledger
 
   subroutine ion_score_apply_hhe(gHI, gHeI, gHeII, hHI, hHeI, hHeII)
     use octree_mod, only : leaf_half

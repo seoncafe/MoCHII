@@ -236,6 +236,19 @@ contains
           'par%diffuse_energy_model must be ''milne'', ' // &
           '''exponential'' or ''threshold''.')
   endif
+  if (trim(par%metal_recombination_photons) /= 'none' .and. &
+      trim(par%metal_recombination_photons) /= 'valence_fractions') then
+     call refuse_input('par%metal_recombination_photons must be ''none'' '// &
+        '(default) or ''valence_fractions'' (the Cloudy c25.00 approximation, '// &
+        'for comparison).')
+  endif
+  if (trim(par%metal_recombination_photons) == 'valence_fractions' .and. &
+      (trim(par%recombination_continuum) /= 'transported' .or. &
+       .not. par%use_metals)) then
+     call refuse_input('par%metal_recombination_photons = ''valence_fractions'''// &
+        ' needs par%recombination_continuum = ''transported'' and metals: '// &
+        'its photons are diffuse channel 8, transported with channels 6 and 7.')
+  endif
   if (trim(par%cooling_model) /= 'low_density' .and. &
       trim(par%cooling_model) /= 'local_ne') then
      call refuse_input( &
@@ -640,6 +653,7 @@ contains
      if (par%ion_add_dust) &
         write(*,'(a,l14)') 'Dust emission transported : ', par%dust_emis_transport
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
+     write(*,'(2a)')    'Metal recomb. photons     : ', trim(par%metal_recombination_photons)
      write(*,'(2a)')    'Recombination continuum   : ', trim(par%recombination_continuum)
      write(*,'(2a)')    'Lyman lines               : ', trim(par%lyman_lines)
      if (trim(par%recombination_continuum) == 'on_the_spot') then

@@ -60,6 +60,7 @@ module species_mod
   public :: metal_charge_exchange_heating
   public :: species_terminal_photoionization_check
   public :: n_elements, elem_name, elem_nstage, elem_abund, elem_eth
+  public :: elem_atomic_number
   public :: elem_cx_form
   public :: species_rate_path_setup, species_rate_path_reset
   public :: species_rate_path_score, species_rate_path_reduce
@@ -249,6 +250,8 @@ contains
 
   character(len=2) function elem_name(ie);  integer, intent(in) :: ie
     elem_name = elems(ie)%name;  end function elem_name
+  integer function elem_atomic_number(ie);  integer, intent(in) :: ie
+    elem_atomic_number = elems(ie)%Z;  end function elem_atomic_number
   integer function elem_nstage(ie);  integer, intent(in) :: ie
     elem_nstage = elems(ie)%nstage;  end function elem_nstage
   real(kind=wp) function elem_abund(ie);  integer, intent(in) :: ie

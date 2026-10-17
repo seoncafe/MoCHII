@@ -3,7 +3,7 @@
 src/amr_refine_mod.o: src/define.o src/gas_opacity_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/ion_score_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/species_mod.o
 src/cellinfo_mod.o: src/define.o src/octree_mod.o src/random_mt.o
 src/cooling_mod.o: src/define.o src/free_free_mod.o src/nlevel_cooling_mod.o src/recomb_mod.o src/utility.o
-src/diffuse_mod.o: src/define.o src/gas_state_mod.o src/hei_recombination_photons_mod.o src/hei_twophoton_mod.o src/heii_cascade_mod.o src/ion_band_mod.o src/memory_mod_mpi.o src/milne_recomb_spectrum_mod.o src/octree_mod.o src/random_mt.o src/recomb_continuum_mod.o src/recomb_mod.o src/species_mod.o
+src/diffuse_mod.o: src/define.o src/gas_state_mod.o src/hei_recombination_photons_mod.o src/hei_twophoton_mod.o src/heii_cascade_mod.o src/ion_band_mod.o src/memory_mod_mpi.o src/milne_recomb_spectrum_mod.o src/octree_mod.o src/random_mt.o src/recomb_continuum_mod.o src/recomb_mod.o src/species_mod.o src/utility.o
 src/dust_emis_transport_mod.o: src/define.o src/dust_ir_band_mod.o src/dust_temp_mod.o src/gas_opacity_mod.o src/jtally_mod.o src/octree_mod.o src/photo_xsec.o src/random_mt.o src/raytrace_amr.o src/sedust_mod.o src/species_mod.o src/utility.o
 src/dust_ir_band_mod.o: src/define.o src/octree_mod.o
 src/dust_temp_mod.o: src/define.o src/grain_model_mod.o src/octree_mod.o src/utility.o
@@ -32,7 +32,7 @@ src/ion_balance_mod.o: src/define.o src/gas_rates_mod.o src/gas_state_mod.o src/
 src/ion_band_mod.o: src/define.o src/energy_sampler_mod.o src/octree_mod.o src/random_mt.o
 src/ion_packet_mod.o: src/define.o src/gas_opacity_mod.o src/gas_state_mod.o src/octree_mod.o src/photo_xsec.o src/species_mod.o
 src/ion_peel_mod.o: src/define.o src/iofile_mod.o src/ion_band_mod.o src/ion_packet_mod.o src/raytrace_amr.o src/utility.o
-src/ion_score_mod.o: src/define.o src/dust_ir_band_mod.o src/hei_metastable_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/photoelectron_degradation_mod.o src/species_mod.o
+src/ion_score_mod.o: src/define.o src/dust_ir_band_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/photoelectron_degradation_mod.o src/species_mod.o
 src/ion_stage_equilibrium_mod.o: src/define.o
 src/ion_stage_stationary_mod.o: src/define.o
 src/ionizing_field_mod.o: src/define.o src/diffuse_mod.o src/gas_rates_mod.o src/heii_cascade_mod.o src/ion_band_mod.o src/ion_peel_mod.o src/ion_score_mod.o src/jtally_mod.o src/photon_schedule_mod.o src/qmc_mod.o src/raytrace_amr.o src/species_mod.o src/utility.o
