@@ -240,7 +240,7 @@ program main
      !--- the step d, the decay ratio rho fitted over the last NWIN steps,
      !--- the drift still to come e = d rho/(1 - rho), and the mean signed
      !--- step s with its Student statistic t (the floor needs t < 2.365
-     !--- with par%conv_drift_test, the default).
+     !--- with par%conv_drift_test).
      if (mpar%p_rank == 0 .and. par%gas_niter >= 1) then
         call report_fixed_point_distance(' x_HII ', hist_dx)
         call report_fixed_point_distance(' He0-He+', hist_dhe1)

@@ -30,6 +30,7 @@
 
  par%gas_niter       = 4
  par%conv_crit       = 'vol'
+ par%conv_drift_test = .true.
  par%gas_tol         = 5.0e-3
  par%gas_tol_te      = 1.0e-2
  par%recombination_continuum = 'on_the_spot'

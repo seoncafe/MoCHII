@@ -30,6 +30,7 @@
 
  par%gas_niter       = 60
  par%conv_crit       = 'vol'
+ par%conv_drift_test = .true.
  par%gas_tol         = 1.0e-9
  par%gas_tol_te      = 1.0e-9
  par%ion_relax       = 1.0

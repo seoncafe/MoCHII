@@ -167,7 +167,8 @@ contains
        end if
        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
-       !--- varies per pass, and a Sobol prefix of any length is balanced.
+       !--- varies with each pass. Arbitrary prefixes are usable, but the
+       !--- digital-net balance guarantee requires a power-of-two count.
        call photon_schedule_begin(diffuse_nphot)
        do while (photon_schedule_next(ip))
           if (use_sobol) then

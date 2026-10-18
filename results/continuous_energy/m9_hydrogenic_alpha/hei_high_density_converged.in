@@ -41,6 +41,7 @@
 
  par%gas_niter       = 80
  par%conv_crit     = 'vol'
+ par%conv_drift_test = .true.
  par%gas_tol       = 5.0e-3
  par%recombination_continuum = 'on_the_spot'
  par%te_fixed      = 1.0e4          ! fixed electron temperature [K]

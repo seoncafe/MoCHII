@@ -153,7 +153,7 @@ contains
   endif
   if (par%restart_iteration_history .and. len_trim(par%restart_file) == 0) &
      call refuse_input('par%restart_iteration_history needs par%restart_file.')
-  if (.not. par%conv_drift_test .and. trim(par%conv_crit) /= 'vol' &
+  if (par%conv_drift_test .and. trim(par%conv_crit) /= 'vol' &
       .and. mpar%p_rank == 0) write(*,'(a)') &
      ' NOTE: par%conv_drift_test is read only with par%conv_crit = ''vol''.'
   if (trim(par%conv_crit) /= 'cell' .and. trim(par%conv_crit) /= 'vol') then
@@ -648,6 +648,9 @@ contains
            end if
         end if
      end if
+     write(*,'(2a)')    'Convergence measure       : ', trim(par%conv_crit)
+     if (trim(par%conv_crit) == 'vol') &
+        write(*,'(a,l14)') 'Drift test on the floor   : ', par%conv_drift_test
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
      write(*,'(a,l14)') 'He I 2^3S coupling        : ', par%hei_metastable_coupling
      if (par%ion_add_dust) &

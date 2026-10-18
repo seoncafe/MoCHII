@@ -18,6 +18,7 @@
  par%ion_add_dust  = .false.
  par%gas_niter     = 60
  par%conv_crit     = 'vol'
+ par%conv_drift_test = .true.
  par%gas_tol       = 3.0e-3
  par%te_fixed      = 1.0e4
  par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default

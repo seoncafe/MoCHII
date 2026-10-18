@@ -23,6 +23,7 @@
  par%ion_add_dust    = .false.
  par%gas_niter       = 2
  par%conv_crit       = 'vol'
+ par%conv_drift_test = .true.
  par%recombination_continuum = 'transported'
  par%solve_te        = .true.
  par%te_min          = 3.0e3

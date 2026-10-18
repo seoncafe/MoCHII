@@ -886,7 +886,10 @@ public
      !--- .false. accepts the floor on d < gas_tol alone, which does not see
      !--- a front still moving slowly under the noise (2026-09-26: an HII40
      !--- restart so stopped after 4 iterations, the H front 0.011 pc short).
-     logical            :: conv_drift_test = .true.
+     !--- Default .false. since 2026-10-18 (author's decision; .true. from
+     !--- 2026-09-26, and the tests/ and results/ inputs that relied on it pin
+     !--- .true.).
+     logical            :: conv_drift_test = .false.
      !--- abort (nonzero exit) if the gas iteration hits gas_niter without
      !--- converging; default off -> warn but still write the output.
      logical            :: require_convergence = .false.

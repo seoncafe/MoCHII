@@ -38,9 +38,10 @@ module fixed_point_distance_mod
 !                                             drift the window can resolve),
 ! with mean and sigma(s) the sample mean and standard deviation of the last
 ! NWIN values and T_DRIFT the two-sided 95% point of Student's t for NWIN - 1
-! degrees of freedom.  The drift condition is par%conv_drift_test (default
-! on, the optional argument drift_test); without it the floor passes on
-! d_n < tol alone.
+! degrees of freedom.  The drift condition is the optional argument
+! drift_test (on when absent), which the run passes as
+! par%conv_drift_test (default .false. since 2026-10-18); without it the
+! floor passes on d_n < tol alone.
 !
 ! Why (2026-09-26).  The test of 2026-09-25 took rho as the median of the
 ! last three ratios d_k/d_(k-1) and read the floor from any of those ratios

@@ -56,6 +56,7 @@
  par%cext_dust     = 4.868e-22
  par%DGR           = 1.0
  par%conv_crit     = 'vol'
+ par%conv_drift_test = .true.
  par%launch_sequence = 'random'   ! pinned: this input predates launch_sequence = 'sobol' as the default
  par%abund_C  = 2.2e-4   ! pinned: this input predates zero default abundances
  par%abund_N  = 4.0e-5   ! pinned: this input predates zero default abundances

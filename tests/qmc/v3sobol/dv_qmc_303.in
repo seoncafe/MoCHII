@@ -31,6 +31,7 @@
  par%ion_relax     = 1.0
  par%recombination_continuum = 'transported'
  par%conv_crit     = 'vol'
+ par%conv_drift_test = .true.
  par%source_geometry = 'point'
  par%launch_sequence = 'sobol'
  par%qmc_seed        = 303

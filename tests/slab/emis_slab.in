@@ -26,6 +26,7 @@
  par%gas_niter=40
  par%gas_tol=3.0e-3
  par%conv_crit='vol'
+ par%conv_drift_test = .true.
  par%solve_te=.true.
  par%te_min=3.0e3
  par%te_max=3.0e4

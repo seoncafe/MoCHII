@@ -42,6 +42,7 @@
  par%data_dir = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
  par%gas_tol       = 5.0e-3
  par%conv_crit     = 'vol'
+ par%conv_drift_test = .true.
  par%ion_align_edges = .true.
  par%ion_relax     = 1.0
  par%recombination_continuum = 'transported'
