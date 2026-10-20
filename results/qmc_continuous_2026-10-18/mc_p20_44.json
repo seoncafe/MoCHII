@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "command": [
+    "mpirun",
+    "-np",
+    "8",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/MoCHII.x",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_44.in"
+  ],
+  "elapsed_seconds": 1.1226496770977974,
+  "program_seconds": 0.5399999999999999,
+  "input_sha256": "e791ce860c02abb2f95209800386ab79371c7fccbb598c7329b0ee9d75e2c44b",
+  "output_sha256": "4329e058bfe1d848904d39e29ea13ada600bb72ba249ec32e4f6d85344ed8083",
+  "binary_sha256": "c042fe7de7556647c1f6cc7ce01066afb71c550a242d915c56d57a877513e1d6"
+}

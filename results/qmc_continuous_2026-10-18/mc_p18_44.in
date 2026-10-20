@@ -1,0 +1,44 @@
+&parameters
+ par%no_photons    = 262144
+ par%no_print      = 262144
+ par%iseed         = 44
+ par%grid_type     = 'amr'
+ par%amr_file      = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g0_gamma/amr_sphere_L5.fits'
+ par%dust_density_law = 'none'
+ par%distance_unit = 'pc'
+ par%nnu_ion       = 16
+ par%ion_align_edges = .false.
+ par%eion_min      = 13.598
+ par%eion_max      = 100.0
+ par%tstar         = 1.0e5
+ par%luminosity    = 1.0e38
+ par%xHI_init      = 0.1
+ par%xHeI_init     = 1.0
+ par%xHeII_init    = 0.0
+ par%abund_He      = 0.1
+ par%ion_add_dust  = .false.
+ par%source_geometry = 'point'
+ par%launch_sequence = 'random'
+ par%qmc_seed        = 12345
+ par%file_format     = 'hdf5'
+ par%out_file = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_44.h5'
+ par%solve_te      = .false.   ! pinned: this input predates solve_te = .true. as the default
+ par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
+ par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.
+ par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'
+ par%hei_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%heii_on_the_spot = .false.   ! pinned: this input predates the default .true.
+ par%recombination_continuum = 'on_the_spot'   ! pinned: this input predates 'transported' as the default
+ par%gas_niter = 0
+ par%te_fixed = 1.0e4
+ par%use_metals = .false.
+ par%metal_ne = .false.
+ par%add_fuv = .false.
+ par%ion_dust_scatter = .false.
+ par%use_sec_ion = .false.
+ par%heii_diffuse = .false.
+ par%hei_diffuse = .false.
+ par%use_master_slave = .false.
+ par%ion_peel = .false.
+ par%data_dir = '/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
+/

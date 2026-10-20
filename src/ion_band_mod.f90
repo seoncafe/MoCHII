@@ -25,10 +25,11 @@ module ion_band_mod
 ! also name an analytic ISRF preset ('draine'/'habing'/'mathis', FUV-only,
 ! absolute, needs add_fuv; see preset_je).
 !
-! Bin luminosities are integrated on a 32-point sub-grid per bin.  'shape_ev'
-! spectra are normalized so the ionizing segment carries the scale
-! (par%luminosity / src_lum(i); external pi*J*A).  Packets sample bins from the
-! luminosity CDF and carry Lpacket = ion_Ltot / nphotons.
+! The default ionizing_band reference normalizes the ionizing segment to
+! par%luminosity / src_lum(i); its diagnostic bins use midpoint quadrature.
+! full_spectrum instead normalizes internal sources to the full table
+! integral, or the bolometric Planck integral. Its diagnostic bins and packet
+! luminosities use the same continuous CDF. External pi*J*A is unchanged.
 !
 ! The bins are DIAGNOSTIC only: the band total ion_Ltot and the
 ! component-selection CDF src_cdf come from the continuous samplers' own
@@ -55,7 +56,7 @@ module ion_band_mod
   use define
   use energy_sampler_mod, only : energy_sampler_type, build_planck_sampler, &
        build_tabulated_sampler, build_tabulated_band_sampler, sample_energy_cdf, &
-       energy_cdf_value
+       energy_cdf_value, planck_full_integral
   implicit none
   private
 
@@ -66,6 +67,12 @@ module ion_band_mod
   public :: fuv_stratified, ion_L_ionizing, ion_L_fuv
   public :: band_packet_luminosity, band_packet_count, ionizing_packet_luminosity
   public :: LAUNCH_BAND_WHOLE, LAUNCH_BAND_IONIZING, LAUNCH_BAND_FUV
+  public :: source_luminosity
+  ! Columns for each internal source: full-range Emin/Emax [eV] (-1 means
+  ! infinite Emax), Lfull, Lion, LFUV, Loutside, Ltransport [erg/s].
+  ! Ionizing and FUV entries refer to the transported portions only.
+  real(kind=wp), allocatable :: source_luminosity(:,:)
+  real(kind=wp), allocatable :: source_metal_thresholds(:)
 
   !--- which part of the band a source packet is drawn from:
   !---   LAUNCH_BAND_WHOLE    the whole band, one CDF (no FUV extension, or
@@ -168,8 +175,8 @@ contains
     use octree_mod, only : amr_grid
     implicit none
     !--- metal_eth(1:nmetal): active metal photoionization thresholds [eV],
-    !--- gathered by the caller from the species registry.  Only consulted
-    !--- when par%ion_align_edges is on; absent for the H/He-only path.
+    !--- gathered by the caller from the species registry. Used for aligned
+    !--- diagnostic bins and mandatory Planck CDF knots.
     real(kind=wp), intent(in), optional :: metal_eth(:)
     integer,       intent(in), optional :: nmetal
     integer, parameter :: NSUB = 32
@@ -179,6 +186,13 @@ contains
     integer :: nnu, nfuv, i, ierr, nmet, presid
     logical :: is_abs, derived
 
+    if (allocated(source_metal_thresholds)) deallocate(source_metal_thresholds)
+    if (trim(par%luminosity_reference) == 'full_spectrum') then
+       nmet = 0
+       if (present(nmetal) .and. present(metal_eth)) nmet = nmetal
+       allocate(source_metal_thresholds(nmet))
+       if (nmet > 0) source_metal_thresholds = metal_eth(1:nmet)
+    end if
     !--- FUV extension: nnu_fuv extra log bins on [efuv_min, eion_min]
     !--- BELOW the par%nnu_ion ionizing bins.  par%nnu_ion stays the
     !--- immutable ionizing count; nnu_band = par%nnu_ion + nfuv is the
@@ -264,8 +278,13 @@ contains
           !--- src_spectrum_file column 1 (if set) > global ion_spectrum >
           !--- global tstar Planck.  The legacy scalars rule here, so
           !--- src_tstar(1) is NOT consulted (use par%tstar with one source).
-          call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false., is_abs)
-          call finalize_source(ion_lum, nnu, nfuv, is_abs, par%luminosity, Lnorm)
+          if (trim(par%luminosity_reference) == 'full_spectrum') then
+             call full_spectrum_point_bins(ion_lum, eedge, 1, .false., Lnorm)
+             is_abs = spec_is_physical()
+          else
+             call point_shape(ion_lum, eedge, nnu, NSUB, 1, .false., is_abs)
+             call finalize_source(ion_lum, nnu, nfuv, is_abs, par%luminosity, Lnorm)
+          end if
           derived = is_abs .and. (par%luminosity <= 0.0_wp)
        end if
        !--- the binned band total, which is what log_fast_path reports;
@@ -296,9 +315,13 @@ contains
 
     !--- par%luminosity is left at its unset sentinel when a physical-type
     !--- (absolute) spectrum DERIVES the luminosity from the file integral.
-    !--- Fill it with the band total so the TOT_LUM output keyword records a
-    !--- real luminosity.
-    if (par%luminosity <= 0.0_wp) par%luminosity = ion_Ltot
+    !--- Preserve the default derived-band convention. In full_spectrum mode
+    !--- TOT_LUM instead records the full integral of the internal sources.
+    if (allocated(source_luminosity)) then
+       par%luminosity = sum(source_luminosity(3,:))
+    else if (par%luminosity <= 0.0_wp) then
+       par%luminosity = ion_Ltot
+    end if
   end subroutine ion_setup
 
   !=========================================================================
@@ -333,6 +356,11 @@ contains
 
     if (allocated(source_energy_sampler)) deallocate(source_energy_sampler)
     allocate(source_energy_sampler(ncomp), band_L(ncomp))
+    if (allocated(source_luminosity)) deallocate(source_luminosity)
+    if (trim(par%luminosity_reference) == 'full_spectrum') then
+       allocate(source_luminosity(7,par%nsource))
+       source_luminosity = 0.0_wp
+    end if
 
     do ic = 1, ncomp
        if (allocated(comp_kind)) then
@@ -719,6 +747,102 @@ contains
   ! one finalize_source receives on the binned side: par%luminosity for the lone
   ! source (legacy scalars rule), par%src_lum(is) with several components.
   !=========================================================================
+  subroutine full_spectrum_point_source(sampler, is, use_src_tstar, elo, band_L, values)
+    use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
+    implicit none
+    type(energy_sampler_type), intent(out) :: sampler
+    integer, intent(in) :: is
+    logical, intent(in) :: use_src_tstar
+    real(kind=wp), intent(in) :: elo
+    real(kind=wp), intent(out) :: band_L, values(7)
+    type(energy_sampler_type) :: full
+    real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
+    character(len=PATH_LEN) :: filename
+    real(kind=wp) :: temperature, scale, integral, fion
+    integer :: column, columns, ntab
+    logical :: absolute_file
+
+    ! Match point_shape's precedence, including the single-source convention.
+    filename = par%ion_spectrum
+    temperature = par%tstar
+    column = 1; columns = 1
+    scale = par%luminosity
+    if (use_src_tstar) then
+       scale = par%src_lum(is)
+       if (par%src_tstar(is) > 0.0_wp) then
+          filename = ''
+          temperature = par%src_tstar(is)
+       end if
+    end if
+    if (len_trim(par%src_spectrum_file) > 0) then
+       filename = par%src_spectrum_file
+       column = is; columns = par%nsource
+    end if
+    absolute_file = len_trim(filename) > 0 .and. spec_is_physical()
+    values = 0.0_wp
+    if (len_trim(filename) > 0) then
+       if (absolute_file) then
+          call read_phys_table(filename, column, columns, etab, ftab, ntab)
+       else
+          call read_shape_table(filename, column, columns, etab, ftab, ntab)
+       end if
+       if (.not. all(ieee_is_finite(etab)) .or. .not. all(ieee_is_finite(ftab))) &
+            error stop 'full_spectrum: nonfinite spectrum table'
+       if (size(etab) < 2) error stop 'full_spectrum: spectrum needs at least two rows'
+       if (etab(1) <= 0.0_wp) error stop 'full_spectrum: photon energies must be positive'
+       ! The canonical interpolation is linear in L_E after unit conversion.
+       ! Both the full integral and every transported interval use this model.
+       call build_tabulated_sampler(full, etab, ftab)
+       integral = full%total_integral
+       values(1:2) = [etab(1), etab(ntab)]
+       call build_tabulated_band_sampler(sampler, etab, ftab, elo, par%eion_max)
+    else
+       call photoionization_threshold_knots(knots, size(source_metal_thresholds), source_metal_thresholds)
+       call build_planck_sampler(sampler, temperature, elo, par%eion_max, &
+                                 par%source_cdf_tol, knots)
+       integral = planck_full_integral(temperature)
+       values(1:2) = [0.0_wp, -1.0_wp]
+    end if
+    if (.not. ieee_is_finite(integral) .or. integral <= 0.0_wp) &
+         error stop 'full_spectrum: invalid full spectrum integral'
+    if (absolute_file .and. scale <= 0.0_wp) then
+       values(3) = integral
+       band_L = sampler%total_integral
+    else
+       if (.not. ieee_is_finite(scale) .or. scale <= 0.0_wp) &
+            error stop 'full_spectrum: source luminosity must be positive'
+       values(3) = scale
+       band_L = scale * (sampler%total_integral / integral)
+    end if
+    if (.not. ieee_is_finite(band_L) .or. band_L <= 0.0_wp) &
+         error stop 'full_spectrum: invalid transported luminosity'
+    fion = ionizing_fraction(sampler)
+    values(4) = band_L * fion
+    values(5) = band_L * (1.0_wp-fion)
+    ! Only adaptive Planck quadrature roundoff can put the band above the
+    ! analytic full integral; tolerate its requested integration accuracy.
+    if (band_L > values(3)*(1.0_wp+10.0_wp*par%source_cdf_tol)) &
+         error stop 'full_spectrum: transported luminosity exceeds full luminosity'
+    values(6) = max(0.0_wp, values(3)-band_L)
+    values(7) = band_L
+  end subroutine full_spectrum_point_source
+
+  subroutine full_spectrum_point_bins(arr, edges, is, use_src_tstar, lion)
+    implicit none
+    real(kind=wp), intent(out) :: arr(:), lion
+    real(kind=wp), intent(in) :: edges(:)
+    integer, intent(in) :: is
+    logical, intent(in) :: use_src_tstar
+    type(energy_sampler_type) :: sampler
+    real(kind=wp) :: band_L, values(7)
+    integer :: i
+    call full_spectrum_point_source(sampler, is, use_src_tstar, edges(1), band_L, values)
+    do i = 1, size(arr)
+       arr(i) = band_L * (energy_cdf_value(sampler,edges(i+1))-energy_cdf_value(sampler,edges(i)))
+    end do
+    lion = values(4)
+  end subroutine full_spectrum_point_bins
+
   subroutine build_point_source_sampler(sampler, is, elo, nmet, metal_eth, band_L)
     implicit none
     type(energy_sampler_type), intent(out) :: sampler
@@ -735,6 +859,17 @@ contains
        scale = par%src_lum(is)
     else
        scale = par%luminosity
+    end if
+
+    if (trim(par%luminosity_reference) == 'full_spectrum') then
+       call full_spectrum_point_source(sampler, is, multi_src, elo, band_L, source_luminosity(:,is))
+       if (mpar%p_rank == 0) then
+          write(*,'(a,i0,a,2es16.8)') ' ION: full_spectrum source ', is, &
+               ' range [eV] (Emax=-1: infinity): ', source_luminosity(1:2,is)
+          write(*,'(a,5es16.8)') ' ION: Lfull, Lion, LFUV, Loutside, Ltransport [erg/s]: ', &
+               source_luminosity(3:7,is)
+       end if
+       return
     end if
 
     if (len_trim(par%src_spectrum_file) > 0) then
@@ -979,8 +1114,13 @@ contains
     do is = 1, par%nsource
        ic = ic + 1
        comp_kind(ic) = is
-       call point_shape(lum_c, eedge, nnu, nsub, is, .true., is_abs)
-       call finalize_source(lum_c, nnu, nfuv, is_abs, par%src_lum(is), src_used(is))
+       if (trim(par%luminosity_reference) == 'full_spectrum') then
+          call full_spectrum_point_bins(lum_c, eedge, is, .true., src_used(is))
+          is_abs = spec_is_physical()
+       else
+          call point_shape(lum_c, eedge, nnu, nsub, is, .true., is_abs)
+          call finalize_source(lum_c, nnu, nfuv, is_abs, par%src_lum(is), src_used(is))
+       end if
        src_derived(is) = is_abs .and. (par%src_lum(is) <= 0.0_wp)
        comp_L(ic) = sum(lum_c)                     ! band total (incl. FUV)
        ion_lum = ion_lum + lum_c

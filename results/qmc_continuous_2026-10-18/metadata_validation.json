@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "runs_checked": 32,
+  "max_energy_closure_relative": 2.220446049250313e-16,
+  "checks": [
+    "continuous energy metadata",
+    "diagnostic bins",
+    "packet count",
+    "sampling mode",
+    "luminosity",
+    "energy closure"
+  ]
+}

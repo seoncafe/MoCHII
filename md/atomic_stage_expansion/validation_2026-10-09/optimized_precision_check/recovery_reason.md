@@ -1,3 +1,0 @@
-# Gaunt Precision Check
-
-The optimized adjacent-stage, registry/restart, and five charge-exchange checks passed. The Python comparison then found Gaunt differences up to 3.612e-8 between debug reference nodes and the fast optimized single-precision intermediate quadrature. The Gaunt-only tolerance is now 1e-7 (less than one default-REAL epsilon); other rate formulas retain 1e-10. This changes a precision test, not runtime physics. This successor checks the affected Gaunt comparison and completes the previously unperformed CI-table and malformed-input checks. The earlier logs and executable are preserved.

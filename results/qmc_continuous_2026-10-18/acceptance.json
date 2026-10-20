@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "runs": 32,
+  "physical_profiles_visually_inspected": true,
+  "paper_pages_inspected": [
+    10,
+    11,
+    12
+  ],
+  "independent_energy_quad_relative_error": 4.440892098500626e-16,
+  "source_hashes_match_build": true,
+  "all_fixed_state_fields_match": true,
+  "python_fortran_rates_check": "PASS",
+  "scope": "Fixed-state stellar transport; diffuse and nonlinear convergence not measured",
+  "controller_status": "Transport completed; postprocessing completed; no active calculation",
+  "products_sha256": {
+    "results/qmc_continuous_2026-10-18/summary.json": "e80234a0015f11851c9ba1416bed75e9ebb0f31bb7b21290dd64412f3fe087ba",
+    "../MoCHII_paper/mochii.tex": "5eb2e8217a546b3c1e965dcfc956eb3324ea9483bba72ec3239c9e24196992b4",
+    "../MoCHII_paper/mochii.pdf": "463ab7bb7889d193a0697bdd7233473b3584ff2974e6ff1aba0aba797e52f798",
+    "../MoCHII_paper/figures/qmc_variance.pdf": "1ba9f8523724a53446cde8281d4cf8b14f31142bbc97c49df01af05bcbe90c2a",
+    "../MoCHII_paper/figures/qmc_profiles.pdf": "d45a8c8535202a9a1de51420517787ea6a66861d38095b726eb51ea85667c165"
+  }
+}

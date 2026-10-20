@@ -1,4 +1,0 @@
-&parameters
- par%metal_collisional_ionization=.true.,
- par%additional_line_cooling=.true.
-/

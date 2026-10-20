@@ -1,0 +1,27 @@
+&parameters
+ par%no_photons=256
+ par%iseed=1234
+ par%grid_type='car'
+ par%density_file='/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/density.fits'
+ par%xmax=1
+ par%ymax=1
+ par%zmax=1
+ par%distance_unit='pc'
+ par%rmin=0
+ par%gas_niter=1
+ par%solve_te=.false.
+ par%te_fixed=10000
+ par%xHI_init=0.01
+ par%abund_He=0.1
+ par%nnu_ion=8
+ par%tstar=40000
+ par%luminosity=1.e36
+ par%add_fuv=.true.
+ par%nnu_fuv=4
+ par%data_dir='/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data'
+ par%atomic_dir='/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/data/atomic'
+ par%out_file='result.h5'
+ par%file_format='hdf5'
+ par%emis_output=.true.
+ par%luminosity_reference='ionizing_band'
+/

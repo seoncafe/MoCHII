@@ -151,6 +151,11 @@ def adjacent_ion_fractions(work):
 
 
 @check('checks')
+def neutral_metal_initialization(work):
+    return python_check(work, 'check_neutral_metal_initialization.py')
+
+
+@check('checks')
 def nonadjacent_ion_equilibrium(work):
     # ion_stage_stationary_mod is not a production object yet (the general
     # stationary solve the multi-stage Auger matrix will need); compile it

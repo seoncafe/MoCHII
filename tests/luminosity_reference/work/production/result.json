@@ -1,0 +1,141 @@
+{
+  "passed": true,
+  "records": {
+    "invalid": {
+      "return_code": 1,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/invalid/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d"
+    },
+    "slab": {
+      "return_code": 1,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/slab/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d"
+    },
+    "external": {
+      "return_code": 1,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/external/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d"
+    },
+    "full": {
+      "return_code": 0,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/full/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d",
+      "source_luminosity": [
+        0.0,
+        -1.0,
+        1e+36,
+        4.131690213373914e+35,
+        5.082591755186306e+35,
+        7.857180314397799e+34,
+        9.21428196856022e+35
+      ]
+    },
+    "default": {
+      "return_code": 0,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/default/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d"
+    },
+    "explicit": {
+      "return_code": 0,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/explicit/input.in"
+      ],
+      "binary_sha256": "7970d7c38f756729790275d32f1079b171b974412bfc7826c39f4931b8ef318d"
+    },
+    "baseline": {
+      "return_code": 0,
+      "command": [
+        "mpirun",
+        "-np",
+        "2",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/clumpy_test/clumpy_medium_new/MoCHII.x",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/luminosity_reference/work/production/baseline/input.in"
+      ],
+      "binary_sha256": "bde928e5417f51772ec77846a83726e4b147ff5e4e7c47762c8bc19b41e85d88"
+    },
+    "default_vs_explicit": {
+      "all_numeric_datasets_identical": true,
+      "datasets": [
+        "Gamma_HI",
+        "Gamma_HeI",
+        "Gamma_HeII",
+        "Heat_HI",
+        "Heat_HeI",
+        "Heat_HeII",
+        "x_HI",
+        "x_HII",
+        "x_HeI",
+        "x_HeII",
+        "x_HeIII",
+        "n_e",
+        "T_e",
+        "Phi_HeI_23S",
+        "E_bin",
+        "dE_bin",
+        "LeafXYZ",
+        "LeafSize",
+        "ConvHist_x_HII",
+        "ConvHist_HeI_HeII"
+      ]
+    },
+    "baseline_vs_default": {
+      "all_numeric_datasets_identical": true,
+      "datasets": [
+        "Gamma_HI",
+        "Gamma_HeI",
+        "Gamma_HeII",
+        "Heat_HI",
+        "Heat_HeI",
+        "Heat_HeII",
+        "x_HI",
+        "x_HII",
+        "x_HeI",
+        "x_HeII",
+        "x_HeIII",
+        "n_e",
+        "T_e",
+        "Phi_HeI_23S",
+        "E_bin",
+        "dE_bin",
+        "LeafXYZ",
+        "LeafSize",
+        "ConvHist_x_HII",
+        "ConvHist_HeI_HeII"
+      ]
+    }
+  }
+}

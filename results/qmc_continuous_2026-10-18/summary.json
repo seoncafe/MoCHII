@@ -1,0 +1,305 @@
+{
+  "ok": true,
+  "reference_checks": {
+    "energy_max_relative": 3.9968028886505635e-15,
+    "space_and_interpolation_max_relative": 8.017475572330568e-12
+  },
+  "selected_cells": 10496,
+  "conditions": {
+    "grid": "32^3 octree, cell size 0.0625 pc; sphere selected by cell centers",
+    "nH_cm3": 1.0,
+    "sphere_radius_pc": 1.0,
+    "T_K": 10000.0,
+    "Tstar_K": 100000.0,
+    "luminosity_erg_s": 1e+38,
+    "energy_eV": [
+      13.598,
+      100.0
+    ],
+    "xHI": 0.1,
+    "xHeI": 1.0,
+    "xHeII": 0.0,
+    "yHe": 0.1,
+    "velocity": "static, no velocity field",
+    "gravity": "not modeled",
+    "source": "isotropic central point, Planck energy spectrum",
+    "boundary": "open cube [-1,1]^3 pc",
+    "dust": false,
+    "metals": false,
+    "diffuse": false,
+    "secondary_ionization": false,
+    "gas_iterations": 0,
+    "mpi_ranks": 8,
+    "threads_each_rank": 1,
+    "diagnostic_energy_bins": 16,
+    "comparison_shell_pc": [
+      0.15,
+      0.85
+    ]
+  },
+  "statistics_note": "Four independent seeds at each count. Mean spatial bias is not a cell-wise bias bound.",
+  "groups": {
+    "17": {
+      "mc": {
+        "N": 131072,
+        "seeds": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "rms_relative": 0.17192857389340965,
+        "mse_relative": 0.029559434521021628,
+        "sampling_variance_relative": 0.02928616511539015,
+        "ensemble_mean_error_rms": 0.08714821102282605,
+        "spatial_mean_bias": 0.0009746124787395472,
+        "spatial_mean_bias_standard_error": 0.002778499262491285,
+        "replicate_spatial_mean_bias": [
+          -0.003410831019543152,
+          -0.0015840710710690155,
+          0.009070055254223898,
+          -0.00017670324865354112
+        ],
+        "radial_rms_relative": 0.007565743626029573,
+        "elapsed_seconds_mean": 0.8472208697348833,
+        "elapsed_seconds": [
+          0.8770927488803864,
+          0.7684829384088516,
+          0.8713017702102661,
+          0.8720060214400291
+        ],
+        "program_seconds_mean": 0.28500000000000003
+      },
+      "qmc": {
+        "N": 131072,
+        "seeds": [
+          101,
+          202,
+          303,
+          404
+        ],
+        "rms_relative": 0.03134803018948001,
+        "mse_relative": 0.0009826989967605501,
+        "sampling_variance_relative": 0.000990957420012425,
+        "ensemble_mean_error_rms": 0.015475171461125438,
+        "spatial_mean_bias": 8.13570993141589e-06,
+        "spatial_mean_bias_standard_error": 5.286367197063026e-05,
+        "replicate_spatial_mean_bias": [
+          6.943033080178622e-05,
+          -0.00012879331264900216,
+          -1.7953053869182538e-05,
+          0.00010985887544206203
+        ],
+        "radial_rms_relative": 0.0007944379633141811,
+        "elapsed_seconds_mean": 0.8711541797965765,
+        "elapsed_seconds": [
+          0.8703910037875175,
+          0.8702844306826591,
+          0.8713788688182831,
+          0.8725624158978462
+        ],
+        "program_seconds_mean": 0.3
+      },
+      "mse_ratio": 30.079846034710304,
+      "variance_ratio": 29.553404136196843,
+      "equal_time_mse_efficiency": 29.253459272811487
+    },
+    "18": {
+      "mc": {
+        "N": 262144,
+        "seeds": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "rms_relative": 0.1224203500441365,
+        "mse_relative": 0.014986742104928912,
+        "sampling_variance_relative": 0.014809754677220614,
+        "ensemble_mean_error_rms": 0.062285039110635945,
+        "spatial_mean_bias": 0.0007816596315369087,
+        "spatial_mean_bias_standard_error": 0.0020387873143583174,
+        "replicate_spatial_mean_bias": [
+          -0.0007889542872850842,
+          -0.003070363632746629,
+          0.006482329008618405,
+          0.0005036274375609433
+        ],
+        "radial_rms_relative": 0.005742032071288036,
+        "elapsed_seconds_mean": 0.883930467069149,
+        "elapsed_seconds": [
+          0.8707379698753357,
+          0.921482503414154,
+          0.8718411177396774,
+          0.8716602772474289
+        ],
+        "program_seconds_mean": 0.3
+      },
+      "qmc": {
+        "N": 262144,
+        "seeds": [
+          101,
+          202,
+          303,
+          404
+        ],
+        "rms_relative": 0.014579491692200054,
+        "mse_relative": 0.0002125615780029304,
+        "sampling_variance_relative": 0.00021532131157533805,
+        "ensemble_mean_error_rms": 0.007146369310455966,
+        "spatial_mean_bias": 5.5882993320559085e-06,
+        "spatial_mean_bias_standard_error": 3.169266753500003e-05,
+        "replicate_spatial_mean_bias": [
+          -2.7135378818512732e-06,
+          -6.324728281336287e-05,
+          -2.0531278776875816e-06,
+          9.036714590112535e-05
+        ],
+        "radial_rms_relative": 0.0003575709983898455,
+        "elapsed_seconds_mean": 0.9463928453624249,
+        "elapsed_seconds": [
+          1.1212400421500206,
+          0.8713261634111404,
+          0.8711762055754662,
+          0.9218289703130722
+        ],
+        "program_seconds_mean": 0.3899999999999999
+      },
+      "mse_ratio": 70.50541422270727,
+      "variance_ratio": 68.77979039264248,
+      "equal_time_mse_efficiency": 65.85202332221252
+    },
+    "19": {
+      "mc": {
+        "N": 524288,
+        "seeds": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "rms_relative": 0.08600188680501802,
+        "mse_relative": 0.007396324534023133,
+        "sampling_variance_relative": 0.007351915519650635,
+        "ensemble_mean_error_rms": 0.04338649437653565,
+        "spatial_mean_bias": -3.447550096977246e-05,
+        "spatial_mean_bias_standard_error": 0.0013907237621752378,
+        "replicate_spatial_mean_bias": [
+          -0.0013471979848921599,
+          -0.002472735197243049,
+          0.0039033039622475237,
+          -0.00022127278399140457
+        ],
+        "radial_rms_relative": 0.0035201384394212025,
+        "elapsed_seconds_mean": 0.9718231707811356,
+        "elapsed_seconds": [
+          0.9740668535232544,
+          0.9709848240017891,
+          0.9720025062561035,
+          0.9702384993433952
+        ],
+        "program_seconds_mean": 0.40499999999999997
+      },
+      "qmc": {
+        "N": 524288,
+        "seeds": [
+          101,
+          202,
+          303,
+          404
+        ],
+        "rms_relative": 0.0066767041720114054,
+        "mse_relative": 4.4578378600554504e-05,
+        "sampling_variance_relative": 4.435630446252332e-05,
+        "ensemble_mean_error_rms": 0.003363205354072513,
+        "spatial_mean_bias": 2.955177154383827e-07,
+        "spatial_mean_bias_standard_error": 1.733824338275621e-05,
+        "replicate_spatial_mean_bias": [
+          -5.8547538973138335e-06,
+          -4.6350069333363624e-05,
+          2.683169546913063e-05,
+          2.655519862330036e-05
+        ],
+        "radial_rms_relative": 0.00018084865005911355,
+        "elapsed_seconds_mean": 0.9966188110411167,
+        "elapsed_seconds": [
+          1.0220554694533348,
+          0.9720206558704376,
+          1.0212797448039055,
+          0.9711193740367889
+        ],
+        "program_seconds_mean": 0.42
+      },
+      "mse_ratio": 165.91730713891715,
+      "variance_ratio": 165.74679989092135,
+      "equal_time_mse_efficiency": 161.789323786462
+    },
+    "20": {
+      "mc": {
+        "N": 1048576,
+        "seeds": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "rms_relative": 0.061005139387173196,
+        "mse_relative": 0.0037216270316484308,
+        "sampling_variance_relative": 0.0036623899758008367,
+        "ensemble_mean_error_rms": 0.03122234055604741,
+        "spatial_mean_bias": -0.0003826524555225148,
+        "spatial_mean_bias_standard_error": 0.0008883250760714997,
+        "replicate_spatial_mean_bias": [
+          0.0006907129315080253,
+          -0.0029743886815626038,
+          0.0008495669836405729,
+          -9.650105567605382e-05
+        ],
+        "radial_rms_relative": 0.002379381931926245,
+        "elapsed_seconds_mean": 1.159707861021161,
+        "elapsed_seconds": [
+          1.171227015554905,
+          1.1725135520100594,
+          1.1724411994218826,
+          1.1226496770977974
+        ],
+        "program_seconds_mean": 0.585
+      },
+      "qmc": {
+        "N": 1048576,
+        "seeds": [
+          101,
+          202,
+          303,
+          404
+        ],
+        "rms_relative": 0.0035183674265429196,
+        "mse_relative": 1.2378909348158247e-05,
+        "sampling_variance_relative": 1.2100563686924074e-05,
+        "ensemble_mean_error_rms": 0.0018175496094921845,
+        "spatial_mean_bias": -3.5657101689098346e-06,
+        "spatial_mean_bias_standard_error": 8.822535257234182e-06,
+        "replicate_spatial_mean_bias": [
+          -1.1300514084939703e-05,
+          -2.4591747931853616e-05,
+          1.385864543597683e-05,
+          7.770775905177153e-06
+        ],
+        "radial_rms_relative": 8.806586550614381e-05,
+        "elapsed_seconds_mean": 1.1847956199198961,
+        "elapsed_seconds": [
+          1.1716628149151802,
+          1.2221840843558311,
+          1.2241466119885445,
+          1.1211889684200287
+        ],
+        "program_seconds_mean": 0.6
+      },
+      "mse_ratio": 300.64256284437045,
+      "variance_ratio": 302.6627577489165,
+      "equal_time_mse_efficiency": 294.2765297458962
+    }
+  },
+  "mc_rms_log_slope": -0.4993823108795678,
+  "qmc_rms_log_slope": -1.0592922598023775
+}

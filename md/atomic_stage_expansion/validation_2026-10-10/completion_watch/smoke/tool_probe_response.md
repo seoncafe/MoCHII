@@ -1,1 +1,0 @@
-셸 실행 도구를 사용할 수 없습니다. 오류: `code-mode host is disabled`. 실제 출력은 확인하지 못했습니다.

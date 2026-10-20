@@ -1,4 +1,0 @@
-&parameters
- par%charge_exchange_heating=.true.
- par%metal_freefree=.false.
-/

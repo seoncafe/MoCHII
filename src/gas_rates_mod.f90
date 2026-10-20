@@ -24,7 +24,7 @@ module gas_rates_mod
                           shared_host_rank, shared_host_size, shared_host_comm
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use jtally_mod,   only : jt_ion
-  use ion_band_mod, only : ion_e, ion_de, ion_dnu, nnu_band
+  use ion_band_mod, only : ion_e, ion_de, ion_dnu, nnu_band, source_luminosity
   implicit none
   private
 
@@ -220,7 +220,8 @@ contains
     call io_put_keyword(file,'NNU_BAND', nnu_band, 'total band bins (ionizing+FUV)', status)
     call io_put_keyword(file,'EION_MIN',par%eion_min,'band lower edge [eV]',    status)
     call io_put_keyword(file,'EION_MAX',par%eion_max,'band upper edge [eV]',    status)
-    call io_put_keyword(file,'TOT_LUM', par%luminosity,'band luminosity [erg/s]',status)
+    call io_put_keyword(file,'TOT_LUM', par%luminosity,'source luminosity scale [erg/s]',status)
+    call io_put_keyword(file,'LUMREF',trim(par%luminosity_reference),'source normalization reference',status)
     call io_put_keyword(file,'DIST_CM', par%distance2cm,'distance unit (cm)',   status)
     call io_put_keyword(file,'nphotons',par%no_photons, 'number of photons',    status)
     if (par%add_fuv) then
@@ -393,6 +394,19 @@ contains
     call io_append_image(file, leafsize, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','LeafSize','leaf full width (code units)',status)
     deallocate(leafsize)
+
+    if (allocated(source_luminosity)) then
+       call io_append_image(file, source_luminosity, status, bitpix=-64)
+       call io_put_keyword(file,'EXTNAME','SourceLuminosity','internal source normalization',status)
+       call io_put_keyword(file,'LUMREF',trim(par%luminosity_reference),'source normalization reference',status)
+       call io_put_keyword(file,'COL1','Emin [eV]','full spectrum lower edge',status)
+       call io_put_keyword(file,'COL2','Emax [eV]','-1 denotes infinity for Planck',status)
+       call io_put_keyword(file,'COL3','Lfull [erg/s]','full source luminosity',status)
+       call io_put_keyword(file,'COL4','Lion [erg/s]','transported ionizing luminosity',status)
+       call io_put_keyword(file,'COL5','LFUV [erg/s]','transported FUV luminosity',status)
+       call io_put_keyword(file,'COL6','Loutside [erg/s]','luminosity outside transport band',status)
+       call io_put_keyword(file,'COL7','Ltransport [erg/s]','total transported source luminosity',status)
+    end if
 
     !--- the stopping-test histories (fixed_point_distance_mod), oldest
     !--- iteration first, columns d and s; par%restart_iteration_history

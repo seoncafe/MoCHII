@@ -28,8 +28,17 @@ module energy_sampler_mod
   public :: build_planck_sampler
   public :: sample_energy_cdf, energy_cdf_value
   public :: planck_energy_shape, sample_full_planck_bc
+  public :: planck_full_integral
 
 contains
+
+  real(wp) function planck_full_integral(temperature) result(total)
+    real(wp), intent(in) :: temperature
+    ! Integral of E^3 / (exp(E/kT)-1) over 0 < E < infinity.
+    ! The same KB_EV defines the shape and its normalization.
+    if (temperature <= 0.0_wp) error stop 'Planck integral: nonpositive temperature'
+    total = 6.0_wp * ZETA4 * (KB_EV * temperature)**4
+  end function planck_full_integral
 
   subroutine build_tabulated_sampler(sampler, energy, density)
     type(energy_sampler_type), intent(out) :: sampler

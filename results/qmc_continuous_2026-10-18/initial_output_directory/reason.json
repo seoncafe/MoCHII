@@ -1,0 +1,5 @@
+{
+  "reason": "Program strips directory from output basename. Completed first calculation preserved; rerun ensemble with working directory equal to output directory.",
+  "calculation_exit_status": 0,
+  "controller_failure": "Expected rates file not in output directory."
+}

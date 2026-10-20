@@ -20,11 +20,10 @@ driver:
                   linear-in-log10 T interpolation, so this measures the
                   accuracy of the u-quadrature in gaunt_ff_mean;
   cross sections  photo_xsec's sigma_HI, sigma_HeI, sigma_HeII.  Same closed
-                  forms again.  The grid deliberately starts at each threshold,
-                  where sigma_HI was 0.775% off while the gates used the VFKY96
-                  fit.  It then steps away from threshold by more than the
-                  10 ppm neighborhood in which the Python np.isclose branch
-                  stands in for the Fortran's exact E == E_th test.
+                  forms again.  The grid tests just below, at, and just above
+                  each threshold, including the exact E == E_th limit, then
+                  extends to 1 keV.  This catches threshold leakage as well
+                  as differences in the continuous formula.
 
 The temperature comparison covers 3e3-3e4 K, the production thermal range, plus
 the wider 1e3-1e5 K the recombination fits are valid over; the gbar table is
@@ -69,7 +68,7 @@ program rates_dump
                          betaA_HII, betaB_HII, beta_HeII, beta_HeIII
   use mpi
   implicit none
-  integer, parameter :: NT = 61, NG = 81, NE = 60
+  integer, parameter :: NT = 61, NG = 81, NE = 62
   integer, parameter :: NCH = 3
   real(kind=wp), parameter :: ETH(NCH) = &
      [13.598_wp, 24.587_wp, 54.416_wp]
@@ -96,13 +95,17 @@ program rates_dump
      write(12,'(7es24.16)') T, (gbar_ff(T, iz), iz = 1, 6)
   end do
 
-  !--- cross sections: from each threshold up to 1 keV
+  !--- cross sections: threshold neighborhood, then up to 1 keV
   do ich = 1, NCH
      do i = 1, NE
         if (i == 1) then
+           E = ETH(ich)*(1.0_wp - 1.0e-6_wp)
+        else if (i == 2) then
            E = ETH(ich)
+        else if (i == 3) then
+           E = ETH(ich)*(1.0_wp + 1.0e-6_wp)
         else
-           E = ETH(ich)*(1000.0_wp/ETH(ich))**(real(i-1,wp)/real(NE-1,wp))
+           E = ETH(ich)*(1000.0_wp/ETH(ich))**(real(i-3,wp)/real(NE-3,wp))
         end if
         write(13,'(i2,4es24.16)') ich, E, sigma_HI(E), sigma_HeI(E), sigma_HeII(E)
      end do

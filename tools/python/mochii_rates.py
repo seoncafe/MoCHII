@@ -210,7 +210,7 @@ def sigma_hydrogenic(E, E_th, Z):
            * np.exp(4.0 - 4.0 * np.arctan(eps) / eps)
            / (1.0 - np.exp(-2.0 * np.pi / eps)))
     out = np.where(above, val, out)
-    return np.where(np.isclose(E, E_th), s0, out)
+    return np.where(E == E_th, s0, out)
 
 
 def sigma_vfky96(E, E_th, E_0, s_0, y_a, P, y_w, y_0, y_1):

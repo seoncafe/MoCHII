@@ -1,0 +1,653 @@
+{
+  "cwd": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00",
+  "source_files": [
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/grain_photoelectric_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_stage_equilibrium_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/recomb_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/utility.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_balance_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/photon_schedule_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ionizing_field_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/grain_size_bins_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/recomb_continuum_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hei_metastable_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_stage_stationary_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/previous_state_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/dust_ir_band_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/heii_recombination_photons_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/sh95_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hdf5io_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/iofile_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hydrogenic_recombination_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/mathlib.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/energy_sampler_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/physics_amr_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/jtally_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hei_twophoton_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/grid_mod_amr.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/octree_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/read_generic_amr.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/diffuse_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/photoelectron_degradation_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hei_cascade_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/dust_temp_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/random_mt.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gas_opacity_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gaunt_vh14_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/lines_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/thermal_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_score_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gas_state_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/milne_recomb_spectrum_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/free_free_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_band_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/cooling_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/define.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/read_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/metal_ionization_potential_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hydrogenic_twophoton_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/setup.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/cellinfo_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/memory_mod_mpi.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/grid_mod_car.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/grain_model_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gaunt.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/nebcont_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gas_rates_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/qmc_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/sedust_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/gas_grain_collision_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/sed_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/raytrace_amr.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hei_recombination_photons_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_packet_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/main.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/nlevel_cooling_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/ion_peel_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/photo_xsec.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/fitsio_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/heii_cascade_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/species_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/dust_emis_transport_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/amr_refine_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/fixed_point_distance_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/nlevel_mod.f90",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/heii_h_charge_exchange_data.inc",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/src/hydrogenic_recombination_data.inc",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/Makefile",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/g0_gamma/amr_sphere_L5.fits",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/check_continuous.py",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/continuous_reference.py",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tools/python/mochii_rates.py",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_404.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_202.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_11.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_22.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_22.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_303.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_33.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_33.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_44.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_303.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_101.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_44.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_404.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_22.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_101.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_11.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_44.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_33.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_202.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_404.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_202.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_303.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_101.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_22.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_101.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_33.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_44.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_404.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_11.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_11.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_202.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_303.in",
+    "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/MoCHII.x"
+  ],
+  "environment": {
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "I_MPI_FABRICS": "shm",
+    "I_MPI_PIN": "1"
+  },
+  "steps": [
+    {
+      "id": "mc_p17_11",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p17_11"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_11.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p17_101",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p17_101"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_101.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p17_22",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p17_22"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_22.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p17_202",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p17_202"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_202.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p17_33",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p17_33"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_33.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p17_303",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p17_303"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_303.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p17_44",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p17_44"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p17_44.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p17_404",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p17_404"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p17_404.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p18_11",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p18_11"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_11.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p18_101",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p18_101"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_101.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p18_22",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p18_22"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_22.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p18_202",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p18_202"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_202.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p18_33",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p18_33"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_33.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p18_303",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p18_303"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_303.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p18_44",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p18_44"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p18_44.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p18_404",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p18_404"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p18_404.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p19_11",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p19_11"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_11.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p19_101",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p19_101"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_101.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p19_22",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p19_22"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_22.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p19_202",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p19_202"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_202.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p19_33",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p19_33"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_33.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p19_303",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p19_303"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_303.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p19_44",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p19_44"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p19_44.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p19_404",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p19_404"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p19_404.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p20_11",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p20_11"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_11.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p20_101",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p20_101"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_101.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p20_22",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p20_22"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_22.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p20_202",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p20_202"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_202.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p20_33",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p20_33"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_33.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p20_303",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p20_303"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_303.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "mc_p20_44",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "mc_p20_44"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/mc_p20_44.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "qmc_p20_404",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/run_continuous.py",
+        "run",
+        "qmc_p20_404"
+      ],
+      "timeout_seconds": 300,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/qmc_p20_404.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "id": "analysis",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/tests/qmc/check_continuous.py",
+        "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18"
+      ],
+      "timeout_seconds": 600,
+      "check": {
+        "path": "/nfs/mocafe/kiseon/MoCHII/MoCHII_v1.00/results/qmc_continuous_2026-10-18/summary.json",
+        "equals": {
+          "ok": true
+        }
+      }
+    }
+  ]
+}

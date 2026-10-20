@@ -3610,8 +3610,12 @@ with the X-ray normalization $a$ fixed by $\alpha_{\rm ox}$ through the
 and the standard defaults $\alpha_{\text{uv}}=-0.5$,
 $\alpha_{\rm x}=-1$, IR cutoff at $kT_{\rm IR}=0.01$ Ryd.  It enters
 \code{ion\_band\_mod} exactly like the Planck function --- a spectral
-density integrated on the 32-point sub-grid in each band bin --- and is
-normalized by the existing derive-or-rescale luminosity rules.  The
+density integrated on the 32-point sub-grid in each band bin.  This is
+a proposed preset, not a current input option; implementing it would
+require defining its full-spectrum integral for
+\code{luminosity\_reference='full\_spectrum'}.  Current tabulated and
+Planck point sources use the ionizing-band reference by default and
+can instead use the full file or Planck integral.  The
 tabulated-file route (\code{spectrum\_type='per\_ev'} etc.) remains the
 reference path and already reproduces the \code{agn\_lex00} gate SEDs
 verbatim (Table~\ref{tab:hardassets}); the preset adds convenience and

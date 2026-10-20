@@ -254,7 +254,7 @@ parameter & default & meaning \\
 \code{nnu\_ion} & 16 & diagnostic ionizing-energy bins (gates use 32).  Packet energies are sampled from the source CDF and every cross section is evaluated at the sampled energy, so changing this count changes only the resolution of the saved tallies, never the physical solution \\
 \code{eion\_min}, \code{eion\_max} & 13.598, 100 & ionizing band edges [eV] \\
 \code{ion\_align\_edges} & T & align diagnostic bin edges to the ionization thresholds, so no bin straddles an edge; segments are log-uniform and low-priority metal edges are dropped safely when necessary.  Affects the tally resolution only, not the transport.  Set F for a single log grid \\
-\code{add\_fuv} & F or T & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and grain photoelectric emission, FUV photoionization of low-threshold metals (Ca\,\textsc{i} 6.11, Mg\,\textsc{i} 7.65, Fe\,\textsc{i} 7.90, Si\,\textsc{i} 8.15, S\,\textsc{i} 10.36, C\,\textsc{i} 11.26, Cl\,\textsc{i} 12.97~eV) and the 2$^3$S photoionization rate $\Phi_3$ below 13.6~eV; \code{luminosity} stays the IONIZING luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top).  An input that leaves it out gets T whenever something in the run absorbs below the H\,\textsc{i} edge: the He\,\textsc{i} 2$^3$S population (\code{hei\_metastable} or \code{hei\_metastable\_coupling}, on by default, with \code{abund\_He}$>0$), a metal with its neutral ionization potential below 13.598~eV (C, S, Mg, Fe, Si, Cl, Ca), or dust (\code{ion\_add\_dust}); F otherwise.  Setup prints which of the three set it \\
+\code{add\_fuv} & F or T & FUV extension: extra log bins on [\code{efuv\_min}, \code{eion\_min}] below the unchanged ionizing bins; transports FUV grain heating and grain photoelectric emission, FUV photoionization of low-threshold metals (Ca\,\textsc{i} 6.11, Mg\,\textsc{i} 7.65, Fe\,\textsc{i} 7.90, Si\,\textsc{i} 8.15, S\,\textsc{i} 10.36, C\,\textsc{i} 11.26, Cl\,\textsc{i} 12.97~eV) and the 2$^3$S photoionization rate $\Phi_3$ below 13.6~eV; with the default \code{luminosity\_reference='ionizing\_band'}, \code{luminosity} stays the ionizing luminosity ($Q_{\rm H}$ preserved, the FUV part rides on top).  An input that leaves it out gets T whenever something in the run absorbs below the H\,\textsc{i} edge: the He\,\textsc{i} 2$^3$S population (\code{hei\_metastable} or \code{hei\_metastable\_coupling}, on by default, with \code{abund\_He}$>0$), a metal with its neutral ionization potential below 13.598~eV (C, S, Mg, Fe, Si, Cl, Ca), or dust (\code{ion\_add\_dust}); F otherwise.  Setup prints which of the three set it \\
 \code{efuv\_min} & 6.0 or 4.78 & FUV lower edge [eV].  Left out of the input, it is 4.78~eV (the edge of $\sigma_3$ as the code evaluates it; the NIST ionization energy of 2$^3$S is 4.7677~eV; below every metal edge) in the same cases as \code{add\_fuv}, else 6.0 \\
 \code{fuv\_sampling} & 'separate' & how the source packets are shared between the two parts of the band when \code{add\_fuv} is on.  \code{'separate'}: two strata, \code{no\_photons} packets drawn from each source spectrum conditioned on [\code{eion\_min}, \code{eion\_max}] and \code{no\_photons\_fuv} drawn from [\code{efuv\_min}, \code{eion\_min}); each packet carries its stratum's luminosity over its stratum's count, and a source is chosen within a stratum by its luminosity there (a spectrum starting above \code{eion\_min} launches no FUV packet; an ISRF preset stops at the H\,\textsc{i} edge, so a preset-only run has no ionizing stratum and launches only FUV packets).  The ionizing solution keeps all \code{no\_photons} packets.  \code{'proportional'}: one CDF over the whole band and \code{no\_photons} packets in all, so the ionizing share is the luminosity share --- 45\% for a 40~kK blackbody from 4.78~eV, 6\% for 20~kK --- and the ionizing noise grows by 1/$\sqrt{\rm share}$; kept so runs made with it reproduce bit for bit \\
 \code{no\_photons\_fuv} & \code{no\_photons}/4 & FUV-stratum packets in each transport pass (\code{fuv\_sampling='separate'}); left out of the input it is a quarter of \code{no\_photons}, or all of \code{no\_photons} when no source has ionizing luminosity (an FUV-only field such as an ISRF preset, where the FUV packets are the only packets).  With \code{launch\_sequence='sobol'} the FUV packets are a Sobol prefix of their own stream, so a power of 2 is preferable.  An FUV packet crosses more of the grid than an ionizing one (measured 2026-09-25: 1.6$\times$ the path segments, 2.0$\times$ with dust scattering), so the default adds $\sim$40--50\% to a pass --- about what \code{'proportional'} costs at the same \code{no\_photons} for a 40~kK star \\
@@ -262,7 +262,8 @@ parameter & default & meaning \\
 \code{tstar} & $-999$ & Planck source temperature [K] \\
 \code{ion\_spectrum} & '' & global spectrum file (column 1 plus one value column); its column units are set by \code{spectrum\_type} (\S\ref{sec:specfmt}) \\
 \code{spectrum\_type} & 'shape\_ev' & column units of every spectrum-file slot (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}): \code{'shape\_ev'} (arbitrary, normalized to the scale --- legacy) or a physical type \code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'} (absolute); see \S\ref{sec:specfmt} \\
-\code{luminosity} & unset & ionizing BAND luminosity [erg/s] of the (single) source; for a \code{'shape\_ev'}/Planck source unset maps to 1.0 (legacy), for a physical-type file unset means DERIVE it from the file integral; with \code{nsource}$\ge 2$ it becomes the sum of \code{src\_lum} (or the equal-split total when those are unset) \\
+\code{luminosity\_reference} & 'ionizing\_band' & reference integral for internal point-source \code{luminosity} and \code{src\_lum}: \code{'ionizing\_band'} uses [\code{eion\_min}, \code{eion\_max}] (existing behavior); \code{'full\_spectrum'} uses the whole file or the complete Planck spectrum.  The transport energy limits stay independent.  The latter requires at least one internal point source and is refused for slab and external-only illumination \\
+\code{luminosity} & unset & explicitly set internal point-source luminosity [erg/s] on the interval selected by \code{luminosity\_reference}; for a \code{'shape\_ev'}/Planck source unset maps to 1.0 (legacy).  For a physical-type file, an unset scale keeps the file luminosity; the reported \code{TOT\_LUM} is the transported-band total in the default mode and the full internal-source total in \code{'full\_spectrum'} mode.  With multiple internal sources, explicitly set \code{src\_lum} values determine their luminosities \\
 \code{xs\_point}, \code{ys\_point}, \code{zs\_point} & 0 & single-source position (code units, recentered box; \code{nsource}=1) \\
 \end{longtable}
 }
@@ -283,9 +284,9 @@ parameter & default & meaning \\
 \endlastfoot
 \code{nsource} & 1 & number of internal point sources (0--16); \code{1} keeps the legacy scalars above, $\ge 2$ uses the \code{src\_*} arrays \\
 \code{src\_x}, \code{src\_y}, \code{src\_z} & 0 & positions of sources $1..$\code{nsource} (code units) \\
-\code{src\_lum} & unset & ionizing luminosities [erg/s] of the sources; set all or none (none $=$ equal split of \code{luminosity}); a partial set aborts \\
-\code{src\_tstar} & $-999$ & Planck temperature [K] for each source (multi-source runs only; a single source uses \code{tstar}) \\
-\code{src\_spectrum\_file} & '' & one multi-column spectrum file for all sources: column 1 then one value column for each source (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}); each source is independently normalized so its ionizing segment carries \code{src\_lum}$(i)$ (a physical type with \code{src\_lum} unset is derived from that column); overrides \code{src\_tstar}; too few columns abort, extra columns are ignored with a note \\
+\code{src\_lum} & unset & luminosities [erg/s] of internal sources on the interval selected by \code{luminosity\_reference} when at least two components are present (including one point plus an external field); a lone point instead uses \code{luminosity}.  Set all or none: all unset splits \code{luminosity} equally for shape or Planck spectra, or derives each physical-file column independently.  A mixture of absolute-file and Planck sources requires every \code{src\_lum} to be set; a partial set aborts \\
+\code{src\_tstar} & $-999$ & Planck temperature [K] for each source when at least two components are present, including one internal point plus an external field; a lone internal point uses \code{tstar} \\
+\code{src\_spectrum\_file} & '' & one multi-column spectrum file for all sources: column 1 then one value column for each source (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}); each source is independently normalized so its selected reference integral carries \code{src\_lum}$(i)$ (a physical type with \code{src\_lum} unset is derived from that column); overrides \code{src\_tstar}; too few columns abort, extra columns are ignored with a note \\
 \end{longtable}
 }
 
@@ -406,14 +407,34 @@ type (\code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'}) is
 \emph{absolute}: the source luminosity is the tabulated integral
 itself.  If the matching scale (\code{luminosity} / \code{src\_lum}$(i)$
 / \code{ext\_intensity}) is unset it is DERIVED from the file --- each
-source from its column's ionizing-segment integral, the external field
+internal source from its column's selected reference integral, the external field
 from its band-integrated $J$ --- and reported in the log.  If a scale is
 set, the spectrum is RESCALED to it (a note is printed) and the file then
 acts only as a shape.  With \code{add\_fuv} an absolute spectrum fills the
 FUV bins from the same table, with no separate normalization.
+For a multi-column physical source file, set each \code{src\_lum} to
+rescale its column; a common \code{luminosity} alone does not override
+the independently derived column luminosities.
 \code{'shape\_ev'} keeps the legacy behavior: the shape is normalized to the
-scale in every case.  A spectrum with no luminosity inside the band
-aborts, as does rescaling a file whose ionizing-segment integral is zero.
+scale in every case.  A spectrum with no luminosity inside the transported
+band aborts, as does rescaling a file whose selected reference integral is zero.
+
+\medskip\noindent\textbf{Full-spectrum reference for point sources.}
+With \code{luminosity\_reference='full\_spectrum'}, the input
+\code{luminosity} or \code{src\_lum} is the integral of $L_E$ over the
+entire tabulated energy interval, or over $0<E<\infty$ for a Planck
+spectrum.  File spectra are converted to $L_E$ first, then integrated
+using the same piecewise-linear interpolation that samples packet
+energies; nothing is extrapolated beyond the file endpoints.  An unset
+scale for a physical-type internal file keeps its absolute luminosity.
+The transported point-source power is the integral of the normalized
+spectrum over [\code{efuv\_min}, \code{eion\_max}] with \code{add\_fuv},
+or [\code{eion\_min}, \code{eion\_max}] otherwise.  Energy outside that
+interval contributes to the reference luminosity but launches no packet.
+The H-ionizing and FUV shares are determined by the selected spectrum;
+changing the transport limits does not redefine the input scale.
+\code{ext\_intensity} and slab source strengths retain their band
+normalization, including in a mixed point-source and external-field run.
 
 \medskip\noindent\textbf{\code{'shape\_ev'} is per eV, not variable-agnostic.}
 \code{'shape\_ev'} reads its value columns as the shape of the density per eV
@@ -784,6 +805,7 @@ extension & content \\
 \code{J\_nu} & band mean intensity (bin, leaf) [erg/s/cm$^2$/Hz/sr], with \code{jnu\_output} \\
 \code{E\_bin}, \code{dE\_bin} & band grid [eV] \\
 \code{LeafXYZ}, \code{LeafSize} & leaf centers and full widths (code units; for slices/cutouts) \\
+\code{SourceLuminosity} & with \code{luminosity\_reference='full\_spectrum'}, seven values per internal point source: $E_{\min}$, $E_{\max}$, $L_{\rm full}$, $L_{\rm ion,transport}$, $L_{\rm FUV,transport}$, $L_{\rm outside}$, $L_{\rm transport}$.  HDF5 shape is (source, 7); FITS axes are (7, source).  Energies are in eV and luminosities in erg/s; $E_{\max}=-1$ means infinity for a Planck source \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -797,11 +819,17 @@ state is transported once more and the gas solved once more in that
 field, so the written rates and the written state, metal stages
 included, belong together; false for rates-only runs).  The rest of the header records the run:
 \code{NNU\_ION}, \code{NNU\_BAND}, \code{EION\_MIN}, \code{EION\_MAX},
-\code{TOT\_LUM}, \code{DIST\_CM}, \code{nphotons}, with \code{add\_fuv}
+\code{TOT\_LUM}, \code{LUMREF}, \code{DIST\_CM}, \code{nphotons}, with \code{add\_fuv}
 \code{EFUV\_MIN}, \code{FUVSAMP} and \code{NPHOTFUV}; the sampling
 (\code{IONEMODE}, \code{CDFRTOL}, \code{NUBINUSE}, \code{ENRGSAMP}, and
 \code{QMCSEED} under \code{'sobol'}); and the ionizing-packet energy budget
 \code{L\_EMIT}, \code{L\_ABS}, \code{L\_ESC} [erg\,s$^{-1}$].
+\code{LUMREF} identifies the point-source normalization reference;
+\code{TOT\_LUM} is the full internal-source total in
+\code{'full\_spectrum'} mode.  In the default mode, an unset absolute
+file scale yields the transported-band total, including FUV, as before.
+Use \code{SourceLuminosity} for each source's full and transported
+luminosities in a full-spectrum run.
 
 \subsection{Line and emissivity outputs}
 \label{sec:lineout}

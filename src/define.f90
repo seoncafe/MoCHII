@@ -245,12 +245,16 @@ public
      !--- Relative integration tolerance for the continuous Planck source CDF
      !--- (tabulated linear spectra are integrated/inverted analytically).
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
-     !--- ionizing-band luminosity [erg/s] of the primary source (a point
-     !--- source, or the informational total with several).  Sentinel -999 =
+     !--- Source luminosity [erg/s], ionizing-band by default, of a point
+     !--- source, or the informational total with several. Sentinel -999 =
      !--- unset: setup maps it to 1.0 for a 'shape_ev'/Planck source (exact legacy)
      !--- but leaves it unset to DERIVE the luminosity from the integral of a
      !--- physical-type (par%spectrum_type /= 'shape_ev') source spectrum.
      real(kind=wp) :: luminosity   = -999.0_wp
+     !--- Reference integral for internal-source luminosity and src_lum.
+     !--- full_spectrum: entire input table, or 0 < E < infinity for Planck.
+     !--- This does not extend the photon transport energy range.
+     character(len=32) :: luminosity_reference = 'ionizing_band'
      real(kind=wp) :: tauhomo      = -999.0
      real(kind=wp) :: taumax       = -999.0
      real(kind=wp) :: lambda0      = 6563.0_wp
@@ -631,9 +635,9 @@ public
      character(len=PATH_LEN) :: ion_spectrum = ''
      !--- FUV extension of the band: nnu_fuv extra log bins on
      !--- [efuv_min, eion_min] BELOW the nnu_ion ionizing bins, so the
-     !--- ionizing bin resolution is unchanged.  par%luminosity keeps its
-     !--- meaning as the [eion_min, eion_max] luminosity; the FUV part is
-     !--- added on top from the same source spectrum.  H/He cross sections
+     !--- ionizing bin resolution is unchanged. With luminosity_reference =
+     !--- 'ionizing_band', FUV luminosity is added from the same spectrum.
+     !--- With 'full_spectrum', it is part of the specified total. H/He cross sections
      !--- vanish below threshold, so the FUV bins are absorbed by dust and
      !--- (with ion_metal_abs) low-threshold metal stages only; the He I 2^3S
      !--- photoionization rate Phi_3 (threshold 4.78 eV) is scored from them

@@ -271,8 +271,14 @@ contains
   block
     integer :: is, nset
     logical :: ext_on, is_phys, ext_is_preset, ext_is_physfile, src_is_absolute
+    logical :: src_absolute(MAX_SRC)
 
     !--- par%spectrum_type sets the column units of every spectrum file slot.
+    select case (trim(par%luminosity_reference))
+    case ('ionizing_band', 'full_spectrum')
+    case default
+       call refuse_input('par%luminosity_reference must be ''ionizing_band'' or ''full_spectrum''.')
+    end select
     select case (trim(par%spectrum_type))
     case ('shape_ev', 'per_ev', 'per_hz', 'per_ang', 'per_um')
        is_phys = trim(par%spectrum_type) /= 'shape_ev'
@@ -292,11 +298,6 @@ contains
     endif
     ext_is_preset   = ion_ext_preset_id(par%ext_spectrum) > 0
     ext_is_physfile = (.not. ext_is_preset) .and. len_trim(par%ext_spectrum) > 0 .and. is_phys
-    !--- the primary internal source is ABSOLUTE when a physical-type spectrum
-    !--- file feeds it (its own src_spectrum_file or the global ion_spectrum).
-    src_is_absolute = is_phys .and. (len_trim(par%src_spectrum_file) > 0 .or. &
-                                     len_trim(par%ion_spectrum) > 0)
-
     if (trim(par%source_geometry) == 'external' .or. &
         trim(par%source_geometry) == 'external_rec' .or. &
         trim(par%source_geometry) == 'external_sph') then
@@ -402,6 +403,23 @@ contains
        endif
     endif
 
+    if (par%nsource < 0 .or. par%nsource > MAX_SRC) then
+       call refuse_input('par%nsource must be in [0, '//integer_text(MAX_SRC)//'].')
+    endif
+    !--- Classify the spectrum actually selected by point_shape, including
+    !--- the priority of an individual Planck temperature over a global file.
+    src_absolute = .false.
+    do is = 1, par%nsource
+       if (len_trim(par%src_spectrum_file) > 0) then
+          src_absolute(is) = is_phys
+       else if ((par%nsource > 1 .or. ext_on) .and. par%src_tstar(is) > 0.0_wp) then
+          src_absolute(is) = .false.
+       else
+          src_absolute(is) = is_phys .and. len_trim(par%ion_spectrum) > 0
+       endif
+    end do
+    src_is_absolute = par%nsource > 0 .and. all(src_absolute(1:par%nsource))
+
     !--- luminosity sentinel (default -999 = unset).  A 'shape_ev'/Planck primary
     !--- source maps it to 1.0 (exact legacy); a physical-type (absolute) source
     !--- leaves it unset so its luminosity is DERIVED from the file integral.
@@ -414,8 +432,10 @@ contains
     endif
 
     !--- internal point sources.
-    if (par%nsource < 0 .or. par%nsource > MAX_SRC) then
-       call refuse_input('par%nsource must be in [0, '//integer_text(MAX_SRC)//'].')
+    if (trim(par%luminosity_reference) == 'full_spectrum') then
+       if (par%nsource == 0 .or. trim(par%source_geometry) == 'slab') &
+          call refuse_input('full_spectrum luminosity_reference requires internal point sources; '// &
+                            'external intensity and slab flux keep their existing normalization.')
     endif
     if (par%nsource == 0 .and. trim(par%source_geometry) /= 'slab') then
        if (.not. ext_on) then
@@ -445,6 +465,9 @@ contains
           if (par%src_lum(is) > 0.0_wp) nset = nset + 1
        end do
        if (nset == 0) then
+          if (any(src_absolute(1:par%nsource)) .and. .not. src_is_absolute) &
+             call refuse_input('mixed absolute-file and Planck sources require explicit par%src_lum '// &
+                               'for ALL sources; a common unset luminosity is ambiguous.')
           if (.not. src_is_absolute) then
              do is = 1, par%nsource
                 par%src_lum(is) = par%luminosity / real(par%nsource, wp)

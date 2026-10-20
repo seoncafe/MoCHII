@@ -258,7 +258,10 @@ contains
         taueq        = sum(grid%rhokap(:,nycen,nzcen))*(grid%dx/2.0_wp)
         taupole      = sum(grid%rhokap(nxcen,nycen,:))*(grid%dz/2.0_wp)
      endif
-     dens        = sum(grid%rhokap)/count(grid%rhokap > 0.0)
+     ! A dust-free grid has zero optical depth, including this diagnostic.
+     dens = 0.0_wp
+     if (any(grid%rhokap > 0.0_wp)) &
+          dens = sum(grid%rhokap)/count(grid%rhokap > 0.0_wp)
      par%tauhomo = dens*grid%zmax
      par%taumax  = taupole
   endif

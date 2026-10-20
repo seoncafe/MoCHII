@@ -190,6 +190,7 @@ second, lower segment: \code{par\%nnu\_fuv} log bins on
 $[E_{\rm FUV}, E_{\min}]$ (\code{par\%efuv\_min}; left out of the input, 4.78~eV by the rule below, or 6~eV when nothing in the run absorbs below 13.6~eV)
 \emph{below} the unchanged ionizing bins, so widening the band does not
 coarsen the ionizing resolution (the earlier single-segment caveat).
+With the default \code{luminosity\_reference='ionizing\_band'},
 \code{par\%luminosity} keeps its meaning as the ionizing
 $[E_{\min}, E_{\max}]$ luminosity; the FUV part of the same source
 spectrum rides on top ($L_{\rm FUV}/L_{\rm ion} = 1.097$ for a
@@ -224,22 +225,29 @@ field}
 \label{sec:sources}
 The band is fed by any number of \emph{source components}:
 \code{par\%nsource} internal point sources (0--16; positions
-\code{par\%src\_x/y/z}, ionizing luminosities \code{par\%src\_lum} ---
-all set, or none for an equal split of \code{par\%luminosity}, which
-becomes the sum) plus, independently, one isotropic external radiation
-field, on when \code{par\%ext\_intensity} $> 0$.  Each packet draws a
+\code{par\%src\_x/y/z}, luminosities \code{par\%src\_lum} ---
+all set, or none for an equal split of \code{par\%luminosity} for
+shape or Planck spectra, or independent derivation from the columns
+of a physical-type source file) plus, independently, one isotropic
+external radiation field, on when \code{par\%ext\_intensity} $> 0$,
+an ISRF preset is selected, or an absolute \code{ext\_spectrum} file
+is given.  Each packet draws a
 component in proportion to its band-total luminosity, is emitted from
 it, and draws its energy from that component's own spectrum CDF;
 every packet carries $L_{\rm pkt} = \sum_c L_c/N$.  A single-component
 run takes the legacy code path (the RNG stream is unchanged, so earlier
-results reproduce).  The spectrum of internal source $i$ resolves as
-\code{par\%src\_spectrum\_file} column $i$ $>$ \code{src\_tstar}$(i)$
-Planck $>$ the global \code{ion\_spectrum} file $>$ the global
-\code{tstar}; \code{src\_spectrum\_file} is one multi-column text file
---- column 1 the photon energy $E$ [eV] ascending, then one $L_E$
-column for each source in arbitrary units, each independently
-normalized so source $i$'s ionizing segment carries
-\code{src\_lum}$(i)$.
+results reproduce).  With at least two source components, including
+one internal point plus an external field, source $i$ resolves
+as \code{par\%src\_spectrum\_file} column $i$ $>$
+\code{src\_tstar}$(i)$ Planck $>$ the global \code{ion\_spectrum}
+file $>$ the global \code{tstar}.  A lone internal point without an
+external field uses the global \code{tstar} and \code{luminosity}
+rather than \code{src\_tstar(1)} and \code{src\_lum(1)}.
+\code{src\_spectrum\_file} is one multi-column text file
+--- column 1 the spectral coordinate, then one density column for
+each source.  Each column is normalized independently according to
+\code{par\%spectrum\_type} and \code{par\%luminosity\_reference},
+as described below.
 
 The external field is an isotropic band-integrated mean intensity $J$
 [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] entering through an illuminating
@@ -282,7 +290,53 @@ luminosities follow the tabulated integral directly.  If the scale
 unset it is derived from the file and reported; if set, the spectrum is
 rescaled to it and acts as a shape.  With \code{add\_fuv} the same table
 fills the FUV bins with no separate normalization; a spectrum with no
-luminosity inside the band aborts.
+luminosity inside the transported band aborts.
+For a multi-column physical source file, \code{src\_lum} must be set
+for every source to rescale the columns; a common \code{luminosity}
+alone leaves their absolute values in place.  If a source-specific
+Planck spectrum is mixed with an absolute-file spectrum, all
+\code{src\_lum} values are required because an unset common scale
+cannot determine both normalizations.
+
+\paragraph{Internal-source luminosity reference.}
+The default \code{par\%luminosity\_reference='ionizing\_band'}
+interprets explicitly set \code{par\%luminosity} and
+\code{par\%src\_lum} over
+$[E_{\rm ion,min},E_{\rm ion,max}]$.  Under this default, an unset
+\code{luminosity} with a physical-type file is filled with the
+derived transported-band total, including FUV when enabled.  With
+\code{'full\_spectrum'},
+these inputs instead set $L_{\rm full}=\int L_E\,\mathrm{d}E$ over the
+entire input file or over $0<E<\infty$ for a Planck spectrum.  File
+densities are converted to $L_E$ and interpolated linearly between
+tabulated energies; integration stops at the file endpoints.  For a
+Planck spectrum proportional to $E^3/(e^{E/kT}-1)$, the full shape
+integral is $\pi^4(kT)^4/15$.  A physical-type internal file with
+unset scale keeps its absolute integral.  If the scale is set, a
+single factor $L_{\rm full}/\int L_E\,\mathrm{d}E$ multiplies the
+source spectrum, so the transported luminosity is
+\begin{equation}
+ L_{\rm transport}=L_{\rm full}
+ \frac{\int_{E_{\rm lo}}^{E_{\rm ion,max}} L_E\,\mathrm{d}E}
+      {\int_{\rm full}L_E\,\mathrm{d}E},
+ \qquad E_{\rm lo}=\begin{cases}
+ E_{\rm FUV,min},&\code{add\_fuv},\\
+ E_{\rm ion,min},&\text{otherwise}.
+ \end{cases}
+\end{equation}
+The numerator uses the overlap with the file interval.  Only this
+transported share is launched; the source reference interval does not
+extend the transport band.  The external intensity and slab flux keep
+their band normalization.  The full-spectrum option requires an
+internal point source and is refused for slab and external-only runs.
+The \code{\_rates} header records \code{LUMREF} and \code{TOT\_LUM};
+in full-spectrum mode the latter is the sum of full internal-source
+luminosities, while \code{SourceLuminosity} gives each source separately.
+The \code{SourceLuminosity} array has seven values for each internal source:
+the reference energy limits (upper limit $-1$ for Planck infinity),
+$L_{\rm full}$, transported ionizing luminosity, transported FUV
+luminosity, luminosity outside the transport band, and total
+transported luminosity.
 
 \paragraph{ISRF presets.}  \code{par\%ext\_spectrum} may instead name one
 of three analytic interstellar radiation fields: \code{'draine'}

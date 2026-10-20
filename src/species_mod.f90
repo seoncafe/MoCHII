@@ -1244,8 +1244,14 @@ contains
                            + nHII*cch_cxi(it,ie)
           recombination(it) = ne*cch_rec(it,ie) + nHI*kcr(it)
        end do
-       call adjacent_ion_fractions(ionization(1:ns-1), recombination(1:ns-1), frac(1:ns), status)
-       if (status /= 0) call ion_stage_balance_error(ie, status)
+       if (ne == 0.0_wp .and. nHII == 0.0_wp .and. &
+           all(cch_gam(1:ns-1,ie) == 0.0_wp)) then
+          ! The same electron-free neutral limit as species_fractions.
+          frac = 0.0_wp; frac(1) = 1.0_wp
+       else
+          call adjacent_ion_fractions(ionization(1:ns-1), recombination(1:ns-1), frac(1:ns), status)
+          if (status /= 0) call ion_stage_balance_error(ie, status)
+       end if
        nX = elems(ie)%abund*nH
        fr = frac(1)
        !--- fr is now the stage-1 fraction; the CXI reaction of transition 1
@@ -1856,6 +1862,16 @@ contains
 
     frac = 0.0_wp
     ns = elems(ie)%nstage
+    if (ne == 0.0_wp .and. nHII == 0.0_wp .and. &
+        all(egam(ie)%g(:,il) == 0.0_wp)) then
+       ! In unilluminated gas with no electrons or protons, charge
+       ! neutrality requires neutral metals: negative ions are not included
+       ! in this model. No upward reaction can populate a higher stage.
+       ! This constraint fixes the neutral initial state even when the
+       ! stage equations alone have disconnected zero-rate equilibria.
+       frac(1) = 1.0_wp
+       return
+    end if
     do it = 1, ns-1
        ionization(it) = egam(ie)%g(it,il) &
             + ne*metal_electron_impact_ionization(elems(ie), it, T)

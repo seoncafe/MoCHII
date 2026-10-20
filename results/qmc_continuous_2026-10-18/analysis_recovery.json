@@ -1,0 +1,3 @@
+{
+  "reason": "Radial-profile reducer indexed replicate axis instead of cell axis. Corrected postprocessing only; all 32 validated transport outputs preserved."
+}
