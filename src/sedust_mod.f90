@@ -9,9 +9,11 @@ module sedust_mod
 ! astrodust / DL07 / Zubko models) for the emission SPECTRAL SHAPE; the
 ! absolute luminosity is the locally absorbed power Heat_dust*V
 ! (radiative equilibrium — exact by construction, sidestepping the
-! SEDust normalization convention, as in MoCafe).  Because HII regions
-! are optically thin to the re-emitted IR, no Lucy re-iteration is
-! needed and the grid-integrated SED is accumulated directly.
+! SEDust normalization convention, as in MoCafe).  The grid-integrated
+! SED is accumulated directly from those leaf emissions; the infrared the
+! grains reabsorb enters through Heat_dust when par%dust_emis_transport
+! carries it (dust_emis_transport_mod), and is otherwise neglected, which
+! holds while the nebula is optically thin to its own infrared.
 !
 ! Field mapping: the band covers lambda = 1.24/E_max ... 1.24/E_min um.
 ! With par%ion_add_dust the shared grain model (grain_model_mod) is built
@@ -25,6 +27,23 @@ module sedust_mod
 ! par%sed_data_dir names the one SEDust data directory the model is built
 ! from -- its optics product, the size distribution, the dielectric functions
 ! and the ZDA config all resolve inside it (grain_model_mod).
+!
+! Each leaf's spectrum is solved once and reused.  The spectrum shape is a
+! function of the leaf's ionizing-band tally jt_ion, its volume, the grain
+! model and (par%sed_pah_live) its x_HI/x_HII; it does not depend on
+! Heat_dust, which only scales it afterwards.  After the final ionizing pass
+! and the final gas solve none of these changes, so the infrared transport
+! passes (dust_emis_transport_mod, at most max(par%dust_niter, 1)) and the
+! SED written here ask for the same spectrum of the same leaf up to
+! max(dust_niter, 1) + 1 times (three with the default dust_niter = 2).  Between
+! sedust_spectrum_reuse_open and sedust_spectrum_reuse_close (main.f90) a
+! rank keeps the full, uncut pdf and esum of every leaf it owns and has
+! solved, in double precision, and returns them on the next request; the
+! returned values are those a new solve would give, bit for bit: the SEDust
+! solve carries nothing from one call to the next (the calc_P workspace of
+! p_sub.f90 is zeroed on entry), and runs with and without reuse were
+! checked to write identical outputs (2026-10-21, the tests/d_dusty smoke
+! inputs on a 4096-leaf grid).  Outside that window every request is solved.
 !---------------------------------------------------------------------------
   use define
   use dust_lib,        only : dust_model_t, dust_emission, dust_nlam, dust_lambda
@@ -38,6 +57,8 @@ module sedust_mod
 
   public :: sedust_setup, sedust_compute_write
   public :: sedust_leaf_spectrum, sedust_lambda_grid
+  public :: sedust_spectrum_reuse_open, sedust_spectrum_reuse_close
+  public :: sedust_spectrum_solve_report
 
   integer                    :: nl_sed = 0
   real(kind=wp), allocatable :: lam_sed(:)
@@ -50,6 +71,20 @@ module sedust_mod
   real(kind=wp), allocatable :: lam_b(:), Jlam_b(:), Jsed(:), lamI(:)
   real(kind=wp), allocatable :: lamI_ch(:,:)
   real(kind=wp)              :: dlam1 = 0.0_wp
+
+  !--- Stored leaf spectra (see the module header).  Leaves are divided
+  !--- cyclically by world rank, il = p_rank+1, p_rank+1+nproc, ..., in both
+  !--- the infrared transport passes and the SED write, so a rank stores only
+  !--- its own leaves, leaf il in column (il-1)/nproc + 1.  Columns are
+  !--- allocated for all of them at the first store and filled as leaves are
+  !--- solved; stored_leaf marks the filled ones.
+  logical                    :: spectrum_reuse_on = .false.
+  integer                    :: nleaf_reuse = 0
+  real(kind=wp), allocatable :: stored_pdf(:,:), stored_esum(:)
+  logical,       allocatable :: stored_leaf(:)
+  !--- spectra solved and spectra returned from storage since the last
+  !--- sedust_spectrum_solve_report, on this rank.
+  integer                    :: nsolved_leaf = 0, nreused_leaf = 0
 
 contains
 
@@ -118,9 +153,108 @@ contains
   ! Labs = Heat_dust*V.  esum <= 0 means this leaf emits nothing.
   !
   ! Single source of the SEDust leaf spectrum: the grid-integrated SED output
-  ! and the emitted-photon launch both come through here.
+  ! and the emitted-photon launch both come through here.  While the reuse
+  ! window is open a leaf this rank owns is solved on its first request and
+  ! returned from storage on the later ones; pdf(1:nl_sed) and esum are the
+  ! full spectrum either way (a caller that cuts it cuts its own copy).
   !=========================================================================
   subroutine sedust_leaf_spectrum(il, pdf, esum)
+    use octree_mod, only : amr_grid
+    use utility,    only : fatal_error
+    implicit none
+    integer,       intent(in)  :: il
+    real(kind=wp), intent(out) :: pdf(:), esum
+    integer :: icol
+
+    icol = 0
+    if (spectrum_reuse_on) then
+       !--- the leaf set the stored spectra belong to must still be the grid.
+       if (amr_grid%nleaf /= nleaf_reuse) call fatal_error( &
+          'sedust_leaf_spectrum: the grid changed while leaf spectra are stored')
+       if (mod(il-1, mpar%nproc) == mpar%p_rank) icol = (il-1)/mpar%nproc + 1
+    end if
+    if (icol > 0) then
+       if (.not. allocated(stored_pdf)) then
+          allocate(stored_pdf(nl_sed, (nleaf_reuse - 1)/mpar%nproc + 1))
+          allocate(stored_esum(size(stored_pdf, 2)), stored_leaf(size(stored_pdf, 2)))
+          stored_leaf = .false.
+       end if
+       if (stored_leaf(icol)) then
+          pdf(1:nl_sed) = stored_pdf(:, icol)
+          if (size(pdf) > nl_sed) pdf(nl_sed+1:) = 0.0_wp
+          esum = stored_esum(icol)
+          nreused_leaf = nreused_leaf + 1
+          return
+       end if
+    end if
+    call solve_leaf_spectrum(il, pdf, esum)
+    nsolved_leaf = nsolved_leaf + 1
+    if (icol > 0) then
+       stored_pdf(:, icol) = pdf(1:nl_sed)
+       stored_esum(icol)   = esum
+       stored_leaf(icol)   = .true.
+    end if
+  end subroutine sedust_leaf_spectrum
+
+  !=========================================================================
+  ! Open the window in which leaf spectra are stored and reused.  Call it
+  ! only once every input of the spectrum is final: after the last
+  ! ionizing-band transport (the final or imaging pass of main.f90, or the
+  ! single pass of gas_niter < 1: the last writer of jt_ion; the infrared
+  ! passes score into their own band estimator and never touch it,
+  ! ion_score_mod::score_ion_path) and after the final gas solve (the last
+  ! writer of gas_xHI/gas_xHII).  AMR
+  ! re-refinement (amr_refine_front) runs only inside the gas iteration and
+  ! a restart (previous_state_mod) only before it, so neither can fall in
+  ! the window; a change of the leaf count inside it stops the run.
+  !=========================================================================
+  subroutine sedust_spectrum_reuse_open()
+    use octree_mod, only : amr_grid
+    implicit none
+    call sedust_spectrum_reuse_close()
+    spectrum_reuse_on = .true.
+    nleaf_reuse       = amr_grid%nleaf
+    nsolved_leaf      = 0
+    nreused_leaf      = 0
+  end subroutine sedust_spectrum_reuse_open
+
+  !=========================================================================
+  ! Close the window and release the stored spectra; later requests solve.
+  !=========================================================================
+  subroutine sedust_spectrum_reuse_close()
+    implicit none
+    spectrum_reuse_on = .false.
+    nleaf_reuse       = 0
+    if (allocated(stored_pdf))  deallocate(stored_pdf)
+    if (allocated(stored_esum)) deallocate(stored_esum)
+    if (allocated(stored_leaf)) deallocate(stored_leaf)
+  end subroutine sedust_spectrum_reuse_close
+
+  !=========================================================================
+  ! One line on rank 0: leaf spectra solved and returned from storage, over
+  ! all ranks, since the previous report; the counts then restart.  Called
+  ! by every rank after a leaf loop (it reduces).
+  !=========================================================================
+  subroutine sedust_spectrum_solve_report(label)
+    use mpi
+    implicit none
+    character(len=*), intent(in) :: label
+    integer :: counts(2), total(2), ierr
+
+    counts = [nsolved_leaf, nreused_leaf]
+    total  = 0
+    call MPI_REDUCE(counts, total, 2, MPI_INTEGER, MPI_SUM, 0, &
+                    MPI_COMM_WORLD, ierr)
+    if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') ' SEDU: ', trim(label), &
+       ': leaf spectra solved ', total(1), ', reused ', total(2), ' (all ranks)'
+    nsolved_leaf = 0
+    nreused_leaf = 0
+  end subroutine sedust_spectrum_solve_report
+
+  !=========================================================================
+  ! The SEDust solve of one leaf's spectrum (see sedust_leaf_spectrum).
+  !=========================================================================
+  subroutine solve_leaf_spectrum(il, pdf, esum)
     use octree_mod,    only : leaf_half
     use jtally_mod,    only : jt_ion
     use ion_band_mod,  only : ion_dnu, nnu_band
@@ -184,7 +318,7 @@ contains
     do k = 1, nl_sed-1
        esum = esum + 0.5_wp*(pdf(k) + pdf(k+1))*(lam_sed(k+1) - lam_sed(k))
     end do
-  end subroutine sedust_leaf_spectrum
+  end subroutine solve_leaf_spectrum
 
   !=========================================================================
   ! Grid-integrated stochastic dust SED.  heat_dust [erg/s/cm^3] sets each
@@ -241,6 +375,7 @@ contains
           em_band(ib, il) = Labs*pdf_interp(band_wl(ib))/esum/vol
        end do
     end do
+    call sedust_spectrum_solve_report('SED write')
 
     call MPI_ALLREDUCE(MPI_IN_PLACE, Ltot, nl_sed, MPI_DOUBLE_PRECISION, &
                        MPI_SUM, MPI_COMM_WORLD, ierr)

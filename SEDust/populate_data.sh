@@ -37,12 +37,12 @@
 # a power law and two D03 dielectric functions, both of them stated in code and
 # in dielectric/, so it owns no input file of its own.
 #
-# The sources under sed/src/ are byte-identical to their SEDust v1.00
-# counterparts, so `cmp` against that tree is the whole check that this copy is
-# current.  sed/build_lib.sh is the one exception: it differs from upstream's by
-# a single entry, dustem_io, which SEDust v1.00 added as a library module (see
-# `use dustem_io` in sed_astrodust.f90) without adding it to its own build_lib.sh
-# source list.  The one file of the library that reaches into the
+# The sources under sed/src/ and sed/build_lib.sh are byte-identical to their
+# SEDust v1.00 counterparts, so `cmp` against that tree is the whole check that
+# this copy is current.  (Until 2026-10-21 build_lib.sh differed by one entry,
+# dustem_io, missing from the upstream source list; upstream now carries it.)
+# This script copies data only; the sources are copied by hand and checked
+# with `cmp`.  The one file of the library that reaches into the
 # T-matrix, src/euv_astrodust_tmatrix.f90, is deliberately not copied: it serves
 # the astrodust EUV band, which only a lam_min shorter than the model's own axis
 # asks for, and MoCHII passes no lam_min.  Without it the archive links with no

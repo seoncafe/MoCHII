@@ -23,11 +23,16 @@ module dust_emis_transport_mod
 ! enters the ionizing-band mean intensity, photoionization, photoheating or
 ! Habing-G0 estimators.
 !
-! Emitting leaf and packet count.  Storing a wavelength CDF for every leaf
-! would be leaf x wavelength (2.6e5 x 1.3e3 doubles = several GB), so nothing
-! of the kind is kept: each rank walks ITS OWN leaves (the same strided
-! partition sedust_mod uses), builds one leaf's spectrum, launches that leaf's
-! packets immediately and discards the spectrum.  The packet count per leaf
+! Emitting leaf and packet count.  Storing a wavelength CDF for every leaf on
+! every rank would be leaf x wavelength (2.6e5 x 1.3e3 doubles = several GB),
+! so no such array is kept: each rank walks ITS OWN leaves (the same strided
+! partition sedust_mod uses), builds one leaf's CDF, launches that leaf's
+! packets immediately and discards the CDF.  The SEDust spectrum under it is
+! kept by the rank that owns the leaf (ceil(leaves/ranks) x wavelengths, in
+! sedust_mod) and reused by the later passes and the SED write, since its
+! inputs do not change after the final ionizing-band transport and the final
+! gas solve, where the reuse window opens (main.f90); the equilibrium spectrum
+! is rebuilt on each request.  The packet count per leaf
 ! comes from the GLOBAL cumulative emission luminosity by systematic
 ! (stratified) sampling with one shared random offset: leaf il takes the
 ! packets k whose position (k-1+xi)/N falls in [C(il-1), C(il)]/L_tot.  The
@@ -295,6 +300,14 @@ contains
              call launch_and_transport(il, cdf, pdf, Lpacket)
           end do
        end do
+       if (from_sedust) then
+          block
+            use sedust_mod, only : sedust_spectrum_solve_report
+            character(len=32) :: label
+            write(label,'(a,i0)') 'DUSTRT pass ', iter
+            call sedust_spectrum_solve_report(trim(label))
+          end block
+       end if
 
        call dust_ir_band_reduce()
        call dust_ir_heating(heat_ir)
@@ -396,7 +409,10 @@ contains
 
   !=========================================================================
   ! Emission spectrum of one leaf as a density in lambda on lam_emis,
-  ! pdf(k) proportional to L_lambda, with esum = Int pdf dlambda.
+  ! pdf(k) proportional to L_lambda, with esum = Int pdf dlambda.  The cut
+  ! below lam_emis(kpass) acts on pdf, this call's own copy: the SEDust
+  ! spectrum sedust_mod stores for reuse in the later passes and in the SED
+  ! write stays the full one.
   !=========================================================================
   subroutine leaf_emission_spectrum(il, pdf, esum)
     use sedust_mod, only : sedust_leaf_spectrum

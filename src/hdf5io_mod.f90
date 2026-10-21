@@ -250,8 +250,8 @@ contains
   function pick_bitpix64(max_abs, min_nz) result(bp)
     real(real64), intent(in) :: max_abs, min_nz
     integer :: bp
-    real(real64), parameter :: tiny_f32 = 1.175494e-38_real64
-    real(real64), parameter :: huge_f32 = 3.402823e+38_real64
+    real(real64), parameter :: tiny_f32 = real(tiny(1.0_real32), real64)
+    real(real64), parameter :: huge_f32 = real(huge(1.0_real32), real64)
     if (max_abs <= 0.0_real64) then
        bp = -32
     else if (max_abs < tiny_f32 .or. max_abs > huge_f32) then
@@ -270,8 +270,8 @@ contains
   function pick_bitpix32(max_abs, min_nz) result(bp)
     real(real32), intent(in) :: max_abs, min_nz
     integer :: bp
-    real(real32), parameter :: tiny_f32 = 1.175494e-38_real32
-    real(real32), parameter :: huge_f32 = 3.402823e+38_real32
+    real(real32), parameter :: tiny_f32 = tiny(1.0_real32)
+    real(real32), parameter :: huge_f32 = huge(1.0_real32)
     if (max_abs <= 0.0_real32) then
        bp = -32
     else if (max_abs < tiny_f32 .or. max_abs > huge_f32) then

@@ -108,12 +108,6 @@ esac
 
 # SEDust sources, in dependency order.  `sed_mathlib` is named so upstream to
 # avoid a clash with an RT host's own `mathlib` module.
-#
-# This list carries one entry the SEDust v1.00 build_lib.sh does not: dustem_io,
-# added there as a library module (sed_astrodust.f90 has `use dustem_io`) without
-# being added to build_lib.sh's list, so upstream's own script cannot compile the
-# archive.  Position follows the upstream Makefile's SRC_PIPE order, between
-# zubko_io and q_component.
 SED_SRCS="constants sed_paths sed_mathlib sedust_h5 sedust_product enthalpy_v2 size_dist q_table \
       enthalpy_astrodust mie \
       q_astrodust q_graphite q_graphite_d16 q_graphite_d16_sphere qpah radfield \
@@ -121,7 +115,7 @@ SED_SRCS="constants sed_paths sed_mathlib sedust_h5 sedust_product enthalpy_v2 s
       kext_table zubko_io dustem_io q_component sed_astrodust dust_lib"
 
 mkdir -p lib
-rm -f lib/*.o lib/*.mod lib/libsedust.a
+/bin/rm -f lib/*.o lib/*.mod lib/libsedust.a
 
 if [ -n "$WITH_TMATRIX" ]; then
    # T-matrix first: euv_astrodust_tmatrix at the end needs both these modules

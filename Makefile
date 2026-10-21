@@ -179,7 +179,10 @@ $(SRCDIR)/Makefile.dep: $(SRCS) tools/fortran_module_dependencies.py
 default: clean
 	$(MAKE) MoCHII.x
 
-MoCHII.x: $(OBJECTS)
+# The SEDust archive is linked in, so a rebuilt archive must relink the
+# executable; objects compiled against its modules are rebuilt by `make`
+# (clean + full build) after a change of the SEDust module interfaces.
+MoCHII.x: $(OBJECTS) $(SEDUST_LIB)
 	$(FC) -o $@ $(OBJECTS) $(LDFLAGS)
 
 clean:

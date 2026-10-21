@@ -4732,8 +4732,15 @@ and reemission refer to one population.
   the cumulative leaf luminosity with one shared offset, so the counts
   telescope to exactly $N$ and the launched luminosity equals
   $\sum {\rm Heat\_dust}\,V$ identically.  Each rank walks only its own
-  leaves and reuses one spectrum buffer, so nothing of size
-  leaf${\times}$wavelength is ever stored.
+  leaves.  The SEDust spectrum of a leaf is solved once, kept by the rank
+  that owns the leaf, and reused by the later passes and by the written
+  SED: none of its inputs (the band tally, the leaf volume, the grain
+  model, and with \code{par\%sed\_pah\_live} the PAH weight from
+  $x_{\rm HI}$ and $x_{\rm HII}$) changes after the final ionizing-band
+  transport and the final gas solve, which is where the reuse starts, and
+  ${\rm Heat\_dust}$ only scales it.  Each rank then holds at most
+  $\lceil n_{\rm leaf}/n_{\rm rank}\rceil$ spectra; no array of size
+  leaf${\times}$wavelength is held on every rank.
 \item \textbf{Transport.}  The packets ride the same routine as the
   ionizing ones.  No separate infrared opacity is needed: the
   photoionization cross sections vanish below their thresholds, so an

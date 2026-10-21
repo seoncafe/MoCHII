@@ -352,6 +352,19 @@ program main
   end if
 
   !--- output
+  !--- The SEDust leaf spectra are final from here on: jt_ion was last
+  !--- written by the last transport pass above (final, imaging, or the
+  !--- single pass of gas_niter < 1) and x_HI/x_HII by the last solve, and
+  !--- nothing below transports the ionizing band, solves the gas or changes
+  !--- the grid (re-refinement and restart happen only in or before the gas
+  !--- iteration).  Each leaf's spectrum is then solved once and reused by
+  !--- the infrared transport passes and the SED write (sedust_mod).
+  if (par%ion_add_dust .and. par%dust_sed) then
+     block
+       use sedust_mod, only : sedust_spectrum_reuse_open
+       call sedust_spectrum_reuse_open()
+     end block
+  end if
   if (par%ion_add_dust) then
      block
        use dust_temp_mod, only : dust_temp_setup, dust_temp_compute
@@ -393,10 +406,12 @@ program main
   end if
   if (par%ion_add_dust .and. par%dust_sed) then
      block
-       use sedust_mod,    only : sedust_setup, sedust_compute_write
+       use sedust_mod,    only : sedust_setup, sedust_compute_write, &
+                                 sedust_spectrum_reuse_close
        use gas_rates_mod, only : heat_dust
        call sedust_setup()
        call sedust_compute_write(heat_dust)
+       call sedust_spectrum_reuse_close()
      end block
   end if
   if (par%ion_peel) then
