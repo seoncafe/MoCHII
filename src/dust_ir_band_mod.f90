@@ -18,11 +18,16 @@ module dust_ir_band_mod
 !         -> dust_ir_heating: the grain heating rate the reabsorbed infrared
 !            adds to the primary (EUV/FUV) one, closing the dust self-heating
 !            loop;
-!   the emitted / extinguished / escaping luminosities, split per packet by
-!            the edge transmission exp(-tau_edge) exactly as the ionizing
-!            band's own budget;
-!   the escaping spectrum on the emission wavelength grid, which is the
-!            observable the transported infrared produces.
+!   the direct split of every launched packet by its edge transmission
+!            exp(-tau_edge), emitted = extinguished + transmitted, an
+!            identity checked to rounding exactly as in the ionizing band;
+!   the physical totals: escaped = the direct transmission plus the
+!            scattered flights that leave the grid, lost = the weight of
+!            walks that ended without leaving the nebula (normally zero),
+!            absorbed = emitted - escaped - lost;
+!   the escaping spectrum on the emission wavelength grid, direct and
+!            scattered escapes together, which is the observable the
+!            transported infrared produces.
 !---------------------------------------------------------------------------
   use define
   implicit none
@@ -36,7 +41,8 @@ module dust_ir_band_mod
 
   public :: dust_ir_band_setup, dust_ir_band_reset, dust_ir_band_reduce
   public :: dust_ir_absorb_path, dust_ir_escape_packet
-  public :: dust_ir_heating, dust_ir_energy_budget
+  public :: dust_ir_scattered_escape, dust_ir_lost_weight
+  public :: dust_ir_heating, dust_ir_direct_split, dust_ir_energy_budget
   public :: dust_ir_escaped_spectrum
 
   integer, parameter :: ENERGY_ACC_WP = selected_real_kind(18,300)
@@ -44,12 +50,24 @@ module dust_ir_band_mod
   real(kind=wp), allocatable :: ir_abs_path(:)      ! (nleaf)
   integer :: ir_nleaf = 0
 
+  !--- energy totals [erg/s], rank local in the extended kind, then reduced;
+  !--- the same definitions as the ionizing band's (ion_score_mod): the
+  !--- direct split emitted = extinct + transmitted, the scattered escape,
+  !--- and the weight lost from the edge walk (out of the transmitted part)
+  !--- and from the scattered flights (out of the extinguished part).
   real(kind=ENERGY_ACC_WP) :: ir_emitted_acc  = 0.0_ENERGY_ACC_WP
   real(kind=ENERGY_ACC_WP) :: ir_extinct_acc  = 0.0_ENERGY_ACC_WP
-  real(kind=ENERGY_ACC_WP) :: ir_escaped_acc  = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ir_transmitted_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ir_scattered_escaped_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ir_lost_direct_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: ir_lost_scattered_acc = 0.0_ENERGY_ACC_WP
   real(kind=wp) :: ir_emitted = 0.0_wp
   real(kind=wp) :: ir_extinct = 0.0_wp
-  real(kind=wp) :: ir_escaped = 0.0_wp
+  real(kind=wp) :: ir_transmitted = 0.0_wp
+  real(kind=wp) :: ir_scattered_escaped = 0.0_wp
+  real(kind=wp) :: ir_lost_direct = 0.0_wp
+  real(kind=wp) :: ir_lost_scattered = 0.0_wp
+  integer(kind=int64) :: ir_lost_flights = 0_int64
 
   !--- escaping spectrum: luminosity per node of the emission wavelength grid,
   !--- with geometric-midpoint bin edges (lam_edge) so the histogram divides
@@ -90,8 +108,14 @@ contains
     if (allocated(Lesc_bin))    Lesc_bin    = 0.0_wp
     ir_emitted_acc = 0.0_ENERGY_ACC_WP
     ir_extinct_acc = 0.0_ENERGY_ACC_WP
-    ir_escaped_acc = 0.0_ENERGY_ACC_WP
-    ir_emitted = 0.0_wp;  ir_extinct = 0.0_wp;  ir_escaped = 0.0_wp
+    ir_transmitted_acc = 0.0_ENERGY_ACC_WP
+    ir_scattered_escaped_acc = 0.0_ENERGY_ACC_WP
+    ir_lost_direct_acc = 0.0_ENERGY_ACC_WP
+    ir_lost_scattered_acc = 0.0_ENERGY_ACC_WP
+    ir_emitted = 0.0_wp;  ir_extinct = 0.0_wp;  ir_transmitted = 0.0_wp
+    ir_scattered_escaped = 0.0_wp
+    ir_lost_direct = 0.0_wp;  ir_lost_scattered = 0.0_wp
+    ir_lost_flights = 0_int64
   end subroutine dust_ir_band_reset
 
   !=========================================================================
@@ -107,25 +131,24 @@ contains
   end subroutine dust_ir_absorb_path
 
   !=========================================================================
-  ! Energy ledger of one launched infrared packet, split by its edge
-  ! transmission exp(-tau_edge): emitted = extinguished + escaping, per
-  ! packet by construction.  The escaping part also enters the spectrum
-  ! histogram at the packet's own wavelength.
+  ! Direct split of one launched infrared packet by its edge transmission
+  ! exp(-tau_edge): emitted = extinguished + transmitted, per packet by
+  ! construction.  The transmitted part escapes and enters the spectrum
+  ! histogram at the packet's own wavelength, unless the edge walk was lost
+  ! (edge_lost: MAX_WALK_STEPS or a failed xy-periodic re-entry), when it is
+  ! booked as lost instead; the path estimates that walk already scored stay.
   !
   ! With par%ion_dust_scatter the edge optical depth is the EXTINCTION one,
-  ! so the "extinguished" column then also holds the scattered-out energy and
-  ! the histogram is the unscattered escape.  The grain albedo in the thermal
-  ! infrared is ~1e-3 or less (a 100 um photon has albedo < 1e-4 in the
-  ! Draine 2003 mixture), so the two definitions differ by that much; the
-  ! grain HEATING never uses this ledger, it comes from the path estimator
-  ! above, which is exact with or without scattering.
+  ! so "extinguished" then also holds the scattered-out energy; what of it
+  ! leaves the grid comes back through dust_ir_scattered_escape, so the
+  ! escaped total and the histogram hold both escapes.
   !=========================================================================
-  subroutine dust_ir_escape_packet(photon, tau_edge)
+  subroutine dust_ir_escape_packet(photon, tau_edge, edge_lost)
     implicit none
     type(photon_type), intent(in) :: photon
     real(kind=wp),     intent(in) :: tau_edge
+    logical,           intent(in) :: edge_lost
     real(kind=wp) :: luminosity, transmission, lesc
-    integer :: lo, hi, mid
 
     luminosity   = photon%Lpacket*photon%wgt
     transmission = exp(-max(tau_edge, 0.0_wp))
@@ -133,28 +156,72 @@ contains
     ir_extinct_acc = ir_extinct_acc &
        + real(luminosity*(1.0_wp - transmission), ENERGY_ACC_WP)
     lesc = luminosity*transmission
-    ir_escaped_acc = ir_escaped_acc + real(lesc, ENERGY_ACC_WP)
+    ir_transmitted_acc = ir_transmitted_acc + real(lesc, ENERGY_ACC_WP)
+    if (edge_lost) then
+       ir_lost_direct_acc = ir_lost_direct_acc + real(lesc, ENERGY_ACC_WP)
+       ir_lost_flights = ir_lost_flights + 1_int64
+       return
+    end if
+    call escaping_spectrum_add(photon%lambda, lesc)
+  end subroutine dust_ir_escape_packet
 
+  !=========================================================================
+  ! A dust-scattered infrared flight left the grid through an open face
+  ! (called through ion_score_mod::ion_score_scattered_escape): its
+  ! remaining weight escapes, into the escaped total and the spectrum.
+  !=========================================================================
+  subroutine dust_ir_scattered_escape(photon)
+    implicit none
+    type(photon_type), intent(in) :: photon
+    real(kind=wp) :: lesc
+    lesc = photon%Lpacket*photon%wgt
+    ir_scattered_escaped_acc = ir_scattered_escaped_acc &
+       + real(lesc, ENERGY_ACC_WP)
+    call escaping_spectrum_add(photon%lambda, lesc)
+  end subroutine dust_ir_scattered_escape
+
+  !=========================================================================
+  ! The remaining weight [erg/s] of a scattered infrared flight that left
+  ! the calculation without leaving the nebula (ion_score_lost_weight).
+  !=========================================================================
+  subroutine dust_ir_lost_weight(luminosity)
+    implicit none
+    real(kind=wp), intent(in) :: luminosity
+    ir_lost_scattered_acc = ir_lost_scattered_acc &
+       + real(luminosity, ENERGY_ACC_WP)
+    ir_lost_flights = ir_lost_flights + 1_int64
+  end subroutine dust_ir_lost_weight
+
+  !=========================================================================
+  ! Escaping luminosity lesc [erg/s] at wavelength lam [um] into the
+  ! histogram on the emission grid.  Every packet wavelength lies inside
+  ! [lam(1), lam(n)], within the outer bin edges, so the histogram sums to
+  ! the escaped total.
+  !=========================================================================
+  subroutine escaping_spectrum_add(lam, lesc)
+    implicit none
+    real(kind=wp), intent(in) :: lam, lesc
+    integer :: lo, hi, mid
     if (ir_nlam <= 0 .or. lesc <= 0.0_wp) return
-    if (photon%lambda <= lam_edge(1) .or. photon%lambda >= lam_edge(ir_nlam+1)) return
+    if (lam <= lam_edge(1) .or. lam >= lam_edge(ir_nlam+1)) return
     lo = 1;  hi = ir_nlam
     do while (lo < hi)                       ! first bin with lam < lam_edge(k+1)
        mid = (lo + hi)/2
-       if (photon%lambda < lam_edge(mid+1)) then
+       if (lam < lam_edge(mid+1)) then
           hi = mid
        else
           lo = mid + 1
        end if
     end do
     Lesc_bin(lo) = Lesc_bin(lo) + lesc
-  end subroutine dust_ir_escape_packet
+  end subroutine escaping_spectrum_add
 
   !=========================================================================
   subroutine dust_ir_band_reduce()
     use mpi
     implicit none
     integer :: ierr, nchunk, i0, n
-    real(kind=wp) :: totals(3)
+    real(kind=wp) :: totals(6)
 
     nchunk = 100000000
     i0 = 1
@@ -167,10 +234,16 @@ contains
     if (ir_nlam > 0) &
        call MPI_ALLREDUCE(MPI_IN_PLACE, Lesc_bin, ir_nlam, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    totals = real([ir_emitted_acc, ir_extinct_acc, ir_escaped_acc], wp)
-    call MPI_ALLREDUCE(MPI_IN_PLACE, totals, 3, MPI_DOUBLE_PRECISION, &
+    totals = real([ir_emitted_acc, ir_extinct_acc, ir_transmitted_acc, &
+                   ir_scattered_escaped_acc, ir_lost_direct_acc, &
+                   ir_lost_scattered_acc], wp)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, totals, 6, MPI_DOUBLE_PRECISION, &
                        MPI_SUM, MPI_COMM_WORLD, ierr)
-    ir_emitted = totals(1);  ir_extinct = totals(2);  ir_escaped = totals(3)
+    ir_emitted = totals(1);  ir_extinct = totals(2);  ir_transmitted = totals(3)
+    ir_scattered_escaped = totals(4)
+    ir_lost_direct = totals(5);  ir_lost_scattered = totals(6)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, ir_lost_flights, 1, MPI_INTEGER8, &
+                       MPI_SUM, MPI_COMM_WORLD, ierr)
   end subroutine dust_ir_band_reduce
 
   !=========================================================================
@@ -192,10 +265,31 @@ contains
   end subroutine dust_ir_heating
 
   !=========================================================================
-  subroutine dust_ir_energy_budget(emitted, extinguished, escaped)
+  ! The direct split of the reduced pass [erg/s]: emitted = extinguished +
+  ! transmitted to rounding (dust_emis_transport_mod aborts otherwise).
+  subroutine dust_ir_direct_split(emitted, extinguished, transmitted)
     implicit none
-    real(kind=wp), intent(out) :: emitted, extinguished, escaped
-    emitted = ir_emitted;  extinguished = ir_extinct;  escaped = ir_escaped
+    real(kind=wp), intent(out) :: emitted, extinguished, transmitted
+    emitted = ir_emitted;  extinguished = ir_extinct
+    transmitted = ir_transmitted
+  end subroutine dust_ir_direct_split
+
+  !=========================================================================
+  ! Physical totals of the reduced pass [erg/s]: escaped (direct and
+  ! scattered, the integral of the escaping spectrum), lost (normally zero;
+  ! nlost walks), absorbed = emitted - escaped - lost, formed from the
+  ! extinguished part so that a run without scattering and losses returns
+  ! the direct split itself.
+  !=========================================================================
+  subroutine dust_ir_energy_budget(emitted, absorbed, escaped, lost, nlost)
+    implicit none
+    real(kind=wp), intent(out) :: emitted, absorbed, escaped, lost
+    integer(kind=int64), intent(out) :: nlost
+    emitted  = ir_emitted
+    escaped  = ir_transmitted - ir_lost_direct + ir_scattered_escaped
+    lost     = ir_lost_direct + ir_lost_scattered
+    absorbed = ir_extinct - ir_scattered_escaped - ir_lost_scattered
+    nlost    = ir_lost_flights
   end subroutine dust_ir_energy_budget
 
   !=========================================================================

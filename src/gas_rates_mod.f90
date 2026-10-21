@@ -193,7 +193,7 @@ contains
     logical :: write_iterate
     integer :: cmdstat, exitstat
     real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
-    real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped
+    real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped, energy_lost
     integer :: status, il, inu, ic, nleaf
 
     if (mpar%p_rank /= 0) return
@@ -251,14 +251,21 @@ contains
        'energy/source sampling sequence', status)
     block
       use ion_score_mod, only : ion_score_energy_totals
-      call ion_score_energy_totals(energy_emitted, energy_absorbed, energy_escaped)
+      call ion_score_energy_totals(energy_emitted, energy_absorbed, &
+                                   energy_escaped, energy_lost)
     end block
+    !--- the physical totals of the pass (ion_score_mod): L_ESC is the direct
+    !--- transmission plus the dust-scattered flights that leave the grid,
+    !--- L_LOST the weight of walks that ended without leaving the nebula
+    !--- (normally 0), and L_ABS = L_EMIT - L_ESC - L_LOST.
     call io_put_keyword(file,'L_EMIT',energy_emitted, &
        'transported ionizing packet luminosity',status)
     call io_put_keyword(file,'L_ABS',energy_absorbed, &
-       'absorbed ionizing packet luminosity',status)
+       'absorbed: L_EMIT - L_ESC - L_LOST',status)
     call io_put_keyword(file,'L_ESC',energy_escaped, &
-       'escaped ionizing packet luminosity',status)
+       'escaped: direct + scattered out of grid',status)
+    call io_put_keyword(file,'L_LOST',energy_lost, &
+       'lost in walks (step cap, slab re-entry)',status)
     if (trim(par%launch_sequence) == 'sobol') &
        call io_put_keyword(file,'QMCSEED',par%qmc_seed,'Sobol scramble seed',status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)

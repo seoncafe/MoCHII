@@ -18,7 +18,9 @@ module raytrace_amr_mod
   use octree_mod
   use jtally_mod, only : jt_on, jt_first, jt_sum, &
                          slab_tally_on, slab_bnd_add
-  use ion_score_mod, only : score_ion_path, ion_score_energy_packet
+  use ion_score_mod, only : score_ion_path, ion_score_energy_packet, &
+                            ion_score_scattered_escape, ion_score_lost_weight, &
+                            FLIGHT_STOPPED_IN_GRID, FLIGHT_ESCAPED, FLIGHT_LOST
   use ion_packet_mod, only : build_ion_packet_physics, ion_packet_opacity
   implicit none
   private
@@ -39,7 +41,9 @@ module raytrace_amr_mod
   !--- prevent kz = 0 exactly, so any legitimate walk terminates; MAX_WALK_STEPS
   !--- caps the residual pathology far above any physical traversal length (a
   !--- normal slab crosses O(nz/mu) cells).  A capped packet is terminated
-  !--- safely and counted in slab_walk_kills (rank-local, reported once).
+  !--- safely and counted in slab_walk_kills (rank-local, reported once); in
+  !--- the ionizing and infrared transport its walk ends as FLIGHT_LOST, so
+  !--- its remaining weight enters the energy totals as lost, not escaped.
   integer, parameter :: MAX_WALK_STEPS = 20000000
   integer :: slab_walk_kills = 0
 
@@ -222,19 +226,6 @@ contains
   end subroutine raytrace_to_edge_amr
 
   !=========================================================================
-  ! MoCHII: ionizing-band analytic edge walk.  Walks the packet
-  ! from its birth point to the domain edge, accumulating the exact
-  ! expectation of the pathlength tally in each leaf,
-  !     jt_ion(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
-  ! with kap = ion_packet_opacity(photon, il), the packet's own extinction per
-  ! code length at its exact energy (gas + optional dust).
-  ! With no ionizing-band scattering, this zero-variance direct
-  ! component is the complete tally; the packet needs no interaction
-  ! sampling.  For the plane-parallel slab boundary condition (PP1) the walk
-  ! wraps the x/y faces xy-periodically (slab_wrap_xy on the octree, index
-  ! modulo on the car/DDA path); z faces remain open escapes.
-  !=========================================================================
-  !=========================================================================
   ! MoCHII: full ionizing-band transport of one packet.
   ! (1) analytic zero-variance direct tally to the edge (always);
   ! (2) when par%ion_dust_scatter: forced first interaction along the ray
@@ -242,9 +233,15 @@ contains
   !     (a_eff = kappa_sca,dust / kappa_ext), Henyey-Greenstein direction
   !     with g(E_b) from the kext table, Russian roulette below w_min;
   !     the scattered flights tally jt_ion along their sampled segments
-  !     (the Lucy pathlength estimator, nscatt > 0).
-  ! Gas heating/ionization and dust heating derive from the same J tally,
-  ! so the energy split is bookkept by construction.
+  !     (the Lucy pathlength estimator, nscatt > 0).  A scattered flight
+  !     that leaves through an open face carries its remaining weight out of
+  !     the grid (ion_score_scattered_escape); one that ends as FLIGHT_LOST,
+  !     or that the loop cannot continue, books its weight as lost
+  !     (ion_score_lost_weight); one ended by Russian roulette carries
+  !     nothing, the survivors' 1/PSURV keeping the expectation.
+  ! Gas heating/ionization and dust heating derive from the same path
+  ! estimators; the energy totals (ion_score_mod) take the direct split of
+  ! the edge walk and the escapes and losses of the scattered flights.
   !=========================================================================
   subroutine transport_ion_packet(photon)
     use define
@@ -254,11 +251,11 @@ contains
     real(wp), parameter :: WMIN = 1.0e-4_wp, PSURV = 0.1_wp
     real(wp) :: tau_edge, wgt1, tau, a_eff, gg, cost, sint, phi
     real(wp) :: kx, ky, kz, ux, uy, uz, vx, vy, vz, norm
-    integer  :: il
+    integer  :: il, flight_end
 
     call build_ion_packet_physics(photon)
-    call raytrace_ion_to_edge_amr(photon, tau_edge)
-    call ion_score_energy_packet(photon, tau_edge)
+    call raytrace_ion_to_edge_amr(photon, tau_edge, flight_end)
+    call ion_score_energy_packet(photon, tau_edge, flight_end)
     if (.not. (par%ion_add_dust .and. par%ion_dust_scatter)) return
     if (tau_edge <= 1.0e-12_wp) return
 
@@ -266,11 +263,17 @@ contains
     wgt1 = 1.0_wp - exp(-tau_edge)
     photon%wgt = photon%wgt*wgt1
     tau = -log(1.0_wp - rand_number()*wgt1)
-    call raytrace_ion_to_tau_amr(photon, tau)
+    call raytrace_ion_to_tau_amr(photon, tau, flight_end)
+    call score_flight_end(photon, flight_end)
 
     do while (photon%inside)
        il = photon%icell_amr
-       if (il <= 0) exit
+       if (il <= 0) then
+          !--- inside with no leaf: not reached by the walks above, which
+          !--- set a leaf whenever the flight stops in the grid
+          call ion_score_lost_weight(photon)
+          exit
+       end if
        !--- effective albedo at (bin, leaf): dust scattering / extinction
        a_eff = amr_grid%rhokap(il)*photon%ionphys%dust_sca &
                / max(ion_packet_opacity(photon, il), tinest)
@@ -297,7 +300,10 @@ contains
        phi  = twopi*rand_number()
        kx = photon%kx;  ky = photon%ky;  kz = photon%kz
        norm = sqrt(kx*kx + ky*ky + kz*kz)
-       if (norm <= 0.0_wp) exit
+       if (norm <= 0.0_wp) then
+          call ion_score_lost_weight(photon)
+          exit
+       end if
        kx = kx/norm;  ky = ky/norm;  kz = kz/norm
        !--- orthonormal frame (u, v, k)
        if (abs(kz) < 0.99_wp) then
@@ -318,14 +324,29 @@ contains
        photon%nscatt = photon%nscatt + 1
        !--- next flight (unforced); segments tally into jt_ion
        tau = -log(max(rand_number(), tinest))
-       call raytrace_ion_to_tau_amr(photon, tau)
+       call raytrace_ion_to_tau_amr(photon, tau, flight_end)
+       call score_flight_end(photon, flight_end)
     end do
   end subroutine transport_ion_packet
 
   !=========================================================================
-  ! Ionizing-band walk to optical depth tau_in (extinction ion_packet_opacity);
-  ! scattered flights (nscatt > 0) tally jt_ion along their segments.
+  ! Where a scattered flight's weight goes when the flight ends: out of the
+  ! grid (FLIGHT_ESCAPED), out of the calculation (FLIGHT_LOST), or on to the
+  ! next interaction (FLIGHT_STOPPED_IN_GRID, nothing to book).
   !=========================================================================
+  subroutine score_flight_end(photon, flight_end)
+    use define
+    implicit none
+    type(photon_type), intent(in) :: photon
+    integer,           intent(in) :: flight_end
+    select case (flight_end)
+    case (FLIGHT_ESCAPED)
+       call ion_score_scattered_escape(photon)
+    case (FLIGHT_LOST)
+       call ion_score_lost_weight(photon)
+    end select
+  end subroutine score_flight_end
+
   !=========================================================================
   ! Robust xy-periodic wrap for the octree walk.  A packet that leaves an
   ! x/y face (amr_next_leaf returned 0) is re-entered at the OPPOSITE face by
@@ -345,19 +366,31 @@ contains
     end select
   end subroutine slab_wrap_xy
 
-  subroutine raytrace_ion_to_tau_amr(photon, tau_in)
+  !=========================================================================
+  ! Ionizing-band walk to optical depth tau_in (extinction ion_packet_opacity);
+  ! scattered flights (nscatt > 0) tally jt_ion along their segments.
+  ! flight_end (ion_score_mod): FLIGHT_STOPPED_IN_GRID when the walk ends at
+  ! tau_in inside the grid; FLIGHT_ESCAPED only when the flight leaves the
+  ! grid through an open face (any face of a closed box, a z face of the
+  ! xy-periodic slab); FLIGHT_LOST when it starts outside the grid, finds no
+  ! leaf after an xy-periodic wrap, or hits MAX_WALK_STEPS (slab_walk_kills):
+  ! those are not photons leaving the nebula.
+  !=========================================================================
+  subroutine raytrace_ion_to_tau_amr(photon, tau_in, flight_end)
     use define
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
+    integer,           intent(out)   :: flight_end
 
     integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz
     real(wp) :: tau, t_exit, d_step, kap, wl
     logical  :: do_tally
 
+    flight_end = FLIGHT_STOPPED_IN_GRID
     if (amr_grid%car .and. trim(par%car_walk) /= 'amr') then
-       call raytrace_ion_to_tau_car(photon, tau_in)
+       call raytrace_ion_to_tau_car(photon, tau_in, flight_end)
        return
     end if
 
@@ -372,6 +405,7 @@ contains
       il = amr_find_leaf(x, y, z)
       if (il <= 0) then
         photon%inside = .false.
+        flight_end = FLIGHT_LOST
         return
       end if
     end if
@@ -381,7 +415,8 @@ contains
     do while (photon%inside)
       nstep = nstep + 1
       if (nstep > MAX_WALK_STEPS) then
-        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1;  exit
+        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1
+        flight_end = FLIGHT_LOST;  exit
       end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
@@ -406,6 +441,13 @@ contains
       end if
       if (il_new <= 0) then
         photon%inside = .false.
+        !--- an x/y face of the xy-periodic slab re-enters; one that found no
+        !--- leaf after the wrap is a lost packet, not an escape.
+        if (par%xy_periodic .and. iface <= 4) then
+          flight_end = FLIGHT_LOST
+        else
+          flight_end = FLIGHT_ESCAPED
+        end if
         !--- a scattered flight escaping a z-face is the diffuse/reflected
         !--- boundary contribution (the direct beam is tallied in the edge walk).
         if (slab_tally_on .and. iface >= 5) call slab_bnd_add(kz, wl)
@@ -419,18 +461,38 @@ contains
     photon%icell_amr = il
   end subroutine raytrace_ion_to_tau_amr
 
-  subroutine raytrace_ion_to_edge_amr(photon0, tau_edge_out)
+  !=========================================================================
+  ! MoCHII: ionizing-band analytic edge walk.  Walks the packet
+  ! from its birth point to the domain edge, accumulating the exact
+  ! expectation of the pathlength tally in each leaf,
+  !     jt_ion(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
+  ! with kap = ion_packet_opacity(photon, il), the packet's own extinction per
+  ! code length at its exact energy (gas + optional dust).
+  ! With no ionizing-band scattering, this zero-variance direct
+  ! component is the complete tally; the packet needs no interaction
+  ! sampling.  For the plane-parallel slab boundary condition (PP1) the walk
+  ! wraps the x/y faces xy-periodically (slab_wrap_xy on the octree, index
+  ! modulo on the car/DDA path); z faces remain open escapes.
+  ! flight_end (ion_score_mod) is FLIGHT_ESCAPED when the walk reaches an
+  ! open face, starts outside the grid, or stops at the opaque cutoff
+  ! tau_huge (where e^-tau is below double precision), and FLIGHT_LOST when
+  ! it hits MAX_WALK_STEPS or finds no leaf after an xy-periodic wrap: then
+  ! tau_edge_out is the optical depth up to the stop, not to the edge.
+  !=========================================================================
+  subroutine raytrace_ion_to_edge_amr(photon0, tau_edge_out, flight_end)
     use define
     implicit none
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
+    integer,  intent(out)           :: flight_end
 
     integer  :: il, il_new, icell, iface, inu, nstep
     real(wp) :: x, y, z, kx, ky, kz, t_exit, kap
     real(wp) :: tau, expo, expo_out, wl
 
+    flight_end = FLIGHT_ESCAPED
     if (amr_grid%car .and. trim(par%car_walk) /= 'amr') then
-       call raytrace_ion_to_edge_car(photon0, tau_edge_out)
+       call raytrace_ion_to_edge_car(photon0, tau_edge_out, flight_end)
        return
     end if
 
@@ -452,7 +514,9 @@ contains
     do
       nstep = nstep + 1
       if (nstep > MAX_WALK_STEPS) then
-        slab_walk_kills = slab_walk_kills + 1;  exit
+        slab_walk_kills = slab_walk_kills + 1
+        flight_end = FLIGHT_LOST
+        exit
       end if
       icell = leaf_cell(il)
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
@@ -476,6 +540,9 @@ contains
         if (iface <= 4) il_new = amr_find_leaf(x, y, z)
       end if
       if (il_new <= 0) then
+        !--- an x/y face of the xy-periodic slab that found no leaf after
+        !--- the wrap is a lost packet, not an escape.
+        if (par%xy_periodic .and. iface <= 4) flight_end = FLIGHT_LOST
         !--- a z-face escape carries the surviving luminosity to the boundary.
         if (slab_tally_on .and. iface >= 5) call slab_bnd_add(kz, expo*wl)
         exit
@@ -531,11 +598,12 @@ contains
     end block
   end subroutine dda_init
 
-  subroutine raytrace_ion_to_edge_car(photon0, tau_edge_out)
+  subroutine raytrace_ion_to_edge_car(photon0, tau_edge_out, flight_end)
     use define
     implicit none
     type(photon_type), intent(in) :: photon0
     real(wp), intent(out), optional :: tau_edge_out
+    integer,  intent(out)           :: flight_end
     integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz, nstep
     real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau
     real(wp) :: wl, expo, expo_out
@@ -548,12 +616,15 @@ contains
     wl  = photon0%wgt*photon0%Lpacket
     expo = 1.0_wp;  tau = 0.0_wp;  t_cur = 0.0_wp
     if (present(tau_edge_out)) tau_edge_out = 0.0_wp
+    flight_end = FLIGHT_ESCAPED
 
     nstep = 0
     do
       nstep = nstep + 1
       if (nstep > MAX_WALK_STEPS) then
-        slab_walk_kills = slab_walk_kills + 1;  exit
+        slab_walk_kills = slab_walk_kills + 1
+        flight_end = FLIGHT_LOST
+        exit
       end if
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
@@ -591,15 +662,17 @@ contains
     if (present(tau_edge_out)) tau_edge_out = tau
   end subroutine raytrace_ion_to_edge_car
 
-  subroutine raytrace_ion_to_tau_car(photon, tau_in)
+  subroutine raytrace_ion_to_tau_car(photon, tau_in, flight_end)
     use define
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp),          intent(in)    :: tau_in
+    integer,           intent(out)   :: flight_end
     integer  :: ix, iy, iz, stp(3), a, il, inu, nx, ny, nz, nstep
     real(wp) :: tmax(3), tdel(3), t_cur, seg, kap, tau, wl, d_step
     logical  :: ok, do_tally
 
+    flight_end = FLIGHT_STOPPED_IN_GRID
     call dda_init(photon%x, photon%y, photon%z, photon%kx, photon%ky, &
                   photon%kz, ix, iy, iz, stp, tmax, tdel, ok)
     nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
@@ -612,7 +685,8 @@ contains
     do
       nstep = nstep + 1
       if (nstep > MAX_WALK_STEPS) then
-        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1;  exit
+        photon%inside = .false.;  slab_walk_kills = slab_walk_kills + 1
+        flight_end = FLIGHT_LOST;  exit
       end if
       il  = 1 + ix + nx*(iy + ny*iz)
       a   = minloc(tmax, dim=1)
@@ -639,7 +713,7 @@ contains
                   if (par%xy_periodic) then
                     ix = modulo(ix, nx)
                   else
-                    photon%inside = .false.;  exit
+                    photon%inside = .false.;  flight_end = FLIGHT_ESCAPED;  exit
                   end if
                 end if
       case (2); iy = iy + stp(2)
@@ -647,11 +721,11 @@ contains
                   if (par%xy_periodic) then
                     iy = modulo(iy, ny)
                   else
-                    photon%inside = .false.;  exit
+                    photon%inside = .false.;  flight_end = FLIGHT_ESCAPED;  exit
                   end if
                 end if
       case (3); iz = iz + stp(3); if (iz < 0 .or. iz >= nz) then
-                   photon%inside = .false.
+                   photon%inside = .false.;  flight_end = FLIGHT_ESCAPED
                    !--- scattered flight escaping a z-face: diffuse/reflected
                    !--- boundary contribution (direct beam is in the edge walk).
                    if (slab_tally_on) call slab_bnd_add(photon%kz, wl)

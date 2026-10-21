@@ -245,11 +245,26 @@ public
      !--- Relative integration tolerance for the continuous Planck source CDF
      !--- (tabulated linear spectra are integrated/inverted analytically).
      real(kind=wp)     :: source_cdf_tol  = 1.0e-8_wp
-     !--- Source luminosity [erg/s], ionizing-band by default, of a point
-     !--- source, or the informational total with several. Sentinel -999 =
-     !--- unset: setup maps it to 1.0 for a 'shape_ev'/Planck source (exact legacy)
-     !--- but leaves it unset to DERIVE the luminosity from the integral of a
-     !--- physical-type (par%spectrum_type /= 'shape_ev') source spectrum.
+     !--- Source luminosity [erg/s] of a lone internal point source, on the
+     !--- integral named by par%luminosity_reference (the ionizing segment by
+     !--- default).  Sentinel -999 = unset: setup maps it to 1.0 unless every
+     !--- internal source has a physical-type (par%spectrum_type /= 'shape_ev')
+     !--- file spectrum, whose luminosity is then DERIVED from the file.  With
+     !--- two or more components the scales are src_lum (below): an unset
+     !--- src_lum set is the equal split of this value for 'shape_ev'/Planck
+     !--- spectra, and one point plus an external field takes src_lum(1) =
+     !--- this value when src_lum(1) is unset.  The slab and the external
+     !--- field have their own scales and do not read it.  The value written
+     !--- as TOT_LUM is, after ion_setup:
+     !---   'full_spectrum': sum over the internal sources of the full-
+     !---       spectrum luminosity (each scale, or the file integral when
+     !---       derived), sum(source_luminosity(3,:));
+     !---   otherwise, every src_lum set (nsource >= 2): sum(src_lum);
+     !---   otherwise, left unset with every internal source a physical-type
+     !---       file (derived): the band total carried by the packets of ALL
+     !---       components (ion_Ltot: the FUV part with add_fuv and an
+     !---       external field included);
+     !---   otherwise: the value given, or 1.0 when unset.
      real(kind=wp) :: luminosity   = -999.0_wp
      !--- Reference integral for internal-source luminosity and src_lum.
      !--- full_spectrum: entire input table, or 0 < E < infinity for Planck.
@@ -520,15 +535,24 @@ public
      !--- full stochastic solve and gives the true Teq, but drops PAH /
      !--- stochastic-heating features.  More accurate than the B&W mixture mean.
      logical            :: dust_single_teq  = .false.
-     !--- multiple internal point sources feeding the ionizing band.  Each
+     !--- multiple internal point sources feeding the transported band.  Each
      !--- source i has its own luminosity src_lum(i) [erg/s] and position
      !--- src_x/y/z(i); packets split among the sources (and the external field)
-     !--- in proportion to band luminosity, the total par%luminosity is set to
-     !--- sum(src_lum).  Its ionizing-band spectrum is resolved as:
+     !--- in proportion to band luminosity.  When every src_lum is set,
+     !--- par%luminosity becomes the informational total sum(src_lum) (the
+     !--- 'full_spectrum' and derived cases are given at par%luminosity).
+     !--- src_lum(i) is the integral named by
+     !--- par%luminosity_reference: over the ionizing segment
+     !--- [eion_min, eion_max) ('ionizing_band', default) or over the whole
+     !--- spectrum ('full_spectrum').  Its spectrum is resolved as:
      !---   par%src_spectrum_file column i (if set) > src_tstar(i) Planck >
      !---   global par%ion_spectrum file > global par%tstar Planck.
-     !--- src_tstar is consulted on the multi-component path; with a single
-     !--- source use par%tstar (the legacy scalars rule on the fast path).
+     !--- src_tstar, src_lum and src_x/y/z are consulted on the multi-component
+     !--- path (nsource >= 2, or one source plus an external field); a lone
+     !--- source uses par%tstar, par%luminosity and par%xs/ys/zs_point (the
+     !--- legacy scalars rule on the fast path), and setup notes src_*(1) set
+     !--- there and entries beyond nsource as ignored.  setup refuses a run in
+     !--- which an active component has no spectrum.
      !--- src_geometry / src_spectrum(i) / the disk-geometry parameters below are
      !--- the dust/SED source-population scaffold and are NOT consulted by the
      !--- ionizing band.
@@ -536,12 +560,18 @@ public
      character(len=16)  :: src_geometry(MAX_SRC)   = 'point'
      real(kind=wp)      :: src_tstar(MAX_SRC)      = -999.0_wp
      character(len=PATH_LEN) :: src_spectrum(MAX_SRC)   = ''
-     !--- one multi-column ionizing-band spectrum file for ALL internal point
-     !--- sources: first column E [eV] (ascending), then one L_E column per
-     !--- source (arbitrary units; source i's ionizing segment is independently
-     !--- normalized to src_lum(i)).  When nonblank it takes priority over
-     !--- src_tstar / the global spectrum.  More data columns than nsource: the
-     !--- first nsource are used (rank-0 note).  Fewer: the run aborts.
+     !--- one multi-column spectrum file for ALL internal point sources: the
+     !--- first column is the abscissa of par%spectrum_type, then one column
+     !--- for each source (a shape for 'shape_ev', a luminosity density for a
+     !--- physical type).  Column i is normalized to src_lum(i) (column 1 of a
+     !--- lone source to par%luminosity) on the integral
+     !--- named by par%luminosity_reference (its ionizing segment by default,
+     !--- the whole table with 'full_spectrum'); a physical-type column with
+     !--- src_lum(i) unset keeps its own integral.  When nonblank it takes
+     !--- priority over src_tstar / the global spectrum.  More data columns
+     !--- than nsource: the first nsource are used (rank-0 note).  Fewer: the
+     !--- run aborts.  The slab has no point source and refuses it; an
+     !--- external-only run ignores it (rank-0 note).
      character(len=PATH_LEN) :: src_spectrum_file       = ''
      real(kind=wp)      :: src_lum(MAX_SRC)        = -999.0_wp
      real(kind=wp)      :: src_x(MAX_SRC)          = 0.0_wp

@@ -482,14 +482,21 @@ contains
 
   !--- Stage fractions read by the packet opacity.  A vacuum leaf (n_H = 0)
   !--- carries the same convention as the written state (all in the first
-  !--- stage): there species_fractions has no recombination (n_e = 0) against
-  !--- a nonzero photoionization rate, its ratio chain overflows to Inf and
-  !--- the normalized fractions come out NaN.  Until 2026-09-25 this cache
-  !--- took them anyway; the opacity n_H(...+ metals) was then 0 x NaN in
-  !--- every vacuum leaf, which the ray walk passed as unattenuated -- right
-  !--- for vacuum, so the tallies were unaffected -- but which turned the
-  !--- accumulated optical depth NaN and made the energy ledger book every
-  !--- packet through a hollow as escaped (97% at HII20).
+  !--- stage) and is not passed to species_fractions: with n_e = n_HI =
+  !--- n_HII = 0 every recombination rate vanishes, so the stationary balance
+  !--- of adjacent_ion_fractions describes no gas.  With every photoionization
+  !--- rate positive it closes only the highest carried stage and puts the
+  !--- whole element there; with some rates zero (an edge above the band)
+  !--- several stages close, it returns status 2 and species_fractions stops
+  !--- the run; with all rates zero the electron-free neutral limit applies.
+  !--- None of these is a property of the leaf, and the opacity n_H(...) is 0
+  !--- there in any case.  Until 2026-09-25 the cache took the fractions of
+  !--- the earlier ratio chain, which overflowed to Inf and normalized to NaN;
+  !--- the opacity was then 0 x NaN in every vacuum leaf, which the ray walk
+  !--- passed as unattenuated -- right for vacuum, so the tallies were
+  !--- unaffected -- but which turned the accumulated optical depth NaN and
+  !--- made the energy ledger book every packet through a hollow as escaped
+  !--- (97% at HII20).
   subroutine species_stage_cache_refresh()
     use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_ne, gas_Te
     implicit none

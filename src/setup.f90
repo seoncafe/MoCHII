@@ -272,6 +272,7 @@ contains
     integer :: is, nset
     logical :: ext_on, is_phys, ext_is_preset, ext_is_physfile, src_is_absolute
     logical :: src_absolute(MAX_SRC)
+    character(len=64) :: beyond_reason
 
     !--- par%spectrum_type sets the column units of every spectrum file slot.
     select case (trim(par%luminosity_reference))
@@ -358,14 +359,27 @@ contains
        endif
        !--- slab illumination is its own single source; composing it with
        !--- internal point sources or an external field is not yet supported.
-       !--- nsource defaults to 1, so only nsource > 1 (or an external field)
-       !--- signals an explicit extra-source request; nsource <= 1 is silently
-       !--- overridden by the slab below.
-       if (par%nsource > 1 .or. par%ext_intensity > 0.0_wp) then
+       !--- nsource defaults to 1, so only nsource > 1 (or an external field,
+       !--- which ext_intensity > 0, an ISRF preset or a physical-type
+       !--- ext_spectrum switches on) signals an explicit extra-source request;
+       !--- nsource <= 1 is overridden by the slab below.
+       if (par%nsource > 1 .or. par%ext_intensity > 0.0_wp .or. &
+           ext_is_preset .or. ext_is_physfile) then
           call refuse_input( &
              'source_geometry=''slab'' cannot be combined with internal '// &
              'point sources (par%nsource > 1) or an external field '// &
-             '(par%ext_intensity > 0); slab+other-source composition is not yet supported.')
+             '(par%ext_intensity > 0, an ISRF preset or a physical-type '// &
+             'par%ext_spectrum); slab+other-source composition is not yet supported.')
+       endif
+       !--- the slab spectrum is the global one (par%tstar Planck or
+       !--- par%ion_spectrum).  par%src_spectrum_file carries one column for
+       !--- each internal point source, and the slab has none (nsource = 0
+       !--- below), so no column of it belongs to the slab.
+       if (len_trim(par%src_spectrum_file) > 0) then
+          call refuse_input( &
+             'source_geometry=''slab'' takes the global spectrum: set par%tstar > 0 '// &
+             'or par%ion_spectrum.  par%src_spectrum_file has one column for each '// &
+             'internal point source, and the slab has no point source.')
        endif
        par%nsource = 0
     else if (trim(par%source_geometry) /= 'point') then
@@ -431,6 +445,89 @@ contains
        endif
     endif
 
+    !--- Inputs the selected source model does not read are named once on
+    !--- rank 0 rather than ignored silently.  This runs before the lone-source
+    !--- normalization below copies the scalars into src_*(1).
+    if (mpar%p_rank == 0) then
+       !--- a lone internal point source (no external field) takes the scalars
+       !--- par%luminosity, par%xs/ys/zs_point and the global spectrum
+       !--- (src_spectrum_file column 1 > ion_spectrum > tstar); the src_*(1)
+       !--- entries are read only with two or more components.  A lone source
+       !--- given only src_tstar(1) is refused below, so that case is not noted.
+       if (par%nsource == 1 .and. .not. ext_on) then
+          if (par%src_tstar(1) > 0.0_wp .and. (len_trim(par%src_spectrum_file) > 0 .or. &
+              len_trim(par%ion_spectrum) > 0 .or. par%tstar > 0.0_wp)) write(*,'(a)') &
+             'NOTE: par%src_tstar(1) is ignored: a lone point source takes its spectrum '// &
+             'from par%src_spectrum_file, par%ion_spectrum or par%tstar; src_tstar is '// &
+             'read only with two or more components (par%nsource > 1 or an external field).'
+          if (par%src_lum(1) > 0.0_wp) write(*,'(a)') &
+             'NOTE: par%src_lum(1) is ignored: a lone point source is normalized to '// &
+             'par%luminosity; src_lum is read only with two or more components '// &
+             '(par%nsource > 1 or an external field).'
+          if (par%src_x(1) /= par%xs_point .or. par%src_y(1) /= par%ys_point .or. &
+              par%src_z(1) /= par%zs_point) then
+             if (par%src_x(1) /= 0.0_wp .or. par%src_y(1) /= 0.0_wp .or. &
+                 par%src_z(1) /= 0.0_wp) write(*,'(a)') &
+                'NOTE: par%src_x/y/z(1) are ignored: a lone point source sits at '// &
+                'par%xs_point, par%ys_point, par%zs_point; src_x/y/z are read only '// &
+                'with two or more components (par%nsource > 1 or an external field).'
+          endif
+       endif
+       !--- array entries beyond the active sources 1..nsource (nsource = 0
+       !--- for the slab and for an external-only run).
+       if (par%nsource == 0) then
+          beyond_reason = 'this run has no internal point source.'
+       else
+          beyond_reason = 'only sources 1..par%nsource are read.'
+       endif
+       do is = par%nsource+1, MAX_SRC
+          if (par%src_tstar(is) > 0.0_wp) then
+             write(*,'(a)') 'NOTE: par%src_tstar('//integer_text(is)//') is ignored, as is '// &
+                'any other entry beyond par%nsource = '//integer_text(par%nsource)//': '// &
+                trim(beyond_reason)
+             exit
+          endif
+       end do
+       do is = par%nsource+1, MAX_SRC
+          if (par%src_lum(is) > 0.0_wp) then
+             write(*,'(a)') 'NOTE: par%src_lum('//integer_text(is)//') is ignored, as is '// &
+                'any other entry beyond par%nsource = '//integer_text(par%nsource)//': '// &
+                trim(beyond_reason)
+             exit
+          endif
+       end do
+       do is = par%nsource+1, MAX_SRC
+          if (par%src_x(is) /= 0.0_wp .or. par%src_y(is) /= 0.0_wp .or. &
+              par%src_z(is) /= 0.0_wp) then
+             write(*,'(a)') 'NOTE: par%src_x/y/z('//integer_text(is)//') are ignored, as is '// &
+                'any other entry beyond par%nsource = '//integer_text(par%nsource)//': '// &
+                trim(beyond_reason)
+             exit
+          endif
+       end do
+       !--- src_spectrum_file has one column for each internal point source; an
+       !--- external-only run has none (the slab with this file is refused above).
+       if (par%nsource == 0 .and. len_trim(par%src_spectrum_file) > 0) write(*,'(a)') &
+          'NOTE: par%src_spectrum_file is ignored: an external-only run (par%nsource = 0) '// &
+          'has no internal point source to read a column for.'
+       !--- the external field is off unless ext_intensity > 0, an ISRF preset
+       !--- is named, or ext_spectrum is a physical-type file; its spectrum
+       !--- inputs are then not read.
+       if (.not. ext_on) then
+          if (par%ext_tstar > 0.0_wp) write(*,'(a)') &
+             'NOTE: par%ext_tstar is ignored: the external field is off (it is on with '// &
+             'par%ext_intensity > 0, an ISRF preset, or a physical-type par%ext_spectrum).'
+          if (len_trim(par%ext_spectrum) > 0) write(*,'(a)') &
+             'NOTE: par%ext_spectrum (a ''shape_ev'' file) is ignored: the external field is '// &
+             'off (it is on with par%ext_intensity > 0, an ISRF preset, or a physical-type '// &
+             'par%ext_spectrum).'
+       endif
+       !--- ext_scale multiplies an ISRF preset only.
+       if (.not. ext_is_preset .and. par%ext_scale /= 1.0_wp) write(*,'(a)') &
+          'NOTE: par%ext_scale is ignored: it multiplies an ISRF preset '// &
+          '(par%ext_spectrum = draine/habing/mathis) only.'
+    endif
+
     !--- internal point sources.
     if (trim(par%luminosity_reference) == 'full_spectrum') then
        if (par%nsource == 0 .or. trim(par%source_geometry) == 'slab') &
@@ -487,11 +584,53 @@ contains
     if (par%nsource == 0 .and. trim(par%source_geometry) /= 'slab') &
        par%source_geometry = 'external_'//trim(par%ext_geometry)
 
-    !--- src_spectrum_file feeds the internal point sources only; it has no
-    !--- effect on an external-only run (nsource=0).
-    if (len_trim(par%src_spectrum_file) > 0 .and. par%nsource == 0 &
-        .and. mpar%p_rank == 0) write(*,'(a)') &
-       'NOTE: par%src_spectrum_file is ignored on an external-only run (nsource=0).'
+    !--- Every active component needs a spectrum, resolved by the rule
+    !--- ion_band_mod applies (point_shape, comp_shape and build_ext_bins in the
+    !--- default mode, full_spectrum_point_source in full_spectrum mode):
+    !---   point source is : src_spectrum_file column is > src_tstar(is), read
+    !---                     only with two or more components (nsource > 1 or
+    !---                     an external field) > ion_spectrum > tstar
+    !---   external field  : ISRF preset or ext_spectrum file > ext_tstar >
+    !---                     ion_spectrum > tstar
+    !---   slab            : ion_spectrum > tstar (point_shape with a lone
+    !---                     source's rule; src_spectrum_file is refused for
+    !---                     the slab above, since it has no column for it)
+    !--- A lone point source takes the global pair even when src_tstar(1) is
+    !--- set (noted above).  A component without a spectrum is named here instead of failing
+    !--- later inside the band setup or the energy sampler.
+    block
+      logical :: global_spectrum, several_components
+      global_spectrum = len_trim(par%ion_spectrum) > 0 .or. par%tstar > 0.0_wp
+      if (trim(par%source_geometry) == 'slab') then
+         if (.not. global_spectrum) &
+            call refuse_input('the slab illumination has no spectrum: set par%tstar > 0 '// &
+                              'or par%ion_spectrum.')
+      else
+         several_components = par%nsource > 1 .or. ext_on
+         if (.not. (global_spectrum .or. len_trim(par%src_spectrum_file) > 0)) then
+            do is = 1, par%nsource
+               if (several_components) then
+                  if (par%src_tstar(is) <= 0.0_wp) call refuse_input( &
+                     'source '//integer_text(is)//' has no spectrum: set par%src_tstar('// &
+                     integer_text(is)//'), par%src_spectrum_file, par%ion_spectrum or par%tstar.')
+               else if (par%src_tstar(is) > 0.0_wp) then
+                  call refuse_input( &
+                     'source 1 has no spectrum: par%src_tstar(1) is read only with two or '// &
+                     'more components; with one source use par%tstar (or par%ion_spectrum '// &
+                     'or par%src_spectrum_file).')
+               else
+                  call refuse_input( &
+                     'source 1 has no spectrum: set par%tstar > 0, par%ion_spectrum or '// &
+                     'par%src_spectrum_file.')
+               endif
+            end do
+         endif
+         if (ext_on .and. .not. global_spectrum .and. len_trim(par%ext_spectrum) == 0 &
+             .and. par%ext_tstar <= 0.0_wp) call refuse_input( &
+            'the external field has no spectrum: set par%ext_spectrum, par%ext_tstar > 0, '// &
+            'par%ion_spectrum or par%tstar > 0.')
+      endif
+    end block
 
     !--- launch sequence: 'random' (Mersenne Twister) or 'sobol' (Owen-
     !--- scrambled quasi-random launch).  'sobol' now covers every source
@@ -525,17 +664,6 @@ contains
   if (par%source_cdf_tol <= 0.0_wp .or. par%source_cdf_tol >= 1.0_wp) then
      call refuse_input( &
         'par%source_cdf_tol must be in (0, 1).')
-  endif
-  !--- Energy sampling covers every source configuration (point sources,
-  !--- external field, slab), so the one requirement is that SOME spectrum is
-  !--- defined for the components to sample.
-  if (len_trim(par%ion_spectrum) == 0 .and. &
-      len_trim(par%src_spectrum_file) == 0 .and. &
-      len_trim(par%ext_spectrum) == 0 .and. &
-      par%tstar <= 0.0_wp .and. par%ext_tstar <= 0.0_wp .and. &
-      all(par%src_tstar <= 0.0_wp)) then
-     call refuse_input( &
-        'the ionizing band needs a Planck or tabulated source spectrum.')
   endif
   if (par%ion_relax <= 0.0_wp .or. par%ion_relax > 1.0_wp) then
      call refuse_input( &
@@ -599,13 +727,6 @@ contains
   if (par%eion_max <= par%eion_min .or. par%nnu_ion < 1) then
      call refuse_input( &
         'need par%eion_max > par%eion_min and par%nnu_ion >= 1.')
-  endif
-  if (len_trim(par%ion_spectrum) == 0 .and. par%tstar <= 0.0_wp .and. &
-      len_trim(par%src_spectrum_file) == 0 .and. &
-      len_trim(par%ext_spectrum) == 0 .and. par%ext_tstar <= 0.0_wp) then
-     call refuse_input( &
-        'the ionizing band needs a spectrum: par%tstar > 0, par%ion_spectrum, '// &
-        'par%src_spectrum_file, par%ext_spectrum, or par%ext_tstar > 0.')
   endif
 
   !--- dust in the ionizing band needs extinction optics: either the EUV kext
@@ -697,6 +818,7 @@ contains
      end if
      write(*,'(a,l14)') 'Charge-exchange heating   : ', par%charge_exchange_heating
      write(*,'(2a)')    'Photon launch sequence    : ', trim(par%launch_sequence)
+     write(*,'(2a)')    'Luminosity reference      : ', trim(par%luminosity_reference)
      write(*,'(a,es14.6)') 'Source CDF tolerance      : ', par%source_cdf_tol
      if (trim(par%launch_sequence) == 'sobol') &
         write(*,'(a,i14)') 'QMC scramble seed         : ', par%qmc_seed

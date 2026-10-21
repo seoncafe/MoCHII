@@ -263,7 +263,7 @@ parameter & default & meaning \\
 \code{ion\_spectrum} & '' & global spectrum file (column 1 plus one value column); its column units are set by \code{spectrum\_type} (\S\ref{sec:specfmt}) \\
 \code{spectrum\_type} & 'shape\_ev' & column units of every spectrum-file slot (\code{ion\_spectrum}, \code{src\_spectrum\_file}, \code{ext\_spectrum}): \code{'shape\_ev'} (arbitrary, normalized to the scale --- legacy) or a physical type \code{'per\_ev'}/\code{'per\_hz'}/\code{'per\_ang'}/\code{'per\_um'} (absolute); see \S\ref{sec:specfmt} \\
 \code{luminosity\_reference} & 'ionizing\_band' & reference integral for internal point-source \code{luminosity} and \code{src\_lum}: \code{'ionizing\_band'} uses [\code{eion\_min}, \code{eion\_max}] (existing behavior); \code{'full\_spectrum'} uses the whole file or the complete Planck spectrum.  The transport energy limits stay independent.  The latter requires at least one internal point source and is refused for slab and external-only illumination \\
-\code{luminosity} & unset & explicitly set internal point-source luminosity [erg/s] on the interval selected by \code{luminosity\_reference}; for a \code{'shape\_ev'}/Planck source unset maps to 1.0 (legacy).  For a physical-type file, an unset scale keeps the file luminosity; the reported \code{TOT\_LUM} is the transported-band total in the default mode and the full internal-source total in \code{'full\_spectrum'} mode.  With multiple internal sources, explicitly set \code{src\_lum} values determine their luminosities \\
+\code{luminosity} & unset & explicitly set internal point-source luminosity [erg/s] on the interval selected by \code{luminosity\_reference}; for a \code{'shape\_ev'}/Planck source unset maps to 1.0 (legacy).  For a physical-type file, an unset scale keeps the file luminosity.  The reported \code{TOT\_LUM} is, in \code{'full\_spectrum'} mode, the sum of the internal sources' full-spectrum luminosities; otherwise $\sum$\code{src\_lum} when every \code{src\_lum} is set, the band total carried by the packets of all components (FUV part and external field included) when \code{luminosity} is left unset and every internal source takes its luminosity from a physical-type file, and the given value (1.0 when unset) in every other case.  With multiple internal sources, explicitly set \code{src\_lum} values determine their luminosities; the slab and the external field do not read \code{luminosity} \\
 \code{xs\_point}, \code{ys\_point}, \code{zs\_point} & 0 & single-source position (code units, recentered box; \code{nsource}=1) \\
 \end{longtable}
 }
@@ -282,11 +282,11 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{nsource} & 1 & number of internal point sources (0--16); \code{1} keeps the legacy scalars above, $\ge 2$ uses the \code{src\_*} arrays \\
+\code{nsource} & 1 & number of internal point sources (0--16); \code{1} keeps the legacy scalars above, $\ge 2$ uses the \code{src\_*} arrays (so does one point plus an external field).  Entries of \code{src\_tstar}, \code{src\_lum} and \code{src\_x}/\code{src\_y}/\code{src\_z} that the run does not read --- entry 1 of a lone point without an external field, and every index beyond \code{nsource} --- are named in a setup NOTE \\
 \code{src\_x}, \code{src\_y}, \code{src\_z} & 0 & positions of sources $1..$\code{nsource} (code units) \\
 \code{src\_lum} & unset & luminosities [erg/s] of internal sources on the interval selected by \code{luminosity\_reference} when at least two components are present (including one point plus an external field); a lone point instead uses \code{luminosity}.  Set all or none: all unset splits \code{luminosity} equally for shape or Planck spectra, or derives each physical-file column independently.  A mixture of absolute-file and Planck sources requires every \code{src\_lum} to be set; a partial set aborts \\
-\code{src\_tstar} & $-999$ & Planck temperature [K] for each source when at least two components are present, including one internal point plus an external field; a lone internal point uses \code{tstar} \\
-\code{src\_spectrum\_file} & '' & one multi-column spectrum file for all sources: column 1 then one value column for each source (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}); each source is independently normalized so its selected reference integral carries \code{src\_lum}$(i)$ (a physical type with \code{src\_lum} unset is derived from that column); overrides \code{src\_tstar}; too few columns abort, extra columns are ignored with a note \\
+\code{src\_tstar} & $-999$ & Planck temperature [K] for each source when at least two components are present, including one internal point plus an external field; a lone internal point uses \code{tstar} (a \code{src\_tstar(1)} given beside its spectrum is ignored with a note).  Setup refuses a run in which an active component has no spectrum (no file column, \code{src\_tstar}, \code{ion\_spectrum} or \code{tstar} for a point source; no \code{ext\_spectrum}, \code{ext\_tstar}, \code{ion\_spectrum} or \code{tstar} for the external field) and names it; a lone point given only \code{src\_tstar(1)} is refused with the advice to use \code{tstar} \\
+\code{src\_spectrum\_file} & '' & one multi-column spectrum file for all sources: column 1 then one value column for each source (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}); each source is independently normalized so its selected reference integral carries \code{src\_lum}$(i)$ (a physical type with \code{src\_lum} unset is derived from that column); overrides \code{src\_tstar}; too few columns abort, extra columns are ignored with a note.  An external-only run ignores it with a note; the slab, which has no point source, refuses it \\
 \end{longtable}
 }
 
@@ -305,12 +305,12 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{ext\_intensity} & $-1$ & band-integrated mean intensity $J$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] of the external field; the field is ON when $>0$ and adds to the internal sources; entering ionizing power $L = \pi J A_{\rm surf}$.  With a physical-type \code{ext\_spectrum} file or an ISRF preset it is optional: unset $=$ the absolute $J$ is DERIVED from the file/preset, set $=$ the field is RESCALED to this band $J$ (a note is printed) \\
+\code{ext\_intensity} & $-1$ & band-integrated mean intensity $J$ [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$] of the external field; the field is ON when $>0$ and adds to the internal sources; entering ionizing power $L = \pi J A_{\rm surf}$.  With a physical-type \code{ext\_spectrum} file or an ISRF preset it is optional: unset $=$ the absolute $J$ is DERIVED from the file/preset, set $=$ the field is RESCALED to this band $J$, and a note gives the file's or preset's own band $J$ and this target \\
 \code{ext\_geometry} & 'rec' & illuminating surface: \code{'rec'} (box faces, face-area-weighted --- correct for a non-cubic box) or \code{'sph'} (bounding sphere of radius \code{rmax} about the box center; needs \code{rmax}$>0$) \\
-\code{ext\_tstar} & $-999$ & external-field Planck temperature [K] \\
-\code{ext\_spectrum} & '' & external-field spectrum: a 2-column file (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}; column 2 is an intensity density $J$) OR a reserved ISRF preset name \code{'draine'}/\code{'habing'}/\code{'mathis'} (FUV-only, absolute, needs \code{add\_fuv}); priority \code{ext\_spectrum} $>$ \code{ext\_tstar} $>$ the global spectrum \\
-\code{ext\_scale} & 1.0 & dimensionless multiplier on an ISRF preset (ignored when \code{ext\_intensity}$>0$, which rescales the preset to a target band $J$) \\
-\code{source\_geometry} & 'point' & legacy external-only shorthand: \code{'external'}, \code{'external\_rec'}, or \code{'external\_sph'} forces \code{nsource}=0 with the external field on (needs \code{ext\_intensity}$>0$); \code{'point'} keeps the composable form; \code{'slab'} is the plane-parallel slab illumination below \\
+\code{ext\_tstar} & $-999$ & external-field Planck temperature [K]; read only while the field is ON (otherwise ignored with a note) \\
+\code{ext\_spectrum} & '' & external-field spectrum: a 2-column file (units set by \code{spectrum\_type}, \S\ref{sec:specfmt}; column 2 is an intensity density $J$) OR a reserved ISRF preset name \code{'draine'}/\code{'habing'}/\code{'mathis'} (FUV-only, absolute, needs \code{add\_fuv}); priority \code{ext\_spectrum} $>$ \code{ext\_tstar} $>$ the global spectrum.  A \code{'shape\_ev'} file does not switch the field ON; without \code{ext\_intensity}$>0$ it is ignored with a note \\
+\code{ext\_scale} & 1.0 & dimensionless multiplier on an ISRF preset (ignored when \code{ext\_intensity}$>0$, which rescales the preset to a target band $J$, and without a preset; a value $\ne 1$ that is ignored is noted) \\
+\code{source\_geometry} & 'point' & legacy external-only shorthand: \code{'external'}, \code{'external\_rec'}, or \code{'external\_sph'} forces \code{nsource}=0 with the external field on (needs \code{ext\_intensity}$>0$, an ISRF preset, or a physical-type \code{ext\_spectrum}); \code{'point'} keeps the composable form; \code{'slab'} is the plane-parallel slab illumination below \\
 \end{longtable}
 }
 
@@ -351,6 +351,10 @@ parameter & default & meaning \\
 \end{longtable}
 }
 \noindent The spectrum is the global one (\code{tstar} / \code{ion\_spectrum}).
+Setup refuses \code{src\_spectrum\_file} (it has one column for each
+internal point source, and the slab has none) and an external field
+(\code{ext\_intensity}$>0$, an ISRF preset, or a physical-type
+\code{ext\_spectrum}).
 Both z-faces always escape (no reflecting boundary).  \code{launch\_sequence\,=\,'sobol'}
 is supported (both modes).  With dust scattering (\code{ion\_dust\_scatter}) the
 scattered/reflected component is included in the boundary $I(\mu)$.
@@ -409,8 +413,11 @@ itself.  If the matching scale (\code{luminosity} / \code{src\_lum}$(i)$
 / \code{ext\_intensity}) is unset it is DERIVED from the file --- each
 internal source from its column's selected reference integral, the external field
 from its band-integrated $J$ --- and reported in the log.  If a scale is
-set, the spectrum is RESCALED to it (a note is printed) and the file then
-acts only as a shape.  With \code{add\_fuv} an absolute spectrum fills the
+set, the spectrum is RESCALED to it and the file then acts only as a
+shape, and a note gives the file's own value and the scale: for an
+internal source, in either \code{luminosity\_reference} mode, its
+reference integral; for the external field (a physical-type file or an
+ISRF preset rescaled by \code{ext\_intensity}), its band-integrated $J$.  With \code{add\_fuv} an absolute spectrum fills the
 FUV bins from the same table, with no separate normalization.
 For a multi-column physical source file, set each \code{src\_lum} to
 rescale its column; a common \code{luminosity} alone does not override
@@ -647,7 +654,7 @@ parameter & default & meaning \\
 \code{grain\_pe} & with dust & grain charge distribution, photoelectric heating (with photodetachment) and the cooling by captured electrons and ions (Weingartner \& Draine 2001) for the grains of \code{dust\_model}, scaled to the leaf's dust opacity, in the leaf's band field; PAH grains weighted by $x_{\rm HI} + $ \code{f\_ion\_pah}$\,x_{\rm HII}$; astrodust takes the WD01 silicate photoemission parameters (no published astrodust yield).  Left out of the input, on when \code{ion\_add\_dust} and \code{add\_fuv} are; set without either, refused.  It keeps the band tally behind \code{J\_nu}.  Replaces the Bakes \& Tielens (1994) fits and their \code{pe\_scale}, which is refused.  Gate \code{tests/grain\_photoelectric/} \\
 \code{gas\_grain\_energy\_exchange} & with dust & energy neutral H and He exchange with the grains they strike, $\propto \alpha\,2k(T - T_d)$ (Hollenbach \& McKee 1979 accommodation; $T_d$ the equilibrium mixture temperature); left out of the input, on with \code{ion\_add\_dust}; set without it, refused \\
 \code{use\_sec\_ion} & F & secondary ionization by fast photoelectrons (\code{photoelectron\_degradation\_mod}): a photoelectron with $E_0 = h\nu - E_{\rm th} > 30$~eV from H\,\textsc{i}, He\,\textsc{i} or He\,\textsc{ii} deposits $f_{\rm heat}(x,E_0)$ as heat (Dalgarno, Yan \& Liu 1999 eq.~14 with a $(1-x)$ closure) and spends $f_{\rm ion}(x,E_0)$ ionizing H\,\textsc{i}/He\,\textsc{i} (Shull \& van Steenberg 1985 amplitudes with DYL99's $E_0$ dependence), divided over the neutrals present; $x = n_e/(n_{\rm H}+n_{\rm He})$ of the current cell-solve iterate; below 30~eV all heat, metal photoelectrons all heat; $\sim$0 in fully ionized gas, matters at fronts and in hard fields\\
-\code{absorption\_ledger} & F & diagnostic: every transport pass prints (\code{LEDGER:} lines) for each source --- the stellar band, diffuse channels 1--8, the stellar band below \code{eion\_min} --- the photons emitted, absorbed by H$^0$, He$^0$, He$^+$, the metals and dust, and escaping [s$^{-1}$], from the path estimators the rates use, with the closure (absorbed\,+\,escaped)/emitted\,$-$\,1, and writes the H$^0$, He$^0$, He$^+$ absorptions of every leaf by source to the rates file (\code{Ledger\_H0}, \code{Ledger\_He0}, \code{Ledger\_He+}, leaf $\times$ source); costs one metal-opacity sum for each scored segment and 30 doubles a leaf on every rank \\
+\code{absorption\_ledger} & F & diagnostic: every transport pass, the imaging pass of \code{ion\_peel} included, prints (\code{LEDGER:} lines) for each source --- the stellar band, diffuse channels 1--8, the stellar band below \code{eion\_min} --- the photons emitted, absorbed by H$^0$, He$^0$, He$^+$, the metals and dust, and escaping [s$^{-1}$], with the closure (absorbed\,+\,escaped)/emitted\,$-$\,1.  The absorptions come from the path estimators the rates use; the escapes count the direct transmission of each packet and the scattered walks that leave through the grid boundary, the same escapes as \code{L\_ESC}.  Without scattering the closure holds packet by packet; with dust scattering it holds in expectation, and a finite sample shows Monte Carlo noise in it, since the scattered absorption is a path estimator.  A lost walk (\code{L\_LOST}) escapes nowhere and shows in the closure as $-$lost/emitted.  The same pass's log also compares the absorbed power of these path estimators [erg\,s$^{-1}$] with \code{L\_ABS} (\code{ION: continuous energy absorbed by the path estimators}).  The H$^0$, He$^0$, He$^+$ absorptions of every leaf by source in the final pass (the imaging pass with \code{ion\_peel}) go to the rates file (\code{Ledger\_H0}, \code{Ledger\_He0}, \code{Ledger\_He+}, leaf $\times$ source); costs one metal-opacity sum for each scored segment and 30 doubles a leaf on every rank \\
 \code{metal\_recombination\_photons} & 'none' & photons a metal recombination releases besides its ground continuum (channel 6), as diffuse channel 8 (needs \code{recombination\_continuum = 'transported'} and metals): 'none' (default); 'valence\_fractions' the approximation of Cloudy c25.00 --- each RR\,+\,DR recombination X$^{i+1}$\,+\,e\,$\to$\,X$^{i}$, X$^{i}$ with $\ge 3$ electrons, emits one photon at 0.75 and one at 0.25 of the ionization potential of X$^{i}$; those in [\code{eion\_min}, \code{eion\_max}) are transported, the rest is printed.  No atomic data, ground captures counted twice with channel 6: kept to measure how much of a difference from Cloudy this term carries, not a physical model (md/METAL\_RECOMBINATION\_\allowbreak DIFFUSE\_PLAN\_\allowbreak 2026-10-14.md) \\
 \code{metal\_freefree} & T & include the trace metals in the free--free cooling with the net ion charge $Z_{\rm ion}=$ (stage $-1$), not the nuclear $Z$; a trace ($\sim$10$^{-4}$ of the H/He free--free) correctness term, on by default \\
 \end{longtable}
@@ -823,7 +830,21 @@ included, belong together; false for rates-only runs).  The rest of the header r
 \code{EFUV\_MIN}, \code{FUVSAMP} and \code{NPHOTFUV}; the sampling
 (\code{IONEMODE}, \code{CDFRTOL}, \code{NUBINUSE}, \code{ENRGSAMP}, and
 \code{QMCSEED} under \code{'sobol'}); and the ionizing-packet energy budget
-\code{L\_EMIT}, \code{L\_ABS}, \code{L\_ESC} [erg\,s$^{-1}$].
+[erg\,s$^{-1}$] of the pass the file belongs to: \code{L\_EMIT} the
+transported luminosity, \code{L\_ESC} what leaves the grid (the direct
+transmission $e^{-\tau_{\rm edge}}$ of every packet plus, with
+\code{ion\_dust\_scatter}, the dust-scattered packets that leave through
+an open face), \code{L\_LOST} the weight of walks that ended without
+leaving the nebula (the \code{MAX\_WALK\_STEPS} cap, or no leaf on
+re-entering the \code{xy\_periodic} slab; normally 0, reported in the log
+when not), and \code{L\_ABS} $=$ \code{L\_EMIT} $-$ \code{L\_ESC} $-$
+\code{L\_LOST}, the power absorbed by the gas and the grains.  Without
+dust scattering \code{L\_ABS} and \code{L\_ESC} are the exact split of
+each packet at its edge transmission; with it they hold in expectation.
+The log line \code{ION: continuous energy direct split} prints that split
+(extinguished, transmitted), which adds up to the emitted energy packet by
+packet; the run aborts if the reduced sums miss it by more than
+$5{\times}10^{-13}$.
 \code{LUMREF} identifies the point-source normalization reference;
 \code{TOT\_LUM} is the full internal-source total in
 \code{'full\_spectrum'} mode.  In the default mode, an unset absolute
@@ -969,7 +990,7 @@ file & content \\
 \code{\_nebcont.txt} & (with \code{solve\_te}) nebular continuum integrated over the grid: $\nu$ [Ryd], $\lambda$ [$\mu$m], total $L_\nu$ (free--bound $+$ free--free $+$ two-photon) [erg\,s$^{-1}$\,Hz$^{-1}$], the free--free estimate below the H edge, and the two-photon part \\
 \code{\_dustir.txt} & (with \code{ion\_add\_dust}) equilibrium-mixture dust IR spectrum $L_\nu$ on 1--1000 $\mu$m with the energy-closure header \\
 \code{\_dustsed.txt} & (with \code{ion\_add\_dust} and \code{dust\_sed}) SEDust stochastic dust SED with PAH bands \\
-\code{\_dustesc.txt} & (with \code{ion\_add\_dust} and \code{dust\_emis\_transport}) the infrared spectrum that actually escapes the grid, from the transported packets.  Its ratio to the emitted spectrum in \code{\_dustir.txt}/\code{\_dustsed.txt} is the infrared escape fraction \\
+\code{\_dustesc.txt} & (with \code{ion\_add\_dust} and \code{dust\_emis\_transport}) the infrared spectrum that actually escapes the grid, from the transported packets: the direct transmission and, with \code{ion\_dust\_scatter}, the scattered packets that leave the grid, binned at their own wavelengths.  The header gives \code{L\_emit}, \code{L\_esc} (the integral of the spectrum), \code{L\_lost} (walks ended without leaving the nebula, normally 0) and \code{L\_abs} $=$ \code{L\_emit} $-$ \code{L\_esc} $-$ \code{L\_lost}.  Its ratio to the emitted spectrum in \code{\_dustir.txt}/\code{\_dustsed.txt} is the infrared escape fraction \\
 \code{\_dustemis.h5} & (with \code{dust\_sed} and \code{dust\_emis\_bands}) SEDust band emissivities of each leaf (\code{emis\_dust}, \code{wl\_dust}, \code{LeafXYZ} with \code{DIST\_CM}, \code{LeafSize}), same block layout as \code{\_emis} --- readable by \code{EmisData} for dust-band maps \\
 \code{\_heimeta.h5} & (with \code{hei\_metastable}) the He\,\textsc{i} 2$^3$S diagnostic: \code{n\_2s3} [cm$^{-3}$] (with the \code{DIST\_CM} and \code{A31} keywords), \code{Phi\_3} [s$^{-1}$], \code{alpha\_3} [cm$^3$\,s$^{-1}$], \code{Gamma\_3} [erg\,s$^{-1}$ per atom], \code{n\_H}, \code{n\_e}, \code{T\_e}, \code{LeafXYZ}, \code{LeafSize} --- read by the Python \code{HeiMetaData} class for column and 10833~\AA\ optical-depth maps, and convertible to a LaRT scattering-medium input by \code{heimeta\_to\_lart.py} \\
 \code{\_image.h5} & (with \code{ion\_peel}) peel-off images for each observer: \code{direct\_ion}/\code{scatt\_ion} (+\code{\_fuv}) [erg\,s$^{-1}$\,cm$^{-2}$\,sr$^{-1}$], suffix \code{\_obs<k>} when several observers; with \code{peel\_bins}, \code{direct\_cube}/\code{scatt\_cube} $(n_x,n_y,n_\nu)$ and the \code{E\_bin}/\code{dE\_bin}/\code{wl\_bin} bin-grid arrays; with \code{save\_direc0}, the unattenuated \code{direc0\_ion}/\code{\_fuv} (or \code{direc0\_cube}) \\

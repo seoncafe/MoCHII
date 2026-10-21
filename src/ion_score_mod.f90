@@ -24,9 +24,25 @@ module ion_score_mod
   public :: ion_score_apply_dust_heat
   public :: ion_score_apply_sec
   public :: ion_score_energy_packet, ion_score_energy_totals
+  public :: ion_score_scattered_escape, ion_score_lost_weight
   public :: ion_score_report_energy_closure, ion_score_report_metal_rates
   public :: ion_score_report_ledger, ion_score_ledger_leaf
   public :: LEDGER_NSRC
+
+  !--- how a walk of raytrace_amr_mod ended, for the energy totals below.
+  !--- FLIGHT_STOPPED_IN_GRID: a sampled flight reached its optical depth
+  !--- inside the grid (the packet interacts there).  FLIGHT_ESCAPED: the
+  !--- flight left through an open face (any face of a closed box, a z face
+  !--- of the xy-periodic slab); for the edge walk, the direct transmission
+  !--- e^-tau_edge leaves the grid (it is below double precision once the
+  !--- walk stops at its opaque cutoff).  FLIGHT_LOST: the weight left the
+  !--- calculation without leaving the nebula -- MAX_WALK_STEPS reached, or
+  !--- no leaf found on re-entering the xy-periodic slab, or a start outside
+  !--- the grid.  Russian roulette is not a loss: the survivors' 1/PSURV
+  !--- keeps the expectation.
+  integer, parameter, public :: FLIGHT_STOPPED_IN_GRID = 0
+  integer, parameter, public :: FLIGHT_ESCAPED = 1
+  integer, parameter, public :: FLIGHT_LOST = 2
 
   integer, parameter :: I_GHI = 1, I_GHEI = 2, I_GHEII = 3
   integer, parameter :: I_HHI = 4, I_HHEI = 5, I_HHEII = 6
@@ -56,16 +72,54 @@ module ion_score_mod
   integer :: score_nleaf = 0
   integer(kind=int64) :: direct_segments = 0_int64
   integer(kind=int64) :: scattered_segments = 0_int64
+  !--- energy totals of the transported packets [erg/s], rank local in the
+  !--- extended kind (_acc), then reduced.
+  !--- (a) The direct split: each packet's luminosity L at its edge
+  !---     transmission T = e^-tau_edge, extinguished L(1-T) and transmitted
+  !---     L T.  emitted = extinguished + transmitted holds packet by packet,
+  !---     so it checks the accumulation and reduction alone
+  !---     (ion_score_report_energy_closure aborts past 5e-13).
+  !--- (b) What the direct split cannot see: the weight of the scattered
+  !---     flights that leave the grid (scattered_escaped), the weight lost
+  !---     by a scattered flight (lost_scattered, which comes out of the
+  !---     extinguished part) and the transmission of an edge walk that was
+  !---     lost (lost_direct, which comes out of the transmitted part).
+  !--- The physical totals are then
+  !---     escaped  = transmitted - lost_direct + scattered_escaped
+  !---     lost     = lost_direct + lost_scattered
+  !---     absorbed = extinguished - scattered_escaped - lost_scattered
+  !---              = emitted - escaped - lost,
+  !--- formed from the extinguished part rather than from the emitted one so
+  !--- that a run without scattering and without losses returns the direct
+  !--- split itself, and an optically thin run keeps the precision of its
+  !--- small absorbed power.  With scattering the absorbed total is exact
+  !--- in expectation: the weight a_eff takes off at every interaction is
+  !--- the absorbed share, and Russian roulette conserves the expectation.
   real(kind=wp) :: energy_emitted = 0.0_wp
-  real(kind=wp) :: energy_absorbed = 0.0_wp
-  real(kind=wp) :: energy_escaped = 0.0_wp
+  real(kind=wp) :: energy_extinguished = 0.0_wp
+  real(kind=wp) :: energy_transmitted = 0.0_wp
+  real(kind=wp) :: energy_scattered_escaped = 0.0_wp
+  real(kind=wp) :: energy_lost_direct = 0.0_wp
+  real(kind=wp) :: energy_lost_scattered = 0.0_wp
+  !--- absorbed power by the path estimators the rates use [erg/s],
+  !--- Sum path_lum kappa_abs over the scored segments (absorption_ledger
+  !--- only); in expectation equal to the absorbed total above.
+  real(kind=wp) :: energy_path_absorbed = 0.0_wp
+  integer(kind=int64) :: lost_flights = 0_int64
   real(kind=ENERGY_ACC_WP) :: energy_emitted_acc = 0.0_ENERGY_ACC_WP
-  real(kind=ENERGY_ACC_WP) :: energy_absorbed_acc = 0.0_ENERGY_ACC_WP
-  real(kind=ENERGY_ACC_WP) :: energy_escaped_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_extinguished_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_transmitted_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_scattered_escaped_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_lost_direct_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_lost_scattered_acc = 0.0_ENERGY_ACC_WP
+  real(kind=ENERGY_ACC_WP) :: energy_path_absorbed_acc = 0.0_ENERGY_ACC_WP
   !--- absorption ledger (par%absorption_ledger) [photons/s]: by source
-  !--- (photon%source_channel 0..LEDGER_NSRC-1) the photons emitted and
-  !--- escaping at the edge, and the photons absorbed by each absorber,
-  !--- path_lum kappa_a / (E erg) on the scored segments
+  !--- (photon%source_channel 0..LEDGER_NSRC-1) the photons emitted, those
+  !--- escaping (the direct transmission e^-tau_edge of every packet whose
+  !--- edge walk was not lost, plus the weight of every scattered flight
+  !--- that leaves the grid), and the
+  !--- photons absorbed by each absorber, path_lum kappa_a / (E erg) on the
+  !--- scored segments
   integer, parameter :: LEDGER_NSRC = 10, LEDGER_NABS = 5
   character(len=6), parameter :: LEDGER_ABS_NAME(LEDGER_NABS) = &
      ['H0    ', 'He0   ', 'He+   ', 'metals', 'dust  ']
@@ -139,11 +193,20 @@ contains
     direct_segments = 0_int64
     scattered_segments = 0_int64
     energy_emitted = 0.0_wp
-    energy_absorbed = 0.0_wp
-    energy_escaped = 0.0_wp
+    energy_extinguished = 0.0_wp
+    energy_transmitted = 0.0_wp
+    energy_scattered_escaped = 0.0_wp
+    energy_lost_direct = 0.0_wp
+    energy_lost_scattered = 0.0_wp
+    energy_path_absorbed = 0.0_wp
+    lost_flights = 0_int64
     energy_emitted_acc = 0.0_ENERGY_ACC_WP
-    energy_absorbed_acc = 0.0_ENERGY_ACC_WP
-    energy_escaped_acc = 0.0_ENERGY_ACC_WP
+    energy_extinguished_acc = 0.0_ENERGY_ACC_WP
+    energy_transmitted_acc = 0.0_ENERGY_ACC_WP
+    energy_scattered_escaped_acc = 0.0_ENERGY_ACC_WP
+    energy_lost_direct_acc = 0.0_ENERGY_ACC_WP
+    energy_lost_scattered_acc = 0.0_ENERGY_ACC_WP
+    energy_path_absorbed_acc = 0.0_ENERGY_ACC_WP
     ledger_emitted = 0.0_ENERGY_ACC_WP
     ledger_escaped = 0.0_ENERGY_ACC_WP
     ledger_absorbed = 0.0_ENERGY_ACC_WP
@@ -269,6 +332,10 @@ contains
     kap = path_lum*kap/(photon%ionphys%energy_eV*ev2erg)
     ledger_absorbed(:,is) = ledger_absorbed(:,is) + real(kap, ENERGY_ACC_WP)
     ledger_leaf(:,is,il) = ledger_leaf(:,is,il) + kap(1:LEDGER_NLEAF_ABS)
+    !--- the same absorptions in energy [erg/s], for the comparison with the
+    !--- physical absorbed total (ion_score_report_energy_closure)
+    energy_path_absorbed_acc = energy_path_absorbed_acc &
+       + real(sum(kap), ENERGY_ACC_WP)*real(photon%ionphys%energy_eV*ev2erg, ENERGY_ACC_WP)
   end subroutine ledger_score
 
   !--- photons/s absorbed by absorber ia (1 H0, 2 He0, 3 He+) in every leaf
@@ -279,25 +346,42 @@ contains
     out = ledger_leaf(ia, is, 1:size(out))
   end subroutine ion_score_ledger_leaf
 
-  subroutine ion_score_energy_packet(photon, tau_edge)
+  !--- one launched packet at its edge walk: the direct split of its
+  !--- luminosity by the edge transmission e^-tau_edge.  edge_flight is how
+  !--- the edge walk ended; FLIGHT_LOST (MAX_WALK_STEPS, or no leaf on
+  !--- re-entering the xy-periodic slab) books the transmitted part as lost
+  !--- instead of escaped.  That cannot undo the path estimates the walk has
+  !--- already scored up to where it stopped, nor the forced interaction
+  !--- drawn on its truncated tau_edge; it only keeps the truncated
+  !--- transmission out of the escape and makes the event visible (lost
+  !--- weight and count in the energy report, slab_walk_kills).
+  subroutine ion_score_energy_packet(photon, tau_edge, edge_flight)
     use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
                                  dust_ir_escape_packet
     type(photon_type), intent(in) :: photon
     real(kind=wp), intent(in) :: tau_edge
+    integer, intent(in) :: edge_flight
     real(kind=wp) :: luminosity, transmission
+    logical :: edge_lost
+    edge_lost = edge_flight == FLIGHT_LOST
     !--- an infrared packet belongs to the dust thermal band's own ledger, not
     !--- to the ionizing band's.
     if (transported_band == BAND_DUST_IR) then
-       call dust_ir_escape_packet(photon, tau_edge)
+       call dust_ir_escape_packet(photon, tau_edge, edge_lost)
        return
     end if
     luminosity = photon%Lpacket*photon%wgt
     transmission = exp(-max(tau_edge,0.0_wp))
     energy_emitted_acc = energy_emitted_acc + real(luminosity, ENERGY_ACC_WP)
-    energy_absorbed_acc = energy_absorbed_acc + real( &
+    energy_extinguished_acc = energy_extinguished_acc + real( &
        luminosity*(1.0_wp-transmission), ENERGY_ACC_WP)
-    energy_escaped_acc = energy_escaped_acc + real( &
+    energy_transmitted_acc = energy_transmitted_acc + real( &
        luminosity*transmission, ENERGY_ACC_WP)
+    if (edge_lost) then
+       energy_lost_direct_acc = energy_lost_direct_acc + real( &
+          luminosity*transmission, ENERGY_ACC_WP)
+       lost_flights = lost_flights + 1_int64
+    end if
     if (par%absorption_ledger) then
        block
          integer :: is
@@ -305,17 +389,60 @@ contains
          is = min(max(photon%source_channel, 0), LEDGER_NSRC-1)
          nphot = luminosity/(photon%energy_eV*ev2erg)
          ledger_emitted(is) = ledger_emitted(is) + real(nphot, ENERGY_ACC_WP)
-         ledger_escaped(is) = ledger_escaped(is) + real(nphot*transmission, ENERGY_ACC_WP)
+         if (.not. edge_lost) ledger_escaped(is) = ledger_escaped(is) &
+            + real(nphot*transmission, ENERGY_ACC_WP)
        end block
     end if
   end subroutine ion_score_energy_packet
+
+  !--- a dust-scattered flight left the grid through an open face
+  !--- (raytrace_amr_mod::transport_ion_packet): its remaining weight
+  !--- escapes.  The one entry point for both bands: an infrared packet goes
+  !--- to the dust thermal band's escape and escaping spectrum; an ionizing
+  !--- one to the escaped energy total always and, with
+  !--- par%absorption_ledger, to its source's ledger escape [photons/s].
+  subroutine ion_score_scattered_escape(photon)
+    use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
+                                 dust_ir_scattered_escape
+    type(photon_type), intent(in) :: photon
+    real(kind=wp) :: luminosity
+    integer :: is
+    if (transported_band == BAND_DUST_IR) then
+       call dust_ir_scattered_escape(photon)
+       return
+    end if
+    luminosity = photon%wgt*photon%Lpacket
+    energy_scattered_escaped_acc = energy_scattered_escaped_acc &
+       + real(luminosity, ENERGY_ACC_WP)
+    if (.not. par%absorption_ledger) return
+    is = min(max(photon%source_channel, 0), LEDGER_NSRC-1)
+    ledger_escaped(is) = ledger_escaped(is) + real( &
+       luminosity/(photon%energy_eV*ev2erg), ENERGY_ACC_WP)
+  end subroutine ion_score_scattered_escape
+
+  !--- the remaining weight of a scattered flight left the calculation
+  !--- without leaving the nebula (FLIGHT_LOST, or a flight the scattering
+  !--- loop cannot continue): booked as lost in the band it belongs to.
+  !--- Normally zero; nonzero values are reported, not hidden.
+  subroutine ion_score_lost_weight(photon)
+    use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
+                                 dust_ir_lost_weight
+    type(photon_type), intent(in) :: photon
+    if (transported_band == BAND_DUST_IR) then
+       call dust_ir_lost_weight(photon%wgt*photon%Lpacket)
+       return
+    end if
+    energy_lost_scattered_acc = energy_lost_scattered_acc &
+       + real(photon%wgt*photon%Lpacket, ENERGY_ACC_WP)
+    lost_flights = lost_flights + 1_int64
+  end subroutine ion_score_lost_weight
 
   subroutine ion_score_reduce()
     use mpi
     implicit none
     integer :: ierr, nchunk, i0, n
-    integer(kind=int64) :: counts(2)
-    real(kind=wp) :: energy_totals(3)
+    integer(kind=int64) :: counts(3)
+    real(kind=wp) :: energy_totals(7)
 
     nchunk = max(1, 100000000/NHHE)
     i0 = 1
@@ -331,18 +458,25 @@ contains
     if (allocated(sec_ion_path)) &
        call MPI_ALLREDUCE(MPI_IN_PLACE, sec_ion_path, NSEC*score_nleaf, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    counts = [direct_segments, scattered_segments]
-    call MPI_ALLREDUCE(MPI_IN_PLACE, counts, 2, MPI_INTEGER8, MPI_SUM, &
+    counts = [direct_segments, scattered_segments, lost_flights]
+    call MPI_ALLREDUCE(MPI_IN_PLACE, counts, 3, MPI_INTEGER8, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
     direct_segments = counts(1)
     scattered_segments = counts(2)
-    energy_totals = real( &
-       [energy_emitted_acc, energy_absorbed_acc, energy_escaped_acc], wp)
-    call MPI_ALLREDUCE(MPI_IN_PLACE, energy_totals, 3, &
+    lost_flights = counts(3)
+    energy_totals = real([energy_emitted_acc, energy_extinguished_acc, &
+       energy_transmitted_acc, energy_scattered_escaped_acc, &
+       energy_lost_direct_acc, energy_lost_scattered_acc, &
+       energy_path_absorbed_acc], wp)
+    call MPI_ALLREDUCE(MPI_IN_PLACE, energy_totals, 7, &
                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
     energy_emitted = energy_totals(1)
-    energy_absorbed = energy_totals(2)
-    energy_escaped = energy_totals(3)
+    energy_extinguished = energy_totals(2)
+    energy_transmitted = energy_totals(3)
+    energy_scattered_escaped = energy_totals(4)
+    energy_lost_direct = energy_totals(5)
+    energy_lost_scattered = energy_totals(6)
+    energy_path_absorbed = energy_totals(7)
     if (par%absorption_ledger) call ledger_reduce()
     if (par%use_metals) then
        block
@@ -389,18 +523,25 @@ contains
 
   !--- one row for each source that emitted: emitted, absorbed by each
   !--- absorber, escaped [photons/s], and the closure
-  !--- (absorbed + escaped)/emitted - 1, which the path estimators meet in
-  !--- expectation (exactly without dust scattering, to Monte Carlo noise
-  !--- with it)
-  subroutine ion_score_report_ledger()
+  !--- (absorbed + escaped)/emitted - 1.  Without dust scattering every
+  !--- packet closes exactly (the edge walk scores e^-tau_in - e^-tau_out
+  !--- in each leaf, escaped is e^-tau_edge), so the closure is rounding.
+  !--- With it the scattered absorption is a path-length estimator and the
+  !--- escape is the direct transmission plus the scattered flights that
+  !--- leave the grid; the two close in expectation, and a finite sample
+  !--- leaves Monte Carlo noise.  A lost flight (FLIGHT_LOST, reported with
+  !--- the energy totals) escapes nowhere, so it shows in the closure as
+  !--- -lost/emitted.  The header names the pass (label).
+  subroutine ion_score_report_ledger(label)
+    character(len=*), intent(in) :: label
     character(len=8), parameter :: SRC_NAME(0:LEDGER_NSRC-1) = &
        ['star    ', 'dif1 HI ', 'dif2 HeI', 'dif3HeII', 'dif4 HeI', &
         'dif5HeII', 'dif6 met', 'dif7 ff ', 'dif8 val', 'star FUV']
     integer :: is
     real(kind=wp) :: em, ab(LEDGER_NABS), es
     if (.not. par%absorption_ledger .or. mpar%p_rank /= 0) return
-    write(*,'(a,5(3x,a6),3x,a,3x,a)') ' LEDGER: source   emitted      ', &
-       LEDGER_ABS_NAME, 'escaped    ', '(abs+esc)/em-1'
+    write(*,'(a,5(3x,a6),3x,a,3x,a,3x,3a)') ' LEDGER: source   emitted      ', &
+       LEDGER_ABS_NAME, 'escaped    ', '(abs+esc)/em-1', '[', trim(label), ']'
     do is = 0, LEDGER_NSRC-1
        em = real(ledger_emitted(is), wp)
        if (em <= 0.0_wp) cycle
@@ -455,34 +596,60 @@ contains
     end do
   end subroutine ion_score_apply_dust_heat
 
-  subroutine ion_score_energy_totals(emitted, absorbed, escaped)
-    real(kind=wp), intent(out) :: emitted, absorbed, escaped
-    emitted = energy_emitted
-    absorbed = energy_absorbed
-    escaped = energy_escaped
+  !--- physical energy totals of the last reduced pass [erg/s]: emitted,
+  !--- absorbed (in the gas and the grains), escaped (direct transmission
+  !--- plus scattered flights leaving the grid) and lost; see the
+  !--- definitions at the module variables.
+  subroutine ion_score_energy_totals(emitted, absorbed, escaped, lost)
+    real(kind=wp), intent(out) :: emitted, absorbed, escaped, lost
+    emitted  = energy_emitted
+    escaped  = energy_transmitted - energy_lost_direct + energy_scattered_escaped
+    lost     = energy_lost_direct + energy_lost_scattered
+    absorbed = energy_extinguished - energy_scattered_escaped - energy_lost_scattered
   end subroutine ion_score_energy_totals
 
   subroutine ion_score_report_energy_closure()
-    !--- Energy budget of the transported packets: emitted = absorbed + escaped
-    !--- per packet by construction (each packet's luminosity is split by its
-    !--- edge transmission), so the residual measures only the accumulation
-    !--- error of the reduced sums.
+    !--- Two energy statements of the transported packets.
+    !--- direct split: emitted = extinguished + transmitted per packet by
+    !---    construction (each packet's luminosity is split by its edge
+    !---    transmission), so the residual measures only the accumulation
+    !---    error of the reduced sums; past 5e-13 the run aborts.  With dust
+    !---    scattering "extinguished" includes the scattered-out energy, and
+    !---    without it it is the absorbed energy.
+    !--- physical: absorbed / escaped / lost (ion_score_energy_totals), the
+    !---    quantities the rates file carries as L_ABS / L_ESC / L_LOST.
+    !--- With par%absorption_ledger the absorbed power of the path estimators
+    !--- the rates use is compared with the physical absorbed total; the two
+    !--- agree exactly without scattering and to Monte Carlo noise with it.
     use mpi
     implicit none
-    real(kind=wp) :: closure
+    real(kind=wp) :: closure, emitted, absorbed, escaped, lost
     integer :: ierr
 
-    closure = abs(energy_absorbed+energy_escaped-energy_emitted) / &
+    closure = abs(energy_extinguished+energy_transmitted-energy_emitted) / &
               max(energy_emitted,tiny(1.0_wp))
+    call ion_score_energy_totals(emitted, absorbed, escaped, lost)
     if (mpar%p_rank == 0) then
        write(*,'(a,2(i0,1x))') &
           ' ION: continuous scored path segments direct/scattered = ', &
           direct_segments, scattered_segments
        write(*,'(a)') ' ION: continuous H/He direct rates: ACTIVE'
        write(*,'(a,3es14.6)') &
-          ' ION: continuous energy emitted/absorbed/escaped = ', &
-          energy_emitted, energy_absorbed, energy_escaped
-       write(*,'(a,es11.3)') ' ION: continuous energy closure = ', closure
+          ' ION: continuous energy direct split emitted/extinguished/transmitted = ', &
+          energy_emitted, energy_extinguished, energy_transmitted
+       write(*,'(a,es11.3)') &
+          ' ION: continuous energy direct split closure = ', closure
+       write(*,'(a,3es14.6,a,i0,a)') &
+          ' ION: continuous energy absorbed/escaped/lost = ', &
+          absorbed, escaped, lost, '  (', lost_flights, ' lost flights)'
+       if (par%absorption_ledger) write(*,'(a,es14.6,a,es11.3)') &
+          ' ION: continuous energy absorbed by the path estimators = ', &
+          energy_path_absorbed, ';  minus absorbed, over emitted = ', &
+          (energy_path_absorbed - absorbed)/max(emitted, tiny(1.0_wp))
+       if (lost > 0.0_wp) write(*,'(a,es11.3,a)') &
+          ' ION: WARNING: ', lost/max(emitted, tiny(1.0_wp)), &
+          ' of the emitted energy was lost (MAX_WALK_STEPS or a failed'// &
+          ' xy-periodic re-entry); the path estimates of those walks are partial.'
     end if
     if (closure > 5.0e-13_wp) call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
   end subroutine ion_score_report_energy_closure

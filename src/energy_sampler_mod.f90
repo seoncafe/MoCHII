@@ -120,9 +120,15 @@ contains
     real(wp), allocatable :: mandatory(:), work_e(:), work_f(:)
     real(wp) :: tol, scale, span
     integer :: i, j, nmandatory, nwork
+    character(len=160) :: message
 
-    if (temperature <= 0.0_wp .or. emin < 0.0_wp .or. emax <= emin) &
-       error stop 'energy sampler: invalid Planck temperature or energy band'
+    if (temperature <= 0.0_wp .or. emin < 0.0_wp .or. emax <= emin) then
+       ! Name the request: a source with no spectrum arrives here with T <= 0.
+       write(message, '(a,es11.4,a,es11.4,a,es11.4,a)') &
+          'energy sampler: invalid Planck temperature or energy band (T = ', &
+          temperature, ' K, band ', emin, ' - ', emax, ' eV)'
+       error stop trim(message)
+    end if
     tol = 1.0e-8_wp
     if (present(rtol)) tol = rtol
     if (tol <= 0.0_wp) error stop 'energy sampler: Planck rtol must be positive'

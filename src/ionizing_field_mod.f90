@@ -189,7 +189,9 @@ contains
     call ion_score_reduce()
     call gas_rates_compute()
     call ion_score_report_energy_closure()
-    if (.not. peel) call ion_score_report_ledger()
+    !--- every pass, the imaging pass included: with par%ion_peel it is the
+    !--- last pass, and its ledger is the one written to the rates file.
+    call ion_score_report_ledger(label)
     if (par%use_metals) call species_gamma_compute()
     call ion_score_report_metal_rates()
 

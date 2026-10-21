@@ -733,21 +733,38 @@ contains
   end subroutine photoionization_threshold_knots
 
   !=========================================================================
-  ! Continuous-energy sampler for internal point source is (and for the slab,
-  ! which resolves its spectrum the same way).  The spectrum chain mirrors
-  ! point_shape / comp_shape exactly: par%src_spectrum_file column is >
-  ! par%src_tstar(is) Planck (multi-component path only; a lone source keeps
-  ! the legacy scalars) > par%ion_spectrum file > par%tstar Planck.  The band
-  ! runs from elo (par%efuv_min with add_fuv, else par%eion_min) to
-  ! par%eion_max.
+  ! Point source is under par%luminosity_reference = 'full_spectrum': its
+  ! luminosity scale (par%src_lum(is) when use_src_tstar, i.e. with several
+  ! components; par%luminosity for a lone source) is the integral of the WHOLE
+  ! spectrum, and the band sampler on [elo, par%eion_max] carries the share of
+  ! it that falls inside the band.  The spectrum is resolved with point_shape's
+  ! precedence: par%src_spectrum_file column is > par%src_tstar(is) Planck
+  ! (only when use_src_tstar) > par%ion_spectrum file > par%tstar Planck.
   !
-  ! band_L is this source's band luminosity [erg/s], set inside the SAME branch
-  ! that resolved the spectrum so the normalization can never be attributed to
-  ! a spectrum the sampler did not use.  The scale it is normalized to is the
-  ! one finalize_source receives on the binned side: par%luminosity for the lone
-  ! source (legacy scalars rule), par%src_lum(is) with several components.
+  ! A table is interpolated linearly in L_E after the unit conversion, and both
+  ! the full integral (first to last row) and the band integral use that one
+  ! model; a Planck spectrum takes its analytic integral over 0 < E < infinity,
+  ! 6 zeta(4) (kT)^4, beside the adaptive band sampler.  A physical-type file
+  ! with no positive scale keeps its own absolute integral (derived).
+  !
+  ! Outputs:
+  !   sampler       band sampler on [elo, par%eion_max]
+  !   band_L        luminosity carried by that band [erg/s]
+  !   values(1:2)   energy range of the spectrum [eV]: the first and last
+  !                 table rows, or 0 and -1 (= infinity) for a Planck spectrum
+  !   values(3)     Lfull, the full-spectrum luminosity [erg/s] (the scale, or
+  !                 the file integral when derived)
+  !   values(4)     Lion, the part in [par%eion_min, par%eion_max)
+  !   values(5)     LFUV, the part in [elo, par%eion_min) (0 without add_fuv)
+  !   values(6)     Loutside = max(0, Lfull - band_L), the part not transported
+  !   values(7)     Ltransport = band_L
+  !   rescaled_from the file's own full integral when a physical-type file is
+  !                 rescaled to a positive scale, else 0 (optional)
+  ! values is the column source_luminosity(:,is), written to the rates file
+  ! as the SourceLuminosity dataset.
   !=========================================================================
-  subroutine full_spectrum_point_source(sampler, is, use_src_tstar, elo, band_L, values)
+  subroutine full_spectrum_point_source(sampler, is, use_src_tstar, elo, band_L, values, &
+                                        rescaled_from)
     use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
     implicit none
     type(energy_sampler_type), intent(out) :: sampler
@@ -755,6 +772,7 @@ contains
     logical, intent(in) :: use_src_tstar
     real(kind=wp), intent(in) :: elo
     real(kind=wp), intent(out) :: band_L, values(7)
+    real(kind=wp), intent(out), optional :: rescaled_from
     type(energy_sampler_type) :: full
     real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
     character(len=PATH_LEN) :: filename
@@ -780,6 +798,7 @@ contains
     end if
     absolute_file = len_trim(filename) > 0 .and. spec_is_physical()
     values = 0.0_wp
+    if (present(rescaled_from)) rescaled_from = 0.0_wp
     if (len_trim(filename) > 0) then
        if (absolute_file) then
           call read_phys_table(filename, column, columns, etab, ftab, ntab)
@@ -813,6 +832,7 @@ contains
             error stop 'full_spectrum: source luminosity must be positive'
        values(3) = scale
        band_L = scale * (sampler%total_integral / integral)
+       if (absolute_file .and. present(rescaled_from)) rescaled_from = integral
     end if
     if (.not. ieee_is_finite(band_L) .or. band_L <= 0.0_wp) &
          error stop 'full_spectrum: invalid transported luminosity'
@@ -827,6 +847,18 @@ contains
     values(7) = band_L
   end subroutine full_spectrum_point_source
 
+  !=========================================================================
+  ! Diagnostic band bins of point source is under 'full_spectrum', the
+  ! counterpart of point_shape + finalize_source in the default mode.
+  ! arr(i) is the luminosity [erg/s] that the band sampler of
+  ! full_spectrum_point_source puts between edges(i) and edges(i+1), the exact
+  ! difference of its CDF (no sub-grid quadrature), so sum(arr) = band_L;
+  ! lion is the source's ionizing-band luminosity, values(4).  These bins fill
+  ! ion_lum and the logged spectrum; the sampler built here is discarded and
+  ! build_point_source_sampler builds the transported one again.  The note on
+  ! a rescaled physical-type file is printed here, once for each source, as
+  ! finalize_source prints it in the default mode.
+  !=========================================================================
   subroutine full_spectrum_point_bins(arr, edges, is, use_src_tstar, lion)
     implicit none
     real(kind=wp), intent(out) :: arr(:), lion
@@ -834,15 +866,40 @@ contains
     integer, intent(in) :: is
     logical, intent(in) :: use_src_tstar
     type(energy_sampler_type) :: sampler
-    real(kind=wp) :: band_L, values(7)
+    real(kind=wp) :: band_L, values(7), rescaled_from
     integer :: i
-    call full_spectrum_point_source(sampler, is, use_src_tstar, edges(1), band_L, values)
+    call full_spectrum_point_source(sampler, is, use_src_tstar, edges(1), band_L, values, &
+                                    rescaled_from)
+    if (rescaled_from > 0.0_wp .and. mpar%p_rank == 0) &
+       write(*,'(a,es12.4,a,es12.4)') &
+          ' ION: NOTE: physical source rescaled from file integral', rescaled_from, &
+          ' to', values(3)
     do i = 1, size(arr)
        arr(i) = band_L * (energy_cdf_value(sampler,edges(i+1))-energy_cdf_value(sampler,edges(i)))
     end do
     lion = values(4)
   end subroutine full_spectrum_point_bins
 
+  !=========================================================================
+  ! Continuous-energy sampler for internal point source is (and for the slab,
+  ! which resolves its spectrum the same way; setup refuses
+  ! par%src_spectrum_file for the slab, which has no column in it).  The spectrum chain mirrors
+  ! point_shape / comp_shape exactly: par%src_spectrum_file column is >
+  ! par%src_tstar(is) Planck (multi-component path only; a lone source keeps
+  ! the legacy scalars) > par%ion_spectrum file > par%tstar Planck.  The band
+  ! runs from elo (par%efuv_min with add_fuv, else par%eion_min) to
+  ! par%eion_max.
+  !
+  ! band_L is this source's band luminosity [erg/s], set inside the SAME branch
+  ! that resolved the spectrum so the normalization can never be attributed to
+  ! a spectrum the sampler did not use.  The scale it is normalized to is
+  ! par%luminosity for the lone source (legacy scalars rule) and
+  ! par%src_lum(is) with several components.  In the default mode it is the
+  ! ionizing-segment luminosity, as finalize_source takes it on the binned
+  ! side; under par%luminosity_reference = 'full_spectrum' it is the
+  ! full-spectrum luminosity, and full_spectrum_point_source resolves the
+  ! spectrum, builds the sampler and fills source_luminosity(:,is).
+  !=========================================================================
   subroutine build_point_source_sampler(sampler, is, elo, nmet, metal_eth, band_L)
     implicit none
     type(energy_sampler_type), intent(out) :: sampler
@@ -1397,7 +1454,8 @@ contains
   ! (absolute J_E), or a legacy 'shape_ev'/Planck spectrum.  For the absolute
   ! kinds each bin gets L_b = pi*A_surface*J_b (the interior mean intensity of
   ! an isotropic field entering an area A is J_b); if par%ext_intensity is also
-  ! set the field is rescaled so the band-integrated interior J equals it.  For
+  ! set the field is rescaled so the band-integrated interior J equals it, with
+  ! a rank-0 note giving both J [erg/s/cm^2/sr] (ion_setup calls this once).  For
   ! the legacy kind the ionizing shape is renormalized and scaled by
   ! pi*ext_intensity*A (the original behavior).  Returns Lenter (ionizing-
   ! segment power), Jband (band-integrated interior J), uFUV (FUV energy
@@ -1454,7 +1512,22 @@ contains
              'ERROR: the external spectrum has no luminosity inside the band.'
           call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
        end if
-       if (par%ext_intensity > 0.0_wp) arr = arr * (par%ext_intensity / Jtot)  ! rescale to J
+       if (par%ext_intensity > 0.0_wp) then        ! rescale to the target band J
+          !--- the same note finalize_source prints for a rescaled physical
+          !--- internal source: the field's own band J and the target.
+          if (mpar%p_rank == 0) then
+             if (presid > 0) then
+                write(*,'(3a,es12.4,a,es12.4)') ' ION: NOTE: ISRF preset ', &
+                   trim(par%ext_spectrum), ' rescaled from band J', Jtot, ' to', &
+                   par%ext_intensity
+             else
+                write(*,'(a,es12.4,a,es12.4)') &
+                   ' ION: NOTE: physical external field rescaled from file band J', &
+                   Jtot, ' to', par%ext_intensity
+             end if
+          end if
+          arr = arr * (par%ext_intensity / Jtot)
+       end if
        arr = pi * asurf * arr                     ! J bins -> bin luminosities
     else
        call finalize_source(arr, nnu, nfuv, .false., 1.0_wp, dummyT)   ! ionizing shape -> 1
@@ -1743,8 +1816,9 @@ contains
   ! E [eV] (ascending), columns 2.. = L_E of source 1.. ('#' comments).  Bins
   ! the icol-th source (file column 1+icol) exactly like bin_lum_from_file
   ! (linear interpolation onto the NSUB sub-grid, zero outside the tabulated
-  ! range).  Aborts when the file has fewer than nsrc source columns; a single
-  ! rank-0 note (issued for icol=1) records any extra columns beyond nsrc.
+  ! range).  Aborts when the file has fewer than nsrc source columns or icol
+  ! lies outside 1..nsrc; a single rank-0 note (issued for icol=1) records any
+  ! extra columns beyond nsrc.
   !=========================================================================
   subroutine bin_lum_from_multicol(fname, icol, nsrc, eedge, nnu, nsub, arr)
     use mpi
@@ -1759,6 +1833,15 @@ contains
     integer :: unit, ios, ios2, ntab, i, k, j, ierr
     logical :: has_extra
 
+    !--- the value column asked for must exist among the nsrc read; a source
+    !--- index outside 1..nsrc (e.g. a component with no column of its own)
+    !--- stops here instead of reading past the row.
+    if (icol < 1 .or. icol > nsrc) then
+       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
+          ': value column ', icol, ' requested, but only ', nsrc, &
+          ' value column(s) are read from it.'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
@@ -1861,7 +1944,8 @@ contains
   ! Read one value column from an arbitrary-shape spectrum as ascending
   ! (E [eV], L_E) points.  This is the continuous-sampler counterpart of the
   ! legacy midpoint bin readers and supports both two-column and one-source
-  ! multi-column files through the same interface.
+  ! multi-column files through the same interface.  Aborts when a row has
+  ! fewer than ncol+1 columns or icol lies outside 1..ncol.
   !=========================================================================
   subroutine read_shape_table(fname, icol, ncol, etab, ftab, ntab)
     use mpi
@@ -1876,6 +1960,15 @@ contains
     integer :: unit, ios, ios2, i, j, ierr
     logical :: has_extra
 
+    !--- the value column asked for must exist among the ncol read; a source
+    !--- index outside 1..ncol (e.g. a component with no column of its own)
+    !--- stops here instead of reading past the row.
+    if (icol < 1 .or. icol > ncol) then
+       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
+          ': value column ', icol, ' requested, but only ', ncol, &
+          ' value column(s) are read from it.'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
@@ -1936,7 +2029,8 @@ contains
   !   'per_ang' col1 lambda [A],  E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV A])
   !   'per_um'  col1 lambda [um], E = hc/lambda, X_E = X_lam*hc/E^2   (hc [eV um])
   ! ncol = number of value columns (1 for a 2-column file; nsource for the
-  ! multi-column source file).  Aborts when a row has fewer than ncol+1 columns;
+  ! multi-column source file).  Aborts when a row has fewer than ncol+1 columns
+  ! or icol lies outside 1..ncol;
   ! a rank-0 note (once, icol=1) records extra columns.  Wavelength tables are
   ! E-descending after conversion, so the result is sorted ascending in E.
   !=========================================================================
@@ -1953,6 +2047,15 @@ contains
     integer :: unit, ios, ios2, i, j, ierr
     logical :: has_extra
 
+    !--- the value column asked for must exist among the ncol read; a source
+    !--- index outside 1..ncol (e.g. a component with no column of its own)
+    !--- stops here instead of reading past the row.
+    if (icol < 1 .or. icol > ncol) then
+       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
+          ': value column ', icol, ' requested, but only ', ncol, &
+          ' value column(s) are read from it.'
+       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then

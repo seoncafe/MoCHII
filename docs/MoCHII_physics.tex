@@ -231,10 +231,22 @@ shape or Planck spectra, or independent derivation from the columns
 of a physical-type source file) plus, independently, one isotropic
 external radiation field, on when \code{par\%ext\_intensity} $> 0$,
 an ISRF preset is selected, or an absolute \code{ext\_spectrum} file
-is given.  Each packet draws a
-component in proportion to its band-total luminosity, is emitted from
-it, and draws its energy from that component's own spectrum CDF;
-every packet carries $L_{\rm pkt} = \sum_c L_c/N$.  A single-component
+is given.  Each packet draws a component, is emitted from it, and
+draws its energy from that component's own spectrum CDF; how the band
+is shared depends on \code{par\%fuv\_sampling}.  Without
+\code{add\_fuv}, or with \code{fuv\_sampling = 'proportional'}, one
+CDF covers the whole band: each of the $N$ = \code{no\_photons}
+packets picks component $c$ in proportion to its band luminosity $L_c$
+and carries $L_{\rm pkt} = \sum_c L_c/N$.  With \code{add\_fuv} and
+\code{'separate'} (the default) the band is two strata,
+[\code{eion\_min}, \code{eion\_max}] and [\code{efuv\_min},
+\code{eion\_min}): $N_{\rm ion}$ = \code{no\_photons} packets draw
+from each spectrum conditioned on the ionizing stratum, pick $c$ in
+proportion to its luminosity $L_c^{\rm ion}$ there and carry
+$L_{\rm ion}/N_{\rm ion}$, $L_{\rm ion} = \sum_c L_c^{\rm ion}$;
+$N_{\rm FUV}$ = \code{no\_photons\_fuv} packets do the same in the FUV
+stratum and carry $L_{\rm FUV}/N_{\rm FUV}$.  A stratum with no
+luminosity launches nothing.  A single-component
 run takes the legacy code path (the RNG stream is unchanged, so earlier
 results reproduce).  With at least two source components, including
 one internal point plus an external field, source $i$ resolves
@@ -4475,7 +4487,23 @@ The three parts of the dust coupling, now complete:
   unforced flights (whose segments score the same path estimators) under Russian
   roulette ($w_{\min} = 10^{-4}$).  Stellar and diffuse packets share
   the walk; gas ionization, gas heating, and grain heating all derive
-  from the same tally, so the energy split is bookkept by construction.
+  from the same path estimators.  The energy totals keep two statements
+  apart.  The \emph{direct split} of each packet at its edge
+  transmission, $L = L(1-e^{-\tau_{\rm edge}}) + L e^{-\tau_{\rm edge}}$
+  (extinguished plus transmitted), is an identity, so its closure tests
+  only the accumulation and the reduction, and the run aborts past
+  $5{\times}10^{-13}$; with scattering the extinguished part includes the
+  scattered-out energy.  The \emph{physical} totals written to the rates
+  file are the escaped luminosity \code{L\_ESC} (the direct transmission
+  plus the weight of every scattered flight that leaves through an open
+  face), the lost luminosity \code{L\_LOST} (the weight of walks stopped
+  by the step cap or by a failed re-entry into the periodic slab;
+  normally zero), and the absorbed luminosity
+  $\code{L\_ABS} = \code{L\_EMIT} - \code{L\_ESC} - \code{L\_LOST}$.  The
+  albedo weight removes the absorbed share at each interaction and
+  Russian roulette preserves the expectation, so \code{L\_ABS} equals the
+  absorbed power in expectation; with \code{absorption\_ledger} the log
+  compares it with the absorbed power of the path estimators.
 \item \textbf{Live ionization-dependent dust with a PAH split.}
   \code{dust\_density\_law='laursen09\_live'} recomputes the dust density from
   the \emph{computed} $\xHI$ every iteration,
@@ -4729,10 +4757,20 @@ and reemission refer to one population.
   Str\"omgren model at ${\rm DGR}=1$ reabsorbs $0.62$--$0.85\%$ of the
   emitted infrared and converges in two passes, the second pass changing
   the emitted luminosity by $3$--$6{\times}10^{-5}$.  The infrared
-  energy budget closes to $\sim$$10^{-16}$, and the extra luminosity of
-  the second pass equals the power extinguished in the first.  The
-  escaping spectrum is written to \code{\_dustesc.txt}; its ratio to the
-  emitted spectrum is the infrared escape fraction.
+  energy is accounted as in the ionizing band (\S\ref{sec:dust}): the
+  direct split of each packet (extinguished plus transmitted) closes to
+  $\sim$$10^{-16}$ and is enforced, and the physical totals are the
+  escaped luminosity (direct transmission plus the scattered packets
+  that leave the grid), the lost luminosity (normally zero) and the
+  absorbed luminosity, the emitted minus the other two.  The extra
+  luminosity of the second pass equals the grain-absorbed power of the
+  first, which the path estimator feeding ${\rm Heat\_dust}$ measures;
+  without scattering it is the extinguished part to rounding, and with
+  scattering the path estimator plus the escaped and lost luminosities
+  match the emitted one to Monte Carlo noise (reported, not enforced).
+  The escaping spectrum, both escapes binned at the packet wavelengths,
+  is written to \code{\_dustesc.txt}; its ratio to the emitted spectrum
+  is the infrared escape fraction.
 \end{itemize}
 
 \subsection{Peel-off imaging}

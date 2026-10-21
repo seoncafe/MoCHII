@@ -213,14 +213,17 @@ contains
     use dust_temp_mod,    only : dust_temp_compute
     use dust_ir_band_mod, only : transported_band, BAND_IONIZING, BAND_DUST_IR, &
                                  dust_ir_band_reset, dust_ir_band_reduce, &
-                                 dust_ir_heating, dust_ir_energy_budget
+                                 dust_ir_heating, dust_ir_direct_split, &
+                                 dust_ir_energy_budget
     implicit none
     real(kind=wp), intent(inout) :: heat_dust(:)
     real(kind=wp), allocatable :: heat_euv(:), heat_ir(:), lcum(:), pdf(:), cdf(:)
     real(kind=wp) :: L_tot, Lpacket, vol, xi, esum, L_abs_path
-    real(kind=wp) :: emitted, extinct, escaped, closure, L_new, L_prev, drel
-    integer(kind=int64) :: npacket, k_lo, k_hi, ip
-    integer :: il, iter, ierr, nleaf, niter_done
+    real(kind=wp) :: emitted, extinct, transmitted, closure, L_new, L_prev, drel
+    real(kind=wp) :: absorbed, escaped, lost
+    integer(kind=int64) :: npacket, k_lo, k_hi, ip, nlost
+    integer :: il, iter, ierr, nleaf, niter_done, nmine, ndone, nstep
+    real(kind=wp) :: t_start
     logical :: slab_saved, converged
 
     nleaf = amr_grid%nleaf
@@ -266,7 +269,18 @@ contains
        xi = min(max(xi, 1.0e-12_wp), 1.0_wp - 1.0e-12_wp)
 
        call dust_ir_band_reset()
+       !--- rank 0 reports its own share of the leaf loop every 10%; the
+       !--- stochastic leaf solve dominates the pass and prints nothing.
+       nmine = (nleaf - mpar%p_rank + mpar%nproc - 1)/mpar%nproc
+       nstep = max(nmine/10, 1)
+       ndone = 0
+       t_start = MPI_Wtime()
        do il = mpar%p_rank+1, nleaf, mpar%nproc
+          ndone = ndone + 1
+          if (mpar%p_rank == 0 .and. (mod(ndone, nstep) == 0 .or. ndone == nmine)) &
+             write(*,'(a,i0,a,i0,a,i0,a,i3,a,f10.1,a)') ' DUSTRT: pass ', iter, &
+                ', rank0 leaves ', ndone, '/', nmine, ' (', (100*ndone)/nmine, &
+                '%), ', MPI_Wtime() - t_start, ' s'
           !--- packets k whose stratified position (k-1+xi)/N falls in this
           !--- leaf's share [C(il-1), C(il)]/L_tot of the cumulative emission.
           !--- The endpoint expressions are shared with the neighboring
@@ -287,13 +301,20 @@ contains
        heat_dust(1:nleaf) = heat_euv + heat_ir
        call dust_temp_compute(heat_dust)
 
-       call dust_ir_energy_budget(emitted, extinct, escaped)
-       closure = abs(extinct + escaped - emitted)/max(emitted, tiny(1.0_wp))
-       !--- L_abs_path is the SAME absorbed power seen by the path estimator
-       !--- that feeds heat_ir, so it is the physical one; without dust
-       !--- scattering it equals the extinction ledger of the packets exactly
-       !--- (Int kappa_abs exp(-tau) dl = 1 - exp(-tau_edge) cell by cell),
-       !--- with scattering it is smaller by the scattered-out energy.
+       !--- direct split: emitted = extinguished + transmitted per packet, so
+       !--- its closure checks the accumulation and reduction alone (abort).
+       call dust_ir_direct_split(emitted, extinct, transmitted)
+       closure = abs(extinct + transmitted - emitted)/max(emitted, tiny(1.0_wp))
+       !--- physical totals: escaped = direct transmission + scattered
+       !--- flights leaving the grid, lost, absorbed = emitted - escaped - lost.
+       call dust_ir_energy_budget(emitted, absorbed, escaped, lost, nlost)
+       !--- L_abs_path is the absorbed power of the path estimator that feeds
+       !--- heat_ir.  Without dust scattering it equals the extinguished part
+       !--- exactly (Int kappa_abs exp(-tau) dl = 1 - exp(-tau_edge) cell by
+       !--- cell), so L_abs_path + escaped + lost = emitted to rounding; with
+       !--- scattering the path estimator and the escapes are sampled, and the
+       !--- same sum closes in expectation, to Monte Carlo noise.  Reported,
+       !--- not enforced.
        L_abs_path = 0.0_wp
        L_new      = 0.0_wp
        do il = 1, nleaf
@@ -306,21 +327,29 @@ contains
           write(*,'(a,i0,a,i0,a,es13.6)') ' DUSTRT: pass ', iter, ': ', &
              npacket, ' packets, L_emit = ', L_tot
           write(*,'(a,3es14.6)') &
-             ' DUSTRT: IR energy emitted/extinguished/escaped = ', &
-             emitted, extinct, escaped
+             ' DUSTRT: IR energy direct split emitted/extinguished/transmitted = ', &
+             emitted, extinct, transmitted
           write(*,'(a,es11.3,a,es11.3)') &
-             ' DUSTRT: IR energy closure = ', closure, &
+             ' DUSTRT: IR energy direct split closure = ', closure, &
              ',  extinguished fraction = ', extinct/max(emitted, tinest)
+          write(*,'(a,3es14.6,a,i0,a)') &
+             ' DUSTRT: IR energy absorbed/escaped/lost = ', &
+             absorbed, escaped, lost, '  (', nlost, ' lost flights)'
           write(*,'(a,es13.6,a,es11.3)') &
              ' DUSTRT: grain-absorbed IR (path estimator) = ', L_abs_path, &
-             ' erg/s;  vs ledger, rel. diff = ', &
-             abs(L_abs_path - extinct)/max(emitted, tinest)
+             ' erg/s;  (path + escaped + lost)/emitted - 1 = ', &
+             (L_abs_path + escaped + lost)/max(emitted, tinest) - 1.0_wp
+          if (lost > 0.0_wp) write(*,'(a,es11.3,a)') &
+             ' DUSTRT: WARNING: ', lost/max(emitted, tinest), &
+             ' of the emitted IR was lost (MAX_WALK_STEPS or a failed'// &
+             ' xy-periodic re-entry); the path estimates of those walks are partial.'
           write(*,'(a,es11.3)') &
              ' DUSTRT: relative change of the total emitted luminosity = ', drel
        end if
        if (closure > 5.0e-13_wp) then
           if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the transported infrared does not conserve energy.'
+             'ERROR: the direct split of the transported infrared does not'// &
+             ' add up to the emitted energy (accumulation or reduction error).'
           call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
        end if
        !--- a leaf with Heat_dust > 0 whose spectrum comes back empty would
@@ -548,22 +577,24 @@ contains
   !=========================================================================
   ! Escaping infrared spectrum -> '<base>_dustesc.txt'.  The emitted
   ! counterparts ('<base>_dustir.txt', '<base>_dustsed.txt') are untouched:
-  ! this one is what leaves the grid after transport, so the two differ by
-  ! the reabsorbed fraction and, in an optically thick model, by the
-  ! reprocessing that fraction drives.
+  ! this one is what leaves the grid after transport (the direct
+  ! transmission and, with par%ion_dust_scatter, the scattered flights that
+  ! leave it), so the two differ by the reabsorbed fraction and, in an
+  ! optically thick model, by the reprocessing that fraction drives.
   !=========================================================================
   subroutine dust_ir_write_escaped()
     use dust_ir_band_mod, only : dust_ir_escaped_spectrum, dust_ir_energy_budget
     use utility,          only : get_base_name
     implicit none
     real(kind=wp), allocatable :: lam(:), Llam(:), dlam(:)
-    real(kind=wp) :: emitted, extinct, escaped, esum
+    real(kind=wp) :: emitted, absorbed, escaped, lost, esum
+    integer(kind=int64) :: nlost
     character(len=PATH_LEN) :: outname
     integer :: k, unit
 
     if (mpar%p_rank /= 0) return
     call dust_ir_escaped_spectrum(lam, Llam, dlam)
-    call dust_ir_energy_budget(emitted, extinct, escaped)
+    call dust_ir_energy_budget(emitted, absorbed, escaped, lost, nlost)
     esum = sum(Llam*dlam)
 
     outname = trim(get_base_name(par%out_file))//'_dustesc.txt'
@@ -575,11 +606,15 @@ contains
     else
        write(unit,'(a)') '# emission spectrum: equilibrium modified blackbody'
     end if
-    write(unit,'(a,es14.6,a,es14.6,a,es14.6)') '# L_emit = ', emitted, &
-       ' erg/s;  L_abs = ', extinct, ' erg/s;  L_esc = ', escaped
+    write(unit,'(a,es14.6,a,es14.6,a,es14.6,a,es14.6,a)') '# L_emit = ', &
+       emitted, ' erg/s;  L_abs = ', absorbed, ' erg/s;  L_esc = ', escaped, &
+       ' erg/s;  L_lost = ', lost, ' erg/s'
+    write(unit,'(a)') '# L_esc: direct transmission plus scattered flights '// &
+       'leaving the grid; L_abs = L_emit - L_esc - L_lost; L_lost: walks '// &
+       'ended without leaving the nebula (normally 0)'
     write(unit,'(a,es14.6,a)') &
        '# sum L_lambda dlambda over the bins below = ', esum, &
-       ' erg/s (equals L_esc by construction)'
+       ' erg/s (L_esc to rounding: the same escapes, binned)'
     write(unit,'(a)') '# lambda[um]   L_lambda[erg/s/um]'
     !--- e3 on the luminosity, for the reason sedust_mod gives where it writes
     !--- '_dustsed.txt': this grid is sedust_lambda_grid(), reaching 1.0e-4 um,

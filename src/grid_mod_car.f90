@@ -21,7 +21,7 @@ contains
   integer :: idx1,idx2,idx3,icen,jcen,kcen
   integer :: nxcen,nycen,nzcen
   real(kind=wp) :: taueq,taupole
-  real(kind=wp) :: dens
+  real(kind=wp) :: dens, column
   real(kind=wp) :: xx,yy,zz,rr,pp,tanp
   real(kind=wp) :: rmin_positive
   character(len=PATH_LEN) :: dens_out
@@ -234,15 +234,28 @@ contains
 
   ! Normalize density if density is not given in a physical unit (hydrogen number per cm^3).
   ! Note that normalization is done even when the density is not a constant.
+  ! A grid with no opacity on the polar column (taumax) or anywhere (tauhomo)
+  ! has nothing to scale: the normalization is skipped there, as in
+  ! grid_mod_amr, instead of dividing by zero.
   if (mpar%h_rank == 0) then
      if (par%taumax > 0.0_wp) then
-        dens = (2.0_wp*par%taumax)/sum(grid%rhokap(nxcen,nycen,:)*grid%dz)
-        grid%rhokap(:,:,:) = grid%rhokap(:,:,:) * dens
+        column = sum(grid%rhokap(nxcen,nycen,:)*grid%dz)
+        if (column > 0.0_wp) then
+           dens = (2.0_wp*par%taumax)/column
+           grid%rhokap(:,:,:) = grid%rhokap(:,:,:) * dens
+        else if (mpar%p_rank == 0) then
+           write(6,'(a)') 'NOTE: box grid has no opacity on the polar column; '// &
+                          'par%taumax normalization skipped.'
+        endif
      else if (par%tauhomo > 0.0_wp) then
-        dens = sum(grid%rhokap)/count(grid%rhokap > 0.0)
-        do k=1,grid%nz
-           grid%rhokap(:,:,k) = grid%rhokap(:,:,k)*(par%tauhomo/grid%zmax)/dens
-        enddo
+        if (count(grid%rhokap > 0.0_wp) > 0) then
+           dens = sum(grid%rhokap)/count(grid%rhokap > 0.0_wp)
+           do k=1,grid%nz
+              grid%rhokap(:,:,k) = grid%rhokap(:,:,k)*(par%tauhomo/grid%zmax)/dens
+           enddo
+        else if (mpar%p_rank == 0) then
+           write(6,'(a)') 'NOTE: box grid has no opacity; par%tauhomo normalization skipped.'
+        endif
      endif
   endif
   call MPI_BARRIER(MPI_COMM_WORLD, ierr)

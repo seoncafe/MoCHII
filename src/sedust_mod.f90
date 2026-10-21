@@ -200,7 +200,8 @@ contains
     real(kind=wp) :: band_wl(8), vol, Labs, esum
     real(kind=wp), allocatable :: em_band(:,:)
     character(len=PATH_LEN) :: outname
-    integer :: il, ic, k, unit, ierr, ndone, nmine, nband, ib
+    integer :: il, ic, k, unit, ierr, ndone, nmine, nband, ib, nstep
+    real(kind=wp) :: t_start
 
     allocate(Ltot(nl_sed), pdf(nl_sed))
     Ltot = 0.0_wp
@@ -214,15 +215,19 @@ contains
     end if
 
     nmine = (amr_grid%nleaf - mpar%p_rank + mpar%nproc - 1)/mpar%nproc
+    nstep = max(nmine/10, 1)
     ndone = 0
     if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
        ' SEDU: solving stochastic emission for ~', nmine, ' leaves each rank'
+    t_start = MPI_Wtime()
 
+    !--- rank 0 reports its own share of the leaf loop every 10%.
     do il = mpar%p_rank+1, amr_grid%nleaf, mpar%nproc
        ndone = ndone + 1
-       if (mpar%p_rank == 0 .and. nmine >= 500 .and. &
-           mod(ndone, nmine/5) == 0) write(*,'(a,i0,a,i0)') &
-          ' SEDU: rank0 ', ndone, '/', nmine
+       if (mpar%p_rank == 0 .and. (mod(ndone, nstep) == 0 .or. ndone == nmine)) &
+          write(*,'(a,i0,a,i0,a,i3,a,f10.1,a)') ' SEDU: rank0 leaves ', ndone, &
+             '/', nmine, ' (', (100*ndone)/nmine, '%), ', &
+             MPI_Wtime() - t_start, ' s'
        if (heat_dust(il) <= 0.0_wp) cycle
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
        Labs = heat_dust(il)*vol
