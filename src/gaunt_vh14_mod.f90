@@ -27,7 +27,7 @@ contains
   !=========================================================================
   subroutine gaunt_vh14_setup()
     use mpi
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     character(len=256) :: line
     integer :: unit, ios, ierr, iu, magic
@@ -35,7 +35,7 @@ contains
     if (ng > 0) return
     open(newunit=unit, file=trim(par%data_dir)//'/gauntff_vh14.dat', &
          status='old', iostat=ios)
-    if (ios /= 0) call fatal_error('par%gaunt_vh14 needs ' // &
+    if (ios /= 0) call abort_run('par%gaunt_vh14 needs ' // &
        trim(par%data_dir)//'/gauntff_vh14.dat (par%data_dir)')
     !--- header: comment lines, then magic, ng nu, lg0, lu0, step (each
     !--- followed by a trailing comment).

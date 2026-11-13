@@ -79,6 +79,7 @@ module random
 !        http://sc.tamu.edu/IBM.Tutorial/docs/Compilers/xlf_8.1/html/lr225.HTM
 !   2012/05/04, Initial version
 !-----
+  use utility, only : abort_run
   use, intrinsic :: iso_fortran_env, only: real32, real64, int32, int64
   implicit none
   private
@@ -1427,8 +1428,7 @@ contains
   integer  :: ap
 
   if (a < 1d0) then
-     write(*,*) 'alpha should be larger than or equal to 1'
-     stop
+     call abort_run('gamdev_r: alpha should be larger than or equal to 1.')
   endif
 
   ap = int(a)
@@ -1464,8 +1464,7 @@ contains
   real(wp) :: am,e,h,s,x,y,v(2)
   integer :: i
   if (ia < 1) then
-     write(*,*) 'ia should be larger than or equal to 1.'
-     stop
+     call abort_run('gamdev: ia should be larger than or equal to 1.')
   endif
 
   if (ia <= 10) then
@@ -1517,8 +1516,7 @@ contains
 
   n = size(x)
   if (n*(n+1)/2 /= size(chole)) then
-     write(*,*) 'something wrong in random_mvnorm'
-     stop
+     call abort_run('random_mvnorm: size(chole) must be n(n+1)/2 with n = size(x).')
   endif
 
   if (present(use_bactrian)) then
@@ -1575,8 +1573,8 @@ contains
   np   = size(x,2)
   ncov = np*(np+1)/2
   if (n == 1 .or. np /= size(avg) .or. ncov /= size(cov) .or. ncov /= size(chole)) then
-     write(*,*) 'something wrong in make_mvcovmat2'
-     stop
+     call abort_run('make_mvcovmat2: needs more than one sample, size(avg) = np and '// &
+                    'size(cov) = size(chole) = np(np+1)/2.')
   endif
 
   ! Calculate the mean values
@@ -1645,8 +1643,8 @@ contains
   np   = size(x)
   ncov = np*(np+1)/2
   if (np /= size(avg) .or. ncov /= size(cov) .or. ncov /= size(chole)) then
-     write(*,*) 'something wrong in make_mvcovmat2'
-     stop
+     call abort_run('make_mvcovmat: needs size(avg) = np and '// &
+                    'size(cov) = size(chole) = np(np+1)/2.')
   endif
 
   if (present(update)) then
@@ -2025,8 +2023,7 @@ contains
 
   n = size(probs)
   if (n /= size(alias)) then
-     write(*,*) 'error in alias_setup. The arrays "probs" and "alias" should have the same size.'
-     stop
+     call abort_run('random_alias_setup: the arrays "probs" and "alias" should have the same size.')
   endif
   alias(:) = 0
 
@@ -2078,8 +2075,7 @@ contains
 
   n = size(probs)
   if (n /= size(alias)) then
-     write(*,*) 'error in alias_setup. The arrays "probs" and "alias" should have the same size.'
-     stop
+     call abort_run('random_alias_setup: the arrays "probs" and "alias" should have the same size.')
   endif
   alias(:) = 0
 

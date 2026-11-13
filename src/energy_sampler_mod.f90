@@ -8,6 +8,7 @@ module energy_sampler_mod
 ! the same representation after adaptive refinement, independently of the
 ! diagnostic ionizing-band grid.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use, intrinsic :: iso_fortran_env, only : real64
   implicit none
   private
@@ -36,7 +37,7 @@ contains
     real(wp), intent(in) :: temperature
     ! Integral of E^3 / (exp(E/kT)-1) over 0 < E < infinity.
     ! The same KB_EV defines the shape and its normalization.
-    if (temperature <= 0.0_wp) error stop 'Planck integral: nonpositive temperature'
+    if (temperature <= 0.0_wp) call abort_run('Planck integral: nonpositive temperature')
     total = 6.0_wp * ZETA4 * (KB_EV * temperature)**4
   end function planck_full_integral
 
@@ -48,12 +49,12 @@ contains
 
     n = size(energy)
     if (n < 2 .or. size(density) /= n) &
-       error stop 'energy sampler: table needs at least two matching columns'
+       call abort_run('energy sampler: table needs at least two matching columns')
     if (any(density < 0.0_wp)) &
-       error stop 'energy sampler: negative spectral density'
+       call abort_run('energy sampler: negative spectral density')
     do i = 1, n - 1
        if (energy(i+1) <= energy(i)) &
-          error stop 'energy sampler: energies must be strictly ascending'
+          call abort_run('energy sampler: energies must be strictly ascending')
     end do
 
     allocate(sampler%energy(n), sampler%density(n), sampler%cdf(n))
@@ -66,7 +67,7 @@ contains
        sampler%cdf(i+1) = sampler%cdf(i) + area
     end do
     total = sampler%cdf(n)
-    if (total <= 0.0_wp) error stop 'energy sampler: zero integrated luminosity'
+    if (total <= 0.0_wp) call abort_run('energy sampler: zero integrated luminosity')
     sampler%total_integral = total
     sampler%cdf = sampler%cdf / total
     sampler%cdf(n) = 1.0_wp
@@ -81,17 +82,17 @@ contains
 
     n = size(energy)
     if (n < 2 .or. size(density) /= n) &
-       error stop 'energy sampler: table needs at least two matching columns'
+       call abort_run('energy sampler: table needs at least two matching columns')
     if (any(density < 0.0_wp)) &
-       error stop 'energy sampler: negative spectral density'
+       call abort_run('energy sampler: negative spectral density')
     do i = 1, n - 1
        if (energy(i+1) <= energy(i)) &
-          error stop 'energy sampler: energies must be strictly ascending'
+          call abort_run('energy sampler: energies must be strictly ascending')
     end do
-    if (emax <= emin) error stop 'energy sampler: invalid requested band'
+    if (emax <= emin) call abort_run('energy sampler: invalid requested band')
     lo = max(emin, energy(1))
     hi = min(emax, energy(n))
-    if (hi <= lo) error stop 'energy sampler: table does not overlap requested band'
+    if (hi <= lo) call abort_run('energy sampler: table does not overlap requested band')
 
     nc = 2 + count(energy > lo .and. energy < hi)
     allocate(clipped_e(nc), clipped_f(nc))
@@ -127,11 +128,11 @@ contains
        write(message, '(a,es11.4,a,es11.4,a,es11.4,a)') &
           'energy sampler: invalid Planck temperature or energy band (T = ', &
           temperature, ' K, band ', emin, ' - ', emax, ' eV)'
-       error stop trim(message)
+       call abort_run(trim(message))
     end if
     tol = 1.0e-8_wp
     if (present(rtol)) tol = rtol
-    if (tol <= 0.0_wp) error stop 'energy sampler: Planck rtol must be positive'
+    if (tol <= 0.0_wp) call abort_run('energy sampler: Planck rtol must be positive')
 
     nmandatory = 2
     if (present(thresholds)) then
@@ -188,7 +189,7 @@ contains
 
     if (err <= allowance .or. depth >= 50) then
        nwork = nwork + 1
-       if (nwork > size(work_e)) error stop 'energy sampler: Planck knot limit'
+       if (nwork > size(work_e)) call abort_run('energy sampler: Planck knot limit')
        work_e(nwork) = e1
        work_f(nwork) = f1
     else
@@ -206,7 +207,7 @@ contains
     real(wp) :: target, interval_area, local_area, dx, y0, y1, slope
     real(wp) :: disc, offset, slope_scale
 
-    if (.not. allocated(sampler%cdf)) error stop 'energy sampler: uninitialized CDF'
+    if (.not. allocated(sampler%cdf)) call abort_run('energy sampler: uninitialized CDF')
     target = min(max(u, 0.0_wp), 1.0_wp)
     if (target <= 0.0_wp) then
        energy = sampler%energy(1)
@@ -310,7 +311,7 @@ contains
     real(wp) :: target, cumulative, product
     integer :: ell
 
-    if (temperature <= 0.0_wp) error stop 'energy sampler: invalid Planck temperature'
+    if (temperature <= 0.0_wp) call abort_run('energy sampler: invalid Planck temperature')
     target = min(max(u(1), 0.0_wp), 1.0_wp-epsilon(1.0_wp)) * ZETA4
     cumulative = 0.0_wp
     ell = 0
@@ -318,7 +319,7 @@ contains
        ell = ell + 1
        cumulative = cumulative + 1.0_wp / real(ell,wp)**4
        if (cumulative >= target) exit
-       if (ell >= 1000000) error stop 'energy sampler: Planck mixture did not converge'
+       if (ell >= 1000000) call abort_run('energy sampler: Planck mixture did not converge')
     end do
     product = product_clamped(u(2:5))
     energy = KB_EV * temperature * (-log(product)) / real(ell,wp)
@@ -345,7 +346,7 @@ contains
        total = total + 0.5_wp * (planck_energy_shape(e0,temperature) + &
                                  planck_energy_shape(e1,temperature)) * (e1-e0)
     end do
-    if (total <= 0.0_wp) error stop 'energy sampler: zero Planck band luminosity'
+    if (total <= 0.0_wp) call abort_run('energy sampler: zero Planck band luminosity')
   end function rough_planck_integral
 
   real(wp) function linear_table_value(energy, density, value) result(result)

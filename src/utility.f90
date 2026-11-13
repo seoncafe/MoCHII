@@ -12,7 +12,7 @@ module utility
    public :: copy_file
    public :: time_stamp
    public :: get_date_time
-   public :: fatal_error, refuse_input
+   public :: abort_run, refuse_input
    character(*), private, parameter :: LOWER_CASE = 'abcdefghijklmnopqrstuvwxyz'
    character(*), private, parameter :: UPPER_CASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -346,23 +346,58 @@ contains
    return
    end function get_date_time
    !------------------------------------------------
-   ! Collective abort carrying a rank-qualified message.  MoCHII aborts the
-   ! whole communicator from whichever rank hits the error, so the message
-   ! must come from that same rank: gating the write on rank 0 loses the
-   ! diagnostic entirely whenever another rank fails first, and the run then
-   ! dies with no indication of why.  Ranks can reach a given failure at
-   ! different times (rank 0 lags behind while it writes output), so this is
-   ! not a hypothetical ordering.
-   subroutine fatal_error(msg)
+   ! End the run with exit status 1 and its reason in the log, from whichever
+   ! rank meets the failure, at any point of the run (before MPI_INIT, inside
+   ! or outside a collective, after MPI_FINALIZE), whether one rank or every
+   ! rank meets it.  The reason is written to standard output as
+   !    ERROR [rank r]: <message>
+   ! (a message of several lines joins them with new_line('a')), standard
+   ! output and standard error are flushed, and the run is aborted:
+   !   - rank 0 writes, flushes and calls MPI_ABORT at once;
+   !   - any other rank first waits ABORT_GRACE_SECONDS.  When rank 0 meets
+   !     the same failure (an input or file error that every rank sees), its
+   !     MPI_ABORT ends the waiting ranks, so the log holds the reason once.
+   !     When the failure is this rank's alone (a packet history, a leaf
+   !     solve, a file only this node lacks), nothing ends the run during
+   !     the wait, and this rank writes its own reason and aborts.  The wait
+   !     is a clock loop with no MPI communication, so it cannot hang.
+   ! Before this routine, a site wrote only on rank 0 and every rank called
+   ! MPI_ABORT: a non-root rank that got there first ended rank 0 before its
+   ! line was written or flushed, and the log held no reason at all.
+   ! Failure modes (neither loses the reason): on a host so loaded that
+   ! rank 0's abort takes longer than ABORT_GRACE_SECONDS to reach the other
+   ! ranks, they print the same line as well; a failure met by non-root
+   ! ranks only ends ABORT_GRACE_SECONDS later than an immediate abort.
+   ! Without MPI (not yet initialized, or already finalized) the reason is
+   ! written as "ERROR: <message>" and the process stops with status 1.
+   subroutine abort_run(message)
    use mpi
-   use define, only : mpar
+   use, intrinsic :: iso_fortran_env, only : output_unit, error_unit
    implicit none
-   character(len=*), intent(in) :: msg
-   integer :: ierr
-   write(*,'(a,i0,2a)') ' ERROR [rank ', mpar%p_rank, ']: ', trim(msg)
-   flush(6)
+   character(len=*), intent(in) :: message
+   real(kind=real64), parameter :: ABORT_GRACE_SECONDS = 2.0_real64
+   logical :: initialized, finalized
+   integer :: rank, ierr
+   real(kind=real64) :: t0
+   call MPI_INITIALIZED(initialized, ierr)
+   call MPI_FINALIZED(finalized, ierr)
+   if (.not. initialized .or. finalized) then
+      write(output_unit,'(2a)') ' ERROR: ', trim(message)
+      flush(output_unit)
+      flush(error_unit)
+      error stop 1, quiet=.true.
+   end if
+   call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
+   if (rank /= 0) then
+      t0 = MPI_WTIME()
+      do while (MPI_WTIME() - t0 < ABORT_GRACE_SECONDS)
+      end do
+   end if
+   write(output_unit,'(a,i0,2a)') ' ERROR [rank ', rank, ']: ', trim(message)
+   flush(output_unit)
+   flush(error_unit)
    call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-   end subroutine fatal_error
+   end subroutine abort_run
    !------------------------------------------------
    ! End the run on a rejected input, with exit status 1 so that mpirun and
    ! any script that runs it see the failure (MPI_FINALIZE followed by a
@@ -370,7 +405,7 @@ contains
    ! same data -- the namelist and what follows from it -- so every rank
    ! arrives here together: rank 0 prints the message once, all ranks
    ! finalize MPI and stop.  An error that one rank can meet alone (a file
-   ! read, a failed allocation) takes fatal_error instead, since a rank
+   ! read, a failed allocation) takes abort_run instead, since a rank
    ! waiting here for the others would wait forever.
    subroutine refuse_input(message)
    use mpi

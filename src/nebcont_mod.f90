@@ -73,14 +73,14 @@ contains
   ! q_He2+ [cm^3 s^-1].
   !=========================================================================
   subroutine h2s_mixing_load()
-    use utility, only : fatal_error
+    use utility, only : abort_run
     character(len=256) :: line
     character(len=16)  :: key
     real(kind=wp) :: row(5)
     integer :: unit, ios, i
     open(newunit=unit, file=trim(par%atomic_dir)//'/h_2s_2p_mixing.txt', &
          status='old', iostat=ios)
-    if (ios /= 0) call fatal_error('cannot open '//trim(par%atomic_dir)// &
+    if (ios /= 0) call abort_run('cannot open '//trim(par%atomic_dir)// &
        '/h_2s_2p_mixing.txt (par%twophoton_quenching = ''colliders'')')
     n_mix = 0;  a_2s = 0.0_wp
     do
@@ -93,7 +93,7 @@ contains
        else if (trim(key) == 'TABLE') then
           read(line,*) key, n_mix
           if (n_mix < 2 .or. n_mix > NMIX_MAX) &
-             call fatal_error('h_2s_2p_mixing.txt: TABLE size out of range')
+             call abort_run('h_2s_2p_mixing.txt: TABLE size out of range')
           do i = 1, n_mix
              read(unit,*) row
              mix_logT(i)    = log(row(1))
@@ -103,7 +103,7 @@ contains
     end do
     close(unit)
     if (n_mix < 2 .or. a_2s <= 0.0_wp) &
-       call fatal_error('h_2s_2p_mixing.txt is missing A_2S or TABLE')
+       call abort_run('h_2s_2p_mixing.txt is missing A_2S or TABLE')
   end subroutine h2s_mixing_load
 
   !=========================================================================

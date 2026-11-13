@@ -86,7 +86,7 @@ contains
   ! Read the three tables once.  Idempotent, so any consumer may call it.
   !=========================================================================
   subroutine recomb_continuum_setup()
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     character(len=16) :: fn(3)
     integer :: k, i, unit, ios
@@ -96,7 +96,7 @@ contains
     do k = 1, 3
        open(newunit=unit, file=trim(par%data_dir)//'/'//trim(fn(k)), &
             status='old', iostat=ios)
-       if (ios /= 0) call fatal_error('cannot open ' // &
+       if (ios /= 0) call abort_run('cannot open ' // &
           trim(par%data_dir)//'/'//trim(fn(k)) // ' (par%data_dir)')
        read(unit,*) gtab(k)%nT, gtab(k)%nnu
        allocate(gtab(k)%tk(gtab(k)%nT), gtab(k)%nu(gtab(k)%nnu), &

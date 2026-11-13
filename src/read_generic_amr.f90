@@ -23,7 +23,7 @@ module read_generic_amr_mod
 !---------------------------------------------------------------------------
   use define
   use iofile_mod
-  use utility, only : fatal_error
+  use utility, only : abort_run
   use, intrinsic :: iso_fortran_env, only: int32
   implicit none
   private
@@ -60,7 +60,7 @@ contains
     ! --- Text format: header "nleaf boxlen", rows x y z level nH [T vx vy vz ...] ---
     open(newunit=unit, file=resolved, status='old', action='read', iostat=ios)
     if (ios /= 0) then
-      call fatal_error('generic_amr_read: cannot open file: '//resolved)
+      call abort_run('generic_amr_read: cannot open file: '//resolved)
     end if
     read(unit, *) n, bl
     nleaf       = n
@@ -102,15 +102,15 @@ contains
 
     status = 0
     call io_open_old(iofh, trim(filename), status)
-    if (status /= 0) call fatal_error('generic_amr_read_binary: cannot open file: '//trim(filename))
+    if (status /= 0) call abort_run('generic_amr_read_binary: cannot open file: '//trim(filename))
     call io_move_to_next_section(iofh, status)
-    if (status /= 0) call fatal_error('generic_amr_read_binary: cannot move to binary table HDU: '//trim(filename))
+    if (status /= 0) call abort_run('generic_amr_read_binary: cannot move to binary table HDU: '//trim(filename))
 
     call io_get_keyword(iofh, 'NAXIS2', nleaf_i4, status)
-    if (status /= 0) call fatal_error('generic_amr_read_binary: cannot read NAXIS2: '//trim(filename))
+    if (status /= 0) call abort_run('generic_amr_read_binary: cannot read NAXIS2: '//trim(filename))
     boxlen_phys = 0.0_wp
     call io_get_keyword(iofh, 'BOXLEN', boxlen_phys, status)
-    if (status /= 0) call fatal_error('generic_amr_read_binary: cannot read BOXLEN: '//trim(filename))
+    if (status /= 0) call abort_run('generic_amr_read_binary: cannot read BOXLEN: '//trim(filename))
 
     origin_x = -0.5_wp * boxlen_phys;  origin_y = origin_x;  origin_z = origin_x
     status_ox = 0;  status_oy = 0;  status_oz = 0
@@ -177,7 +177,7 @@ contains
         block
           character(len=16) :: pos
           write(pos,'(i0)') col_position
-          call fatal_error('generic_amr_read: missing mandatory column {'// &
+          call abort_run('generic_amr_read: missing mandatory column {'// &
                trim(names)//'} and column position '//trim(pos))
         end block
       end if
@@ -198,7 +198,7 @@ contains
     status = 0
     call io_read_table_column(iofh, colnum, tmp, status)
     if (status /= 0) then
-      call fatal_error('generic_amr_read: cannot read mandatory column '//trim(name)//'.')
+      call abort_run('generic_amr_read: cannot read mandatory column '//trim(name)//'.')
     end if
     arr(:) = int(tmp(:))
     deallocate(tmp)

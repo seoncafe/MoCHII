@@ -11,7 +11,7 @@ module iofile_mod
 !
   use, intrinsic :: iso_fortran_env, only: real32, real64, int32, int64
   use define, only : PATH_LEN
-  use utility, only : fatal_error
+  use utility, only : abort_run
   use fitsio_mod
   use hdf5io_mod
   implicit none
@@ -144,7 +144,7 @@ contains
   ! separator), it is returned trimmed unchanged. Otherwise, the extensions
   ! `.h5`, `.fits.gz`, `.fits`, `.dat` are appended in that order and the
   ! first existing candidate is returned. If none exists, the routine lists
-  ! the attempted names and ends the run (utility::fatal_error, exit
+  ! the attempted names and ends the run (utility::abort_run, exit
   ! status 1).
   !
   ! Used by inputs that may legitimately be served from any of the supported
@@ -184,7 +184,7 @@ contains
     do i = 1, size(exts)
       write(6,'(a,a)') '  ', trim(filename) // trim(exts(i))
     end do
-    call fatal_error('io_resolve_filename: file not found: '//trim(filename))
+    call abort_run('io_resolve_filename: file not found: '//trim(filename))
   end function io_resolve_filename
 
 !=============================================================================

@@ -39,7 +39,7 @@ module species_mod
                         shared_host_rank, shared_host_size, shared_host_comm
   use metal_ionization_potential_mod, only: metal_ionization_potential
   use ion_stage_equilibrium_mod, only : adjacent_ion_fractions
-  use utility, only : fatal_error
+  use utility, only : abort_run
   use photo_xsec, only : sigma_vfky96
   use cooling_mod, only : cooling_fit_type, cooling_load, cooling_eval, gbar_ff
   use free_free_mod, only : FF_TOTAL
@@ -280,7 +280,7 @@ contains
     character(len=512) :: message
     integer :: ie, k
     if (.not. ieee_is_finite(upper_energy) .or. upper_energy <= 0.0_wp) &
-         call fatal_error('invalid transported upper photon energy')
+         call abort_run('invalid transported upper photon energy')
     l_ionizing = band_luminosity_above(eth_HI)
     do ie = 1, n_elements
        if (elems(ie)%abund <= 0.0_wp) cycle
@@ -288,7 +288,7 @@ contains
        if (elems(ie)%nstage == elems(ie)%Z + 1) cycle
        terminal_energy = metal_ionization_potential(elems(ie)%Z, elems(ie)%nstage)
        if (terminal_energy <= 0.0_wp) &
-            call fatal_error('unknown terminal ionization potential for '//trim(elems(ie)%name))
+            call abort_run('unknown terminal ionization potential for '//trim(elems(ie)%name))
        if (upper_energy <= terminal_energy) cycle
        l_above = band_luminosity_above(terminal_energy)
        share = 0.0_wp
@@ -298,7 +298,7 @@ contains
           ' (stage ', elems(ie)%nstage, ', ionization potential ', terminal_energy, &
           ' eV < eion_max ', upper_energy, ' eV; ', share, &
           ' of the ionizing luminosity lies above it); lower par%eion_max'
-       call fatal_error(trim(message))
+       call abort_run(trim(message))
     end do
   contains
     real(kind=wp) function band_luminosity_above(energy) result(l)
@@ -316,7 +316,6 @@ contains
 
   !=========================================================================
   subroutine species_setup(nleaf)
-    use mpi
     implicit none
     integer, intent(in) :: nleaf
     character(len=8)   :: names(11)
@@ -324,7 +323,7 @@ contains
     real(kind=wp)      :: abunds(11)
     character(len=PATH_LEN) :: fname
     logical :: exists
-    integer :: k, ie, i, ierr, j, ie_tmp, it_tmp
+    integer :: k, ie, i, j, ie_tmp, it_tmp
     real(kind=wp) :: eth_tmp
 
     names  = [character(len=8) :: 'c', 'n', 'o', 'ne', 's', 'ar', 'mg', &
@@ -341,7 +340,7 @@ contains
        call read_element(trim(par%atomic_dir)//'/element_'// &
                          trim(names(k))//'.txt', elems(ie))
        if (trim(elems(ie)%name) /= trim(names(k)) .or. elems(ie)%Z /= atomic_numbers(k)) &
-          call fatal_error('element name or atomic number disagrees with registered species '//trim(names(k)))
+          call abort_run('element name or atomic number disagrees with registered species '//trim(names(k)))
        elems(ie)%abund = abunds(k)
        call cx_state_setup(ie, trim(names(k)))
        !--- cooling fits for each stage where a file exists.
@@ -388,10 +387,13 @@ contains
        do i = 1, elems(ie)%nstage-1
           flat_ntransition = flat_ntransition + 1
           if (flat_ntransition > MAX_METAL_TRANSITIONS) then
-             if (mpar%p_rank == 0) write(*,'(a,i0)') &
-                'ERROR: active metal transitions exceed packet-cache capacity ', &
-                MAX_METAL_TRANSITIONS
-             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             block
+               character(len=1024) :: reason
+               write(reason,'(a,i0)') &
+                   'active metal transitions exceed packet-cache capacity ', &
+                   MAX_METAL_TRANSITIONS
+               call abort_run(trim(reason))
+             end block
           end if
           flat_ie(flat_ntransition) = ie
           flat_it(flat_ntransition) = i
@@ -622,20 +624,19 @@ contains
 
   !=========================================================================
   subroutine read_element(fname, el)
-    use mpi
-    use utility, only : fatal_error
+    use utility, only : abort_run
     use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
     implicit none
     character(len=*),   intent(in)  :: fname
     type(element_type), intent(out) :: el
     character(len=512) :: line, key
     character(len=8)   :: label
-    integer :: unit, ios, it, ierr, n, k, ncxs_seen, next_transition, record_column
+    integer :: unit, ios, it, n, k, ncxs_seen, next_transition, record_column
     logical :: declared, required(7,MAX_ST)
 
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
-       call fatal_error('cannot open '//trim(fname))
+       call abort_run('cannot open '//trim(fname))
     end if
     it = 0
     next_transition = 1
@@ -652,7 +653,7 @@ contains
              'DR2', 'RR2', 'CXI', 'CXR', 'CXRTAB', 'CXSTATE', &
              'CXSTATET', 'CXSTATEK', 'CXHEAT', 'CXHEATTAB')
           if (it < 1 .or. it >= el%nstage) &
-             call fatal_error('atomic rate record without a valid TRANSITION in '//trim(fname))
+             call abort_run('atomic rate record without a valid TRANSITION in '//trim(fname))
        end select
        record_column = 0
        select case (trim(key))
@@ -665,22 +666,22 @@ contains
        case ('CXR'); record_column = 7
        end select
        if (record_column > 0) then
-          if (required(record_column,it)) call fatal_error('duplicate atomic rate record in '//trim(fname))
+          if (required(record_column,it)) call abort_run('duplicate atomic rate record in '//trim(fname))
           required(record_column,it) = .true.
        end if
        select case (trim(key))
        case ('ELEMENT')
-          if (declared) call fatal_error('duplicate ELEMENT record in '//trim(fname))
+          if (declared) call abort_run('duplicate ELEMENT record in '//trim(fname))
           declared = .true.
           read(line,*) key, el%name, el%Z, el%nstage
           if (el%Z < 1 .or. el%nstage < 1 .or. &
               el%nstage > min(MAX_ST, el%Z + 1)) &
-             call fatal_error('ELEMENT stage count out of range in '//trim(fname))
+             call abort_run('ELEMENT stage count out of range in '//trim(fname))
        case ('TRANSITION')
           read(line,*) key, it
           if (it < 1 .or. it >= el%nstage) &
-             call fatal_error('TRANSITION index out of range in '//trim(fname))
-          if (it /= next_transition) call fatal_error('TRANSITION records must be consecutive in '//trim(fname))
+             call abort_run('TRANSITION index out of range in '//trim(fname))
+          if (it /= next_transition) call abort_run('TRANSITION records must be consecutive in '//trim(fname))
           next_transition = next_transition + 1
        case ('ETH')
           read(line,*) key, el%eth(it)
@@ -691,30 +692,30 @@ contains
           read(line,*) key, el%einn(it)
        case ('PHSHELL')
           if (el%nshell(it) >= MAX_SHELL) &
-             call fatal_error('more than 7 PHSHELL rows in '//trim(fname))
+             call abort_run('more than 7 PHSHELL rows in '//trim(fname))
           el%nshell(it) = el%nshell(it) + 1
           read(line,*) key, el%shell(1:7,el%nshell(it),it)
        case ('PHTABLE')
           !--- n rows "eps[eV] sigma[Mb]" follow, one per line
-          if (el%nphtab(it) > 0) call fatal_error('duplicate PHTABLE in '//trim(fname))
+          if (el%nphtab(it) > 0) call abort_run('duplicate PHTABLE in '//trim(fname))
           read(line,*,iostat=ios) key, n
           if (ios /= 0 .or. n < 2 .or. n > MAX_PHTABLE) &
-             call fatal_error('PHTABLE size out of range in '//trim(fname))
+             call abort_run('PHTABLE size out of range in '//trim(fname))
           allocate(el%phtab(it)%eps(n), el%phtab(it)%sig(n))
           do k = 1, n
              read(unit,*,iostat=ios) el%phtab(it)%eps(k), el%phtab(it)%sig(k)
-             if (ios /= 0) call fatal_error('PHTABLE shorter than its count or '// &
+             if (ios /= 0) call abort_run('PHTABLE shorter than its count or '// &
                 'with a malformed row in '//trim(fname))
           end do
           if (.not. all(ieee_is_finite(el%phtab(it)%eps)) .or. &
               .not. all(ieee_is_finite(el%phtab(it)%sig))) &
-             call fatal_error('nonfinite PHTABLE values in '//trim(fname))
+             call abort_run('nonfinite PHTABLE values in '//trim(fname))
           if (el%phtab(it)%eps(1) /= 0.0_wp .or. &
               any(el%phtab(it)%eps(2:n) <= el%phtab(it)%eps(1:n-1))) &
-             call fatal_error('PHTABLE photoelectron energies must start at 0 '// &
+             call abort_run('PHTABLE photoelectron energies must start at 0 '// &
                 'and increase in '//trim(fname))
           if (any(el%phtab(it)%sig < 0.0_wp)) &
-             call fatal_error('negative PHTABLE cross section in '//trim(fname))
+             call abort_run('negative PHTABLE cross section in '//trim(fname))
           el%phtab(it)%sig = el%phtab(it)%sig*1.0e-18_wp   ! Mb -> cm^2
           el%nphtab(it) = n
        case ('CI')
@@ -724,7 +725,7 @@ contains
        case ('DR')
           read(line,*) key, n
           if (n < 0 .or. n > size(el%dr_c, 1)) &
-             call fatal_error('DR term count out of range in '//trim(fname))
+             call abort_run('DR term count out of range in '//trim(fname))
           el%ndr(it) = n
           if (n > 0) then
              backspace(unit)
@@ -751,24 +752,24 @@ contains
        case ('CXRTAB')
           read(line,*) key, n
           if (n < 2 .or. n > MAX_CXR_TAB) &
-             call fatal_error('CXRTAB size out of range in '//trim(fname))
+             call abort_run('CXRTAB size out of range in '//trim(fname))
           el%ncxr_tab(it) = n
           backspace(unit)
           read(unit,*) key, n, el%cxr_tab_T(1:n,it), el%cxr_tab_k(1:n,it)
           if (.not. all(ieee_is_finite(el%cxr_tab_T(1:n,it))) .or. &
               .not. all(ieee_is_finite(el%cxr_tab_k(1:n,it)))) &
-               call fatal_error('nonfinite CXRTAB values in '//trim(fname))
+               call abort_run('nonfinite CXRTAB values in '//trim(fname))
           if (any(el%cxr_tab_T(1:n,it) <= 0.0_wp) .or. &
               any(el%cxr_tab_k(1:n,it) <= 0.0_wp)) &
-               call fatal_error('nonpositive CXRTAB values in '//trim(fname))
+               call abort_run('nonpositive CXRTAB values in '//trim(fname))
           if (any(el%cxr_tab_T(2:n,it) <= el%cxr_tab_T(1:n-1,it))) &
-               call fatal_error('nonincreasing CXRTAB temperature in '//trim(fname))
+               call abort_run('nonincreasing CXRTAB temperature in '//trim(fname))
        case ('CXSTATE')
           read(line,*) key, el%ncxs_term(it), el%ncxs_T(it), &
                        el%cxs_greact(it), el%cxs_dip(it)
           if (el%ncxs_term(it) < 1 .or. el%ncxs_term(it) > MAX_CXS_TERM .or. &
               el%ncxs_T(it) < 2 .or. el%ncxs_T(it) > MAX_CXS_T) &
-             call fatal_error('CXSTATE size out of range in '//trim(fname))
+             call abort_run('CXSTATE size out of range in '//trim(fname))
           ncxs_seen = 0
        case ('CXSTATET')
           backspace(unit)
@@ -776,7 +777,7 @@ contains
        case ('CXSTATEK')
           ncxs_seen = ncxs_seen + 1
           if (ncxs_seen > el%ncxs_term(it)) &
-             call fatal_error('more CXSTATEK rows than CXSTATE terms in '// &
+             call abort_run('more CXSTATEK rows than CXSTATE terms in '// &
                               trim(fname))
           backspace(unit)
           read(unit,*) key, label, el%cxs_lev(1:2,ncxs_seen,it), &
@@ -788,20 +789,20 @@ contains
        case ('CXHEATTAB')
           read(line,*) key, n
           if (n < 2 .or. n > MAX_CX_TAB) &
-             call fatal_error('CXHEATTAB size out of range in '//trim(fname))
+             call abort_run('CXHEATTAB size out of range in '//trim(fname))
           !--- the row can outgrow the line buffer (n pairs of reals), so it
           !--- is read again from the unit, as CXRTAB is
           backspace(unit)
           read(unit,*) key, n, (el%cxheat_tab_T(k,it), el%cxheat_tab_e(k,it), k = 1, n)
           el%ncxheat_tab(it) = n
        case default
-          call fatal_error('unknown atomic record '//trim(key)//' in '//trim(fname))
+          call abort_run('unknown atomic record '//trim(key)//' in '//trim(fname))
        end select
     end do
     close(unit)
-    if (.not. declared) call fatal_error('missing ELEMENT record in '//trim(fname))
+    if (.not. declared) call abort_run('missing ELEMENT record in '//trim(fname))
     if (next_transition /= el%nstage .or. .not. all(required(:,1:el%nstage-1))) &
-       call fatal_error('incomplete atomic transition records in '//trim(fname))
+       call abort_run('incomplete atomic transition records in '//trim(fname))
     if (.not. all(ieee_is_finite(el%eth)) .or. .not. all(ieee_is_finite(el%photo)) .or. &
         .not. all(ieee_is_finite(el%einn)) .or. .not. all(ieee_is_finite(el%shell)) .or. &
         .not. all(ieee_is_finite(el%ci)) .or. .not. all(ieee_is_finite(el%rr)) .or. &
@@ -809,52 +810,52 @@ contains
         .not. all(ieee_is_finite(el%dr_e)) .or. .not. all(ieee_is_finite(el%dr2)) .or. &
         .not. all(ieee_is_finite(el%cxi)) .or. .not. all(ieee_is_finite(el%cxr)) .or. &
         .not. all(ieee_is_finite(el%cxheat))) &
-       call fatal_error('nonfinite atomic rate coefficients in '//trim(fname))
+       call abort_run('nonfinite atomic rate coefficients in '//trim(fname))
     !--- every transition needs its subshell fits; a file written before
     !--- they were added (PHOTO2 or PHOTO alone) would silently leave the
     !--- inner shells out, so refuse it and point at the generator.
     do it = 1, el%nstage - 1
        if (el%eth(it) <= 0.0_wp .or. el%ci(1,it) <= 0.0_wp .or. &
            el%ci(3,it) < 0.0_wp .or. el%ci(4,it) < 0.0_wp .or. el%einn(it) < 0.0_wp) &
-          call fatal_error('invalid atomic threshold or CI coefficients in '//trim(fname))
+          call abort_run('invalid atomic threshold or CI coefficients in '//trim(fname))
        if (el%has_rr2(it)) then
-          if (el%rr2(1,it) <= 0.0_wp) call fatal_error('nonpositive RR2 coefficient in '//trim(fname))
+          if (el%rr2(1,it) <= 0.0_wp) call abort_run('nonpositive RR2 coefficient in '//trim(fname))
        else
           if (el%rr(1,it) <= 0.0_wp .or. el%rr(3,it) <= 0.0_wp .or. el%rr(4,it) <= 0.0_wp) &
-             call fatal_error('nonpositive RR coefficient or temperature in '//trim(fname))
+             call abort_run('nonpositive RR coefficient or temperature in '//trim(fname))
        end if
-       if (el%nshell(it) == 0) call fatal_error(trim(fname)// &
+       if (el%nshell(it) == 0) call abort_run(trim(fname)// &
           ' has no PHSHELL rows: regenerate it with '// &
           'tools/fitting/make_element_data.py')
        if (el%einn(it) > 0.0_wp .and. .not. el%has_ph2(it)) &
-          call fatal_error(trim(fname)//': PHINNER > 0 without a PHOTO row')
+          call abort_run(trim(fname)//': PHINNER > 0 without a PHOTO row')
        !--- a PHTABLE replaces the PHOTO fit below its last node, so it needs
        !--- the fit, must end below the first inner edge, and must end ON the
        !--- fit (continuity at the join; the generator writes the fit's value)
        if (el%nphtab(it) > 0) then
           if (.not. el%has_ph2(it)) &
-             call fatal_error(trim(fname)//': PHTABLE without a PHOTO row')
+             call abort_run(trim(fname)//': PHTABLE without a PHOTO row')
           n = el%nphtab(it)
           if (el%eth(it) + el%phtab(it)%eps(n) >= el%einn(it)) &
-             call fatal_error(trim(fname)//': PHTABLE reaches the first inner-shell edge')
+             call abort_run(trim(fname)//': PHTABLE reaches the first inner-shell edge')
           if (abs(el%phtab(it)%sig(n)/max(sigma_vfky96(el%eth(it) + el%phtab(it)%eps(n), &
                   el%photo(1,it), el%photo(2,it), el%photo(3,it), el%photo(4,it), &
                   el%photo(5,it), el%photo(6,it), el%photo(7,it), el%photo(8,it)), &
                   tinest) - 1.0_wp) > 1.0e-8_wp) &
-             call fatal_error(trim(fname)//': PHTABLE does not end on the PHOTO fit')
+             call abort_run(trim(fname)//': PHTABLE does not end on the PHOTO fit')
        end if
        if (el%cxr_form(it) == 8 .and. el%ncxr_tab(it) < 2) &
-          call fatal_error(trim(fname)//': CXR form 8 without a CXRTAB row')
+          call abort_run(trim(fname)//': CXR form 8 without a CXRTAB row')
        if ((el%cxi_form(it) == 9 .or. el%cxr_form(it) == 9) .and. &
            (el%cxi_form(it) /= el%cxr_form(it) .or. el%ncxs_term(it) < 1 .or. &
             any(el%cxs_k(1:el%ncxs_T(it),1:el%ncxs_term(it),it) <= 0.0_wp))) &
-          call fatal_error(trim(fname)//': CX form 9 needs both directions '// &
+          call abort_run(trim(fname)//': CX form 9 needs both directions '// &
                            'and complete CXSTATE rows')
        !--- charge-exchange heating needs the energy of every carried
        !--- reaction; a file written before the CXHEAT rows existed would
        !--- leave it silently at zero.
        if (par%charge_exchange_heating .and. .not. el%has_cxheat(it)) &
-          call fatal_error(trim(fname)//' has no CXHEAT row for a '// &
+          call abort_run(trim(fname)//' has no CXHEAT row for a '// &
              'transition (par%charge_exchange_heating): regenerate it '// &
              'with tools/fitting/make_element_data.py')
     end do
@@ -1036,7 +1037,7 @@ contains
   !--- from the n-level atom of the product ion, after checking that the
   !--- term energies of the element file are that atom's
   subroutine cx_state_setup(ie, name)
-    use utility,    only : fatal_error
+    use utility,    only : abort_run
     use nlevel_mod, only : nlevel_cooling_prepT, nlevel_populations
     integer,          intent(in) :: ie
     character(len=*), intent(in) :: name
@@ -1053,17 +1054,17 @@ contains
        fname=metal_excitation_data_file('nlevel',trim(name),it+1)
        allocate(atom)
        call nlevel_load(trim(fname), atom, ok)
-       if (.not. ok) call fatal_error('charge exchange form 9 needs '// &
+       if (.not. ok) call abort_run('charge exchange form 9 needs '// &
           trim(fname)//' (the product ion''s levels)')
        do jt = 1, n
           lo = elems(ie)%cxs_lev(1,jt,it);  hi = elems(ie)%cxs_lev(2,jt,it)
-          if (lo < 1 .or. hi > atom%nlev .or. hi < lo) call fatal_error( &
+          if (lo < 1 .or. hi > atom%nlev .or. hi < lo) call abort_run( &
              'CXSTATEK levels outside '//trim(fname))
           sg = sum(atom%g(lo:hi))
           se = sum(atom%g(lo:hi)*atom%e_cm1(lo:hi))
           Eterm = se/sg*HC_EV_CM
           if (abs(Eterm - elems(ie)%cxs_E(jt,it)) > 2.0e-3_wp .or. &
-              abs(sg - elems(ie)%cxs_g(jt,it)) > 1.0e-6_wp) call fatal_error( &
+              abs(sg - elems(ie)%cxs_g(jt,it)) > 1.0e-6_wp) call abort_run( &
              'CXSTATEK term energy or weight disagrees with '//trim(fname))
        end do
        allocate(cxs_pop(it,ie)%f(CXS_NT, CXS_NNE, n))
@@ -1152,7 +1153,7 @@ contains
     nleaf = amr_grid%nleaf
     do ie = 1, n_elements
        if (.not. allocated(metal_rate_path(ie)%raw)) &
-          error stop 'metal path estimators are not allocated'
+          call abort_run('metal path estimators are not allocated')
        do il = shared_host_rank() + 1, nleaf, shared_host_size()
           vol = (2.0_wp*leaf_half(il))**3
           fac = 1.0_wp/(vol*par%distance2cm**2)
@@ -1814,7 +1815,7 @@ contains
        if (abs(elems(ie)%shell(2,k,it) - elems(ie)%eth(it)) <= &
            1.0e-9_wp*elems(ie)%eth(it)) kout = k
     end do
-    if (kout == 0) call fatal_error('no outer subshell at the ionization '// &
+    if (kout == 0) call abort_run('no outer subshell at the ionization '// &
        'potential for '//trim(elems(ie)%name)//' (element file PHSHELL rows)')
   end function outer_shell_index
 
@@ -1895,10 +1896,10 @@ contains
   subroutine ion_stage_balance_error(ie, status)
     integer, intent(in) :: ie, status
     if (status == 2) then
-       call fatal_error('nonunique stationary ion populations for '//trim(elems(ie)%name)// &
+       call abort_run('nonunique stationary ion populations for '//trim(elems(ie)%name)// &
                         ': disconnected zero-rate stages require initial populations')
     else
-       call fatal_error('invalid ionization or recombination rates for '//trim(elems(ie)%name))
+       call abort_run('invalid ionization or recombination rates for '//trim(elems(ie)%name))
     end if
   end subroutine ion_stage_balance_error
 

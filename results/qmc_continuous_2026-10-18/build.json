@@ -1,7 +1,7 @@
 {
   "ok": true,
   "binary_sha256": "c042fe7de7556647c1f6cc7ce01066afb71c550a242d915c56d57a877513e1d6",
-  "build_configuration": "mpiifort\n-ipo -O3 -no-prec-div -fp-model fast=2 -cpp -DMPI -ISEDust/sed/lib -DHDF5 -I/data/opt/hdf5_intel/include \n-module src\n-qopenmp\n",
+  "build_configuration": "mpiifort\n-ipo -O3 -no-prec-div -fp-model fast=2 -cpp -DMPI -ISEDust/sed/lib -DHDF5 -I/opt/hdf5_intel/include \n-module src\n-qopenmp\n",
   "source_sha256": {
     "src/grain_photoelectric_mod.f90": "4cdfc4e8105e577903aca269bf4575685e9a94de0029bcc40d4d5769e6475508",
     "src/ion_stage_equilibrium_mod.f90": "db1f36ea63463fb8a27d3d5b67ef75390ba48b3c94bc69adddc8e60f54347800",

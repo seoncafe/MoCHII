@@ -703,7 +703,7 @@ contains
   !--- picked by u_line over their energy luminosities (equal photon rates,
   !--- so in proportion to the energies).
   real(kind=wp) function metal_valence_energy(il, T_K, u_pick, u_line) result(eph)
-    use utility, only : fatal_error
+    use utility, only : abort_run
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: T_K, u_pick, u_line
     real(kind=wp) :: w(MAX_METAL_TRANSITIONS), e(2), rate
@@ -712,7 +712,7 @@ contains
     w = metal_valence_weights(il, T_K)
     k = pick_index(w(1:metal_valence_count()), u_pick)
     if (.not. metal_valence_recombination(k, il, T_K, ie, it, rate, e)) &
-       call fatal_error('channel 8 picked a transition without photons')
+       call abort_run('channel 8 picked a transition without photons')
     inb = valence_line_in_band(e)
     if (inb(1) .and. inb(2)) then
        eph = merge(e(1), e(2), u_line*(e(1) + e(2)) <= e(1))

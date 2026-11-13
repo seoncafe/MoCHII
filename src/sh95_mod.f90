@@ -92,7 +92,7 @@ contains
   !=========================================================================
   subroutine sh95_load(fname, t, name, required)
     use mpi
-        use utility, only : fatal_error
+        use utility, only : abort_run
 implicit none
     character(len=*),    intent(in)    :: fname, name
     type(sh95_tab_type), intent(inout) :: t
@@ -105,7 +105,7 @@ implicit none
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
        if (required) then
-          call fatal_error('cannot open '//trim(fname)//' (par%atomic_dir)')
+          call abort_run('cannot open '//trim(fname)//' (par%atomic_dir)')
        end if
        return
     end if

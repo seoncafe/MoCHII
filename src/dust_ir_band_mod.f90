@@ -154,7 +154,7 @@ contains
     transmission = exp(-max(tau_edge, 0.0_wp))
     ir_emitted_acc = ir_emitted_acc + real(luminosity, ENERGY_ACC_WP)
     ir_extinct_acc = ir_extinct_acc &
-       + real(luminosity*(1.0_wp - transmission), ENERGY_ACC_WP)
+       + real(luminosity*extinguished_fraction(max(tau_edge, 0.0_wp)), ENERGY_ACC_WP)
     lesc = luminosity*transmission
     ir_transmitted_acc = ir_transmitted_acc + real(lesc, ENERGY_ACC_WP)
     if (edge_lost) then

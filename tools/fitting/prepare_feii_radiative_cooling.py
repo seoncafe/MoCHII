@@ -105,7 +105,7 @@ def native(work,prepared):
         # Compile the actual linked reader, preserving all production source.
         sys.path.insert(0,str(ROOT/'tests/ion_stages'))
         from run_checks import production_objects
-        objects=[p for p in production_objects() if p.name!='main.o'];hdf=Path('/data/opt/hdf5_intel/lib');exe=work/'cooling_fit.x'
+        objects=[p for p in production_objects() if p.name!='main.o'];hdf=Path('/opt/hdf5_intel/lib');exe=work/'cooling_fit.x'
         driver=ROOT/'tests/ion_stages/check_cooling_fit.f90'
         subprocess.run(['mpiifort','-cpp','-DMPI','-DHDF5','-O0','-no-ipo','-check','all,noarg_temp_created',
             '-fpe0','-traceback','-qopenmp','-Isrc','-module',str(work),'-o',str(exe),str(driver),*map(str,objects),
@@ -173,7 +173,7 @@ def feii_density_cooling(work,prepared):
     driver=work/'feii_density_cooling.f90';driver.write_text(text);exe=work/'feii_density_cooling.x'
     sys.path.insert(0,str(ROOT/'tests/ion_stages'));from run_checks import production_objects
     objects=[p for p in production_objects() if p.name not in ('main.o','nlevel_mod.o','nlevel_cooling_mod.o')]
-    hdf=Path('/data/opt/hdf5_intel/lib')
+    hdf=Path('/opt/hdf5_intel/lib')
     subprocess.run([*flags,'-o',str(exe),str(driver),str(private_atom.with_suffix('.o')),
         str(private_module.with_suffix('.o')),*map(str,objects),'-lcfitsio',
         str(ROOT/'SEDust/sed/lib/libsedust.a'),str(hdf/'libhdf5_fortran.a'),str(hdf/'libhdf5.a'),

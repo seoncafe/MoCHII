@@ -35,12 +35,18 @@ SEDUST_LIBDIR ?= SEDust/sed/lib
 FLAGS      += -I$(SEDUST_LIBDIR)
 SEDUST_LIB  = $(SEDUST_LIBDIR)/libsedust.a
 
-# HDF5 installation prefix (set when HDF5=1).
-HDF5_PREFIX ?= /data/opt/hdf5_intel
+# HDF5 installation prefix (set when HDF5=1).  The Fortran interface
+# (hdf5.mod) is readable only by the compiler that built it, so each
+# compiler family has its own build; mpif90 wraps gfortran.
+ifeq ($(FC), mpif90)
+   HDF5_PREFIX ?= /opt/hdf5_gfortran
+else
+   HDF5_PREFIX ?= /opt/hdf5_intel
+endif
 
 ifneq ($(HDF5), 0)
    FLAGS    += -DHDF5 -I$(HDF5_PREFIX)/include
-   HDF5_LIBS = $(HDF5_PREFIX)/lib/libhdf5_fortran.a $(HDF5_PREFIX)/lib/libhdf5.a -lsz -ldl -lz -lm
+   HDF5_LIBS = $(HDF5_PREFIX)/lib/libhdf5_fortran.a $(HDF5_PREFIX)/lib/libhdf5.a -lsz -ldl -lz
 endif
 
 ifeq ($(FC), $(filter $(FC), mpiifort mpiifx))

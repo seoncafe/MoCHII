@@ -15,6 +15,7 @@ module gas_opacity_mod
 ! gas_opacity_fill refreshes them between transport passes; the grey s_ext
 ! rescale of the dust SED band does NOT apply here.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use octree_mod,    only : amr_grid
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_nleaf
@@ -95,13 +96,12 @@ contains
   !--- rhokap it would otherwise scale is read by nothing (the dust heating,
   !--- the SED and the packet opacity are all under par%ion_add_dust).
   subroutine dust_reference_extinction()
-    use mpi
     use grain_model_mod, only : grain_extinction_table, dmodel
     implicit none
     real(kind=wp), allocatable :: lam(:), alb(:), cext(:), gcos(:)
     character(len=512) :: line
     real(kind=wp) :: v(4), cref, lam_short, lam_long, given
-    integer :: unit, ios, n, i, ierr
+    integer :: unit, ios, n, i
     logical :: from_model
 
     if (dust_tab_n > 0) return
@@ -118,10 +118,9 @@ contains
     if (.not. from_model) then
        open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
        if (ios /= 0) then
-          if (mpar%p_rank == 0) write(*,'(2a)') &
-             'ERROR: ion_add_dust needs par%ion_dust_kext; cannot open ', &
-             trim(par%ion_dust_kext)
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'ion_add_dust needs par%ion_dust_kext; cannot open ' // &
+             trim(par%ion_dust_kext))
        end if
        !--- count numeric rows, then read (lambda, albedo, -, C_ext)
        n = 0
@@ -166,17 +165,18 @@ contains
        end if
        if (lam(1) > lam_short*1.0001_wp .or. lam(n) < lam_long*0.9999_wp .or. &
            par%lambda_ref < lam(1) .or. par%lambda_ref > lam(n)) then
-          if (mpar%p_rank == 0) then
-             write(*,'(3a)') 'ERROR: par%dust_model = ''', &
-                trim(par%dust_model), ''' does not cover the ionizing band;'
-             write(*,'(a,es10.3,a,es10.3,a)') '       model grid [um] = [', &
-                lam(1), ', ', lam(n), ']'
-             write(*,'(a,es10.3,a,es10.3,a,es10.3)') &
-                '       band + ref need [um] = [', lam_short, ', ', lam_long, &
-                '] and ', par%lambda_ref
-             write(*,'(a)') '       set par%ion_dust_kext to a table that covers it.'
-          end if
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          block
+            character(len=128) :: grid_line, need_line
+            write(grid_line,'(a,es10.3,a,es10.3,a)') '       model grid [um] = [', &
+               lam(1), ', ', lam(n), ']'
+            write(need_line,'(a,es10.3,a,es10.3,a,es10.3)') &
+               '       band + ref need [um] = [', lam_short, ', ', lam_long, &
+               '] and ', par%lambda_ref
+            call abort_run('par%dust_model = '''//trim(par%dust_model)// &
+               ''' does not cover the ionizing band;'//new_line('a')// &
+               trim(grid_line)//new_line('a')//trim(need_line)//new_line('a')// &
+               '       set par%ion_dust_kext to a table that covers it.')
+          end block
        end if
     end if
 

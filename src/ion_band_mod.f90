@@ -53,6 +53,7 @@ module ion_band_mod
 ! stratum by its luminosity there.  Both strata sample the same spectrum model
 ! as 'proportional', so the two modes estimate the same field.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use energy_sampler_mod, only : energy_sampler_type, build_planck_sampler, &
        build_tabulated_sampler, build_tabulated_band_sampler, sample_energy_cdf, &
@@ -171,7 +172,6 @@ contains
 
   !=========================================================================
   subroutine ion_setup(metal_eth, nmetal)
-    use mpi
     use octree_mod, only : amr_grid
     implicit none
     !--- metal_eth(1:nmetal): active metal photoionization thresholds [eV],
@@ -183,7 +183,7 @@ contains
     real(kind=wp), allocatable :: eedge(:), meth(:)
     real(kind=wp) :: lo, hi
     real(kind=wp) :: Lnorm, Jband, uFUV
-    integer :: nnu, nfuv, i, ierr, nmet, presid
+    integer :: nnu, nfuv, i, nmet, presid
     logical :: is_abs, derived
 
     if (allocated(source_metal_thresholds)) deallocate(source_metal_thresholds)
@@ -200,9 +200,8 @@ contains
     nfuv = 0
     if (par%add_fuv) then
        if (par%efuv_min >= par%eion_min) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: add_fuv requires par%efuv_min < par%eion_min.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'add_fuv requires par%efuv_min < par%eion_min.')
        end if
        nfuv = par%nnu_fuv
     end if
@@ -340,13 +339,12 @@ contains
   ! is the diagnostic spectrum of the same band.
   !=========================================================================
   subroutine setup_continuous_source_sampler(metal_eth, nmetal)
-    use mpi
     use octree_mod, only : amr_grid
     implicit none
     real(kind=wp), intent(in), optional :: metal_eth(:)
     integer,       intent(in), optional :: nmetal
     real(kind=wp), allocatable :: band_L(:)
-    integer :: ic, ik, nmet, ierr
+    integer :: ic, ik, nmet
     real(kind=wp) :: elo, azface, f_ion
 
     nmet = 0
@@ -391,10 +389,9 @@ contains
               * (amr_grid%yrange * par%distance2cm)
        f_ion = ionizing_fraction(source_energy_sampler(1))
        if (f_ion <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
-             'to an ionizing luminosity (the spectrum is FUV-only).'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'cannot rescale a source with no ionizing-band luminosity '// &
+             'to an ionizing luminosity (the spectrum is FUV-only).')
        end if
        band_L(1) = sum(slab_Fz) * azface / f_ion
     end if
@@ -690,23 +687,20 @@ contains
   ! is_abs marks a physical-type file, as in finalize_source / comp_shape.
   !=========================================================================
   real(kind=wp) function source_band_luminosity(sampler, is_abs, scale) result(band_L)
-    use mpi
     implicit none
     type(energy_sampler_type), intent(in) :: sampler
     logical,                   intent(in) :: is_abs
     real(kind=wp),             intent(in) :: scale
     real(kind=wp) :: f_ion
-    integer :: ierr
     if (is_abs .and. scale <= 0.0_wp) then
        band_L = sampler%total_integral
        return
     end if
     f_ion = ionizing_fraction(sampler)
     if (f_ion <= 0.0_wp) then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
-          'to an ionizing luminosity (the spectrum is FUV-only).'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run( &
+          'cannot rescale a source with no ionizing-band luminosity '// &
+          'to an ionizing luminosity (the spectrum is FUV-only).')
     end if
     band_L = scale / f_ion
   end function source_band_luminosity
@@ -806,9 +800,9 @@ contains
           call read_shape_table(filename, column, columns, etab, ftab, ntab)
        end if
        if (.not. all(ieee_is_finite(etab)) .or. .not. all(ieee_is_finite(ftab))) &
-            error stop 'full_spectrum: nonfinite spectrum table'
-       if (size(etab) < 2) error stop 'full_spectrum: spectrum needs at least two rows'
-       if (etab(1) <= 0.0_wp) error stop 'full_spectrum: photon energies must be positive'
+            call abort_run('full_spectrum: nonfinite spectrum table')
+       if (size(etab) < 2) call abort_run('full_spectrum: spectrum needs at least two rows')
+       if (etab(1) <= 0.0_wp) call abort_run('full_spectrum: photon energies must be positive')
        ! The canonical interpolation is linear in L_E after unit conversion.
        ! Both the full integral and every transported interval use this model.
        call build_tabulated_sampler(full, etab, ftab)
@@ -823,26 +817,26 @@ contains
        values(1:2) = [0.0_wp, -1.0_wp]
     end if
     if (.not. ieee_is_finite(integral) .or. integral <= 0.0_wp) &
-         error stop 'full_spectrum: invalid full spectrum integral'
+         call abort_run('full_spectrum: invalid full spectrum integral')
     if (absolute_file .and. scale <= 0.0_wp) then
        values(3) = integral
        band_L = sampler%total_integral
     else
        if (.not. ieee_is_finite(scale) .or. scale <= 0.0_wp) &
-            error stop 'full_spectrum: source luminosity must be positive'
+            call abort_run('full_spectrum: source luminosity must be positive')
        values(3) = scale
        band_L = scale * (sampler%total_integral / integral)
        if (absolute_file .and. present(rescaled_from)) rescaled_from = integral
     end if
     if (.not. ieee_is_finite(band_L) .or. band_L <= 0.0_wp) &
-         error stop 'full_spectrum: invalid transported luminosity'
+         call abort_run('full_spectrum: invalid transported luminosity')
     fion = ionizing_fraction(sampler)
     values(4) = band_L * fion
     values(5) = band_L * (1.0_wp-fion)
     ! Only adaptive Planck quadrature roundoff can put the band above the
     ! analytic full integral; tolerate its requested integration accuracy.
     if (band_L > values(3)*(1.0_wp+10.0_wp*par%source_cdf_tol)) &
-         error stop 'full_spectrum: transported luminosity exceeds full luminosity'
+         call abort_run('full_spectrum: transported luminosity exceeds full luminosity')
     values(6) = max(0.0_wp, values(3)-band_L)
     values(7) = band_L
   end subroutine full_spectrum_point_source
@@ -991,7 +985,6 @@ contains
   ! par%ext_intensity on its ionizing segment.
   !=========================================================================
   subroutine build_external_field_sampler(sampler, elo, nmet, metal_eth, band_L)
-    use mpi
     use octree_mod, only : amr_grid
     implicit none
     type(energy_sampler_type), intent(out) :: sampler
@@ -1002,7 +995,7 @@ contains
     real(kind=wp), allocatable :: etab(:), ftab(:), knots(:)
     real(kind=wp) :: ehi_p, asurf, xr, yr, zr, f_ion
     logical :: is_abs
-    integer :: ntab, presid, k, ierr
+    integer :: ntab, presid, k
 
     presid = ion_ext_preset_id(par%ext_spectrum)
     is_abs = (presid > 0) .or. &
@@ -1011,12 +1004,15 @@ contains
     if (presid > 0) then
        ehi_p = min(par%eion_max, PRESET_EMAX)
        if (ehi_p <= elo) then
-          if (mpar%p_rank == 0) write(*,'(3a,f8.3,a)') &
-             'ERROR: the ISRF preset ', trim(par%ext_spectrum), &
-             ' carries no flux above', PRESET_EMAX, &
-             ' eV, so it does not overlap the band; lower par%efuv_min '// &
-             '(with par%add_fuv) or drop the preset.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          block
+            character(len=1024) :: reason
+            write(reason,'(3a,f8.3,a)') &
+                'the ISRF preset ', trim(par%ext_spectrum), &
+                ' carries no flux above', PRESET_EMAX, &
+                ' eV, so it does not overlap the band; lower par%efuv_min '// &
+                '(with par%add_fuv) or drop the preset.'
+            call abort_run(trim(reason))
+          end block
        end if
        allocate(etab(NPRESET), ftab(NPRESET))
        do k = 1, NPRESET
@@ -1083,9 +1079,8 @@ contains
        !--- spectrum shape through f_ion.
        f_ion = ionizing_fraction(sampler)
        if (f_ion <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the external spectrum has no luminosity inside the ionizing band.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'the external spectrum has no luminosity inside the ionizing band.')
        end if
        band_L = pi * par%ext_intensity * asurf / f_ion
     end if
@@ -1254,7 +1249,6 @@ contains
   ! a Planck function (arr is an arbitrary-unit shape, renormalized later).
   !=========================================================================
   subroutine comp_shape(arr, eedge, nnu, nsub, specfile, tstar, is_abs)
-    use mpi
     implicit none
     real(kind=wp),    intent(out) :: arr(:)
     real(kind=wp),    intent(in)  :: eedge(:)
@@ -1265,7 +1259,7 @@ contains
     character(len=256) :: eff_file
     real(kind=wp), allocatable :: etab(:), ftab(:)
     real(kind=wp) :: eff_T, e1, e2, es, fsum
-    integer :: i, k, ierr, ntab
+    integer :: i, k, ntab
     is_abs = .false.
     if (len_trim(specfile) > 0) then
        eff_file = specfile;         eff_T = -1.0_wp
@@ -1289,11 +1283,10 @@ contains
        end if
     else
        if (eff_T <= 0.0_wp) then     ! no file and no positive temperature anywhere
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the ionizing band needs a spectrum: set par%tstar > 0, '// &
+          call abort_run( &
+             'the ionizing band needs a spectrum: set par%tstar > 0, '// &
              'par%ion_spectrum, or a component spectrum (src_spectrum_file / '// &
-             'src_tstar / ext_spectrum / ext_tstar).'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             'src_tstar / ext_spectrum / ext_tstar).')
        end if
        do i = 1, nnu
           e1 = eedge(i);  e2 = eedge(i+1)
@@ -1401,7 +1394,6 @@ contains
   ! ionizing-band luminosity.
   !=========================================================================
   subroutine finalize_source(arr, nnu, nfuv, is_abs, scale, Lused)
-    use mpi
     implicit none
     real(kind=wp), intent(inout) :: arr(:)
     integer,       intent(in)    :: nnu, nfuv
@@ -1409,15 +1401,13 @@ contains
     real(kind=wp), intent(in)    :: scale
     real(kind=wp), intent(out)   :: Lused
     real(kind=wp) :: lion, ltot
-    integer :: ierr
     lion = sum(arr(nfuv+1:nnu))
     if (is_abs) then
        if (scale > 0.0_wp) then          ! rescale the ionizing segment to scale
           if (lion <= 0.0_wp) then
-             if (mpar%p_rank == 0) write(*,'(a)') &
-                'ERROR: cannot rescale a source with no ionizing-band luminosity '// &
-                'to an ionizing luminosity (the spectrum is FUV-only).'
-             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             call abort_run( &
+                'cannot rescale a source with no ionizing-band luminosity '// &
+                'to an ionizing luminosity (the spectrum is FUV-only).')
           end if
           if (mpar%p_rank == 0) write(*,'(a,es12.4,a,es12.4)') &
              ' ION: NOTE: physical source rescaled from file integral', lion, &
@@ -1430,18 +1420,16 @@ contains
           else
              ltot = sum(arr)             ! FUV-only source: keep the FUV bins
              if (ltot <= 0.0_wp) then
-                if (mpar%p_rank == 0) write(*,'(a)') &
-                   'ERROR: the source spectrum has no luminosity inside the band.'
-                call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+                call abort_run( &
+                   'the source spectrum has no luminosity inside the band.')
              end if
              Lused = 0.0_wp
           end if
        end if
     else                                 ! legacy shape: renormalize to scale
        if (lion <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the source spectrum has no luminosity inside the ionizing band.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'the source spectrum has no luminosity inside the ionizing band.')
        end if
        arr = arr / lion * scale
        Lused = scale
@@ -1462,7 +1450,6 @@ contains
   ! density (4pi/c) int_FUV J dE), and presid (>0 = preset).
   !=========================================================================
   subroutine build_ext_bins(arr, eedge, nnu, nfuv, nsub, Lenter, Jband, uFUV, presid)
-    use mpi
     use octree_mod, only : amr_grid
     implicit none
     real(kind=wp), intent(out) :: arr(:)
@@ -1473,7 +1460,7 @@ contains
     real(kind=wp), allocatable :: etab(:), ftab(:)
     real(kind=wp) :: asurf, xr, yr, zr, Jtot, dummyT
     logical :: is_abs, dum
-    integer :: ntab, ierr
+    integer :: ntab
 
     !--- illuminated surface area [cm^2].
     if (trim(par%ext_geometry) == 'sph') then
@@ -1508,9 +1495,8 @@ contains
     if (is_abs) then
        Jtot = sum(arr)                            ! band-integrated interior J
        if (Jtot <= 0.0_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the external spectrum has no luminosity inside the band.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'the external spectrum has no luminosity inside the band.')
        end if
        if (par%ext_intensity > 0.0_wp) then        ! rescale to the target band J
           !--- the same note finalize_source prints for a rescaled physical
@@ -1549,7 +1535,6 @@ contains
   ! between consecutive thresholds; each sub-segment is log-uniform.
   !=========================================================================
   subroutine build_aligned_edges(eedge, nfuv, nnu, metal_eth, nmetal)
-    use mpi
     implicit none
     real(kind=wp), intent(inout) :: eedge(:)
     integer,       intent(in)    :: nfuv, nnu, nmetal
@@ -1560,7 +1545,7 @@ contains
     real(kind=wp) :: cand(MAXEDGE), thr(MAXEDGE), points(MAXEDGE), w(MAXEDGE)
     real(kind=wp) :: tmp, lo, hi, wsum, frac
     integer :: ncand, nthr, nseg, nion, i, j, ipt, ib, r
-    integer :: nb(MAXEDGE), off, best, ierr, ntot, itmp, ndrop
+    integer :: nb(MAXEDGE), off, best, ntot, itmp, ndrop
     integer :: cpri(MAXEDGE), tpri(MAXEDGE)
     logical :: dup
     real(kind=wp), parameter :: MERGE_TOL = 0.01_wp   ! |ln(T2/T1)| merge
@@ -1651,10 +1636,13 @@ contains
     !--- 5) need at least one bin per sub-segment.  After degradation this
     !---    only trips for an absurd nnu_ion below the H/He edge count.
     if (nion < nseg) then
-       if (mpar%p_rank == 0) write(*,'(a,i0,a,i0,a,i0,a)') &
-          'ERROR: ion_align_edges: nnu_ion=', nion, ' cannot fit ', nthr, &
-          ' H/He thresholds; raise nnu_ion to >= ', nseg, '.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(a,i0,a,i0,a,i0,a)') &
+             'ion_align_edges: nnu_ion=', nion, ' cannot fit ', nthr, &
+             ' H/He thresholds; raise nnu_ion to >= ', nseg, '.'
+         call abort_run(trim(reason))
+       end block
     end if
 
     !--- 4) distribute nion bins over the nseg sub-segments by log width,
@@ -1752,7 +1740,6 @@ contains
   ! interpolation onto the sub-grid; zero outside the tabulated range.
   !=========================================================================
   subroutine bin_lum_from_file(fname, eedge, nnu, nsub, arr)
-    use mpi
     implicit none
     character(len=*), intent(in) :: fname
     real(kind=wp), intent(in) :: eedge(:)
@@ -1761,13 +1748,12 @@ contains
     real(kind=wp), allocatable :: etab(:), ftab(:)
     character(len=256) :: line
     real(kind=wp) :: e1, e2, es, fsum, ei, fi
-    integer :: unit, ios, ntab, i, k, j, ierr
+    integer :: unit, ios, ntab, i, k, j
 
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('cannot open ' // trim(fname))
     end if
     do
        read(unit,'(a)',iostat=ios) line
@@ -1821,7 +1807,6 @@ contains
   ! extra columns beyond nsrc.
   !=========================================================================
   subroutine bin_lum_from_multicol(fname, icol, nsrc, eedge, nnu, nsub, arr)
-    use mpi
     implicit none
     character(len=*), intent(in) :: fname
     integer,       intent(in) :: icol, nsrc, nnu, nsub
@@ -1830,23 +1815,25 @@ contains
     real(kind=wp), allocatable :: etab(:), ftab(:), row(:)
     character(len=1024) :: line
     real(kind=wp) :: e1, e2, es, fsum, ei, fi, extra
-    integer :: unit, ios, ios2, ntab, i, k, j, ierr
+    integer :: unit, ios, ios2, ntab, i, k, j
     logical :: has_extra
 
     !--- the value column asked for must exist among the nsrc read; a source
     !--- index outside 1..nsrc (e.g. a component with no column of its own)
     !--- stops here instead of reading past the row.
     if (icol < 1 .or. icol > nsrc) then
-       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
-          ': value column ', icol, ' requested, but only ', nsrc, &
-          ' value column(s) are read from it.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(3a,i0,a,i0,a)') '', trim(fname), &
+             ': value column ', icol, ' requested, but only ', nsrc, &
+             ' value column(s) are read from it.'
+         call abort_run(trim(reason))
+       end block
     end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('cannot open ' // trim(fname))
     end if
     do
        read(unit,'(a)',iostat=ios) line
@@ -1867,10 +1854,13 @@ contains
        i = i + 1
        read(line,*,iostat=ios2) row(1:nsrc+1)          ! E + one L_E per source
        if (ios2 /= 0) then
-          if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
-             'ERROR: ', trim(fname), ' needs 1 + nsource(=', nsrc, &
-             ') columns (E [eV] and one L_E for each source); it has too few.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          block
+            character(len=1024) :: reason
+            write(reason,'(3a,i0,a)') &
+                '', trim(fname), ' needs 1 + nsource(=', nsrc, &
+                ') columns (E [eV] and one L_E for each source); it has too few.'
+            call abort_run(trim(reason))
+          end block
        end if
        if (i == 1) then                                ! detect extra columns once
           read(line,*,iostat=ios2) row(1:nsrc+1), extra
@@ -1948,7 +1938,6 @@ contains
   ! fewer than ncol+1 columns or icol lies outside 1..ncol.
   !=========================================================================
   subroutine read_shape_table(fname, icol, ncol, etab, ftab, ntab)
-    use mpi
     implicit none
     character(len=*), intent(in) :: fname
     integer, intent(in) :: icol, ncol
@@ -1957,23 +1946,25 @@ contains
     real(kind=wp), allocatable :: row(:)
     character(len=2048) :: line
     real(kind=wp) :: extra, tmp
-    integer :: unit, ios, ios2, i, j, ierr
+    integer :: unit, ios, ios2, i, j
     logical :: has_extra
 
     !--- the value column asked for must exist among the ncol read; a source
     !--- index outside 1..ncol (e.g. a component with no column of its own)
     !--- stops here instead of reading past the row.
     if (icol < 1 .or. icol > ncol) then
-       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
-          ': value column ', icol, ' requested, but only ', ncol, &
-          ' value column(s) are read from it.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(3a,i0,a,i0,a)') '', trim(fname), &
+             ': value column ', icol, ' requested, but only ', ncol, &
+             ' value column(s) are read from it.'
+         call abort_run(trim(reason))
+       end block
     end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('cannot open ' // trim(fname))
     end if
     do
        read(unit,'(a)',iostat=ios) line
@@ -1994,10 +1985,13 @@ contains
        i = i + 1
        read(line,*,iostat=ios2) row(1:ncol+1)
        if (ios2 /= 0) then
-          if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
-             'ERROR: ', trim(fname), ' needs 1 + ', ncol, &
-             ' columns (E [eV] and spectral density); it has too few.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          block
+            character(len=1024) :: reason
+            write(reason,'(3a,i0,a)') &
+                '', trim(fname), ' needs 1 + ', ncol, &
+                ' columns (E [eV] and spectral density); it has too few.'
+            call abort_run(trim(reason))
+          end block
        end if
        if (i == 1) then
           read(line,*,iostat=ios2) row(1:ncol+1), extra
@@ -2035,7 +2029,6 @@ contains
   ! E-descending after conversion, so the result is sorted ascending in E.
   !=========================================================================
   subroutine read_phys_table(fname, icol, ncol, etab, ftab, ntab)
-    use mpi
     implicit none
     character(len=*), intent(in) :: fname
     integer,          intent(in) :: icol, ncol
@@ -2044,23 +2037,25 @@ contains
     real(kind=wp), allocatable :: row(:)
     character(len=2048) :: line
     real(kind=wp) :: c1, cv, ee, xe, extra, tmp, hc
-    integer :: unit, ios, ios2, i, j, ierr
+    integer :: unit, ios, ios2, i, j
     logical :: has_extra
 
     !--- the value column asked for must exist among the ncol read; a source
     !--- index outside 1..ncol (e.g. a component with no column of its own)
     !--- stops here instead of reading past the row.
     if (icol < 1 .or. icol > ncol) then
-       if (mpar%p_rank == 0) write(*,'(3a,i0,a,i0,a)') 'ERROR: ', trim(fname), &
-          ': value column ', icol, ' requested, but only ', ncol, &
-          ' value column(s) are read from it.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(3a,i0,a,i0,a)') '', trim(fname), &
+             ': value column ', icol, ' requested, but only ', ncol, &
+             ' value column(s) are read from it.'
+         call abort_run(trim(reason))
+       end block
     end if
     ntab = 0
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(2a)') 'ERROR: cannot open ', trim(fname)
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('cannot open ' // trim(fname))
     end if
     do
        read(unit,'(a)',iostat=ios) line
@@ -2081,10 +2076,13 @@ contains
        i = i + 1
        read(line,*,iostat=ios2) row(1:ncol+1)
        if (ios2 /= 0) then
-          if (mpar%p_rank == 0) write(*,'(3a,i0,a)') &
-             'ERROR: ', trim(fname), ' needs 1 + ', ncol, &
-             ' columns for spectrum_type /= shape_ev; it has too few.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          block
+            character(len=1024) :: reason
+            write(reason,'(3a,i0,a)') &
+                '', trim(fname), ' needs 1 + ', ncol, &
+                ' columns for spectrum_type /= shape_ev; it has too few.'
+            call abort_run(trim(reason))
+          end block
        end if
        if (i == 1) then
           read(line,*,iostat=ios2) row(1:ncol+1), extra
@@ -2348,7 +2346,7 @@ contains
     iband = LAUNCH_BAND_WHOLE
     if (present(band)) iband = band
     if (.not. source_energy_sampler_ready) &
-       error stop 'source energy sampler is not initialized'
+       call abort_run('source energy sampler is not initialized')
     if (.not. multi_src) then
        !--- single-component fast path (legacy RNG stream): emit by geometry.
        select case (trim(par%source_geometry))
@@ -2425,7 +2423,7 @@ contains
     iband = LAUNCH_BAND_WHOLE
     if (present(band)) iband = band
     if (.not. source_energy_sampler_ready) &
-       error stop 'source energy sampler is not initialized'
+       call abort_run('source energy sampler is not initialized')
     if ((.not. multi_src) .and. trim(par%source_geometry) == 'point') then
        !--- single point source: stage-1 layout (u1 = photon energy).
        call emit_point_qmc(photon, par%xs_point, par%ys_point, par%zs_point, &
@@ -2615,12 +2613,11 @@ contains
   ! pi*I (isotropic).  slab_*_source is the band-integrated source strength.
   !=========================================================================
   subroutine slab_setup(Lslab)
-    use mpi
     use octree_mod, only : amr_grid
     implicit none
     real(kind=wp), intent(out) :: Lslab
     real(kind=wp) :: azface, src(2), theta(2)
-    integer :: f, ierr
+    integer :: f
     logical :: top, bot
 
     top = trim(par%slab_faces) == 'top'    .or. trim(par%slab_faces) == 'both'
@@ -2649,10 +2646,9 @@ contains
 
     Lslab = sum(slab_Fz) * azface
     if (Lslab <= 0.0_wp) then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: source_geometry=''slab'' has zero entering flux; set '// &
-          'par%slab_top_source / par%slab_bot_source (> 0) on the lit face(s).'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run( &
+          'source_geometry=''slab'' has zero entering flux; set '// &
+          'par%slab_top_source / par%slab_bot_source (> 0) on the lit face(s).')
     end if
     slab_ptop = slab_Fz(1) / sum(slab_Fz)
 

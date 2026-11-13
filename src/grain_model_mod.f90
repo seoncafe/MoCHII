@@ -52,6 +52,7 @@ module grain_model_mod
 ! Built once for each run; both callers go through build_grain_model, which
 ! returns immediately after the first call.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use dust_lib, only : dust_model_t, build_dust, &
                        dust_extinction, dust_nlam, dust_lambda
@@ -72,7 +73,7 @@ contains
   !--- and takes the whole stored wavelength axis (include_euv), so the only
   !--- choice left here is whether par%sed_kext replaces the extinction curve.
   subroutine build_grain_model()
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     integer :: st
     character(len=512) :: msg
@@ -119,7 +120,7 @@ contains
     !--- reaches the same status and every rank aborts.  A rank other than 0
     !--- therefore tears the job down while rank 0 is still writing, and a
     !--- rank-0-only message is lost -- the user sees nothing but MPI_Abort.
-    !--- utility::fatal_error exists for exactly this: it writes from whichever
+    !--- utility::abort_run exists for exactly this: it writes from whichever
     !--- rank reached the failure and flushes before aborting.
     if (st /= 0) then
        if (st == 90) then
@@ -156,7 +157,7 @@ contains
              trim(par%sed_data_dir), ''' (status=', st, '): ', trim(sed_msg), &
              ' -- run SEDust/populate_data.sh if the tree is incomplete'
        end if
-       call fatal_error(trim(msg))
+       call abort_run(trim(msg))
     end if
 
     grain_model_ready = .true.
@@ -215,22 +216,24 @@ contains
   !--- pah_ion; Zubko's default optics are the Camps et al. (2015) tables, whose
   !--- PAH component scatters as the graphite sphere of the same radius.
   subroutine grain_extinction_table(lam, alb, cosg, cext, n)
-    use mpi
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     real(kind=wp), allocatable, intent(out) :: lam(:), alb(:), cosg(:), cext(:)
     integer,                    intent(out) :: n
     real(kind=wp), allocatable :: cabs(:), csca(:)
     character(len=512) :: msg
-    integer :: ierr, st, il
+    integer :: st, il
 
     call build_grain_model()
 
     n = dust_nlam(dmodel)
     if (n < 2) then
-       if (mpar%p_rank == 0) write(*,'(a,i0,a)') &
-          'ERROR: the dust model has ', n, ' wavelength points; at least 2 are needed.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(a,i0,a)') &
+             'the dust model has ', n, ' wavelength points; at least 2 are needed.'
+         call abort_run(trim(reason))
+       end block
     end if
 
     allocate(lam(n), alb(n), cosg(n), cext(n), cabs(n), csca(n))
@@ -274,7 +277,7 @@ contains
        case default
           write(msg,'(a,i0,a)') 'dust_extinction failed (status=', st, ')'
        end select
-       call fatal_error(trim(msg))
+       call abort_run(trim(msg))
     end if
 
     !--- Every model SEDust builds carries scattering optics, so a C_sca that
@@ -283,12 +286,9 @@ contains
     !--- turn grains whose true albedo is ~0.5-0.7 in the optical into a purely
     !--- absorbing medium, so the run stops rather than transport that silently.
     if (maxval(csca) <= 0.0_wp) then
-       if (mpar%p_rank == 0) then
-          write(*,'(3a)') 'ERROR: the ''', trim(par%dust_model), &
-             ''' model returned no scattering at any wavelength;'
-          write(*,'(a)')  '       check the par%sed_* optics paths.'
-       end if
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('the '''//trim(par%dust_model)// &
+          ''' model returned no scattering at any wavelength;'//new_line('a')// &
+          '       check the par%sed_* optics paths.')
     end if
 
     do il = 1, n

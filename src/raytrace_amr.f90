@@ -15,6 +15,7 @@ module raytrace_amr_mod
 ! xyz_symmetry (no frequency shift for grey dust); a space-filling octree has
 ! no refinement gaps, so amr_next_leaf alone suffices for the transport walk.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use octree_mod
   use jtally_mod, only : jt_on, jt_first, jt_sum, &
                          slab_tally_on, slab_bnd_add
@@ -187,8 +188,11 @@ contains
       if (jt_first) then
         alpha = rhokap*photon0%s_ext
         if (alpha*t_exit > 0.0_wp) then
+          !--- jt_expo (1 - e^-alpha t)/alpha: full relative accuracy at
+          !--- every optical depth (define::extinguished_fraction)
           expo_out = jt_expo*exp(-alpha*t_exit)
-          jt_sum(photon0%il,il) = jt_sum(photon0%il,il) + photon0%wgt*photon0%Lpacket*(jt_expo-expo_out)/alpha
+          jt_sum(photon0%il,il) = jt_sum(photon0%il,il) + photon0%wgt*photon0%Lpacket &
+             *jt_expo*extinguished_fraction(alpha*t_exit)/alpha
           jt_expo = expo_out
         else
           jt_sum(photon0%il,il) = jt_sum(photon0%il,il) + photon0%wgt*photon0%Lpacket*jt_expo*t_exit
@@ -229,7 +233,7 @@ contains
   ! MoCHII: full ionizing-band transport of one packet.
   ! (1) analytic zero-variance direct tally to the edge (always);
   ! (2) when par%ion_dust_scatter: forced first interaction along the ray
-  !     (weight w1 = 1 - e^-tau_edge), albedo weight at each interaction
+  !     (weight w1 = 1 - e^-tau_edge, for every tau_edge > 0), albedo weight at each interaction
   !     (a_eff = kappa_sca,dust / kappa_ext), Henyey-Greenstein direction
   !     with g(E_b) from the kext table, Russian roulette below w_min;
   !     the scattered flights tally jt_ion along their sampled segments
@@ -257,12 +261,17 @@ contains
     call raytrace_ion_to_edge_amr(photon, tau_edge, flight_end)
     call ion_score_energy_packet(photon, tau_edge, flight_end)
     if (.not. (par%ion_add_dust .and. par%ion_dust_scatter)) return
-    if (tau_edge <= 1.0e-12_wp) return
+    !--- every positive optical depth forces an interaction: the
+    !--- extinguished weight is 1 - e^-tau_edge however small tau_edge is
+    if (tau_edge <= 0.0_wp) return
 
-    !--- forced first interaction (direct J already tallied analytically)
-    wgt1 = 1.0_wp - exp(-tau_edge)
+    !--- forced first interaction (direct J already tallied analytically):
+    !--- weight w1 = 1 - e^-tau_edge and the stopping depth
+    !--- -ln(1 - u w1), both at full relative accuracy for every
+    !--- tau_edge > 0 (define::extinguished_fraction and its inverse)
+    wgt1 = extinguished_fraction(tau_edge)
     photon%wgt = photon%wgt*wgt1
-    tau = -log(1.0_wp - rand_number()*wgt1)
+    tau = optical_depth_of_extinguished_fraction(rand_number()*wgt1)
     call raytrace_ion_to_tau_amr(photon, tau, flight_end)
     call score_flight_end(photon, flight_end)
 
@@ -522,8 +531,12 @@ contains
       call amr_cell_exit(icell, x, y, z, kx, ky, kz, t_exit, iface)
       kap = ion_packet_opacity(photon0, il)
       if (kap*t_exit > 0.0_wp) then
+        !--- expo (1 - e^-kap l)/kap at full relative accuracy for every
+        !--- kap l > 0 (define::extinguished_fraction): the difference
+        !--- expo - expo_out lost ~1e-16/(kap l) of it and vanished below
+        !--- kap l ~ 1e-16
         expo_out = expo*exp(-kap*t_exit)
-        call score_ion_path(photon0, il, wl*(expo - expo_out)/kap)
+        call score_ion_path(photon0, il, wl*expo*extinguished_fraction(kap*t_exit)/kap)
         expo = expo_out
       else
         call score_ion_path(photon0, il, wl*expo*t_exit)
@@ -631,8 +644,12 @@ contains
       seg = tmax(a) - t_cur
       kap = ion_packet_opacity(photon0, il)
       if (kap*seg > 0.0_wp) then
+        !--- expo (1 - e^-kap l)/kap at full relative accuracy for every
+        !--- kap l > 0 (define::extinguished_fraction): the difference
+        !--- expo - expo_out lost ~1e-16/(kap l) of it and vanished below
+        !--- kap l ~ 1e-16
         expo_out = expo*exp(-kap*seg)
-        call score_ion_path(photon0, il, wl*(expo - expo_out)/kap)
+        call score_ion_path(photon0, il, wl*expo*extinguished_fraction(kap*seg)/kap)
         expo = expo_out
       else
         call score_ion_path(photon0, il, wl*expo*seg)

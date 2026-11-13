@@ -100,6 +100,7 @@ module hei_metastable_mod
 !        n_e q(2^1S -> 2^3S) ~ 2e-7 n_e s^-1), so no singlet atom returns
 !        to 2^3S.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use mpi
   use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
@@ -478,22 +479,20 @@ contains
   ! Parse data/atomic/hei_metastable.txt (keyword lines; '#' comments).
   !=========================================================================
   subroutine hei_metastable_load()
-    use mpi
     implicit none
     character(len=PATH_LEN) :: fname
     character(len=512) :: line
     character(len=16)  :: key, rolename
     real(kind=wp) :: ups(MAXNODE), gl, dE
-    integer :: unit, ios, ierr, lower, n, mult, l
+    integer :: unit, ios, lower, n, mult, l
     logical :: old_layout
 
     if (hm_loaded) return
     fname = trim(par%atomic_dir)//'/hei_metastable.txt'
     open(newunit=unit, file=trim(fname), status='old', iostat=ios)
     if (ios /= 0) then
-       if (mpar%p_rank == 0) write(*,'(3a)') 'ERROR: cannot open ', &
-          trim(fname), ' (par%atomic_dir)'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run('cannot open ' // &
+          trim(fname) // ' (par%atomic_dir)')
     end if
     old_layout = .false.
     hm_nrow = 0;  hm_nnode = 0
@@ -555,21 +554,23 @@ contains
         hm_E23S <= 0.0_wp .or. hm_cion3(1) <= 0.0_wp .or. &
         hm_c3_T(1) <= 0.0_wp .or. hm_q31_T(1) <= 0.0_wp .or. &
         count(hm_role(1:hm_nrow) == ROLE_Q13) /= 1) then
-       if (mpar%p_rank == 0) write(*,'(3a)') 'ERROR: ', trim(fname), &
+       call abort_run(trim(fname) // &
           ' is not in the current UPSILON/BETA/E23S layout; regenerate it'// &
-          ' with tools/fitting/make_hei_metastable.py'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          ' with tools/fitting/make_hei_metastable.py')
     end if
     !--- the default FUV floor (par%efuv_min when the input leaves it out) is
     !--- define.f90's E_HEI_23S_SIGMA_EDGE, set before this file is read; it
     !--- has to be the edge sigma_3 is evaluated with, or the default band
     !--- would start above (or below) the photoionization it exists to cover.
     if (abs(hm_sigA(1) - E_HEI_23S_SIGMA_EDGE) > 1.0e-9_wp*E_HEI_23S_SIGMA_EDGE) then
-       if (mpar%p_rank == 0) write(*,'(a,f10.6,a,f10.6,a)') &
-          'ERROR: the SIGMA3A edge ', hm_sigA(1), ' eV differs from '// &
-          'E_HEI_23S_SIGMA_EDGE = ', E_HEI_23S_SIGMA_EDGE, &
-          ' eV in define.f90 (the default FUV floor); make them agree.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(a,f10.6,a,f10.6,a)') &
+             'the SIGMA3A edge ', hm_sigA(1), ' eV differs from '// &
+             'E_HEI_23S_SIGMA_EDGE = ', E_HEI_23S_SIGMA_EDGE, &
+             ' eV in define.f90 (the default FUV floor); make them agree.'
+         call abort_run(trim(reason))
+       end block
     end if
     hm_loaded = .true.
     if (mpar%p_rank == 0) write(*,'(a,i3,2a)') &
@@ -583,7 +584,7 @@ contains
   !=========================================================================
   subroutine hei_metastable_write(n2s3, phi3, a3, heat3, nleaf)
     use iofile_mod
-    use utility,       only : get_base_name, fatal_error
+    use utility,       only : get_base_name, abort_run
     use gas_state_mod, only : gas_nH, gas_ne, gas_Te
     implicit none
     integer,       intent(in) :: nleaf
@@ -618,7 +619,7 @@ contains
     allocate(tmp(nleaf))
     tmp = gas_nH(1:nleaf)
     call io_append_image(file, tmp, status, bitpix=-64)
-    call io_put_keyword(file,'EXTNAME','n_H','hydrogen density [cm^-3]',status)
+    call io_put_keyword(file,'EXTNAME','n_H','H density [cm^-3]',status)
     tmp = gas_ne(1:nleaf)
     call io_append_image(file, tmp, status, bitpix=-64)
     call io_put_keyword(file,'EXTNAME','n_e','electron density [cm^-3]',status)
@@ -645,7 +646,7 @@ contains
     deallocate(tmp)
 
     call io_close(file, status)
-    if (status /= 0) call fatal_error('failed to write He I metastable file: '//trim(filename))
+    if (status /= 0) call abort_run('failed to write He I metastable file: '//trim(filename))
     write(*,'(2a)') ' HEIMETA: 2^3S diagnostic written to: ', trim(filename)
   end subroutine hei_metastable_write
 

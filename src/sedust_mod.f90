@@ -160,7 +160,7 @@ contains
   !=========================================================================
   subroutine sedust_leaf_spectrum(il, pdf, esum)
     use octree_mod, only : amr_grid
-    use utility,    only : fatal_error
+    use utility,    only : abort_run
     implicit none
     integer,       intent(in)  :: il
     real(kind=wp), intent(out) :: pdf(:), esum
@@ -169,7 +169,7 @@ contains
     icol = 0
     if (spectrum_reuse_on) then
        !--- the leaf set the stored spectra belong to must still be the grid.
-       if (amr_grid%nleaf /= nleaf_reuse) call fatal_error( &
+       if (amr_grid%nleaf /= nleaf_reuse) call abort_run( &
           'sedust_leaf_spectrum: the grid changed while leaf spectra are stored')
        if (mod(il-1, mpar%nproc) == mpar%p_rank) icol = (il-1)/mpar%nproc + 1
     end if
@@ -442,7 +442,7 @@ contains
   subroutine dustemis_write(em_band, band_wl, nband)
     use octree_mod, only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
     use iofile_mod
-    use utility,    only : get_base_name, fatal_error
+    use utility,    only : get_base_name, abort_run
     implicit none
     real(kind=wp), intent(in) :: em_band(:,:), band_wl(:)
     integer,       intent(in) :: nband
@@ -482,7 +482,7 @@ contains
          'band wavelengths [A]',status)
     call io_close(file, status)
     deallocate(lxyz, tmp)
-    if (status /= 0) call fatal_error('failed to write dust-emissivity file: '//trim(outname))
+    if (status /= 0) call abort_run('failed to write dust-emissivity file: '//trim(outname))
     write(*,'(2a)') ' SEDU: dust band emissivities written to: ', trim(outname)
   end subroutine dustemis_write
 

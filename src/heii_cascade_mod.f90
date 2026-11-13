@@ -210,7 +210,7 @@ contains
 
   !=========================================================================
   subroutine heii_cascade_setup()
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     character(len=32) :: key
     real(kind=wp) :: nu_lo, nu_hi, T, g, seg, e_hi, e_top, ph
@@ -237,12 +237,12 @@ contains
     !--- that has any He III, which needs 54.416 eV photons to make.  Only
     !--- the transported channel needs the band (heii_cascade_transported).
     if (heii_cascade_transported() .and. par%eion_max < E_HEII_LYA) &
-       call fatal_error('par%heii_diffuse needs par%eion_max >= 40.813 eV ' // &
+       call abort_run('par%heii_diffuse needs par%eion_max >= 40.813 eV ' // &
           '(the He II Ly-alpha energy)')
     !--- in case A the higher Lyman lines reach the series limit likewise
     if (heii_cascade_transported() .and. lyman_line_case() == 'A' &
         .and. par%eion_max < heii_lyman_energy(HEII_NLY)) &
-       call fatal_error('par%heii_diffuse with par%lyman_lines = ''escaping'' ' // &
+       call abort_run('par%heii_diffuse with par%lyman_lines = ''escaping'' ' // &
           'needs par%eion_max >= 54.36 eV (the He II Lyman series)')
 
     !--- two-photon band: the pair spans E_HEII_LYA, the window runs from the

@@ -25,11 +25,12 @@ module amr_refine_mod
 !     is what refine_lbase does away from the front.  Every event prints
 !     the before/after integrals and aborts if one of them moved.
 ! All ranks build identical trees from the shared state; the shared-memory
-! windows of the OLD tree/arrays are not recycled (one refinement event
-! leaks the old grid until MPI_FINALIZE — acceptable; window recycling is
-! a later cleanup).  Call between iterations, after the equilibrium
+! windows of the OLD tree and gas state are freed before the rebuild
+! (step 4b), and their slots are reused (memory_mod_mpi).  Call between
+! iterations, after the equilibrium
 ! update; the caller continues with the refilled opacity and a fresh tally.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use octree_mod
   use gas_state_mod
@@ -273,12 +274,11 @@ contains
   ! the range of the old leaves instead of being invented.
   !=========================================================================
   subroutine remap_leaf(x, y, z, h, nH, x1, x1p, x2, x3, x4, ne, te, rk)
-    use mpi
     implicit none
     real(kind=wp), intent(in)  :: x, y, z, h
     real(kind=wp), intent(out) :: nH, x1, x1p, x2, x3, x4, ne, te, rk
     integer, parameter :: MAXSTK = 512
-    integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl, ierr
+    integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl
     real(kind=wp) :: ov, hw, wm, wt, vol
     real(kind=wp) :: sv, snh, sne, srk                  ! volume weighted
     real(kind=wp) :: sm, smx1, smx1p, smx2, smx3, smx4  ! nH V weighted
@@ -332,9 +332,8 @@ contains
           if (jc > 0) then
              nstk = nstk + 1
              if (nstk > MAXSTK) then
-                if (mpar%p_rank == 0) write(*,'(a)') &
-                   'ERROR: amr remap descent stack overflow'
-                call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+                call abort_run( &
+                   'amr remap descent stack overflow')
              end if
              stack(nstk) = jc
           end if
@@ -373,14 +372,13 @@ contains
   ! The box integral sum(V g) of each component is preserved exactly; the
   ! largest relative change is printed with label.
   subroutine volume_average_rates(nnew_, half, g_old, g_new, label)
-    use mpi
     implicit none
     integer,       intent(in)  :: nnew_
     real(kind=wp), intent(in)  :: half, g_old(:,:)
     real(kind=wp), intent(out) :: g_new(:,:)
     character(len=*), intent(in) :: label
     integer, parameter :: MAXSTK = 512
-    integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl, il, ierr
+    integer :: stack(MAXSTK), nstk, icell, ioct, jc, jl, il
     real(kind=wp) :: x, y, z, h, hw, ov, sv
     real(kind=wp) :: int_old(size(g_old,1)), int_new(size(g_old,1)), worst
 
@@ -409,9 +407,8 @@ contains
              if (jc > 0) then
                 nstk = nstk + 1
                 if (nstk > MAXSTK) then
-                   if (mpar%p_rank == 0) write(*,'(a)') &
-                      'ERROR: amr rate remap descent stack overflow'
-                   call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+                   call abort_run( &
+                      'amr rate remap descent stack overflow')
                 end if
                 stack(nstk) = jc
              end if
@@ -442,7 +439,6 @@ contains
   !=========================================================================
   subroutine conservation_report(nold, half, s_nH, s_x1, s_x1p, s_x2, s_x3, &
                                  s_x4, s_ne, s_te, s_rk)
-    use mpi
     use octree_mod, only : leaf_half
     implicit none
     integer,       intent(in) :: nold
@@ -454,7 +450,7 @@ contains
        'H nuclei', 'H I', 'He I', 'He II', 'electrons', 'extinction', &
        'thermal', 'H II', 'He III']
     real(kind=wp) :: a(NQ), b(NQ), vol, dev, worst
-    integer :: il, ierr
+    integer :: il
 
     a = 0.0_wp
     do il = 1, nold
@@ -496,10 +492,13 @@ contains
           '   rel ', dev
     end do
     if (worst > 1.0e-8_wp) then
-       if (mpar%p_rank == 0) write(*,'(a,es10.3,a)') &
-          'ERROR: AMR re-refinement lost ', worst, &
-          ' of a conserved box integral; the remap is wrong.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       block
+         character(len=1024) :: reason
+         write(reason,'(a,es10.3,a)') &
+             'AMR re-refinement lost ', worst, &
+             ' of a conserved box integral; the remap is wrong.'
+         call abort_run(trim(reason))
+       end block
     end if
   end subroutine conservation_report
 

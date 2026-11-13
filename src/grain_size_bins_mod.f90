@@ -196,7 +196,7 @@ contains
   !=========================================================================
   subroutine grain_bins_from_model(m, data_dir)
     use dust_lib,  only : dust_model_t
-    use utility,   only : fatal_error
+    use utility,   only : abort_run
     implicit none
     type(dust_model_t), intent(in) :: m
     character(len=*),   intent(in) :: data_dir
@@ -260,7 +260,7 @@ contains
                m%pops(ip)%dn, m%pops(ip)%Cabs, m%pops(ip)%dn, m%pops(ip)%Cabs, &
                lam, SILICATE, .false., imn_ad, tmp)
        case default
-          call fatal_error('grain_size_bins_mod: population type '''// &
+          call abort_run('grain_size_bins_mod: population type '''// &
                trim(m%pops(ip)%grain_type)//''' has no photoemission material')
        end select
     end do
@@ -404,7 +404,7 @@ contains
   ! then E [eV], Re(m)-1, Im(m), ...), log-log in E.
   !=========================================================================
   subroutine imaginary_index(path, imn)
-    use utility, only : fatal_error
+    use utility, only : abort_run
     character(len=*), intent(in)  :: path
     real(kind=wp),    intent(out) :: imn(:)
     real(kind=wp), allocatable :: e(:), v(:)
@@ -413,7 +413,7 @@ contains
     integer :: unit, ios, n, k, lo, hi, mid
 
     open(newunit=unit, file=path, status='old', action='read', iostat=ios)
-    if (ios /= 0) call fatal_error('cannot open the dielectric function '//path)
+    if (ios /= 0) call abort_run('cannot open the dielectric function '//path)
     read(unit,'(a)') line;  read(unit,'(a)') line
     n = 0
     do

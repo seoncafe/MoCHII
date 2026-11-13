@@ -12,6 +12,7 @@ module sed_mod
 !--- the grid rhokap is the opacity at the reference wavelength, and every
 !--- optical depth is scaled by s_ext (same mathematics as the Jonsson 2006
 !--- tau scan), so the raytrace routines (car/amr) need no changes.
+  use utility, only : abort_run, refuse_input
   use define
   use random,  only : random_alias_setup, rand_alias_choise
   implicit none
@@ -42,16 +43,13 @@ contains
   integer       :: ntab, nsp, il, ierr
 
   if (par%nlambda < 2) then
-     if (mpar%p_rank == 0) write(*,'(a)') 'ERROR: par%nlambda must be >= 2 in SED mode.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input('par%nlambda must be >= 2 in SED mode.')
   endif
   if (.not. (par%lambda_max > par%lambda_min .and. par%lambda_min > 0.0_wp)) then
-     if (mpar%p_rank == 0) write(*,'(a)') 'ERROR: require 0 < lambda_min < lambda_max in SED mode.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input('require 0 < lambda_min < lambda_max in SED mode.')
   endif
   if (len_trim(par%kext_file) == 0) then
-     if (mpar%p_rank == 0) write(*,'(a)') 'ERROR: SED mode requires par%kext_file (lambda, albedo, <cos>, C_ext/H table).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input('SED mode requires par%kext_file (lambda, albedo, <cos>, C_ext/H table).')
   endif
 
   !--- log-spaced wavelength grid (bin edges and geometric bin centers).
@@ -118,15 +116,13 @@ contains
         sed_lum(il) = planck_shape(sed_wave(il), par%tstar) * sed_dwave(il)
      enddo
   else
-     if (mpar%p_rank == 0) write(*,'(a)') &
-        'ERROR: SED mode requires a source spectrum: par%source_spectrum (file) or par%tstar (Planck, K).'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input(&
+        'SED mode requires a source spectrum: par%source_spectrum (file) or par%tstar (Planck, K).')
   endif
 
   lum_sum = sum(sed_lum)
   if (.not. (lum_sum > 0.0_wp)) then
-     if (mpar%p_rank == 0) write(*,'(a)') 'ERROR: source spectrum has zero luminosity on the wavelength grid.'
-     call MPI_FINALIZE(ierr);  stop
+     call refuse_input('source spectrum has zero luminosity on the wavelength grid.')
   endif
   sed_lum(:) = sed_lum(:)/lum_sum
 
@@ -215,8 +211,7 @@ contains
      n = n + 1
   enddo
   if (n < 2) then
-     write(*,'(3a)') 'ERROR: extinction table ', trim(fname), ' has fewer than 2 data rows.'
-     stop
+     call abort_run('extinction table '//trim(fname)//' has fewer than 2 data rows.')
   endif
   allocate(lam(n), alb(n), cosg(n), cext(n))
   rewind(unit)
@@ -251,8 +246,7 @@ contains
      n = n + 1
   enddo
   if (n < 2) then
-     write(*,'(3a)') 'ERROR: spectrum file ', trim(fname), ' has fewer than 2 data rows.'
-     stop
+     call abort_run('spectrum file '//trim(fname)//' has fewer than 2 data rows.')
   endif
   allocate(lam(n), lum(n))
   rewind(unit)

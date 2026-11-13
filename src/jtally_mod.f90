@@ -264,7 +264,7 @@ contains
   use sed_mod,      only : sed_nlam, sed_wave, sed_dwave, sed_sext, sed_albedo, sed_cext_ref
   use cellinfo_mod, only : cell_rhokap, cell_volume, cell_center, car_ijk
   use iofile_mod
-  use utility,      only : get_base_name, fatal_error
+  use utility,      only : get_base_name, abort_run
   implicit none
   type(grid_type), intent(in) :: grid
   type(io_file_type) :: file
@@ -342,7 +342,7 @@ contains
   call io_append_image(file, sed_dwave, status, bitpix=-64)
   call io_put_keyword(file,'EXTNAME','Dwavelength','bin widths [um]',status)
   call io_close(file, status)
-  if (status /= 0) call fatal_error('failed to write J_lambda file: '//trim(filename))
+  if (status /= 0) call abort_run('failed to write J_lambda file: '//trim(filename))
   write(*,'(2a)') 'J_lambda written to: ', trim(filename)
   deallocate(jbol)
   end subroutine jtally_write

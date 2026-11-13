@@ -48,7 +48,7 @@ program main
   real(kind=wp)       :: drift_vol(3)
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
-  logical             :: converged, use_vol
+  logical             :: converged, use_vol, refined_this_iteration
   integer             :: ierr, iter, niter
   character(len=32)   :: pass_label
   !--- active metal photoionization thresholds gathered for the
@@ -258,11 +258,13 @@ program main
         ',  vol = ', eps_hvol
      call gas_opacity_fill()
      !--- solution-driven I-front re-refinement (one event).
+     refined_this_iteration = .false.
      if (par%refine_front .and. iter == par%refine_iter) then
         block
           use amr_refine_mod, only : amr_refine_front
           call amr_refine_front()
         end block
+        refined_this_iteration = .true.
         converged = .false.        ! keep iterating on the new grid
         call history_reset(hist_dx)      ! the old grid's steps say nothing
         call history_reset(hist_dhe1)    ! about the new one
@@ -275,7 +277,12 @@ program main
      end if
      !--- the iterate, for a resume with par%restart_file (rank 0 writes;
      !--- the header says it is neither converged nor solved in its field)
-     if (par%rates_write_interval > 0 .and. iter < niter) then
+     !--- a rebuilt grid has no transported field yet: its rate arrays and
+     !--- diffuse tables still hold the old grid's values (resized only by the next
+     !--- transport pass), so no coherent checkpoint exists until then
+     if (refined_this_iteration .and. par%rates_write_interval > 0 .and. mpar%p_rank == 0) &
+        write(*,'(a)') ' CHECKPOINT: deferred after refinement until transport on the new grid'
+     if (par%rates_write_interval > 0 .and. iter < niter .and. .not. refined_this_iteration) then
         if (mod(iter, par%rates_write_interval) == 0) then
            run_converged = .false.
            run_iters     = iter
@@ -294,18 +301,16 @@ program main
   run_final_dx  = max_dx
   run_final_dte = max_dte
   !--- Only rank 0 evaluates the (namelist-set) require_convergence flag and
-  !--- issues the collective abort; a single-rank MPI_ABORT tears down the
-  !--- whole communicator.  This avoids letting any other rank act on its own
-  !--- copy of the flag.
+  !--- ends the run (abort_run); its MPI_ABORT tears down the whole
+  !--- communicator.  This avoids letting any other rank act on its own copy
+  !--- of the flag.
   if (par%gas_niter >= 1 .and. .not. converged .and. mpar%p_rank == 0) then
      write(6,'(a,i0,2(a,es10.3),a)') &
         ' WARNING: gas iteration did NOT converge in ', niter, &
         ' iterations (max|dx_HII| = ', max_dx, ', max|dTe|/Te = ', max_dte, &
         '); the written state is not at equilibrium.'
      if (par%require_convergence) then
-        write(6,'(a)') &
-           ' ERROR: par%require_convergence is set; stopping before output.'
-        call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+        call abort_run('par%require_convergence is set; stopping before output.')
      end if
   end if
 

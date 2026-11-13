@@ -468,7 +468,7 @@ contains
                             elem_name, elem_eth, species_radiative_recombination, &
                             species_recombination_coefficient, &
                             species_outer_shell_break, species_photo_table_end
-    use utility,     only : fatal_error
+    use utility,     only : abort_run
     implicit none
     real(kind=wp), parameter :: TCHK = 1.0e4_wp
     real(kind=wp) :: t, T_K, kT_eV, x_hi, xa, xb, xm, fa, fb, fm, sum_e
@@ -826,7 +826,7 @@ contains
   !--- ground-term weight g and first excited-term energy e1 [eV] of stage
   !--- ist of element el, from data/atomic/ground_term_weights.txt
   subroutine ground_term_weight(el, ist, g, e1)
-    use utility, only : fatal_error
+    use utility, only : abort_run
     character(len=*), intent(in)  :: el
     integer,          intent(in)  :: ist
     real(kind=wp),    intent(out) :: g, e1
@@ -838,7 +838,7 @@ contains
     found = .false.
     open(newunit=unit, file=trim(par%atomic_dir)//'/ground_term_weights.txt', &
          status='old', iostat=ios)
-    if (ios /= 0) call fatal_error('cannot open '//trim(par%atomic_dir)// &
+    if (ios /= 0) call abort_run('cannot open '//trim(par%atomic_dir)// &
        '/ground_term_weights.txt (metal ground continua of the diffuse field)')
     do
        read(unit,'(a)',iostat=ios) line
@@ -851,7 +851,7 @@ contains
        end if
     end do
     close(unit)
-    if (.not. found) call fatal_error('ground_term_weights.txt has no stage of '//trim(el))
+    if (.not. found) call abort_run('ground_term_weights.txt has no stage of '//trim(el))
   end subroutine ground_term_weight
 
   integer function milne_metal_count() result(n)

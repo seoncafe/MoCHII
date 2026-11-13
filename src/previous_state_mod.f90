@@ -40,7 +40,21 @@ module previous_state_mod
 ! previous leaf that contains its center, so the new grid may differ from the
 ! old one (refined, coarsened, extended).  A new leaf with no previous
 ! counterpart -- outside the old domain, or gas where the old leaf was
-! vacuum (n_e = 0) -- keeps the par%*_init values.  The lookup is a hash on
+! vacuum -- keeps the par%*_init values.  A file that carries n_H (written
+! since 2026-11-13) decides it directly: a stored leaf is vacuum if and only
+! if its n_H is 0.  A file without n_H decides it by charge neutrality: a
+! stored leaf is vacuum when its n_e is 0 while its stored ionized fractions
+! are not (x_HII > 0, or x_HeII + x_HeIII > 0 with helium), since the writer
+! leaves a vacuum leaf at the *_init fractions with n_e = 0, which gas cannot
+! have.  The log names the rule used.  Either way, a stored gas leaf with
+! n_e <= 0 (an unsolved neutral state, e.g. a gas_niter = 0 run from
+! x_HI_init = 1) is neutral gas and is restored with n_e = NE_FLOOR_PER_H
+! n_H (the new leaf's n_H), the floor of the ion balance.  What a file
+! without n_H cannot tell apart: a vacuum leaf of a run whose *_init
+! fractions were fully neutral looks like neutral gas; on the same grid it
+! stays vacuum, on a grid that put gas there it starts from that neutral
+! state.  New vacuum leaves take the matched stored values whatever they
+! are (they carry no gas and enter no rate).  The lookup is a hash on
 ! the integer position of the containing cell, one table per distinct leaf
 ! size, so a deep octree costs no dense lattice.
 !
@@ -70,14 +84,15 @@ contains
                               gas_state_sync
     use species_mod,   only : n_elements, elem_name, elem_nstage, &
                               species_set_photoionization_rates
-    use utility,       only : fatal_error
+    use utility,       only : abort_run
+    use ion_balance_mod, only : NE_FLOOR_PER_H
     character(len=*), intent(in) :: fname
 
     type(io_file_type) :: file
     character(len=64)  :: extname
     real(kind=wp), allocatable :: oxyz(:,:), osize(:), ox1(:), ox1p(:), ox2(:), &
                                   ox3(:), ox4(:), one(:), ote(:), g(:,:), &
-                                  ophi3(:), hx(:,:), hhe1(:,:), hhe3(:,:)
+                                  ophi3(:), hx(:,:), hhe1(:,:), hhe3(:,:), onh(:)
     real(kind=wp), allocatable :: nx1(:), nx1p(:), nx2(:), nx3(:), nx4(:), &
                                   nne(:), nte(:)
     type :: rate_block
@@ -87,12 +102,12 @@ contains
     type(rate_block), allocatable :: orates(:)
     integer, allocatable :: match(:)
     integer :: status, n1, n2, nold, il, j, ie, k, nr, nmatched, ngas_new, &
-               nunmatched_gas, ierr, nst
-    logical :: have(8), have_xhii, have_xheiii, have_phi3
+               nunmatched_gas, ierr, nst, nneutral
+    logical :: have(8), have_xhii, have_xheiii, have_phi3, have_nh
     logical :: restored_rates(n_elements)
 
     nold = 0;  nr = 0;  have = .false.;  have_xhii = .false.
-    have_xheiii = .false.;  have_phi3 = .false.
+    have_xheiii = .false.;  have_phi3 = .false.;  have_nh = .false.
     ! The old run can contain more elements than this run. Read its full
     ! supported roster so earlier, now-disabled elements do not hide the
     ! rate block of an active element later in the file.
@@ -103,7 +118,7 @@ contains
     if (mpar%p_rank == 0) then
        status = 0
        call io_open_old(file, trim(fname), status)
-       if (status /= 0) call fatal_error('restart_file: cannot open '//trim(fname))
+       if (status /= 0) call abort_run('restart_file: cannot open '//trim(fname))
        do
           extname = ''
           call io_get_keyword(file, 'EXTNAME', extname, status)
@@ -131,6 +146,9 @@ contains
           case ('x_HeIII')
              allocate(ox4(n1));  call io_read_image(file, ox4, status)
              have_xheiii = .true.
+          case ('n_H')
+             allocate(onh(n1));  call io_read_image(file, onh, status)
+             have_nh = .true.
           case ('n_e')
              allocate(one(n1));  call io_read_image(file, one, status);  have(6) = .true.
           case ('T_e')
@@ -153,14 +171,14 @@ contains
                 call io_read_image(file, orates(nr)%g, status)
              end if
           end select
-          if (status /= 0) call fatal_error('restart_file: cannot read '// &
+          if (status /= 0) call abort_run('restart_file: cannot read '// &
                                             trim(extname)//' in '//trim(fname))
           call io_move_to_next_section(file, status)
           if (status /= 0) exit
        end do
        status = 0
        call io_close(file, status)
-       if (.not. all(have(1:7))) call fatal_error('restart_file: '//trim(fname)// &
+       if (.not. all(have(1:7))) call abort_run('restart_file: '//trim(fname)// &
           ' lacks one of LeafXYZ, LeafSize, x_HI, x_HeI, x_HeII, n_e, T_e')
        if (.not. have_xhii) then
           !--- a file written before x_HII was stored (2026-09-26)
@@ -186,12 +204,19 @@ contains
              nx4(gas_nleaf), nne(gas_nleaf), nte(gas_nleaf), match(gas_nleaf))
     if (mpar%p_rank == 0) then
        call match_leaves(oxyz, osize, match)
-       nmatched = 0;  ngas_new = 0;  nunmatched_gas = 0
+       nmatched = 0;  ngas_new = 0;  nunmatched_gas = 0;  nneutral = 0
        do il = 1, gas_nleaf
           j = match(il)
-          !--- a previous vacuum leaf carries no state for new gas
-          if (j > 0) then
-             if (one(j) <= 0.0_wp .and. gas_nH(il) > 0.0_wp) j = 0
+          !--- a previous vacuum leaf carries no state for new gas (see the
+          !--- header: stored n_H = 0, or without n_H, n_e <= 0 with ionized
+          !--- fractions)
+          if (j > 0 .and. gas_nH(il) > 0.0_wp) then
+             if (have_nh) then
+                if (onh(j) <= 0.0_wp) j = 0
+             else if (one(j) <= 0.0_wp) then
+                if (ox1p(j) > 0.0_wp .or. (par%abund_He > 0.0_wp .and. &
+                    ox3(j) + ox4(j) > 0.0_wp)) j = 0
+             end if
           end if
           match(il) = j
           if (gas_nH(il) > 0.0_wp) ngas_new = ngas_new + 1
@@ -200,6 +225,11 @@ contains
              nx1(il) = ox1(j);  nx1p(il) = ox1p(j)
              nx2(il) = ox2(j);  nx3(il) = ox3(j);  nx4(il) = ox4(j)
              nne(il) = one(j);  nte(il) = ote(j)
+             !--- neutral gas stored with n_e <= 0: the ion balance's floor
+             if (one(j) <= 0.0_wp .and. gas_nH(il) > 0.0_wp) then
+                nne(il) = NE_FLOOR_PER_H*gas_nH(il)
+                nneutral = nneutral + 1
+             end if
           else
              if (gas_nH(il) > 0.0_wp) nunmatched_gas = nunmatched_gas + 1
              nx1(il) = gas_xHI(il);  nx1p(il) = gas_xHII(il)
@@ -209,9 +239,17 @@ contains
           end if
        end do
        write(*,'(a,a)')  ' RESTART: gas state from ', trim(fname)
+       if (have_nh) then
+          write(*,'(a)') ' RESTART: vacuum test: stored n_H = 0'
+       else
+          write(*,'(a)') ' RESTART: vacuum test: no n_H in the file (written before'// &
+             ' 2026-11-13); vacuum = stored n_e <= 0 with ionized fractions'
+       end if
        write(*,'(a,i10,a,i10,a,i10,a)') ' RESTART: ', nold, ' previous leaves; ', &
           nmatched, ' new leaves matched; ', nunmatched_gas, &
           ' gas leaves unmatched (kept at the *_init values)'
+       if (nneutral > 0) write(*,'(a,i10,a)') ' RESTART: ', nneutral, &
+          ' neutral gas leaves stored with n_e <= 0 restored (n_e = NE_FLOOR_PER_H n_H)'
     end if
     call MPI_BCAST(match, gas_nleaf, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nx1, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
@@ -287,7 +325,7 @@ contains
        write(*,'(a)') ' RESTART: incomplete metal transition rates; added rates start at zero.'
        write(*,'(a)') ' RESTART: fresh transport and gas reconvergence are required before output.'
        if (par%gas_niter < 1) &
-          call fatal_error('restart with missing metal rates requires gas_niter >= 1')
+          call abort_run('restart with missing metal rates requires gas_niter >= 1')
        ! The ordinary main-loop convergence check now refuses an output
        ! whose warm start has not reconverged after the stage change.
        par%require_convergence = .true.
@@ -297,7 +335,7 @@ contains
     subroutine restore_histories()
       use fixed_point_distance_mod, only : history_set, hist_dx, hist_dhe1, hist_dhe3
       if (mpar%p_rank == 0) then
-         if (.not. (allocated(hx) .and. allocated(hhe1))) call fatal_error( &
+         if (.not. (allocated(hx) .and. allocated(hhe1))) call abort_run( &
             'restart_file: '//trim(fname)//' carries no stopping-test history'// &
             ' (ConvHist_x_HII, ConvHist_HeI_HeII; written since 2026-10-13);'// &
             ' set par%restart_iteration_history = .false. to refill the window')
@@ -347,7 +385,7 @@ contains
   subroutine match_leaves(oxyz, osize, match)
     use octree_mod,    only : leaf_cx, leaf_cy, leaf_cz
     use gas_state_mod, only : gas_nleaf
-    use utility,       only : fatal_error
+    use utility,       only : abort_run
     real(kind=wp), intent(in)  :: oxyz(:,:), osize(:)
     integer,       intent(out) :: match(:)
     real(kind=wp) :: sizes(MAX_SIZES), org(3), p(3)
@@ -360,7 +398,7 @@ contains
     nsize = 0
     do j = 1, nold
        if (any(abs(sizes(1:nsize) - osize(j)) <= 1.0e-6_wp*osize(j))) cycle
-       if (nsize == MAX_SIZES) call fatal_error('restart_file: more than 32 distinct leaf sizes')
+       if (nsize == MAX_SIZES) call abort_run('restart_file: more than 32 distinct leaf sizes')
        nsize = nsize + 1;  sizes(nsize) = osize(j)
     end do
     org = [minval(oxyz(:,1) - 0.5_wp*osize), minval(oxyz(:,2) - 0.5_wp*osize), &

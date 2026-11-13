@@ -63,6 +63,7 @@ module dust_emis_transport_mod
 ! of order the reabsorbed fraction itself, valid while tau_IR << 1; the
 ! emitted POWER carries no such error at any optical depth.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   implicit none
   private
@@ -103,14 +104,13 @@ contains
 
   !=========================================================================
   subroutine dust_emis_transport_setup()
-    use mpi
     use octree_mod,      only : amr_grid
     use gas_opacity_mod, only : ion_dust_sabs_at
     use dust_ir_band_mod,only : dust_ir_band_setup
     use sedust_mod,      only : sedust_setup, sedust_lambda_grid
     implicit none
     real(kind=wp) :: E_floor, lam_floor, lam_start
-    integer :: k, kpass, ierr
+    integer :: k, kpass
 
     from_sedust = par%dust_sed
     if (allocated(lam_emis)) deallocate(lam_emis)
@@ -154,10 +154,9 @@ contains
        end if
     end do
     if (kpass == 0) then
-       if (mpar%p_rank == 0) write(*,'(a)') &
-          'ERROR: no wavelength of the dust emission grid is free of both '// &
-          'the transported band and every gas photoionization threshold.'
-       call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+       call abort_run( &
+          'no wavelength of the dust emission grid is free of both '// &
+          'the transported band and every gas photoionization threshold.')
     end if
     !--- zeroing the nodes up to and INCLUDING kpass leaves lam_emis(kpass) as
     !--- the shortest wavelength the linear ramp out of the zero can reach.
@@ -360,10 +359,9 @@ contains
              ' DUSTRT: relative change of the total emitted luminosity = ', drel
        end if
        if (closure > 5.0e-13_wp) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: the direct split of the transported infrared does not'// &
-             ' add up to the emitted energy (accumulation or reduction error).'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'the direct split of the transported infrared does not'// &
+             ' add up to the emitted energy (accumulation or reduction error).')
        end if
        !--- a leaf with Heat_dust > 0 whose spectrum comes back empty would
        !--- drop its packets, and the launched luminosity would fall short of
@@ -469,7 +467,8 @@ contains
     if (x > 700.0_wp) then
        b = 0.0_wp
     else
-       b = 1.0_wp/(lam_cm**5*(exp(x) - 1.0_wp))
+       !--- exp(x) - 1 without cancellation at small x (define::exp_minus_one)
+       b = 1.0_wp/(lam_cm**5*exp_minus_one(x))
     end if
   end function planck_lambda
 

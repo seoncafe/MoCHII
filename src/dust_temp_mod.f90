@@ -39,7 +39,7 @@ contains
   !=========================================================================
   subroutine dust_temp_setup()
     use mpi
-    use utility,         only : fatal_error
+    use utility,         only : abort_run
     use grain_model_mod, only : grain_extinction_table
     implicit none
     real(kind=wp), allocatable :: lam(:), alb(:), cext(:), cosg(:)
@@ -61,7 +61,7 @@ contains
     if (.not. from_model) then
        open(newunit=unit, file=trim(par%ion_dust_kext), status='old', iostat=ios)
        if (ios /= 0) then
-          call fatal_error('dust_temp cannot open par%ion_dust_kext = '// &
+          call abort_run('dust_temp cannot open par%ion_dust_kext = '// &
              trim(par%ion_dust_kext))
        end if
        n = 0

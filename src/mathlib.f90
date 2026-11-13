@@ -1,5 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/mathlib.f90 (2026-07-11)
 module mathlib
+use utility, only : abort_run
 use define, only: wp, sp, dp
 use, intrinsic :: iso_fortran_env, only: real32, real64, real128, int32, int64
 implicit none
@@ -274,8 +275,7 @@ contains
 
   n = size(x)
   if (n < 2 .or. n > size(y)) then
-     write(*,*) 'Error: size(y) >= size(x) >= 2 in function calc_Integral.'
-     stop
+     call abort_run('calc_Integral needs size(y) >= size(x) >= 2.')
   endif
 
   calc_Integral = 0.0_wp
@@ -296,8 +296,7 @@ contains
 
   n = size(x)
   if (n < 2 .or. n /= size(y) .or. n /= size(CDF)) then
-     write(*,*) 'Error: size(x) = size(y) = size(CDF) >= 1 in function calc_CDF.'
-     stop
+     call abort_run('calc_CDF needs size(x) = size(y) = size(CDF) >= 2.')
   endif
 
   CDF(1) = 0.0_wp
@@ -331,8 +330,7 @@ contains
     dx    = f/df
     xroot = xroot - dx
     if ((x1-xroot)*(xroot-x2) < 0.0_wp) then
-       write(*,*) 'rtnewt - jumped out of brackets'
-       stop
+       call abort_run('rtnewt: the Newton step jumped out of the bracket [x1, x2].')
     endif
     if (abs(dx) < xacc) return
   enddo

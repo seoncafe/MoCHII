@@ -131,7 +131,7 @@ contains
 
   !=========================================================================
   ! Recreate the state on a re-refined tree: fresh shared windows
-  ! (the old ones are leaked until finalize), filled from position-mapped
+  ! (the caller freed the old ones, amr_refine_mod step 4b), filled from position-mapped
   ! local arrays.  Collective; h_rank 0 writes.
   !=========================================================================
   subroutine gas_state_recreate(nleaf, nHv, x1, x1p, x2, x3, x4, nev, tev)

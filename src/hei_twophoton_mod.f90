@@ -111,7 +111,7 @@ contains
   ! once, after par%data_dir and par%eion_max are fixed.
   !=========================================================================
   subroutine hei_2ph_setup()
-    use utility, only : fatal_error
+    use utility, only : abort_run
     implicit none
     real(kind=wp) :: ya, yb, ym, fa, fb, fm, tot, acc_n, acc_e, seg
     real(kind=wp) :: e_hi
@@ -119,19 +119,19 @@ contains
 
     open(newunit=unit, file=trim(par%data_dir)//'/HeI2phot.dat', &
          status='old', iostat=ios)
-    if (ios /= 0) call fatal_error('cannot open ' // &
+    if (ios /= 0) call abort_run('cannot open ' // &
        trim(par%data_dir)//'/HeI2phot.dat (par%data_dir)')
     n_pts = 0
     do
        read(unit,*,iostat=ios) ya, fa
        if (ios /= 0) exit
        n_pts = n_pts + 1
-       if (n_pts > MAX_PTS) call fatal_error('HeI2phot.dat has more rows than ' // &
+       if (n_pts > MAX_PTS) call abort_run('HeI2phot.dat has more rows than ' // &
           'hei_twophoton_mod expects')
        tab_y(n_pts) = ya;  tab_A(n_pts) = fa
     end do
     close(unit)
-    if (n_pts < 4) call fatal_error('HeI2phot.dat is too short to interpolate')
+    if (n_pts < 4) call abort_run('HeI2phot.dat is too short to interpolate')
 
     !--- total over the full pair spectrum, the normalization of the shape
     tot = 0.0_wp
@@ -140,7 +140,7 @@ contains
        tot = tot + (yb - ya)/6.0_wp &
              *(tab_A(i) + 4.0_wp*shape_A(ym) + tab_A(i+1))
     end do
-    if (tot <= 0.0_wp) call fatal_error('HeI2phot.dat integrates to zero')
+    if (tot <= 0.0_wp) call abort_run('HeI2phot.dat integrates to zero')
     tot_A = tot
 
     !--- the ionizing window, truncated at the band edge if that is lower

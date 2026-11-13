@@ -43,7 +43,7 @@ contains
 
   !=========================================================================
   subroutine lines_write()
-    use utility, only : get_base_name, fatal_error
+    use utility, only : get_base_name, abort_run
     use iofile_mod
     implicit none
     type(nlevel_atom_type) :: atom
@@ -400,7 +400,8 @@ contains
     write(*,'(2a)') ' LINE: line luminosities written to: ', trim(outname)
     if (do_emis) then
        call io_close(efile, status)
-       if (status /= 0) call fatal_error('failed to write emissivity file')
+       if (status /= 0) call abort_run('failed to write emissivity file: '// &
+          trim(get_base_name(par%out_file))//'_emis'//trim(io_file_extension(par%file_format)))
        write(*,'(2a)') ' LINE: leaf emissivities + state written to: ', &
           trim(get_base_name(par%out_file))//'_emis'// &
           trim(io_file_extension(par%file_format))

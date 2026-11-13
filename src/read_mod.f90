@@ -1,5 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/read_mod.f90 (2026-07-11)
 module read_mod
+  use utility, only : abort_run
   use define
   use iofile_mod
 contains
@@ -67,9 +68,12 @@ contains
   !--- abort on open/read failure: falling through would use an unallocated
   !--- (or garbage) arr and undefined n1/n2/n3 below.
   if (status /= 0) then
-     write(*,*) 'read_3D: cannot read ', trim(fname), ' (status = ', status, &
-                ') - aborting.'
-     error stop
+     block
+       character(len=32) :: status_text
+       write(status_text,'(i0)') status
+       call abort_run('read_3D: cannot read '//trim(fname)//' (status = '// &
+                      trim(status_text)//') - aborting.')
+     end block
   endif
 
   if (present(reduce_factor)) then

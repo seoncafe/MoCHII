@@ -97,7 +97,7 @@ contains
   !=========================================================================
   subroutine cooling_load(fname, fit)
     use mpi
-        use utility, only : fatal_error
+        use utility, only : abort_run
 implicit none
     character(len=*),       intent(in)  :: fname
     type(cooling_fit_type), intent(out) :: fit
@@ -106,7 +106,7 @@ implicit none
 
     open(newunit=unit, file=fname, status='old', iostat=ios)
     if (ios /= 0) then
-       call fatal_error('cannot open '//trim(fname))
+       call abort_run('cannot open '//trim(fname))
     end if
     do
        read(unit,'(a)') line

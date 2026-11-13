@@ -185,7 +185,7 @@ contains
   !--- and the iteration count, so restart_file can resume from it.
   subroutine gas_rates_write(iterate)
     use iofile_mod
-    use utility, only : get_base_name, fatal_error
+    use utility, only : get_base_name, abort_run
     implicit none
     logical, intent(in), optional :: iterate
     type(io_file_type) :: file
@@ -310,7 +310,7 @@ contains
 
     !--- ionization structure (fixed initialization when gas_niter = 0).
     block
-      use gas_state_mod, only : gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
+      use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                                 gas_xHeIII, gas_ne, gas_Te
       real(kind=wp), allocatable :: tmp(:)
       allocate(tmp(nleaf))
@@ -333,6 +333,12 @@ contains
       tmp = gas_xHeIII(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','x_HeIII','n_HeIII/n_He per leaf',status)
+      !--- the hydrogen density, 0 in vacuum (the same block, name and
+      !--- meaning as n_H in <base>_emis): restart_file tells vacuum from
+      !--- gas with it (previous_state_mod)
+      tmp = gas_nH(1:nleaf)
+      call io_append_image(file, tmp, status, bitpix=-64)
+      call io_put_keyword(file,'EXTNAME','n_H','H density [cm^-3]',status)
       tmp = gas_ne(1:nleaf)
       call io_append_image(file, tmp, status, bitpix=-64)
       call io_put_keyword(file,'EXTNAME','n_e','electron density [cm^-3]',status)
@@ -435,11 +441,11 @@ contains
     end if
 
     call io_close(file, status)
-    if (status /= 0) call fatal_error('failed to write rates file: '//trim(partname))
+    if (status /= 0) call abort_run('failed to write rates file: '//trim(partname))
     if (write_iterate) then
        call execute_command_line('/bin/mv -f "'//trim(partname)//'" "'// &
             trim(filename)//'"', exitstat=exitstat, cmdstat=cmdstat)
-       if (cmdstat /= 0 .or. exitstat /= 0) call fatal_error( &
+       if (cmdstat /= 0 .or. exitstat /= 0) call abort_run( &
             'failed to rename '//trim(partname)//' to '//trim(filename))
        write(*,'(2a,i0)') ' ION: iterate written to: ', trim(filename)//', iteration ', run_iters
     else

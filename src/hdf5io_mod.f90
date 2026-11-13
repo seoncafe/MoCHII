@@ -17,7 +17,8 @@ module hdf5io_mod
 ! Current limitations:
 !   - out_merge (read-old + sum + write-new) is not supported when both
 !     ends are HDF5; io_open_old works for plain reads only.
-!   - hsize_t / hid_t are assumed to be 8-byte integers (matches HDF5 1.14).
+!   - hsize_t / hid_t are assumed to be 8-byte integers (true of HDF5 1.14
+!     and 2.2; H5f90i_gen.h maps both to 8-byte kinds).
 !
 #ifdef HDF5
   use hdf5
@@ -28,6 +29,8 @@ module hdf5io_mod
 
   !--- raised from 32 for the leaf-emissivity file (an emis_/wl_ block
   !--- for each registry ion + the state blocks exceeds 40 sections).
+  !--- Initial capacity only: the section lists grow (reserve_sections), so
+  !--- image observers and ion lists can exceed it.
   integer, parameter, public :: HDF5_MAX_SECTIONS = 128
   integer, parameter, public :: HDF5_MAX_COLS     = 32
   integer, parameter, public :: HDF5_NAME_LEN     = 64
@@ -37,9 +40,9 @@ module hdf5io_mod
      integer(int64) :: cur_group  = -1_int64
      integer        :: nsections  = 0
      integer        :: cur_idx    = 0    ! 1-based active section
-     character(len=HDF5_NAME_LEN) :: section_names(HDF5_MAX_SECTIONS) = ''
-     integer        :: ncols(HDF5_MAX_SECTIONS) = 0
-     character(len=HDF5_NAME_LEN) :: col_names(HDF5_MAX_COLS, HDF5_MAX_SECTIONS) = ''
+     character(len=HDF5_NAME_LEN), allocatable :: section_names(:)
+     integer, allocatable :: ncols(:)
+     character(len=HDF5_NAME_LEN), allocatable :: col_names(:,:)
      logical        :: writable   = .false.
   end type hdf5_state_type
 
@@ -126,7 +129,7 @@ contains
   function next_section_name(state) result(nm)
     type(hdf5_state_type), intent(in) :: state
     character(len=HDF5_NAME_LEN) :: nm
-    write(nm, '(a,i3.3)') 'section_', state%nsections + 1
+    write(nm, '(a,i0.3)') 'section_', state%nsections + 1
   end function next_section_name
 
   subroutine create_group_tracked(parent_id, path, gid, ierr)
@@ -161,6 +164,28 @@ contains
     endif
   end subroutine create_group_tracked
 
+  subroutine reserve_sections(state, required)
+    type(hdf5_state_type), intent(inout) :: state
+    integer, intent(in) :: required
+    integer :: old, capacity
+    integer, allocatable :: counts(:)
+    character(len=HDF5_NAME_LEN), allocatable :: names(:), columns(:,:)
+    old = 0
+    if (allocated(state%section_names)) old = size(state%section_names)
+    if (required <= old) return
+    capacity = max(required, HDF5_MAX_SECTIONS, 2*old)
+    allocate(names(capacity), counts(capacity), columns(HDF5_MAX_COLS,capacity))
+    names = ''; counts = 0; columns = ''
+    if (old > 0) then
+       names(1:old) = state%section_names
+       counts(1:old) = state%ncols
+       columns(:,1:old) = state%col_names
+    end if
+    call move_alloc(names, state%section_names)
+    call move_alloc(counts, state%ncols)
+    call move_alloc(columns, state%col_names)
+  end subroutine reserve_sections
+
   subroutine begin_new_section(state, status, group_id_out, name_out)
     !-------------------------------------------------------------------------
     ! Create a new group at the file root with an auto-generated name,
@@ -175,10 +200,7 @@ contains
     character(len=HDF5_NAME_LEN) :: nm
 
     if (status /= 0) return
-    if (state%nsections >= HDF5_MAX_SECTIONS) then
-       status = HDF5_ERR_TOO_MANY
-       return
-    endif
+    call reserve_sections(state, state%nsections + 1)
 
     nm = next_section_name(state)
     call create_group_tracked(int(state%file_id, hid_t), '/'//trim(nm), gid, ierr)
@@ -530,6 +552,7 @@ contains
     state%cur_group= state%file_id     ! attributes go on root until first section
     state%cur_idx  = 0
     state%nsections= 0
+    call reserve_sections(state, HDF5_MAX_SECTIONS)
     state%writable = .true.
     status = 0
   end subroutine hdf5_open_new
@@ -620,6 +643,7 @@ contains
     if (status /= 0) return
 
     state%nsections = 0
+    call reserve_sections(state, HDF5_MAX_SECTIONS)
     do idx = 0_hsize_t, int(nlinks - 1, hsize_t)
        name_size = HDF5_NAME_LEN
        nm = ''
@@ -646,10 +670,7 @@ contains
        if (status /= 0) return
        if (type_ /= H5I_GROUP_F) cycle
 
-       if (state%nsections >= HDF5_MAX_SECTIONS) then
-          status = HDF5_ERR_TOO_MANY
-          return
-       endif
+       call reserve_sections(state, state%nsections + 1)
        state%nsections = state%nsections + 1
        state%section_names(state%nsections) = trim(nm)
 

@@ -1,5 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/memory_mod_mpi.f90 (2026-07-11)
 module memory_mod
+  use utility, only : abort_run
   use, intrinsic :: iso_c_binding,   only: C_PTR, C_F_POINTER, C_LOC, C_ASSOCIATED
   use, intrinsic :: iso_fortran_env, only: character_storage_size, real32, real64, real128, int8, int16, int32, int64
   use mpi
@@ -38,7 +39,8 @@ module memory_mod
   !--- destroy_shared_mem(array): the counterpart of create_shared_mem —
   !--- looks the window up from the array pointer (get_window), frees it
   !--- (collective on hostcomm; the freed slot in windows() becomes
-  !--- MPI_WIN_NULL, so destroy_shared_mem_all skips it), and nullifies
+  !--- MPI_WIN_NULL, so destroy_shared_mem_all skips it and
+  !--- free_window_slot gives it to the next window), and nullifies
   !--- the pointer.  Lets the octree re-refinement recycle the old
   !--- grid's shared memory instead of leaking it until finalize.
   !--- (MoCHII, 2026-07-12; extend with further ranks/kinds as needed.)
@@ -128,6 +130,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_real64(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real64), pointer, intent(inout) :: array(:)
   integer,                    intent(in)    :: arrshape(1)
   integer :: ierr
@@ -144,17 +147,13 @@ contains
   endif
  
   disp_unit   = real64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real64
@@ -164,6 +163,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_real64(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real64), pointer, intent(inout) :: array(:,:)
   integer,                    intent(in)    :: arrshape(2)
   integer :: ierr
@@ -180,17 +180,13 @@ contains
   endif
 
   disp_unit   = real64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real64
@@ -200,6 +196,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_real64(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real64), pointer, intent(inout) :: array(:,:,:)
   integer,                    intent(in)    :: arrshape(3)
   integer :: ierr
@@ -216,17 +213,13 @@ contains
   endif
 
   disp_unit   = real64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real64
@@ -236,6 +229,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_4D_real64(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real64), pointer, intent(inout) :: array(:,:,:,:)
   integer,                    intent(in)    :: arrshape(4)
   integer :: ierr
@@ -252,17 +246,13 @@ contains
   endif
 
   disp_unit   = real64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real64
@@ -272,6 +262,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_5D_real64(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real64), pointer, intent(inout) :: array(:,:,:,:,:)
   integer,                    intent(in)    :: arrshape(5)
   integer :: ierr
@@ -288,17 +279,13 @@ contains
   endif
 
   disp_unit   = real64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real64
@@ -684,7 +671,7 @@ contains
   subroutine destroy_mem_1D_real64(arr)
   implicit none
   real(kind=real64), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr
+  integer :: win
   call get_window_1D_real64(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -748,6 +735,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_real32(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real32), pointer, intent(inout) :: array(:)
   integer,                    intent(in)    :: arrshape(1)
   integer :: ierr
@@ -764,17 +752,13 @@ contains
   endif
  
   disp_unit   = real32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real32
@@ -784,6 +768,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_real32(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real32), pointer, intent(inout) :: array(:,:)
   integer,                    intent(in)    :: arrshape(2)
   integer :: ierr
@@ -800,17 +785,13 @@ contains
   endif
 
   disp_unit   = real32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real32
@@ -820,6 +801,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_real32(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real32), pointer, intent(inout) :: array(:,:,:)
   integer,                    intent(in)    :: arrshape(3)
   integer :: ierr
@@ -836,17 +818,13 @@ contains
   endif
 
   disp_unit   = real32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real32
@@ -856,6 +834,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_4D_real32(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real32), pointer, intent(inout) :: array(:,:,:,:)
   integer,                    intent(in)    :: arrshape(4)
   integer :: ierr
@@ -872,17 +851,13 @@ contains
   endif
 
   disp_unit   = real32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real32
@@ -892,6 +867,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_5D_real32(array,arrshape)
   implicit none
+  integer :: islot
   real(kind=real32), pointer, intent(inout) :: array(:,:,:,:,:)
   integer,                    intent(in)    :: arrshape(5)
   integer :: ierr
@@ -908,17 +884,13 @@ contains
   endif
 
   disp_unit   = real32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0.0_real32
@@ -1304,7 +1276,7 @@ contains
   subroutine destroy_mem_1D_real32(arr)
   implicit none
   real(kind=real32), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr, i
+  integer :: win
   call get_window_1D_real32(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -1368,6 +1340,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_int64(array,arrshape)
   implicit none
+  integer :: islot
   integer(int64), pointer, intent(inout) :: array(:)
   integer,                 intent(in)    :: arrshape(1)
   integer :: ierr
@@ -1384,17 +1357,13 @@ contains
   endif
 
   disp_unit   = int64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int64
@@ -1404,6 +1373,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_int64(array,arrshape)
   implicit none
+  integer :: islot
   integer(int64), pointer, intent(inout) :: array(:,:)
   integer,                 intent(in)    :: arrshape(2)
   integer :: ierr
@@ -1420,17 +1390,13 @@ contains
   endif
 
   disp_unit   = int64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int64
@@ -1440,6 +1406,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_int64(array,arrshape)
   implicit none
+  integer :: islot
   integer(int64), pointer, intent(inout) :: array(:,:,:)
   integer,                 intent(in)    :: arrshape(3)
   integer :: ierr
@@ -1456,17 +1423,13 @@ contains
   endif
 
   disp_unit   = int64_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int64
@@ -1691,7 +1654,7 @@ contains
   subroutine destroy_mem_1D_int64(arr)
   implicit none
   integer(int64), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr
+  integer :: win
   call get_window_1D_int64(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -1704,7 +1667,7 @@ contains
   subroutine destroy_mem_2D_int64(arr)
   implicit none
   integer(int64), pointer, intent(inout) :: arr(:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_2D_int64(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -1717,7 +1680,7 @@ contains
   subroutine destroy_mem_3D_int64(arr)
   implicit none
   integer(int64), pointer, intent(inout) :: arr(:,:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_3D_int64(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -1729,6 +1692,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_int32(array,arrshape)
   implicit none
+  integer :: islot
   integer(int32), pointer, intent(inout) :: array(:)
   integer,                 intent(in)    :: arrshape(1)
   integer :: ierr
@@ -1745,17 +1709,13 @@ contains
   endif
 
   disp_unit   = int32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int32
@@ -1765,6 +1725,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_int32(array,arrshape)
   implicit none
+  integer :: islot
   integer(int32), pointer, intent(inout) :: array(:,:)
   integer,                 intent(in)    :: arrshape(2)
   integer :: ierr
@@ -1781,17 +1742,13 @@ contains
   endif
 
   disp_unit   = int32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int32
@@ -1801,6 +1758,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_int32(array,arrshape)
   implicit none
+  integer :: islot
   integer(int32), pointer, intent(inout) :: array(:,:,:)
   integer,                 intent(in)    :: arrshape(3)
   integer :: ierr
@@ -1817,17 +1775,13 @@ contains
   endif
 
   disp_unit   = int32_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int32
@@ -2052,7 +2006,7 @@ contains
   subroutine destroy_mem_1D_int32(arr)
   implicit none
   integer(int32), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr
+  integer :: win
   call get_window_1D_int32(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2065,7 +2019,7 @@ contains
   subroutine destroy_mem_2D_int32(arr)
   implicit none
   integer(int32), pointer, intent(inout) :: arr(:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_2D_int32(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2078,7 +2032,7 @@ contains
   subroutine destroy_mem_3D_int32(arr)
   implicit none
   integer(int32), pointer, intent(inout) :: arr(:,:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_3D_int32(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2090,6 +2044,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_int16(array,arrshape)
   implicit none
+  integer :: islot
   integer(int16), pointer, intent(inout) :: array(:)
   integer,                 intent(in)    :: arrshape(1)
   integer :: ierr
@@ -2106,17 +2061,13 @@ contains
   endif
 
   disp_unit   = int16_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int16
@@ -2126,6 +2077,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_int16(array,arrshape)
   implicit none
+  integer :: islot
   integer(int16), pointer, intent(inout) :: array(:,:)
   integer,                 intent(in)    :: arrshape(2)
   integer :: ierr
@@ -2142,17 +2094,13 @@ contains
   endif
 
   disp_unit   = int16_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int16
@@ -2162,6 +2110,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_int16(array,arrshape)
   implicit none
+  integer :: islot
   integer(int16), pointer, intent(inout) :: array(:,:,:)
   integer,                 intent(in)    :: arrshape(3)
   integer :: ierr
@@ -2178,17 +2127,13 @@ contains
   endif
 
   disp_unit   = int16_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int16
@@ -2411,7 +2356,7 @@ contains
   subroutine destroy_mem_1D_int16(arr)
   implicit none
   integer(int16), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr
+  integer :: win
   call get_window_1D_int16(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2424,7 +2369,7 @@ contains
   subroutine destroy_mem_2D_int16(arr)
   implicit none
   integer(int16), pointer, intent(inout) :: arr(:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_2D_int16(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2437,7 +2382,7 @@ contains
   subroutine destroy_mem_3D_int16(arr)
   implicit none
   integer(int16), pointer, intent(inout) :: arr(:,:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_3D_int16(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2449,6 +2394,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_1D_int8(array,arrshape)
   implicit none
+  integer :: islot
   integer(int8), pointer, intent(inout) :: array(:)
   integer,                intent(in)    :: arrshape(1)
   integer :: ierr
@@ -2465,17 +2411,13 @@ contains
   endif
 
   disp_unit   = int8_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int8
@@ -2485,6 +2427,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_2D_int8(array,arrshape)
   implicit none
+  integer :: islot
   integer(int8), pointer, intent(inout) :: array(:,:)
   integer,                intent(in)    :: arrshape(2)
   integer :: ierr
@@ -2501,17 +2444,13 @@ contains
   endif
 
   disp_unit   = int8_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int8
@@ -2521,6 +2460,7 @@ contains
   !---------------------------
   subroutine create_shared_mem_3D_int8(array,arrshape)
   implicit none
+  integer :: islot
   integer(int8), pointer, intent(inout) :: array(:,:,:)
   integer,                intent(in)    :: arrshape(3)
   integer :: ierr
@@ -2537,17 +2477,13 @@ contains
   endif
 
   disp_unit   = int8_size
-  num_windows = num_windows + 1
-  if (num_windows > MAX_NUM_WINDOWS) then
-     write(*,'(a)') 'ERROR: Please increase MAX_NUM_WINDOWS in memory_mod_mpi.f90'
-     call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
-  endif
-  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(num_windows), ierr)
+  islot = free_window_slot()
+  call MPI_WIN_ALLOCATE_SHARED(wsize, disp_unit, MPI_INFO_NULL, hostcomm, ptr, windows(islot), ierr)
   if (h_rank /= 0) then
-     call MPI_WIN_SHARED_QUERY(windows(num_windows), 0, wsize, disp_unit, ptr, ierr)
+     call MPI_WIN_SHARED_QUERY(windows(islot), 0, wsize, disp_unit, ptr, ierr)
   endif
   call C_F_POINTER(ptr, array, arrshape)
-  call MPI_WIN_FENCE(0, windows(num_windows), ierr)
+  call MPI_WIN_FENCE(0, windows(islot), ierr)
 
   if (h_rank == 0) then
      array = 0_int8
@@ -2770,7 +2706,7 @@ contains
   subroutine destroy_mem_1D_int8(arr)
   implicit none
   integer(int8), pointer, intent(inout) :: arr(:)
-  integer :: win, ierr
+  integer :: win
   call get_window_1D_int8(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2783,7 +2719,7 @@ contains
   subroutine destroy_mem_2D_int8(arr)
   implicit none
   integer(int8), pointer, intent(inout) :: arr(:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_2D_int8(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2796,7 +2732,7 @@ contains
   subroutine destroy_mem_3D_int8(arr)
   implicit none
   integer(int8), pointer, intent(inout) :: arr(:,:,:)
-  integer :: win, ierr
+  integer :: win
   call get_window_3D_int8(arr, win)
   if (win /= MPI_WIN_NULL) then
      call destroy_shared_mem_window(win)
@@ -2879,6 +2815,42 @@ contains
         exit
      endif
   enddo
+  !--- the freed slot is reused by free_window_slot; trailing free slots
+  !--- are dropped from the live range 1..num_windows that every search scans
+  do while (num_windows > 0)
+     if (windows(num_windows) /= MPI_WIN_NULL) exit
+     num_windows = num_windows - 1
+  enddo
   end subroutine destroy_shared_mem_window
+  !---------------------------
+  !--- The slot of windows() for a new shared window: the first slot whose
+  !--- window was freed (MPI_WIN_FREE sets it to MPI_WIN_NULL), else a new
+  !--- slot at the end of the live range.  Every rank of the node creates and
+  !--- frees the same windows in the same order (both are collective on
+  !--- hostcomm), so the ranks assign the same slots.  MAX_NUM_WINDOWS bounds
+  !--- the windows alive at one time, not the windows created over a run:
+  !--- before 2026-11-13 a freed slot was never reused and every
+  !--- re-refinement, which frees and re-creates the leaf arrays, used up
+  !--- slots until the run stopped at the limit.
+  integer function free_window_slot() result(islot)
+  implicit none
+  integer :: i
+  do i = 1, num_windows
+     if (windows(i) == MPI_WIN_NULL) then
+        islot = i
+        return
+     endif
+  enddo
+  if (num_windows >= MAX_NUM_WINDOWS) then
+     block
+       character(len=160) :: reason
+       write(reason,'(a,i0,a)') 'more than MAX_NUM_WINDOWS = ', MAX_NUM_WINDOWS, &
+          ' shared-memory windows alive at once (memory_mod_mpi.f90)'
+       call abort_run(trim(reason))
+     end block
+  endif
+  num_windows = num_windows + 1
+  islot = num_windows
+  end function free_window_slot
   !---------------------------
 end module memory_mod

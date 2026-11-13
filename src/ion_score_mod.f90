@@ -11,6 +11,7 @@ module ion_score_mod
 ! photon%energy_eV; those reduced arrays are authoritative for gas_rates_mod,
 ! while the jt_ion(inu,leaf) tally is only a diagnostic spectrum.
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use define
   use memory_mod, only : shared_host_rank, shared_host_size
   use photoelectron_degradation_mod, only : N_EDEP, E_SECONDARY, &
@@ -373,8 +374,10 @@ contains
     luminosity = photon%Lpacket*photon%wgt
     transmission = exp(-max(tau_edge,0.0_wp))
     energy_emitted_acc = energy_emitted_acc + real(luminosity, ENERGY_ACC_WP)
+    !--- L (1 - T) at full relative accuracy for every tau_edge
+    !--- (define::extinguished_fraction; L - L T vanished in thin media)
     energy_extinguished_acc = energy_extinguished_acc + real( &
-       luminosity*(1.0_wp-transmission), ENERGY_ACC_WP)
+       luminosity*extinguished_fraction(max(tau_edge,0.0_wp)), ENERGY_ACC_WP)
     energy_transmitted_acc = energy_transmitted_acc + real( &
        luminosity*transmission, ENERGY_ACC_WP)
     if (edge_lost) then
@@ -562,7 +565,7 @@ contains
     integer :: il
 
     if (.not. allocated(hhe_rate_path)) &
-       error stop 'H/He path estimators are not allocated'
+       call abort_run('H/He path estimators are not allocated')
     !--- node-shared output: the node's ranks take disjoint leaves
     do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
@@ -588,7 +591,7 @@ contains
     integer :: il
 
     if (.not. allocated(dust_abs_path)) &
-       error stop 'dust-absorption path estimator is not allocated'
+       call abort_run('dust-absorption path estimator is not allocated')
     do il = 1, score_nleaf
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
        heat_dust(il) = dust_abs_path(il)*fac &
@@ -621,10 +624,8 @@ contains
     !--- With par%absorption_ledger the absorbed power of the path estimators
     !--- the rates use is compared with the physical absorbed total; the two
     !--- agree exactly without scattering and to Monte Carlo noise with it.
-    use mpi
     implicit none
     real(kind=wp) :: closure, emitted, absorbed, escaped, lost
-    integer :: ierr
 
     closure = abs(energy_extinguished+energy_transmitted-energy_emitted) / &
               max(energy_emitted,tiny(1.0_wp))
@@ -651,7 +652,14 @@ contains
           ' of the emitted energy was lost (MAX_WALK_STEPS or a failed'// &
           ' xy-periodic re-entry); the path estimates of those walks are partial.'
     end if
-    if (closure > 5.0e-13_wp) call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+    if (closure > 5.0e-13_wp) then
+       block
+         character(len=160) :: reason
+         write(reason,'(a,es11.3,a)') 'the continuous energy direct split closure ', &
+            closure, ' exceeds 5e-13 (accumulation or reduction error).'
+         call abort_run(trim(reason))
+       end block
+    end if
   end subroutine ion_score_report_energy_closure
 
 
@@ -669,7 +677,7 @@ contains
     integer :: il
 
     if (.not. allocated(sec_ion_path)) &
-       error stop 'secondary-ionization path estimators are not allocated'
+       call abort_run('secondary-ionization path estimators are not allocated')
     !--- node-shared output: the node's ranks take disjoint leaves
     do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)

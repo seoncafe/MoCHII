@@ -12,6 +12,7 @@ module grid_mod_amr
 !
 ! The box is recentered on the origin (box centered at 0).
 !---------------------------------------------------------------------------
+  use utility, only : abort_run
   use grid_mod
   use octree_mod
   use read_generic_amr_mod
@@ -70,19 +71,17 @@ contains
           call get_dimension(trim(par%density_file), par%nx, par%ny, par%nz, &
                              dstat, reduce_factor=par%reduce_factor)
           if (dstat /= 0) then
-             if (mpar%p_rank == 0) write(*,'(3a)') &
-                'ERROR: cannot read cube dimensions from par%density_file (', &
-                trim(par%density_file), ').'
-             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             call abort_run( &
+                'cannot read cube dimensions from par%density_file (' // &
+                trim(par%density_file) // ').')
           end if
        end if
        dcx = 2.0_wp*par%xmax/real(par%nx, wp)
        dcy = 2.0_wp*par%ymax/real(par%ny, wp)
        dcz = 2.0_wp*par%zmax/real(par%nz, wp)
        if (abs(dcy-dcx) > 1.0e-9_wp*dcx .or. abs(dcz-dcx) > 1.0e-9_wp*dcx) then
-          if (mpar%p_rank == 0) write(*,'(a)') &
-             'ERROR: car grid needs cubic cells: 2*xmax/nx = 2*ymax/ny = 2*zmax/nz.'
-          call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+          call abort_run( &
+             'car grid needs cubic cells: 2*xmax/nx = 2*ymax/ny = 2*zmax/nz.')
        end if
        nleaf  = par%nx*par%ny*par%nz
        boxlen = 2.0_wp*par%xmax
@@ -164,16 +163,18 @@ contains
           real(wp) :: dc
           integer :: nxu, ix, iy, iz, idx
           if (any(lev /= lev(1))) then
-             if (mpar%p_rank == 0) write(*,'(a)') &
-                'ERROR: grid_type=''car'' from a file needs a single-level leaf list.'
-             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             call abort_run( &
+                'grid_type=''car'' from a file needs a single-level leaf list.')
           end if
           nxu = 2**lev(1)
           if (nleaf /= nxu**3) then
-             if (mpar%p_rank == 0) write(*,'(a,i0,a,i0)') &
-                'ERROR: car grid from a file expects nleaf = (2^level)^3 = ', &
-                nxu**3, ', got ', nleaf
-             call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+             block
+               character(len=1024) :: reason
+               write(reason,'(a,i0,a,i0)') &
+                   'car grid from a file expects nleaf = (2^level)^3 = ', &
+                   nxu**3, ', got ', nleaf
+               call abort_run(trim(reason))
+             end block
           end if
           dc = boxlen/real(nxu, wp)
           allocate(perm(nleaf), tmp(nleaf))
@@ -184,9 +185,8 @@ contains
              iz = min(max(int((zleaf(il) + half)/dc), 0), nxu-1)
              idx = 1 + ix + nxu*(iy + nxu*iz)
              if (perm(idx) /= 0) then
-                if (mpar%p_rank == 0) write(*,'(a)') &
-                   'ERROR: car grid: two leaves map to one raster cell.'
-                call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+                call abort_run( &
+                   'car grid: two leaves map to one raster cell.')
              end if
              perm(idx) = il
           end do
@@ -246,17 +246,15 @@ contains
            end block
         case ('from_file')
            if (.not. have_ndust) then
-              if (mpar%p_rank == 0) write(*,'(a)') &
-                 'ERROR: dust_density_law=''from_file'' requires an ndust column.'
-              call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+              call abort_run( &
+                 'dust_density_law=''from_file'' requires an ndust column.')
            end if
            rho = ndustarr(il) * par%cext_dust * par%distance2cm
         case ('laursen09')
            if (.not. have_xHI) then
-              if (mpar%p_rank == 0) write(*,'(a)') &
-                 'ERROR: dust_density_law=''laursen09'' requires an xHI column '// &
-                 '(T->xHI CIE is deferred with temperature).'
-              call MPI_ABORT(MPI_COMM_WORLD, 1, ierr)
+              call abort_run( &
+                 'dust_density_law=''laursen09'' requires an xHI column '// &
+                 '(T->xHI CIE is deferred with temperature).')
            end if
            if (have_Z) then
               Zuse = Zarr(il)

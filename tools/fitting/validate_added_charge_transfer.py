@@ -27,7 +27,7 @@ TARGET={'c':5,'n':4,'o':5,'ne':5,'s':5,'ar':5,'mg':4}
 
 
 def compile_physics_check(source,work):
-    prefix=Path(os.environ.get('HDF5_PREFIX','/data/opt/hdf5_intel'))
+    prefix=Path(os.environ.get('HDF5_PREFIX','/opt/hdf5_intel'))
     sedust=ROOT/'SEDust/sed/lib'
     objects=sorted(p for p in (ROOT/'src').glob('*.o') if p.name!='main.o')
     if not objects or not (ROOT/'src/species_mod.o').exists():

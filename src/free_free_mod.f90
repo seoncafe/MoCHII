@@ -59,7 +59,7 @@ contains
   !=========================================================================
   real(kind=wp) function free_free_gaunt(Zc, T, u) result(g)
     use gaunt_vh14_mod, only : gaunt_vh14_setup, gauntff_vh14
-    use utility,        only : fatal_error
+    use utility,        only : abort_run
     implicit none
     real(kind=wp), intent(in) :: Zc, T, u
     real(kind=wp) :: ryd_over_kt, gamma2
@@ -71,7 +71,7 @@ contains
         gamma2 > 1.0e3_wp .or. u < 1.0e-4_wp .or. u > 10.0_wp**1.5_wp) then
        if (log10(gamma2) < -6.0_wp .or. log10(gamma2) > 10.0_wp .or. &
            log10(u) < -16.0_wp .or. log10(u) > 13.0_wp) &
-          call fatal_error('free-free Gaunt arguments outside van Hoof table')
+          call abort_run('free-free Gaunt arguments outside van Hoof table')
        call gaunt_vh14_setup()
        g = gauntff_vh14(Zc, T, u/ryd_over_kt)
     else

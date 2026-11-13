@@ -57,8 +57,10 @@ them; the record is
 \begin{itemize}
 \item Intel oneAPI MPI Fortran (the Makefile takes \code{mpiifort} when
   \code{ifort} is on the path, else \code{mpiifx}, else GNU \code{mpif90};
-  \code{make F90=mpif90} forces one), HDF5 (default prefix
-  \code{/data/opt/hdf5\_intel}; override with
+  \code{make F90=mpif90} forces one), HDF5 with its Fortran interface
+  (HDF5 2.2.0; default prefix \code{/opt/hdf5\_intel}, or
+  \code{/opt/hdf5\_gfortran} with \code{mpif90}, since a compiler reads
+  only the \code{hdf5.mod} it built; override with
   \code{make HDF5\_PREFIX=...}; \code{make HDF5=0} builds without it, FITS
   output only), CFITSIO.
 \item The SEDust dust-emission library, self-contained under
@@ -151,9 +153,21 @@ that was removed or renamed, with the replacement named
 \code{metal\_excitation\_model = 'extended'}; a band (\code{eion\_max})
 above the ionization potential of the last carried stage (VII) of an
 element present (lowest: Cl\,\textsc{vii}, 114.2~eV); and the
-combinations the tables below call refused.  A missing \code{amr\_file}
-ends the run the same way (every rank reads it, so every rank reports).
-The switches compose: \code{gas\_niter = 0} gives a single rates-only
+combinations the tables below call refused.
+
+\paragraph{Failures during the run.}  Any other failure (a missing or
+unreadable grid, data or restart file, an inconsistent table, a failed
+write, a check inside the transport) ends the run through one routine,
+\code{abort\_run} (\code{src/utility.f90}, since 2026-11-13): the rank
+that meets the failure writes \code{ERROR [rank }$r$\code{]:} and the
+reason, flushes the log, and the run stops with exit status~1.  Rank~0
+writes and stops the run at once; any other rank first waits 2~s, so when
+every rank meets the same failure (a missing \code{amr\_file} is read by
+every rank) the log holds the line once, from rank~0, and when one other
+rank meets it alone that rank writes it after the wait.  On a heavily
+loaded host the same line can appear more than once; it is never lost.
+
+\paragraph{Switches.}  The switches compose: \code{gas\_niter = 0} gives a single rates-only
 pass; \code{gas\_niter > 0} iterates the ionization; \code{solve\_te}
 (on by default) adds the thermal balance; \code{use\_metals} (on when the
 input gives a metal abundance) the trace-metal registry;
@@ -488,7 +502,7 @@ parameter & default & meaning \\
 \endlastfoot
 \code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
 \code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
-\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations, unless \code{restart\_iteration\_history} is set.  Gate \code{tests/restart/} \\
+\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values, and so does gas whose previous leaf was vacuum: stored \code{n\_H} $= 0$, or, in a file without \code{n\_H} (written before 2026-11-13), stored $n_e = 0$ with ionized fractions, a state gas cannot have (the log names the rule; such a file cannot tell a vacuum leaf of a fully neutral initial state from neutral gas).  Stored gas with $n_e \le 0$ (an unsolved neutral state) is restored with the ion-balance floor $n_e = 10^{-30}\,n_{\rm H}$.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations, unless \code{restart\_iteration\_history} is set.  Gate \code{tests/restart/} \\
 \code{rates\_write\_interval} & 0 & every this many gas iterations, write the iterate to \code{<base>\_rates\_iterate} (the \code{\_rates} layout; header \code{CONVERGD} F, \code{STATESOL} F, \code{NITERDON} the iteration, \code{FINALDX}/\code{FINALDTE} that iteration's step), replacing the previous one through a temporary file and a rename, so a run stopped at any point can be resumed with \code{restart\_file}.  Not written at the last iteration or after convergence, where \code{\_rates} follows.  0 or negative = never \\
 \code{restart\_iteration\_history} & F & with \code{restart\_file}: also take the stopping-test histories the file carries (\code{ConvHist\_*}), so a resumed run of the same physics continues the 8-iteration window of the \code{'vol'} test instead of refilling it.  Off by default: after a change of binary, physics or packet count the old steps say nothing about the new iteration.  A file without the histories (written before 2026-10-13) is refused; without \code{restart\_file} the input is refused \\
 \code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
@@ -805,6 +819,7 @@ extension & content \\
 \code{Heat\_dust} & grain heating [erg\,s$^{-1}$\,cm$^{-3}$] (when \code{ion\_add\_dust}) \\
 \code{T\_dust} & equilibrium mixture dust temperature [K] (when \code{ion\_add\_dust}) \\
 \code{x\_HI}, \code{x\_HII}, \code{x\_HeI}, \code{x\_HeII}, \code{x\_HeIII}, \code{n\_e}, \code{T\_e} & converged state; every fraction to its own relative precision ($x_{\rm HI} + x_{\rm HII} = 1$ and $x_{\rm HeI} + x_{\rm HeII} + x_{\rm HeIII} = 1$ to rounding): beyond the ionization fronts $x_{\rm HII}$ and $x_{\rm HeIII}$ fall to $10^{-10}$--$10^{-100}$, where $1 - x_{\rm HI}$ and $1 - x_{\rm HeI} - x_{\rm HeII}$ keep none of their digits, so read \code{x\_HII} and \code{x\_HeIII} \\
+\code{n\_H} & hydrogen number density [cm$^{-3}$], 0 in vacuum (the same block as \code{n\_H} in \code{<base>\_emis}); \code{restart\_file} takes a stored leaf as vacuum if and only if its \code{n\_H} is 0 (written since 2026-11-13) \\
 \code{ConvHist\_*} & stopping-test histories \code{ConvHist\_x\_HII}, \code{ConvHist\_HeI\_HeII}, \code{ConvHist\_HeII\_HeIII} (iteration, 2): the step $d$ and the signed step $s$ of each gas iteration, oldest first, for $x_{\rm HII}$, He$^0$--He$^+$ and He$^+$--He$^{2+}$ (the last only while He$^{2+}$ is present); \code{restart\_iteration\_history} reads them back \\
 \code{Phi\_HeI\_23S} & He\,\textsc{i} $2^3S$ photoionization rate $\Phi_3$ [s$^{-1}$] of the last transport pass (with \code{hei\_metastable\_coupling}); \code{restart\_file} reads it back, since the $2^3S$ split of the He\,\textsc{i} diffuse channel of the first pass is solved with it (a file without it restarts with $\Phi_3 = 0$, with a note) \\
 \code{x\_<el>\_stages} & metal ion fractions (stage, leaf), with the keyword \code{ABUND} $= n({\rm X})/n({\rm H})$ (with \code{use\_metals}) \\
