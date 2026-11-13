@@ -222,6 +222,9 @@ contains
     end if
     call gas_opacity_setup()
     call jtally_ion_resize(nnew)
+    ! Resize invalidates raw H/He paths: the first pass on this grid
+    ! uses explicit leaf emission in absorption_reemission. Phi_3 below
+    ! serves the metastable state only and cannot validate those paths.
     call ion_score_resize(nnew)
     !--- Phi_3 after ion_score_resize, which clears the leaf rates; its
     !--- heating is read only after the next transport, which sets both

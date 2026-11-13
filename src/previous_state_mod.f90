@@ -62,6 +62,9 @@ module previous_state_mod
 ! stopping test needs NWIN = 8 iterations of the new run before it can pass,
 ! unless par%restart_iteration_history takes the histories the file carries
 ! (ConvHist_*; written since 2026-10-13), for a resume of the same physics.
+! In absorption_reemission these histories are always reset. No previous
+! H/He radiation field is restored; the first pass emits all state emission
+! explicitly, even when the checkpoint contains absorption diagnostics.
 !---------------------------------------------------------------------------
   use define
   use mpi
@@ -291,7 +294,18 @@ contains
     end if
 
     !--- the stopping-test histories (par%restart_iteration_history)
-    if (par%restart_iteration_history) call restore_histories()
+    if (trim(par%diffuse_launch) == 'absorption_reemission') then
+       block
+         use fixed_point_distance_mod, only : history_reset, hist_dx, hist_dhe1, hist_dhe3
+         call history_reset(hist_dx)
+         call history_reset(hist_dhe1)
+         call history_reset(hist_dhe3)
+       end block
+       if (mpar%p_rank == 0) write(*,'(a)') &
+          ' RESTART: absorption_reemission starts with explicit leaf emission; histories reset'
+    else
+       if (par%restart_iteration_history) call restore_histories()
+    end if
 
     !--- metal photoionization rates, element by element (by name)
     call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)

@@ -164,6 +164,17 @@ private :: c_expm1, c_log1p
      !--- ledger (par%absorption_ledger): 0 the stellar ionizing band, 1-8 the
      !--- diffuse channel (diffuse_mod), 9 the stellar band below eion_min.
      integer       :: source_channel = 0
+     !--- MoCHII: the source_channel the packet had at its launch.  It is
+     !--- never relabeled: under par%diffuse_launch = 'absorption_reemission'
+     !--- a re-emitted packet takes the new channel in source_channel and
+     !--- keeps its root here (set by raytrace_amr_mod::transport_ion_packet).
+     integer       :: root_channel = 0
+     !--- MoCHII: interactions since the launch (dust scatterings and
+     !--- re-emissions at a gas absorption), counted by transport_ion_packet.
+     !--- A sampled flight scores its path segments when it is positive, so
+     !--- the forced first flight (nevent = 0) is not scored and every later
+     !--- flight is scored once.  nscatt counts the dust scatterings alone.
+     integer       :: nevent = 0
      !--- MoCHII: entry-surface inward normal and origin flag, used ONLY by
      !--- the direct peel of external-field packets.  A Lambert-emitted
      !--- external packet peels a direct contribution weighted by
@@ -1095,6 +1106,24 @@ private :: c_expm1, c_log1p
      !--- The default was 'on_the_spot' until 2026-09-26; the tests/ and
      !--- results/ inputs that relied on it pin it.
      character(len=16)  :: recombination_continuum = 'transported'
+     !--- how the transported diffuse field (recombination_continuum =
+     !--- 'transported') is emitted:
+     !---   'leaf_emissivity' (default)  every pass launches the whole state
+     !---       emission L_c,i = dif_ch(c,i) of every leaf as separate
+     !---       packets, uniform in the leaf (diffuse_mod);
+     !---   'absorption_reemission'  a packet of energy E absorbed by H0,
+     !---       He0 or He+ (s) in leaf i continues at the absorption point as
+     !---       a diffuse packet of the channels of the ion it produced
+     !---       (C(H0) = {1}, C(He0) = {2, 4}, C(He+) = {3, 5}) with its weight
+     !---       times eps_s/(E max(psi_s, 1)): eps_s the in-band energy of one
+     !---       recombination of s+ and psi_s the photoionizations of s in the
+     !---       previous pass's field over the recombinations of s+, both from
+     !---       the current state; X_c = L_c (1 - min(psi_s, 1)) and the whole
+     !---       of channels 6-8 are launched as in the default mode; metal
+     !---       absorption re-emits nothing (diffuse_mod).  Needs
+     !---       recombination_continuum = 'transported'.  Plan:
+     !---       md/ABSORPTION_REEMISSION_PLAN_2026-11-13.md, Section 12.
+     character(len=24)  :: diffuse_launch = 'leaf_emissivity'
      !--- what becomes of the Lyman-LINE photons (n >= 3 -> 1) of H I and
      !--- He II, which sets the recombination-line emissivities (SH95
      !--- tables): 'on_the_spot' (default) = absorbed by the ground state
@@ -1402,6 +1431,12 @@ private :: c_expm1, c_log1p
      end subroutine peel_hook_intf
   end interface
   procedure(peel_hook_intf), pointer :: ion_peel_scatter_hook => null()
+  !--- MoCHII: re-emission peel hook (par%diffuse_launch =
+  !--- 'absorption_reemission'): called by transport_ion_packet after a gas
+  !--- absorption has been re-emitted (new isotropic direction, channel and
+  !--- energy set, from_external cleared), with the continued weight taken
+  !--- before Russian roulette.  Installed by the imaging pass.
+  procedure(peel_hook_intf), pointer :: ion_peel_reemission_hook => null()
 
   !------------------------------------------------------------
   ! define procedure pointers

@@ -59,6 +59,47 @@ module diffuse_mod
 ! ion_band_mod::ionizing_packet_luminosity), and every diffuse packet carries
 ! L_diffuse / n_diff, so they carry exactly L_diffuse; sampling: leaf CDF over
 ! total leaf luminosity, then a channel CDF within the leaf.
+!
+! par%diffuse_launch = 'absorption_reemission' (plan
+! md/ABSORPTION_REEMISSION_PLAN_2026-11-13.md, Section 12, r7): re-emission
+! by absorber s = H0, He0, He+ (index 1-3), with the channels of the ion
+! the absorption produces, C(H0) = {1}, C(He0) = {2, 4}, C(He+) = {3, 5};
+! metal absorption re-emits nothing.  For leaf i, from the frozen state,
+!     N_rec,s = V n_e n_(s+) alpha_A,s(T_e)   recombinations of s+ [1/s]
+!               (alphaA_HII, alphaA_HeII, alphaA_HeIII: the case-A
+!               coefficients the ion balance uses with the transported
+!               continuum, ion_balance_mod)
+!     L_s     = Sum_{c in C(s)} L_c          their in-band emission [erg/s]
+!     eps_s   = L_s / N_rec,s                in-band energy of one recombination
+! and from the previous pass's field with the current densities
+!     N_abs,s = V n_s Gamma_s   (ion_score_mod::previous_photoionizations)
+!     psi_s   = N_abs,s / N_rec,s.
+! The in-band energy one recombination can radiate is bounded,
+!     eps_cap,s = E_th,s + 1.5 k T_e,   eps_re,s = min(eps_s, eps_cap,s),
+!     f_s = eps_re,s / eps_s
+! (a recombination radiates at most the ionization energy of s plus the
+! kinetic energy of the captured electron, whose mean over recombining
+! electrons lies below 1.5 kT since the capture cross section falls with
+! energy).  eps_s exceeds it where L_s holds emission not powered by
+! recombination (channel 4 with the 2^3S coupling carries collisionally
+! populated decays) or N_rec,s is tiny; that share is not re-emitted but
+! launched (a split, not a truncation: the luminosity is kept).
+! A packet of energy E absorbed by s continues with its weight times
+! y_s(E) = eps_re,s/(E max(psi_s, 1)) (raytrace_amr_mod::transport_ion_packet;
+! reemitted_energy(s, i) = eps_re,s/max(psi_s, 1) [erg]); the channel within
+! C(s) is drawn with probability L_c/L_s and the energy from that channel's
+! sampler (sample_absorber_diffuse_photon).  The explicit launch is
+!     X_c = L_c (1 - f_s min(psi_s, 1))  for c in C(s),  X_c = L_c  for 6, 7, 8
+! (explicit_ch); the launchers draw the leaf from Sum_c X_c and the channel
+! from X_c (dif_launch, the table the launchers read: dif_ch in the default
+! mode).  N_rec,s = 0 or L_s = 0: no re-emission by s (reemitted_energy = 0),
+! its channels launched whole, and psi_s stored as -1 (not computed).
+! Without a valid previous field (first pass, restart, re-refinement)
+! re-emission is off for the pass and X_c = L_c: that pass is the present
+! scheme.  diffuse_build runs before the source packets of the pass
+! (ionizing_field_mod), on the frozen state; it draws no random numbers.
+! diffuse_channel_luminosity keeps the state emission,
+! diffuse_remainder_luminosity is the explicit launch by channel.
 !---------------------------------------------------------------------------
   use define
   use mpi
@@ -90,8 +131,18 @@ module diffuse_mod
             diffuse_nphot, diffuse_lum
   public :: hei_branch_energies, hei_branch_energies_coupled
   public :: diffuse_channel_luminosity, metal_valence_luminosity_outside
+  public :: reemitted_energy, absorber_psi, diffuse_absorber_leaf, &
+            diffuse_explicit_leaf_emission, sample_absorber_diffuse_photon, &
+            reemission_field_valid, NABSORBER, ABSORBER_CHANNELS
+  public :: reemit_at_absorption, sample_leaf_diffuse_photon, &
+            diffuse_remainder_luminosity, diffuse_leaf_emission, &
+            diffuse_packet_lum, diffuse_nominal_packet_lum
 
   integer, parameter :: NCH = 8                 ! diffuse emission channels
+  !--- re-emitting absorbers H0, He0, He+ and their channels (r7)
+  integer, parameter :: NABSORBER = 3
+  integer, parameter :: ABSORBER_CHANNELS(2,NABSORBER) = &
+     reshape([1, 0,  2, 4,  3, 5], [2, NABSORBER])
   integer, parameter :: CH_METAL_GROUND = 6, CH_FREEFREE = 7, CH_METAL_VALENCE = 8
   !--- channel-8 photon energies as fractions of the ionization potential of
   !--- the recombined ion (Cloudy c25.00 cont_createpointers.cpp)
@@ -110,8 +161,31 @@ module diffuse_mod
   !--- on n_3 and Phi_3, so the launchers read what diffuse_build computed
   !--- instead of recomputing them.
   real(kind=wp), pointer, contiguous :: dif_hei(:,:) => null()  ! (3, nleaf) [eV cm^-3 s^-1]
-  integer :: dif_win(3) = MPI_WIN_NULL     ! dif_cdf, dif_ch, dif_hei
-  real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
+  !--- absorption_reemission (r7), node-shared like the tables above:
+  !--- reemitted_energy(s, i) = eps_re,s/max(psi_s, 1) [erg] (y_s(E) times the
+  !--- photon energy; read by transport_ion_packet at an absorption by s),
+  !--- absorber_psi(s, i) = psi_s (-1 where s does not re-emit), explicit_ch(c, i) = X_c [erg/s],
+  !--- absorber_count(1:3, s, i) = N_rec,s, raw N_abs,s [1/s] and f_s
+  real(kind=wp), pointer, contiguous, protected :: reemitted_energy(:,:) => null()
+  real(kind=wp), pointer, contiguous, protected :: absorber_psi(:,:) => null()
+  real(kind=wp), pointer, contiguous, protected :: absorber_count(:,:,:) => null()
+  real(kind=wp), pointer, contiguous :: explicit_ch(:,:) => null()
+  !--- the channel table the launchers draw from: dif_ch, or explicit_ch
+  !--- under absorption_reemission
+  real(kind=wp), pointer, contiguous :: dif_launch(:,:) => null()
+  integer :: dif_win(7) = MPI_WIN_NULL     ! dif_cdf, dif_ch, dif_hei, reemitted_energy,
+                                           ! absorber_psi, explicit_ch, absorber_count
+  !--- the last diffuse_build had a valid previous field (re-emission on)
+  logical, protected :: reemission_field_valid = .false.
+  !--- .true. under par%diffuse_launch = 'absorption_reemission' (set by
+  !--- diffuse_build, which in that mode runs before every ionizing transport)
+  logical, protected :: reemit_at_absorption = .false.
+  !--- explicit launch of each channel in the last diffuse_build [erg/s],
+  !--- Sum_i X_c,i (absorption_reemission; zero otherwise)
+  real(kind=wp) :: diffuse_remainder_luminosity(NCH) = 0.0_wp
+  !--- total launched [erg/s]: the state emission, or under
+  !--- absorption_reemission the explicit remainder Sum X_i
+  real(kind=wp) :: diffuse_lum = 0.0_wp
   !--- luminosity carried by one diffuse packet [erg/s]: the diffuse
   !--- luminosity over the packet count diffuse_build set from the lpacket it
   !--- was given, so the packets carry exactly diffuse_lum (before
@@ -119,6 +193,9 @@ module diffuse_mod
   !--- transported total off by up to lpacket/2, or dropped a field worth
   !--- less than half a packet).
   real(kind=wp) :: diffuse_packet_lum = 0.0_wp
+  !--- the nominal packet luminosity diffuse_build was given (lpacket), the
+  !--- divisor of the count rule n = max(1, nint(L_diffuse/lpacket)) [erg/s]
+  real(kind=wp) :: diffuse_nominal_packet_lum = 0.0_wp
   integer(kind=int64) :: diffuse_nphot = 0
 
   !--- He I excited channel (channel 4, par%hei_diffuse): the 2^3S decay is a
@@ -137,9 +214,15 @@ contains
 
   !=========================================================================
   subroutine diffuse_build(lpacket)
+    use ion_score_mod, only : previous_photoionizations
     implicit none
     real(kind=wp), intent(in) :: lpacket
     real(kind=wp) :: T, ne, nH, vol, kT_eV, a1
+    real(kind=wp) :: xleaf, nabs(NABSORBER), nplus(NABSORBER), arec(NABSORBER)
+    real(kind=wp) :: nrec, ls, psi, eps, eps_re, fs
+    real(kind=wp), parameter :: ETH_ABSORBER(NABSORBER) = [eth_HI, eth_HeI, eth_HeII]
+    integer :: is, k
+    logical :: valid
     real(kind=wp) :: be3s, be1p, be1s
     real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
@@ -163,6 +246,29 @@ contains
           call create_shared_mem(dif_hei, [3, gas_nleaf])
           call get_window(dif_hei, dif_win(3))
        end if
+    end if
+    reemit_at_absorption = trim(par%diffuse_launch) == 'absorption_reemission'
+    dif_launch => dif_ch
+    if (reemit_at_absorption) then
+       if (associated(reemitted_energy)) then
+          if (size(reemitted_energy, 2) /= gas_nleaf) then
+             call destroy_shared_mem(reemitted_energy)
+             call destroy_shared_mem(absorber_psi)
+             call destroy_shared_mem(explicit_ch)
+             call destroy_shared_mem(absorber_count)
+          end if
+       end if
+       if (.not. associated(reemitted_energy)) then
+          call create_shared_mem(reemitted_energy, [NABSORBER, gas_nleaf])
+          call get_window(reemitted_energy, dif_win(4))
+          call create_shared_mem(absorber_psi, [NABSORBER, gas_nleaf])
+          call get_window(absorber_psi, dif_win(5))
+          call create_shared_mem(explicit_ch, [NCH, gas_nleaf])
+          call get_window(explicit_ch, dif_win(6))
+          call create_shared_mem(absorber_count, [3, NABSORBER, gas_nleaf])
+          call get_window(absorber_count, dif_win(7))
+       end if
+       dif_launch => explicit_ch
     end if
 
     !--- the ground continua and the He I cascade are transported only with
@@ -226,6 +332,53 @@ contains
           dif_ch(5,il) = ne*nHeIII*vol*(lfb + llyman + l2q)
        end if
     end do
+    !--- absorption_reemission (r7): psi_s, eps_re,s/max(psi_s, 1) and the
+    !--- explicit launch X_c of the leaves this rank filled above.  psi = -1
+    !--- marks an absorber that does not re-emit there (no valid previous
+    !--- field, N_rec,s = 0 or L_s = 0); its channels are launched whole.
+    if (reemit_at_absorption) then
+       call previous_photoionizations(1, nabs, valid)
+       reemission_field_valid = valid
+       do il = shared_host_rank() + 1, gas_nleaf, shared_host_size()
+          reemitted_energy(:,il) = 0.0_wp
+          absorber_psi(:,il) = -1.0_wp
+          absorber_count(:,:,il) = 0.0_wp
+          explicit_ch(:,il) = dif_ch(:,il)
+          if (.not. valid .or. gas_nH(il) <= 0.0_wp) cycle
+          call previous_photoionizations(il, nabs, valid)
+          T   = gas_Te(il)
+          ne  = gas_ne(il)
+          vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+          nplus = gas_nH(il)*[gas_xHII(il), par%abund_He*gas_xHeII(il), &
+                              par%abund_He*gas_xHeIII(il)]
+          !--- the case-A coefficients of the ion balance (transported
+          !--- continuum: ion_balance_mod uses alphaA_* when the continuum is
+          !--- not 'on_the_spot')
+          arec = [alphaA_HII(T), alphaA_HeII(T), alphaA_HeIII(T)]
+          do is = 1, NABSORBER
+             nrec = vol*ne*nplus(is)*arec(is)
+             ls = 0.0_wp
+             do k = 1, 2
+                if (ABSORBER_CHANNELS(k,is) > 0) ls = ls + dif_ch(ABSORBER_CHANNELS(k,is),il)
+             end do
+             absorber_count(1:2,is,il) = [nrec, nabs(is)]
+             if (nrec <= 0.0_wp .or. ls <= 0.0_wp) cycle
+             psi = nabs(is)/nrec
+             eps = ls/nrec
+             !--- eps_cap,s = E_th,s + 1.5 kT (header): the share above it
+             !--- is launched, not re-emitted
+             eps_re = min(eps, ETH_ABSORBER(is)*ev2erg + 1.5_wp*kboltz_cgs*T)
+             fs = eps_re/eps
+             absorber_count(3,is,il) = fs
+             absorber_psi(is,il) = psi
+             reemitted_energy(is,il) = eps_re/max(psi, 1.0_wp)
+             do k = 1, 2
+                if (ABSORBER_CHANNELS(k,is) > 0) explicit_ch(ABSORBER_CHANNELS(k,is),il) = &
+                   dif_ch(ABSORBER_CHANNELS(k,is),il)*(1.0_wp - fs*min(psi, 1.0_wp))
+             end do
+          end do
+       end do
+    end if
 
     call diffuse_shared_sync()
 
@@ -233,11 +386,23 @@ contains
     !--- shared table, the node's rank 0 stores the CDF
     diffuse_lum = 0.0_wp
     diffuse_channel_luminosity = 0.0_wp
-    do il = 1, gas_nleaf
-       diffuse_lum = diffuse_lum + sum(dif_ch(:,il))
-       if (shared_host_rank() == 0) dif_cdf(il) = diffuse_lum
-       diffuse_channel_luminosity = diffuse_channel_luminosity + dif_ch(:,il)
-    end do
+    diffuse_remainder_luminosity = 0.0_wp
+    if (reemit_at_absorption) then
+       !--- the CDF over the explicit launch Sum_c X_c of each leaf
+       do il = 1, gas_nleaf
+          xleaf = sum(explicit_ch(:,il))
+          diffuse_lum = diffuse_lum + xleaf
+          if (shared_host_rank() == 0) dif_cdf(il) = diffuse_lum
+          diffuse_channel_luminosity = diffuse_channel_luminosity + dif_ch(:,il)
+          diffuse_remainder_luminosity = diffuse_remainder_luminosity + explicit_ch(:,il)
+       end do
+    else
+       do il = 1, gas_nleaf
+          diffuse_lum = diffuse_lum + sum(dif_ch(:,il))
+          if (shared_host_rank() == 0) dif_cdf(il) = diffuse_lum
+          diffuse_channel_luminosity = diffuse_channel_luminosity + dif_ch(:,il)
+       end do
+    end if
     if (diffuse_lum > 0.0_wp .and. shared_host_rank() == 0) dif_cdf = dif_cdf/diffuse_lum
     call diffuse_shared_sync()
     metal_valence_luminosity_outside = 0.0_wp
@@ -250,6 +415,7 @@ contains
              + gas_ne(il)*vol*metal_valence_outside(il, gas_Te(il))
        end do
     end if
+    diffuse_nominal_packet_lum = lpacket
     if (diffuse_lum > 0.0_wp) then
        diffuse_nphot = max(1_int64, nint(diffuse_lum/lpacket, int64))
        diffuse_packet_lum = diffuse_lum/real(diffuse_nphot, wp)
@@ -261,7 +427,7 @@ contains
 
     subroutine diffuse_shared_sync()
       integer :: k
-      do k = 1, 3
+      do k = 1, size(dif_win)
          if (dif_win(k) /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, dif_win(k), ierr)
       end do
       call MPI_BARRIER(shared_host_comm(), ierr)
@@ -270,14 +436,56 @@ contains
   end subroutine diffuse_build
 
   !=========================================================================
+  ! The frozen-state emission L_c,i of the last diffuse_build [erg/s],
+  ! emission(c, i) for channel c = 1..8 and leaf i (a copy of dif_ch; under
+  ! absorption_reemission the emission the pass split by absorber, plan
+  ! Section 12).
+  !=========================================================================
+  subroutine diffuse_leaf_emission(emission)
+    real(kind=wp), intent(out) :: emission(:,:)
+    if (.not. associated(dif_ch)) then
+       emission = 0.0_wp
+       return
+    end if
+    emission = dif_ch(:,1:size(emission,2))
+  end subroutine diffuse_leaf_emission
+
+  !--- by absorber s and leaf, (NABSORBER, nleaf), of the last diffuse_build:
+  !--- psi_s (-1 where s does not re-emit), eps_re,s/max(psi_s, 1) [erg],
+  !--- N_rec,s and raw N_abs,s [1/s], and f_s = eps_re,s/eps_s
+  !--- (absorption_reemission; zeros otherwise)
+  subroutine diffuse_absorber_leaf(psi, energy, nrec, nabs, f)
+    real(kind=wp), intent(out) :: psi(:,:), energy(:,:)
+    real(kind=wp), intent(out), optional :: nrec(:,:), nabs(:,:), f(:,:)
+    psi = 0.0_wp;  energy = 0.0_wp
+    if (present(nrec)) nrec = 0.0_wp
+    if (present(nabs)) nabs = 0.0_wp
+    if (present(f)) f = 0.0_wp
+    if (.not. associated(reemitted_energy)) return
+    psi    = absorber_psi(:,1:size(psi,2))
+    energy = reemitted_energy(:,1:size(energy,2))
+    if (present(nrec)) nrec = absorber_count(1,:,1:size(nrec,2))
+    if (present(nabs)) nabs = absorber_count(2,:,1:size(nabs,2))
+    if (present(f))    f    = absorber_count(3,:,1:size(f,2))
+  end subroutine diffuse_absorber_leaf
+
+  !--- the explicit launch X_c,i [erg/s] of the last diffuse_build,
+  !--- (NCH, nleaf) (absorption_reemission; zeros otherwise)
+  subroutine diffuse_explicit_leaf_emission(x)
+    real(kind=wp), intent(out) :: x(:,:)
+    x = 0.0_wp
+    if (.not. associated(explicit_ch)) return
+    x = explicit_ch(:,1:size(x,2))
+  end subroutine diffuse_explicit_leaf_emission
+
+  !=========================================================================
   subroutine gen_diffuse_photon(photon)
     use random,       only : rand_number
     use ion_band_mod, only : ion_bin_of
     implicit none
     type(photon_type), intent(inout) :: photon
-    real(kind=wp) :: u, cost, sint, phi, half, eph, kT_eV, w(NCH), ub
-    real(kind=wp) :: be3s, be1p, be1s
-    integer :: lo, hi, mid, il, ic, ch
+    real(kind=wp) :: u, cost, sint, phi, half, eph
+    integer :: lo, hi, mid, il, ch
 
     !--- leaf from the CDF (binary search)
     u = rand_number()
@@ -305,14 +513,98 @@ contains
     photon%ky = sint*sin(phi)
     photon%kz = cost
 
-    !--- channel; ground continua sample par%diffuse_energy_model
-    !--- (ground_photon_energy); the two excited channels sample their path by energy luminosity and then the
-    !--- energy within it -- channel 4 the He I decay branch (fixed line
-    !--- energies, or the Drake et al. 1969 two-photon shape), channel 5 the
-    !--- He III cascade path (free-bound CDF, the 40.813 eV line, or the
-    !--- Nussbaumer & Schmutz two-photon shape).
-    w  = dif_ch(:,il)
+    !--- channel and energy within the leaf (Mersenne Twister draws, in the
+    !--- order and with the arithmetic this launcher always had)
+    call sample_leaf_diffuse_photon(il, ch, eph)
+
+    !--- bin index by binary search of the band edges (the one source of truth
+    !--- for BOTH the aligned and the legacy-log grid; recombination photons all
+    !--- carry eph >= the channel threshold > eion_min, so they land in the
+    !--- ionizing segment).  The old closed-form log formula assumed a pure
+    !--- log grid and mis-binned under par%ion_align_edges.
+    photon%inu = ion_bin_of(eph)
+
+    photon%wgt     = 1.0_wp
+    photon%Lpacket = diffuse_packet_lum
+    photon%source_channel = ch
+    !--- the packet carries the energy the emission channel actually sampled;
+    !--- inu is only the diagnostic bin it lands in.
+    photon%energy_eV = eph
+    photon%nscatt  = 0
+    photon%inside  = .true.
+    photon%from_external = .false.      ! diffuse packets peel isotropically
+    photon%icell_amr = il
+  end subroutine gen_diffuse_photon
+
+  !=========================================================================
+  ! Channel and photon energy [eV] of one diffuse photon launched from leaf
+  ! il, from the Mersenne Twister: the channel by the launch table
+  ! dif_launch(:,il) (the state emission dif_ch in the default mode, the
+  ! explicit launch X_c under absorption_reemission; pick_channel), then the
+  ! energy from that channel's own sampler (diffuse_channel_energy).  It
+  ! touches no packet field (position, Lpacket, weight are the caller's).
+  ! Used by the pseudorandom launcher gen_diffuse_photon; the Sobol launcher
+  ! gen_diffuse_photon_qmc keeps its fixed dimension mapping u(7)-u(9) with
+  ! the same channel energy functions.  The draws are, in order: the
+  ! channel; then for channels 1-3 one energy variate; for channel 4 the
+  ! decay branch and, for the two-photon branch only, its energy; for
+  ! channels 5-8 the pick and the energy.  The caller must pass a leaf with
+  ! emission (Sum dif_launch(:,il) > 0).
+  !=========================================================================
+  subroutine sample_leaf_diffuse_photon(il, ch, energy_eV)
+    use random, only : rand_number
+    implicit none
+    integer,       intent(in)  :: il
+    integer,       intent(out) :: ch
+    real(kind=wp), intent(out) :: energy_eV
+    real(kind=wp) :: w(NCH)
+
+    w  = dif_launch(:,il)
     ch = pick_channel(w, rand_number())
+    energy_eV = diffuse_channel_energy(il, ch)
+  end subroutine sample_leaf_diffuse_photon
+
+  !=========================================================================
+  ! Channel and photon energy [eV] of a re-emission after an absorption by
+  ! absorber is (1 H0, 2 He0, 3 He+) in leaf il (absorption_reemission, plan
+  ! Section 12): the channel within C(is) with probability L_c/L_s from the
+  ! state emission dif_ch(:,il), then the energy from diffuse_channel_energy.
+  ! Mersenne Twister draws.  The caller must pass an absorber with L_s > 0
+  ! (reemitted_energy(is,il) > 0 guarantees it).
+  !=========================================================================
+  subroutine sample_absorber_diffuse_photon(il, is, ch, energy_eV)
+    use random, only : rand_number
+    implicit none
+    integer,       intent(in)  :: il, is
+    integer,       intent(out) :: ch
+    real(kind=wp), intent(out) :: energy_eV
+    real(kind=wp) :: w(NCH)
+    integer :: k
+    w = 0.0_wp
+    do k = 1, 2
+       if (ABSORBER_CHANNELS(k,is) > 0) &
+          w(ABSORBER_CHANNELS(k,is)) = dif_ch(ABSORBER_CHANNELS(k,is),il)
+    end do
+    ch = pick_channel(w, rand_number())
+    energy_eV = diffuse_channel_energy(il, ch)
+  end subroutine sample_absorber_diffuse_photon
+
+  !=========================================================================
+  ! Photon energy [eV] of one diffuse photon of channel ch in leaf il, from
+  ! the Mersenne Twister; ground continua sample par%diffuse_energy_model
+  ! (ground_photon_energy); the two excited channels sample their path by
+  ! energy luminosity and then the energy within it -- channel 4 the He I
+  ! decay branch (fixed line energies, or the Drake et al. 1969 two-photon
+  ! shape), channel 5 the He III cascade path (free-bound CDF, the 40.813 eV
+  ! line, or the Nussbaumer & Schmutz two-photon shape).
+  !=========================================================================
+  real(kind=wp) function diffuse_channel_energy(il, ch) result(eph)
+    use random, only : rand_number
+    implicit none
+    integer, intent(in) :: il, ch
+    real(kind=wp) :: u, kT_eV, ub
+    real(kind=wp) :: be3s, be1p, be1s
+
     if (ch == 1) then
        eph = eth_HI
     else if (ch == 2) then
@@ -355,24 +647,7 @@ contains
        end if
     end if
 
-    !--- bin index by binary search of the band edges (the one source of truth
-    !--- for BOTH the aligned and the legacy-log grid; recombination photons all
-    !--- carry eph >= the channel threshold > eion_min, so they land in the
-    !--- ionizing segment).  The old closed-form log formula assumed a pure
-    !--- log grid and mis-binned under par%ion_align_edges.
-    photon%inu = ion_bin_of(eph)
-
-    photon%wgt     = 1.0_wp
-    photon%Lpacket = diffuse_packet_lum
-    photon%source_channel = ch
-    !--- the packet carries the energy the emission channel actually sampled;
-    !--- inu is only the diagnostic bin it lands in.
-    photon%energy_eV = eph
-    photon%nscatt  = 0
-    photon%inside  = .true.
-    photon%from_external = .false.      ! diffuse packets peel isotropically
-    photon%icell_amr = il
-  end subroutine gen_diffuse_photon
+  end function diffuse_channel_energy
 
   !=========================================================================
   ! Quasi-random diffuse launch.  Nine launch uniforms with FIXED dimension
@@ -380,7 +655,7 @@ contains
   !   u(1)   emitting leaf (dif_cdf inverse);
   !   u(2-4) uniform position within the leaf;
   !   u(5)   mu = 2u-1;                 u(6) phi = 2 pi u;
-  !   u(7)   emission channel (dif_ch inverse over the NCH channels);
+  !   u(7)   emission channel (dif_launch inverse over the NCH channels);
   !   u(8)   first energy variate: channels 1-3 the ground-continuum energy
   !          (ground_photon_energy: the Milne CDF inverse by default);
   !          channel 4 the He I decay-branch pick; channel 5 the He II
@@ -395,7 +670,9 @@ contains
   ! Channels 5-8 reuse dimensions 8 and 9 rather than adding any, since
   ! their pick and their energy draw are the same two decisions channel 4
   ! makes.
-  ! Every expression matches gen_diffuse_photon; the bin comes from ion_bin_of.
+  ! Every expression matches gen_diffuse_photon and its channel and energy
+  ! draw sample_leaf_diffuse_photon (the channel from the launch table
+  ! dif_launch); the bin comes from ion_bin_of.
   !=========================================================================
   subroutine gen_diffuse_photon_qmc(photon, u)
     use ion_band_mod, only : ion_bin_of
@@ -436,7 +713,7 @@ contains
     !--- (ground_photon_energy); the He I excited channel (4) samples its decay branch by energy
     !--- luminosity (fixed line energies; the two-photon branch from the
     !--- tabulated Drake shape).
-    w  = dif_ch(:,il)
+    w  = dif_launch(:,il)
     ch = pick_channel(w, u(7))
     if (ch == 1) then
        eph = eth_HI

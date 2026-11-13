@@ -27,10 +27,7 @@ module hdf5io_mod
   implicit none
   private
 
-  !--- raised from 32 for the leaf-emissivity file (an emis_/wl_ block
-  !--- for each registry ion + the state blocks exceeds 40 sections).
-  !--- Initial capacity only: the section lists grow (reserve_sections), so
-  !--- image observers and ion lists can exceed it.
+  ! Initial capacity only; image observers and ion lists can exceed it.
   integer, parameter, public :: HDF5_MAX_SECTIONS = 128
   integer, parameter, public :: HDF5_MAX_COLS     = 32
   integer, parameter, public :: HDF5_NAME_LEN     = 64

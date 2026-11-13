@@ -105,6 +105,8 @@ program main
   end if
   call gas_opacity_setup()
   call jtally_ion_setup(amr_grid%nleaf)
+  ! Also invalidates the H/He previous field on restart. The first
+  ! absorption_reemission pass therefore launches the full leaf emission.
   call ion_score_setup(amr_grid%nleaf)
   if (len_trim(par%restart_file) > 0) then
      block
@@ -190,6 +192,7 @@ program main
   converged = .false.
   max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
+     refined_this_iteration = .false.
      write(pass_label,'(a,i4)') 'iteration ', iter
      call ionizing_field_and_rates(pass_label)
      if (par%gas_niter < 1) exit          ! rates only, no solve
@@ -258,13 +261,13 @@ program main
         ',  vol = ', eps_hvol
      call gas_opacity_fill()
      !--- solution-driven I-front re-refinement (one event).
-     refined_this_iteration = .false.
      if (par%refine_front .and. iter == par%refine_iter) then
         block
           use amr_refine_mod, only : amr_refine_front
           call amr_refine_front()
+          ! Rebuilding invalidates estimators even if the leaf count agrees.
+          refined_this_iteration = .true.
         end block
-        refined_this_iteration = .true.
         converged = .false.        ! keep iterating on the new grid
         call history_reset(hist_dx)      ! the old grid's steps say nothing
         call history_reset(hist_dhe1)    ! about the new one
@@ -277,9 +280,8 @@ program main
      end if
      !--- the iterate, for a resume with par%restart_file (rank 0 writes;
      !--- the header says it is neither converged nor solved in its field)
-     !--- a rebuilt grid has no transported field yet: its rate arrays and
-     !--- diffuse tables still hold the old grid's values (resized only by the next
-     !--- transport pass), so no coherent checkpoint exists until then
+     ! A changed grid has no transported field yet. Its old Gamma arrays
+     ! and frozen diffuse tables cannot form a coherent checkpoint.
      if (refined_this_iteration .and. par%rates_write_interval > 0 .and. mpar%p_rank == 0) &
         write(*,'(a)') ' CHECKPOINT: deferred after refinement until transport on the new grid'
      if (par%rates_write_interval > 0 .and. iter < niter .and. .not. refined_this_iteration) then

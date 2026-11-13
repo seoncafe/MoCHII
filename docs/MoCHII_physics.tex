@@ -54,7 +54,12 @@ ionization-dependent dust with a PAH-specific survival factor; and the
 equilibrium dust temperature + IR spectrum consuming the transported
 grain heating, energy closure 1.000); and the incremental metal
 additions (argon, magnesium, iron, and silicon/chlorine/calcium) as
-pure data operations.
+pure data operations.  An optional launch of the diffuse field at the
+point where the ionizing photons are absorbed (\S\ref{sec:reemission},
+2026-11-13) reproduces the default Str\"omgren radius to $-0.039\%$ at level 5
+and $+0.001\%$ at level 6, $L({\rm H}\beta)$ of the Lexington benchmarks to
+$-0.04\%$ and $-0.004\%$ (HII20 not converged in the new mode), and moves the neutral-edge [O\,\textsc{i}] and
+[N\,\textsc{i}] lines by 2--6\%.
 \end{abstract}
 
 \begin{sloppypar}
@@ -5419,6 +5424,604 @@ three paths a He\,\textsc{iii} case-B recombination takes, and the smallest
 of the three that matters.
 
 %==========================================================================
+\section{Diffuse field re-emitted at the absorption point}
+\label{sec:reemission}
+\begin{sloppypar}\noindent
+\code{par\%diffuse\_launch} chooses where the transported recombination
+field of \S\ref{sec:diffuse} starts.  The default, \code{'leaf\_emissivity'},
+launches every diffuse packet from the leaf whose frozen state emits it, with
+the luminosity table of Eq.~(\ref{eq:diffuse-luminosity}).
+\code{'absorption\_reemission'} (rule r7 of
+\code{md/\allowbreak ABSORPTION\_REEMISSION\_\allowbreak PLAN\_2026-11-13.md}, Section~12)
+continues an absorbed ionizing packet as a diffuse packet from the point
+where it was absorbed, as MOCASSIN does, and launches explicitly only what
+that continuation does not carry.  The option needs
+\code{par\%recombination\_continuum = 'transported'}; setup refuses anything
+else (\S\ref{sec:reem-accounting}).  Measurements in this section were made
+on 2026-11-13 with the binary \code{MoCHII\_v1.10/MoCHII.x} of 11:07
+unless a run says otherwise; the run directories are named with each number.
+The final binary of that day (20:55; the optically thin arithmetic of
+\S\ref{sec:reem-rule}, the stored \code{n\_H} for the restart vacuum test, and
+the abort messages) was run through the gates again; those verdicts are in
+Table~\ref{tab:reem-final}.  The Lexington, He\,+\,metals and iteration-noise
+results were not rerun on it.
+\end{sloppypar}
+
+\subsection{The two schemes}
+\label{sec:reem-rule}
+\paragraph{Leaf emissivity (default).}  At the start of a pass the code
+builds $L_{c,i}$ for every leaf $i$ and channel $c=1,\dots,8$ from the frozen
+state, draws the leaf from $\sum_c L_{c,i}$ and the channel from $L_{c,i}$, and
+launches $n_{\rm dif}$ packets of luminosity $L_{\rm dif}/n_{\rm dif}$.
+An absorbed packet ends.  The field so produced is the emission of the state
+the pass started from, independent of where the pass's own absorptions fall.
+In optically thin leaves the edge-walk path estimate, the forced-interaction
+weight and its inverse draw were formed as differences of exponentials
+($1-e^{-\tau}$, $e^{-\tau_{\rm in}}-e^{-\tau_{\rm out}}$), which lose about
+$10^{-16}/\tau$ of their relative accuracy and vanish below
+$\tau\approx10^{-16}$; since 2026-11-13 both schemes use
+$1-e^{-\tau}=-\mathrm{expm1}(-\tau)$ and $-\ln(1-f)=-\mathrm{log1p}(-f)$
+(accurate to 0.93 ulp from $\tau=10^{-300}$ to 50), so that the
+photoionization rate of an $n_{\rm H}=10^{-18}$~cm$^{-3}$ test cube is 0.999965
+of the optically thin analytic value instead of zero. On the nine default-mode
+regression inputs the rates change by at most $3\times10^{-13}$ within a single
+pass and by at most $4\times10^{-9}$ in trace sulfur stages after the gas
+solves, with line lists and spectra unchanged; the default scheme is therefore
+no longer bit-identical to MoCHII v1.00, with which it had been bit-identical
+on those inputs up to that change.
+
+\paragraph{Absorption re-emission (r7).}  The re-emitting absorbers are
+$s = $ H$^0$, He$^0$, He$^+$ (index 1--3).  Each re-emits through the channels
+of the ion its absorption produces,
+\begin{equation}
+ C({\rm H^0})=\{1\},\qquad C({\rm He^0})=\{2,4\},\qquad C({\rm He^+})=\{3,5\};
+\end{equation}
+metal absorption re-emits nothing, and channels 6, 7, 8 are always launched
+explicitly.  For leaf $i$ (\code{diffuse\_mod.f90}, lines 335--380, run in
+\code{diffuse\_build} before the source packets of the pass, on the frozen
+state, drawing no random numbers):
+\begin{align}
+ N_{{\rm rec},s} &= V\,n_e\,n_{s^+}\,\alpha_{A,s}(T_e), &
+ L_s &= \sum_{c\in C(s)} L_c, &
+ \epsilon_s &= L_s/N_{{\rm rec},s}, \label{eq:reem-nrec}\\
+ \epsilon_{{\rm re},s} &= \min\!\left(\epsilon_s,\;E_{{\rm th},s}+\tfrac32kT_e\right), &
+ f_s &= \epsilon_{{\rm re},s}/\epsilon_s, &
+ \psi_s &= N_{{\rm abs},s}/N_{{\rm rec},s}. \label{eq:reem-psi}
+\end{align}
+$\alpha_{A,s}$ are \code{alphaA\_HII}, \code{alphaA\_HeII},
+\code{alphaA\_HeIII}, the case-A coefficients the ion balance uses with the
+transported continuum.  $N_{{\rm abs},s}=V n_s\Gamma_s$ is the raw
+photoionization count of the \emph{previous} pass's field on the
+\emph{current} densities (\code{ion\_score\_mod::previous\_photoionizations}).
+The cap $E_{{\rm th},s}+\frac32 kT_e$ bounds the in-band energy one
+recombination can radiate: the ionization energy plus the kinetic energy of
+the captured electron, whose mean over recombining electrons lies below
+$\frac32kT$ because the capture cross section falls with energy.
+$\epsilon_s$ exceeds it where $L_s$ holds emission that is not powered by
+recombination (channel 4 with the He\,\textsc{i} $2^3$S coupling carries
+collisionally populated decays) or where $N_{{\rm rec},s}$ is tiny; that share
+is launched, not dropped.  From these,
+\begin{align}
+ q_s &= \epsilon_{{\rm re},s}/\max(\psi_s,1)\quad[\mathrm{erg}],
+ \qquad y_s(E) = q_s/E, \label{eq:reem-yield}\\
+ X_c &= L_c\,\bigl[1-f_s\min(\psi_s,1)\bigr]\quad (c\in C(s)),\qquad
+ X_c = L_c\quad(c=6,7,8). \label{eq:reem-explicit}
+\end{align}
+$q_s$ is written as \code{ReemissionEnergy}, $\psi_s$ as \code{ReemissionPsi}.
+The explicit launch draws the leaf from $\sum_c X_{c,i}$ and the channel from
+$X_{c,i}$.  An absorber with $N_{{\rm rec},s}=0$ or $L_s=0$ in a leaf does
+not re-emit there: $q_s = 0$, its channels are launched whole, and
+$\psi_s=-1$ marks it.
+
+\paragraph{The event.}  At an interaction in leaf $i$ of a packet of energy
+$E$ (\code{raytrace\_amr.f90::transport\_ion\_packet}), with
+$\kappa=\kappa_{\rm gas}+\kappa_{\rm abs,dust}+\kappa_{\rm sca,dust}$ at $E$
+($\kappa_{\rm sca,dust}=0$ without \code{ion\_dust\_scatter}) and $k_s$ the
+opacity of absorber $s$,
+\begin{equation}
+ t = \frac{\kappa_{\rm sca,dust}+\sum_s k_s\,y_s(E)}{\kappa}.
+ \label{eq:reem-t}
+\end{equation}
+The weight is multiplied by $t$ and $W(1-t)$ is deposited at the event
+(signed: $t>1$ is allowed, not clipped).  The packet scatters with
+probability $\kappa_{\rm sca,dust}/(\kappa_{\rm sca,dust}+\sum_s k_sy_s)$;
+otherwise the absorber is drawn with probability $k_sy_s/\sum_s k_sy_s$ and
+the packet is re-emitted at the same position with the same packet luminosity
+and weight, isotropically, the channel within $C(s)$ drawn with probability
+$L_c/L_s$ and the energy from that channel's sampler
+(\code{reemit\_diffuse\_photon}, \code{diffuse\_channel\_energy}; the
+random draws are Mersenne Twister, not the Sobol sequence of the launch).
+$t=0$ ends the history.  Russian roulette acts below $W_{\min}=10^{-4}$ with
+survival $0.1$.  A history passing $10^7$ interactions
+(\code{MAX\_HISTORY\_EVENTS}) stops the run: it is outside the option's
+domain.  $t>1$ occurs where the in-band energy of one recombination exceeds
+the absorbed photon's energy, $q_s > E$ (e.g.\ a photon just above the H edge
+absorbed by H$^0$ in hot gas).  The forced first interaction is taken for
+every $\tau_{\rm edge}>0$, so that absorbed weight is not dropped from the
+re-emission.  The dust thermal band keeps the default transport.
+
+\paragraph{No valid previous field.}  The first pass, the first pass after a
+restart, and the first pass after a re-refinement have no field from the
+previous pass on the current leaves.  All $q_s$ are then 0, $\psi_s=-1$,
+$X_c=L_c$: that pass is the default scheme, and the header records
+\code{REVALID}\,$=0$.  A restart prints
+\code{RESTART: absorption\_reemission starts with explicit leaf emission;
+histories reset} (\code{previous\_state\_mod.f90}, line 305) and resets the
+stopping-test histories.
+
+\subsection{What the rule guarantees, and what it does not}
+\label{sec:reem-identity}
+Let $N_{{\rm now},s}$ be the photoionizations of $s$ in the current pass.
+The expected emission of channel $c\in C(s)$ is the re-emitted share plus the
+explicit share,
+\begin{equation}
+ R_c = \frac{f_sL_c}{N_{{\rm rec},s}}\,\frac{N_{{\rm now},s}}{\max(\psi_s,1)}
+       + L_c\bigl[1-f_s\min(\psi_s,1)\bigr]
+     = f_sL_c\,\frac{N_{{\rm now},s}}{\max(N_{{\rm rec},s},N_{{\rm abs},s})}
+       + L_c\bigl[1-f_s\min(\psi_s,1)\bigr],
+ \label{eq:reem-identity}
+\end{equation}
+which equals $L_c$ when $N_{{\rm now},s}=N_{{\rm abs},s}$ (a stationary field),
+on both branches of $\psi_s$ and for any $N_{{\rm rec},s}>0$:
+$N_{{\rm rec},s}$ only decides which share is re-emitted and which launched.
+With \code{ion\_relax = 1} the state is the solution of the balance in the
+previous field, so where photoionization alone balances recombination
+$\psi_s=1$ by the solve itself and $X_c = (1-f_s)L_c$, nothing compares
+absorbed powers of two passes.  Out of the fixed point the re-emitted emission
+is $\epsilon_{{\rm re},s}N_{{\rm now},s}/\max(\psi_s,1)$, not $L_c$: the
+diffuse field follows the absorptions of the pass.
+
+Not guaranteed: (i) the two schemes are two spatial models of the same
+emissivity, $j_c(\mathbf x)$ uniform over the leaf against concentrated where
+the absorptions fall, and differ on any finite grid
+(\S\ref{sec:reem-results}, G-R4); (ii) convergence of the coupled gas
+iteration, which is measured below, not proved; (iii) Codex's review of r7
+(\code{md/\allowbreak ABSORPTION\_REEMISSION\_\allowbreak REVIEW\_codex\_r7.md}) leaves three
+objections open: P1, the meaning of a recombination yield where channel~4
+is not recombination-powered and where $N_{\rm rec}=0$ (the cap $f_s$ and
+$\psi_s=-1$ above are the code's answer); P2, the frozen-state stability
+argument $\rho<1/2$ has a branch condition and $\rho$ is not bounded by the
+atomic yield $\alpha_1/\alpha_A\approx0.4$; P3, the absorber coupling is not
+triangular (the ground-continuum tails of H ionize He$^0$) and the weight
+growth with $t>1$ has no quantitative bound.  The measurements below hold for
+the inputs measured.
+
+\paragraph{Rejected rules.}  Two earlier rules, both measured, normalized
+the re-emitted share by an absorbed power taken from another pass.  r5
+re-emitted $L_c\,A/a$ with $a$ the gas absorption of the previous pass; with
+no explicit share the one-leaf map $a\leftarrow S/(1-pL/a)$ has slope $-pL/S$
+at its fixed point and is unstable wherever a leaf absorbs more re-emitted
+than source power: (re-emission + remainder)/state emission by pass was 1.0,
+3.6, 0.25, 124, 0.19, 54, 0.12, 37, 0.05 on G1 at fixed $T_e$.  r6
+reconstructed $a$ on the current state; the oscillation went but the sequence
+was 1.00, 0.53, 0.56, 0.88, 1.14, 1.98, 1.23, 1.26, 2.06, 2.11, 1.49, 1.12,
+1.11, 1.61, and about 25 on a frozen state (plan Sections 11.1 and 12.1;
+Claude A's runs, quoted, not rerun here).
+
+\subsection{Accounting and outputs}
+\label{sec:reem-accounting}
+The packet budget of the pass (\S\ref{sec:conv} and the User Guide) keeps its
+meaning with the re-emitted power counted as emitted:
+\begin{equation}
+ L_{\rm EMIT} = L_{\rm DIREMT} + L_{\rm REEMIT},\qquad
+ L_{\rm ABS} = L_{\rm EMIT}-L_{\rm ESC}-L_{\rm LOST},\qquad
+ L_{\rm NETABS} = L_{\rm ABS}-L_{\rm REEMIT},
+ \label{eq:reem-budget}
+\end{equation}
+$L_{\rm DIREMT}$ the sources plus the explicit diffuse launch and
+$L_{\rm NETABS}$ the power the gas and dust keep, the extinguished direct
+light plus the signed event deposition and roulette correction.  In the final
+pass of the HII40 run below: $L_{\rm SRCEMT}=2.8399\times10^{39}$,
+$L_{\rm DIREMT}=2.8425\times10^{39}$, $L_{\rm REEMIT}=7.2530\times10^{38}$,
+$L_{\rm EMIT}=3.5678\times10^{39}$, $L_{\rm ESC}=1.5663\times10^{39}$,
+$L_{\rm ABS}=2.0015\times10^{39}$, $L_{\rm NETABS}=1.27616448\times10^{39}$,
+$L_{\rm DEPOS}+L_{\rm ROULET}=1.27616448\times10^{39}$ (erg\,s$^{-1}$;
+\code{hii40\_absorption\_reemission/hii40\_rates.h5}).
+
+\begin{sloppypar}\noindent
+Written only in this mode (\code{gas\_rates\_mod.f90}): header keywords
+\code{DIFLAUNC}, \code{L\_REEMIT}, \code{L\_LEAFEM} (explicit diffuse launch),
+\code{L\_NETABS}, \code{L\_SRCEMT}, \code{L\_DIREMT}, \code{L\_EXTING},
+\code{L\_TRANS}, \code{L\_DEPOS}, \code{L\_ROULET}, \code{L\_CESC},
+\code{L\_CLOST}, \code{L\_GASEVT}, \code{L\_DUSTEVT}, \code{NLEAFEM},
+\code{LPACKREF}, \code{REVALID}; datasets \code{GasAbsorbedPower} and
+\code{GasEventAbsorption} (leaf), \code{DiffuseStateLuminosity} ($L_c$),
+\code{DiffuseExplicitLuminosity} ($X_c$), \code{ReemittedLuminosity}
+(measured $R_c$; channel $\times$ leaf, 8 channels),
+\code{RecombinationRate} ($N_{\rm rec}$), \code{PhotoionizationRatePrev}
+($N_{\rm abs}$), \code{ReemissionPsi}, \code{ReemissionEnergy} ($q_s$, erg),
+\code{ReemissionFraction} ($f_s$) (absorber $\times$ leaf), and with
+\code{absorption\_ledger} \code{LedgerTotals} (4 $\times$ 10 sources:
+emitted, absorbed, escaped, lost photons\,s$^{-1}$).  The User Guide lists
+them with their layouts.
+\end{sloppypar}
+
+\subsection{Results}
+\label{sec:reem-results}
+The gates are the scripts of \code{tests/absorption\_reemission/}
+(README there); the run directories named below are their working
+directories, not part of the repository.  Every comparison pairs the two
+modes on one input that differs only in \code{par\%diffuse\_launch}.
+
+\paragraph{Gate summary.}
+\begin{center}\small
+\begin{longtable}{@{}p{2.1cm}p{5.3cm}p{6.6cm}@{}}
+\toprule
+gate & checks & result (run) \\
+\midrule
+\endhead
+G-R0 & default mode unchanged & 9/9 inputs identical to the control binary \\
+G-R1 event & fixed-point identity, cap, $t$, histories (13 cases $\times$ 8) &
+PASS, 121 rows; fixed point $-1.2\times10^{-5}\pm2.5\times10^{-4}$; He$^0$ cap
+$f=0.0189$; max $t=1.156$, max history weight 1.45 (\code{x\_event}) \\
+G-R2 accounting & writer identities, leaf count identity & PASS; identities
+$2.8\times10^{-16}$; 0 of 64 leaves outside (largest $|m|/{\rm SE}=6.69$,
+$t^*=7.35$); slab lost/emitted $8.1\times10^{-9}$ (\code{x\_accounting}) \\
+G-R3 & absorbed power by leaf & PASS, $4\times10^{-13}$ \\
+G-R4 & the two spatial models against level & PASS; trend in
+Figure~\ref{fig:reem-spatial} (\code{w\_spatial}) \\
+G-R5 & zero support, rare absorbers & PASS (\code{x\_support}) \\
+G-R6 G1 & Str\"omgren sphere, levels 4--6 & PASS; Table~\ref{tab:reem-g1} \\
+G-R7 & channels 4, 5, $2^3$S coupling & PASS; cap acts in 1289--1893 leaves,
+max $t=1.04$--$1.12$ (\code{w\_channels}) \\
+G-R9 & sources: Cartesian, octree, FUV, external & PASS; count residuals
+$+3.5\pm1.2$, $+4.0\pm1.1$, $+5.0\pm2.2$ ($\times10^{-4}$), not resolved as
+failures (\code{w\_sources}) \\
+P3 variance & variance against $1/N$ & V1 PASS; V2 (all leaves) FAIL $-12.3$,
+default-mode control $-20.6$ (\code{w\_variance}, \code{w\_variance\_default}) \\
+G-R10 imaging & peel-off of re-emitted packets, internal and external
+sources, clear and dusty & Codex's round 4: PASS under the predeclared
+analytic-subtraction criterion; raw external-dust high-minus-low bound
+$3.21\%$ (round-3 FAIL kept as history) \\
+G-R11 restart & restart structure and reconvergence after restart & Codex's
+round 4: PASS on pure H, 16 seed pairs; max bounds $x_{\rm HI}$ $0.22\%$,
+$\Gamma_{\rm HI}$ $0.23\%$ \\
+\bottomrule
+\end{longtable}
+\end{center}
+G-R0 to G-R9 and P3 are mine, measured with the corrected checkers of
+round~3 (\code{md/\allowbreak ABSORPTION\_REEMISSION\_\allowbreak GATES\_REPORT\_\allowbreak claudeB.md})
+and re-evaluated after Codex's round 4 with the independence of the
+realizations enforced (distinct files, distinct seeds read from the inputs);
+the verdicts are unchanged.  G-R10 and G-R11 are Codex's measurements,
+quoted from \code{md/\allowbreak ABSORPTION\_REEMISSION\_\allowbreak ROUND4\_codex.md}.
+
+\paragraph{The gates on the final binary.}  Every gate of mine was run again
+from scratch on the final binary (SHA-256 \code{a586dd2e\ldots}, 16 ranks,
+same inputs and seeds; run directories \code{f\_*}).  Frozen states now
+restart through the stored \code{n\_H} (every restart is checked for 0
+unmatched gas leaves and for the vacuum rule its file supports).  G-R6
+continued each of the 16 converged spheres of the table above for 20
+iterations with a new seed instead of starting cold; the first pass after
+the restart is explicit, and every continuation reconverged by the stated
+criterion.
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{@{}lp{4.6cm}p{7.6cm}@{}}
+\toprule
+gate & 11:07 binary & final binary \\
+\midrule
+G-R1 & PASS; S2 $-1.2\times10^{-5}\pm2.5\times10^{-4}$ & PASS (122 rows); S2 fixed point $(R+X)/L-1=+7.7\times10^{-4}\pm1.8\times10^{-4}$ (inside the $10^{-3}$ allowance); max $t$ 1.1561, weight 1.463 \\
+G-R2 & PASS & PASS; W2 0/64 leaves, largest $|m|/{\rm SE}$ 2.39; identities $2.1\times10^{-16}$ \\
+G-R3 & PASS & PASS; $4.0\times10^{-13}$ \\
+G-R4 & PASS & PASS; thick $+2.12$, $+2.12$, $+0.35$, $+0.17$ ($\times10^{-2}$, levels 0--3, $10^5$) \\
+G-R5 & PASS & PASS; rare $+2.2\times10^{-3}\pm4.7\times10^{-3}$ \\
+G-R6 & PASS; $\Delta R/R$ $-0.059$, $-0.039$, $+0.001\%$ & PASS; $-0.062$, $-0.037$, $-0.002\%$; G1 $+1.0\times10^{-5}\pm1.9\times10^{-4}$; G2 $+4.68\times10^{-4}\pm1.2\times10^{-5}$ \\
+G-R7 & PASS & PASS; the He\,\textsc{iii} channels 3 and 5 of the H/He cases (shares $1.4$--$3.2\times10^{-4}$, $\sim\!90$--200 packet units) are reported as not resolvable (rare channel) \\
+G-R9 & PASS & PASS; count residuals $-1.0$, $-0.8$ (Cartesian, octree), $-3.9$, $-12.6$ (FUV separate, proportional), $+5.2$ (two sources) $\times10^{-4}$ \\
+P3 & V1 PASS, V2 FAIL $-12.3$ & V1 PASS ($F\le4.2$), V2 FAIL $-15.1$; default control $-21.6$; resolved leaves $+0.034$ (new), $+0.082$ (default) \\
+\bottomrule
+\end{tabular}
+\caption{The gates on the binary of 11:07 and on the final binary of
+2026-11-13 (20:55).}
+\label{tab:reem-final}
+\end{table}
+On the final binary channel~3 of \code{energy\_threshold} first came out
+$-2.3\times10^{-2}\pm5.3\times10^{-2}$ ($K=4$), above the stated
+$5\times10^{-2}$ SE limit.  That channel carries $2.2\times10^{-4}$ of the
+diffuse emission, about 130 packet-luminosity units re-emitted in some 27
+leaves, and its count residual moves by several per cent from run to run
+with either sign; no affordable number of realizations resolves it.  The
+gate now reports such rows (below 1000 expected packet units) as not
+resolvable instead of failing them.  The He$^+$ re-emission runs through
+the same code as that of H$^0$ and He$^0$, which the resolved rows verify:
+one absorber vector of opacities and yields
+(\code{raytrace\_amr.f90}:354--356), one absorber draw and one re-emission
+routine with the absorber index (:387--395, 479--502), one leaf loop over
+the absorbers in \code{diffuse\_build} (\code{diffuse\_mod.f90}:358--377)
+and one channel sampler (:575--590).  Realizations made before this rule
+(same case, final binary): 64 at $10^6$ packets,
+$-1.07\times10^{-2}\pm0.92\times10^{-2}$; 32 at $2\times10^6$ packets,
+$-0.32\times10^{-2}\pm0.75\times10^{-2}$.
+The S2 offset of G-R1 is the finite-packet excess expected on the branch
+$\psi>1$: there $R/L-1\approx f\,(\delta_{\rm now}-\delta_{\rm abs}+\delta_{\rm
+abs}^2)$ with $\delta$ the relative noise of the two passes' photoionization
+counts, so its mean is positive, of order $f\,\langle\delta_{\rm abs}^2\rangle/2$
+(the same sign as the G2 excess of G-R6).  It was not resolved on the 11:07
+binary; the two values differ by $2.6\sigma$.
+
+\paragraph{Imaging and restart (G-R10, G-R11; Codex).}  G-R10 peels off
+the re-emitted packets of four hydrogen fixtures (an $8^3$ cube of side
+0.5~pc with a central 40~kK source of $3\times10^{33}$~erg\,s$^{-1}$, and a
+$0.5\times0.4\times0.3$~pc box in an isotropic external field; each clear
+and with D03 dust at DGR 100; $n_{\rm H}=1$~cm$^{-3}$, $T_e=10^4$~K fixed)
+toward 32 and 128 directions, 16 seeds of 262\,144 packets.  The criterion,
+declared before the round-4 runs
+(\code{md/\allowbreak ABSORPTION\_REEMISSION\_\allowbreak IMAGING\_PROTOCOL\_codex\_r4.md}),
+subtracts the known angular-quadrature error of the transparent external
+source, $P_{q,\rm corr}=P_{q}-L_{\rm SRCEMT}(Q_q-1)$ with $Q_q$ the quadrature
+of the projected box area ($Q_{\rm low}=1.03669$, $Q_{\rm high}=1.00911$),
+and requires every 99\% family bound to fit 3\%.  All four cases pass; the
+largest corrected bounds are $1.06\%$ (internal dust, high minus low) and
+$0.37\%$ (internal dust, high minus escape).  Without the subtraction the
+external-dust high-minus-low bound is $3.21\%$; the round-3 FAIL under the
+uncorrected criterion stands as the record.  G-R11 restarts a pure-hydrogen
+cube (524\,288 packets, $T_e=10^4$~K fixed, \code{gas\_tol} $2\times10^{-5}$)
+from a checkpoint after iteration 4 and compares it with the uninterrupted
+run, 16 seed pairs, all 32 products converged (8 iterations each); the
+largest 99\% family bounds over 512 cells are $0.22\%$ in $x_{\rm HI}$,
+$0.0046\%$ in $x_{\rm HII}$ and $n_e$, $0.23\%$ in $\Gamma_{\rm HI}$ and
+$0.034\%$ in $L_{\rm ABS}$, against margins of 1\% (state) and 3\% (rates
+and powers).
+
+\paragraph{G1 Str\"omgren sphere (G-R6).}  Pure H, 8~pc box, sphere of radius
+4~pc at $n_{\rm H}=100$~cm$^{-3}$, 40~kK blackbody with $Q=10^{49}$~s$^{-1}$
+($L=3.1778\times10^{38}$~erg\,s$^{-1}$ in band), $T_e=10^4$~K fixed,
+$x_{\rm HI,init}=10^{-3}$, $2^{20}$ Sobol packets, at most 80 iterations,
+transported continuum with Milne spectra, Lyman lines on the spot, uniform
+grids at levels 4, 5, 6.  Every sphere converged by the stated criterion.
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+level & $K$ (each mode) & $R_{\rm eff}$ new [pc] & $R_{\rm eff}$ default [pc] &
+$\Delta R/R$ \\
+\midrule
+4 & 2 & 3.31991, 3.32009 & 3.32202, 3.32192 & $-0.059\%\pm0.003\%$ \\
+5 & 4 & 3.27865--3.27890 & 3.27995--3.28017 & $-0.039\%\pm0.002\%$ \\
+6 & 2 & 3.25764, 3.25790 & 3.25762, 3.25786 & $+0.001\%\pm0.006\%$ \\
+\bottomrule
+\end{tabular}
+\caption{G1 sphere in both modes (\code{gr6i}, \code{gr6w}).  At
+levels 5 and 6 two of the realizations are 20-iteration restarts of
+converged runs, so the level-6 error is a lower bound.}
+\label{tab:reem-g1}
+\end{table}
+The difference shrinks with resolution, as two spatial models of one
+emissivity should, and is zero within its error at level 6.  At level 5 the
+radius where $x_{\rm HI}=0.5$ is 3.28257 against 3.28333~pc ($-0.023\%$), and
+the new mode has 3--7\% less $x_{\rm HI}$ in the shells at 2.6--3.05~pc
+(Figure~\ref{fig:reem-g1}).  The four identity runs (\code{w\_g1}) give a
+count residual $+3.1\times10^{-5}\pm1.3\times10^{-4}$, and the emission
+identity at level 5 $(R+X)/L-1 = +4.9\times10^{-4}\pm3.7\times10^{-5}$: a
+resolved finite-packet excess, inside the $5\times10^{-3}$ allowance.  The
+new-mode level-4 and level-5 spheres of \code{gr6i} were run with an r7
+binary of the same morning, before the output writer was merged; the
+transport and the rule are the same, and the default mode is bit-identical between the two binaries
+(G-R0).
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/reem_g1_profiles.pdf}
+\caption{G1 sphere, levels 4, 5, 6: shell means of $x_{\rm HI}$ and $n_e$,
+mean over the realizations of each mode (leaf emissivity dashed, absorption
+re-emission solid), and new/default$-1$ below each (shown where the default
+value exceeds $10^{-6}$ for $x_{\rm HI}$ and 1~cm$^{-3}$ for $n_e$).
+\code{tests/absorption\_reemission/figures/g1\_profiles.py}.}
+\label{fig:reem-g1}
+\end{figure}
+
+\paragraph{The spatial models against level (G-R4).}  On a frozen state the
+gate compares $\langle\sum_iA_{{\rm new},i}\rangle$ with the default
+mode's $\langle L_{\rm ABS}\rangle$ for an optically thick and an optically
+thin configuration at levels 0--3 and $10^5$, $4\times10^5$ packets
+(Figure~\ref{fig:reem-spatial}).  Thick: $+2.26\times10^{-2}$,
+$+2.02\times10^{-2}$, $+3.7\times10^{-3}$, $+1.8\times10^{-3}$ at levels 0--3
+($10^5$); $+2.11\times10^{-2}$, $+2.17\times10^{-2}$, $+3.5\times10^{-3}$,
+$+2.1\times10^{-3}$ ($4\times10^5$).  Thin: $+1.9\times10^{-3}$ falling to
+$+7.0\times10^{-4}$ ($10^5$), $+2.3\times10^{-3}$ to $+9.7\times10^{-4}$
+($4\times10^5$).  The difference falls with resolution and does not depend
+on the packet count: it is the spatial model, not noise.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.6\textwidth]{figures/reem_spatial_trend.pdf}
+\caption{G-R4: relative difference of the absorbed power between the two
+modes on a frozen state against grid level (\code{w\_spatial};
+\code{figures/spatial\_trend.py}).}
+\label{fig:reem-spatial}
+\end{figure}
+
+\begin{sloppypar}
+\paragraph{Lexington HII40 and HII20.}  Conditions, identical in the two
+modes: grids \code{tests/\allowbreak g2\_hii/\allowbreak hii40\_L6\_\allowbreak rout5p2.fits} and
+\code{hii20\_L6.fits} (262\,144 leaves); blackbodies of 40~kK,
+$L=1.2734\times10^{39}$ and 20~kK, $L=2.5326\times10^{38}$~erg\,s$^{-1}$ in
+13.598--100~eV, 32 bins, with the FUV extension from 4.78~eV (the
+default; $L_{\rm SRCEMT}=2.8399\times10^{39}$ at HII40); He 0.1, C $2.2\times10^{-4}$, N $4\times10^{-5}$,
+O $3.3\times10^{-4}$, Ne $5\times10^{-5}$, S $9\times10^{-6}$; CHIANTI
+atoms, \code{metal\_ne} and \code{metal\_heat} on, $T_e$ solved in
+3000--30\,000~K; $2^{25}$ Sobol packets, \code{qmc\_seed} 20260728;
+volume convergence with the drift test, \code{gas\_tol} $5\times10^{-3}$;
+both restarted from the converged m13 states
+(\code{tests/\allowbreak absorption\_reemission/\allowbreak lexington/\allowbreak hii\{40,20\}\_m13\_rates.h5}),
+so each mode's first pass is the default scheme.  Runs in
+\code{scratch\_v1.10\_claude/lexington/}.
+\end{sloppypar}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+& \multicolumn{2}{c}{HII40} & \multicolumn{2}{c}{HII20} \\
+\cmidrule(r){2-3}\cmidrule(l){4-5}
+& leaf & new & leaf & new \\
+\midrule
+iterations & 10, converged & 8, converged & 10, converged & 20, not converged \\
+$\langle T[N_{\rm p}N_{\rm e}]\rangle$ [K] & 8176.13 & 8169.62 & 6942.21 & 6938.00 \\
+$\langle{\rm He^+}\rangle/\langle{\rm H^+}\rangle$ & 0.7567 & 0.7557 & 0.0475 & 0.0474 \\
+vol.\ $\langle x_{\rm HII}\rangle$ (gas leaves) & 0.75767 & 0.75652 & 0.84009 & 0.83884 \\
+$L({\rm H}\beta)$ [erg\,s$^{-1}$] & $2.02479\times10^{37}$ & $2.02398\times10^{37}$ &
+$4.84661\times10^{36}$ & $4.84640\times10^{36}$ \\
+lines $>10^{-3}L({\rm H}\beta)$: median $|{\rm ratio}-1|$ & \multicolumn{2}{c}{0.0025 (77 lines)} & \multicolumn{2}{c}{0.0022 (58 lines)} \\
+explicit diffuse packets, final pass & 19\,188\,289 & 69\,064 & 16\,935\,338 & 18\,954 \\
+\bottomrule
+\end{tabular}
+\caption{Lexington benchmarks in both modes.  HII20 new: 20 fixed
+iterations; a continuation to 39 iterations (stopped by a signal) never
+passed the stopping test either (Figure~\ref{fig:reem-history}).}
+\label{tab:reem-lex}
+\end{table}
+The largest line differences (new/leaf) at HII40: [O\,\textsc{i}]~6302,
+6365 1.0389; [N\,\textsc{i}]~5201.71 1.0224, 5199.35 1.0213; He\,\textsc{ii}~1640
+0.9868; [C\,\textsc{ii}]~157.7~$\mu$m 0.9900; C\,\textsc{i}~9853 0.9904;
+[O\,\textsc{ii}]~2471, 7332, 7321 0.9919.  At HII20: [O\,\textsc{i}]~6302,
+6365 1.0609; [N\,\textsc{i}]~5201.71 1.0437, 5199.35 1.0422;
+[O\,\textsc{iii}]~51.8 and 88.3~$\mu$m 1.0163, 1.0162, 5008 1.0144;
+[N\,\textsc{iii}]~57~$\mu$m 1.0116; [O\,\textsc{i}]~63~$\mu$m 1.0116.  Full
+tables: Tables~\ref{tab:reem_hii40_lines} and \ref{tab:reem_hii20_lines}.
+The scale of iteration noise in the default mode: the leaf-emissivity rerun
+against the m13 product it restarted from (same input and seed, 10 more
+iterations on the current binary) gives $L({\rm H}\beta)$ ratios 1.00003
+and 1.00002, median line difference below $10^{-4}$, largest 1.0054
+(He\,\textsc{ii}~1640) at HII40 and 1.0004 at HII20.  The neutral-edge lines
+[O\,\textsc{i}] and [N\,\textsc{i}] move by 4--6\%, far above that: they
+come from the partially ionized gas at the outer edge, where the
+re-emitted field is concentrated where it is absorbed
+(Figures~\ref{fig:reem-hii40} and \ref{fig:reem-hii20}).  The HII20 new
+run is not converged by the stopping test, so its differences carry the
+non-stationarity shown in Figure~\ref{fig:reem-history}.
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/reem_hii40_profiles.pdf}
+\caption{HII40: volume-weighted shell means of $x_{\rm HI}$, $x_{\rm HeI}$,
+$x_{\rm HeII}$, $T_e$, $n_e$ (left; leaf emissivity dashed, absorption
+re-emission solid) and new/default$-1$ (right, where the default value
+exceeds $10^{-6}$ for the fractions and 1~cm$^{-3}$ for $n_e$).
+\code{figures/lexington\_profiles.py}.}
+\label{fig:reem-hii40}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{figures/reem_hii20_profiles.pdf}
+\caption{HII20, as Figure~\ref{fig:reem-hii40}; the new mode after 20
+iterations, not converged.}
+\label{fig:reem-hii20}
+\end{figure}
+
+\paragraph{Final pass of the new mode.}  HII40: state diffuse luminosity
+$L=7.2747\times10^{38}$, explicit $X=2.621\times10^{36}$ in 69\,064 packets,
+$(R+X)/L=1.0006$; max $t=1.038$, max history weight 1.077; the He$^0$ cap acts
+in 20\,743 leaves; median $\psi_{\rm H^0}=0.9994$, i.e.\ the solve puts the
+state at $\psi=1$ as \S\ref{sec:reem-identity} says.  HII20:
+$X=1.43\times10^{35}$ in 18\,954 packets; max $t=1.033$, max weight 1.065;
+cap in 108\,249 leaves.
+
+\paragraph{Convergence and noise.}  Figure~\ref{fig:reem-history} shows the
+iteration histories.  The new mode reaches a stationary level at once, but a
+higher one: at HII40 the volume-averaged $|\Delta x_{\rm HII}|$,
+$|\Delta T_e|/T_e$ and the He$^0$--He$^+$ step settle at
+$9.6\times10^{-4}$, $3.7\times10^{-3}$, $4.3\times10^{-3}$ against
+$5.3\times10^{-4}$, $1.3\times10^{-3}$, $1.3\times10^{-3}$ for the default
+mode; at HII20 at $9.1\times10^{-4}$, $3.1\times10^{-3}$,
+$2.1$--$2.2\times10^{-2}$ against $5.0\times10^{-4}$, $7.3\times10^{-4}$,
+$4.3\times10^{-3}$.  These are iteration-to-iteration fluctuations of a state
+that does not drift: with the same source packets, the diffuse field built
+from re-emission chains is noisier than the one launched from
+$\sim\!1.7$--$1.9\times10^7$ explicit leaf packets.  At HII20 the He$^0$--He$^+$
+step stays at four to five times \code{gas\_tol} for 38 iterations, and the
+stopping test does not pass.  The He + metals case (hii40\_L6 grid,
+$10^6$ Sobol packets, 40 iterations from $x_{\rm HI}=10^{-3}$,
+$x_{\rm HeI}=x_{\rm HeII}=0.5$, \code{metal\_ne}, \code{metal\_heat} and the
+$2^3$S coupling off; \code{scratch\_v1.10\_claude/hemetal\_long},
+r7 binary of 09:17 before the writer) converged in neither mode in 40
+iterations (final max $|\Delta x_{\rm HII}|$ 0.230 leaf, 0.164 new;
+volume $3.2\times10^{-3}$ and $1.2\times10^{-3}$; volume $|\Delta T_e|/T_e$
+$2.5\times10^{-2}$ and $2.3\times10^{-2}$, the $10^6$-packet noise of both);
+its $L({\rm H}\beta)$ is $1.967705\times10^{37}$ (leaf) and
+$2.007245\times10^{37}$ (new).  Neither state is at equilibrium, so that
+difference is not a result about the modes; what the case shows is that the
+new mode does not run away from a cold start with helium and metals, where
+r5 and r6 did.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{figures/reem_iteration_history.pdf}
+\caption{Gas-iteration histories in both modes: volume-averaged
+$|\Delta x_{\rm HII}|$, $|\Delta T_e|/T_e$, and the He$^0$--He$^+$
+fixed-point step.  HII20 new: the 39-iteration continuation.
+\code{figures/iteration\_history.py}, reading the run logs.}
+\label{fig:reem-history}
+\end{figure}
+
+\paragraph{Variance (P3).}  HII40 shell at level 4 with the He\,\textsc{i}
+$2^3$S coupling on, $T_e$ fixed at $1.2\times10^4$~K, state frozen after four
+iterations (\code{ion\_relax} $10^{-12}$), $K=8$ realizations at
+$2.5\times10^5$ and $10^6$ packets (\code{w\_variance}).  The He$^0$ cap acts in
+1629 of 4096 leaves; largest $t=1.0622$; the largest weight of an amplified
+history is 0.17--1.06 by run.  V1, the variance ratio
+$F=s_1^2N_1/(s_2^2N_2)$ of four global estimators ($L_{\rm REEMIT}$,
+$\sum A$, the He$^0$ photoionizations, the re-emission in channels 2 and 4):
+1.33, 0.60, 0.64, 0.45, all inside the 99\% $F(7,7)$ bounds [0.071, 14.0],
+i.e.\ consistent with $1/N$.  V2 as stated before the runs, the median of
+$\log F$ for $\Gamma_{\rm HeI}$ over all leaves, fails ($-12.3$; for
+$\Gamma_{\rm HI}$ it passes, $-0.004$); the default mode on the same inputs and
+seeds fails it worse ($-20.6$, and $-0.075$ for $\Gamma_{\rm HI}$;
+\code{check\_variance.py --default-mode}): leaves deep in neutral helium, where
+$\Gamma_{\rm HeI}$ is $10^{-100}$--$10^{-57}$~s$^{-1}$ and carried by rare
+paths, not the amplified histories.  Over the resolved leaves (relative
+scatter $<0.3$ at $10^6$, a selection added after the first evaluation) the
+median is $-0.029$ (562 leaves, 99\% band $\pm0.11$) in the new mode and
+$+0.028$ (486 leaves) in the default mode.
+
+\input{figures/reem_hii40_lines.tex}
+\input{figures/reem_hii20_lines.tex}
+
+\subsection{Limits and what is not verified}
+\label{sec:reem-limits}
+\begin{itemize}\itemsep1pt
+\item \emph{Noise.}  At equal source packets the new mode's diffuse field is
+  noisier (above); at HII20 the He$^0$--He$^+$ fluctuation alone keeps the
+  stopping test from passing.  More packets, or a test that separates noise
+  from drift, is needed there; not measured.
+\item \emph{$t>1$ histories.}  Only the maximum $t$ (1.03--1.16) and the
+  maximum history weight (1.06--1.45) on the measured inputs are written;
+  the distribution of the weights of $t>1$ histories is not, and no bound
+  exists for other inputs (Codex P3).
+\item \emph{Count-residual offsets.}  On the 11:07 binary G-R9 showed
+  $+3.5$, $+4.0$, $+5.0\times10^{-4}$ at 2--4$\sigma$ (Cartesian, octree,
+  FUV); on the final binary the same cases give $-1.0$, $-0.8$, $-3.9\times10^{-4}$
+  and the FUV-proportional case $-12.6\times10^{-4}$ at $3.7\sigma$.  The
+  signs do not persist, which points to scatter rather than a bias, but
+  four realizations a case cannot settle it.
+\item \emph{Rare channels.}  The count identity of a channel with a share
+  near $10^{-4}$ (He\,\textsc{iii}, channels 3 and 5, in the H/He cases of
+  G-R7: of order 100 packet units re-emitted a pass) cannot be resolved at
+  any affordable realization count; its residual moves by several per cent
+  between runs with either sign.  The gate reports these rows as not
+  resolvable.  The He$^+$ path is the code path of H$^0$ and He$^0$
+  (above).  Measured on the final binary for channel~3 of
+  \code{energy\_threshold}: $-1.07\times10^{-2}\pm0.92\times10^{-2}$ (64
+  realizations, $10^6$ packets) and $-0.32\times10^{-2}\pm0.75\times10^{-2}$
+  (32, $2\times10^6$).
+\item \emph{Imaging.}  G-R10 passes on hydrogen/dust fixtures only after
+  the analytic subtraction of the transparent external source's quadrature
+  error; with the 32/128-direction rules the raw external-dust difference is
+  $3.21\%$.  Helium, metals and large weight-gain histories are not covered.
+\item \emph{Restart.}  Reconvergence after a restart passed on pure hydrogen
+  (Codex, G-R11 round 4); helium, metals and arbitrary weight-gain histories
+  are not covered there.
+\item \emph{Physics outside the rule.}  Secondary ionization, charge
+  exchange, Penning ionization and the $2^3$S terms enter only through
+  $\psi\ne1$ and are carried by the explicit share; metal absorption
+  re-emits nothing (its channels 6--8 are launched).  An exact
+  valid-field $N_{\rm rec}({\rm H^0})=0$ is not exercised by the gates.
+\item \emph{Converged comparison at HII20} is missing (above).
+\end{itemize}
+
+%==========================================================================
 \section{Validation gates and results}
 \label{sec:validation}
 \subsection{Rate integrals vs.\ analytic attenuation}
@@ -6227,6 +6830,11 @@ lines (that run's metastable column is optically thick, $\tau_0 \sim
   $\Delta E(\infty) - \Delta E(R)$ of the emission distance, ${\sim}3$--10~eV
   from their Fig.~2, but they give no emission spectrum to average over.
   The same holds for the radiative X$^{2+}$ + H rows of the metals.
+\item \emph{Absorption re-emission} (\code{par\%diffuse\_launch =
+  'absorption\_reemission'}): noise at equal packets, the unmeasured weight
+  distribution of $t>1$ histories, the count-residual offsets, the hydrogen-only
+  scope of the imaging and restart gates, and the unconverged HII20 comparison are listed in
+  \S\ref{sec:reem-limits}.
 \item Further metal ions as science needs them.
 \end{itemize}
 

@@ -14,7 +14,8 @@ module ion_packet_mod
   implicit none
   private
 
-  public :: build_ion_packet_physics, ion_packet_opacity
+  public :: build_ion_packet_physics, ion_packet_opacity, ion_packet_gas_opacity
+  public :: ion_packet_absorber_opacities
 
 contains
 
@@ -87,5 +88,53 @@ contains
           kap = kap + amr_grid%rhokap(il)*photon%ionphys%dust_sca
     end if
   end function ion_packet_opacity
+
+  real(kind=wp) function ion_packet_gas_opacity(photon, il) result(kap)
+    !--- The gas terms of ion_packet_opacity, per CODE LENGTH, in leaf il:
+    !---   kap_gas = nH [ x_HI sigma_HI(E) + y_He (x_HeI sigma_HeI(E)
+    !---                  + x_HeII sigma_HeII(E)) + metals ] * distance2cm,
+    !--- the same expression with the same switches (the metal stages only
+    !--- with par%ion_metal_abs).  The He I 2^3S photoionization is not in
+    !--- it, as it is not in the opacity (hei_metastable_mod).  Used by
+    !--- par%diffuse_launch = 'absorption_reemission' for the gas share of
+    !--- an interaction and for the gas-absorbed power A of every leaf, so
+    !--- both rest on one definition; ion_packet_opacity itself is left as it
+    !--- is, so the default mode's arithmetic cannot change.
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII
+    implicit none
+    type(photon_type), intent(in) :: photon
+    integer,           intent(in) :: il
+    real(kind=wp) :: metal
+
+    metal = 0.0_wp
+    if (par%use_metals .and. par%ion_metal_abs) then
+       block
+         use species_mod, only : species_cached_opacity
+         metal = species_cached_opacity(photon%ionphys%sigma_metal, &
+                 photon%ionphys%n_metal, il)
+       end block
+    end if
+    kap = gas_nH(il)*( &
+         gas_xHI(il)*photon%ionphys%sigma_HI &
+       + par%abund_He*(gas_xHeI(il)*photon%ionphys%sigma_HeI &
+       + gas_xHeII(il)*photon%ionphys%sigma_HeII) + metal) &
+       * par%distance2cm
+  end function ion_packet_gas_opacity
+
+  subroutine ion_packet_absorber_opacities(photon, il, k)
+    !--- The H0, He0 and He+ terms of ion_packet_gas_opacity separately, per
+    !--- CODE LENGTH, in leaf il: k(1) = nH x_HI sigma_HI(E) D,
+    !--- k(2) = nH y_He x_HeI sigma_HeI(E) D, k(3) = nH y_He x_HeII
+    !--- sigma_HeII(E) D (D = distance2cm), the absorbers that re-emit under
+    !--- par%diffuse_launch = 'absorption_reemission' (plan Section 12).
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHeI, gas_xHeII
+    implicit none
+    type(photon_type), intent(in)  :: photon
+    integer,           intent(in)  :: il
+    real(kind=wp),     intent(out) :: k(3)
+    k(1) = gas_nH(il)*gas_xHI(il)*photon%ionphys%sigma_HI*par%distance2cm
+    k(2) = gas_nH(il)*par%abund_He*gas_xHeI(il)*photon%ionphys%sigma_HeI*par%distance2cm
+    k(3) = gas_nH(il)*par%abund_He*gas_xHeII(il)*photon%ionphys%sigma_HeII*par%distance2cm
+  end subroutine ion_packet_absorber_opacities
 
 end module ion_packet_mod

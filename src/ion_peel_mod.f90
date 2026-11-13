@@ -30,7 +30,7 @@ module ion_peel_mod
   implicit none
   private
 
-  public :: ion_peel_setup, ion_peel_direct, ion_peel_scatter, &
+  public :: ion_peel_setup, ion_peel_direct, ion_peel_reemission, ion_peel_scatter, &
             ion_peel_write
 
   !--- (nxim, nyim, channel, nobs); channel 1 = ionizing, 2 = FUV
@@ -272,6 +272,17 @@ contains
        img_dir(ix, iy, ch, k) = img_dir(ix, iy, ch, k) + contrib
     end do
   end subroutine ion_peel_direct
+
+  ! Isotropic recombination emission at the absorbing position. The hook
+  ! receives the continued weight before roulette; external illumination's
+  ! entry-surface normal must not set the angular law of this emission.
+  subroutine ion_peel_reemission(photon)
+    type(photon_type), intent(in) :: photon
+    type(photon_type) :: emitted
+    emitted = photon
+    emitted%from_external = .false.
+    call ion_peel_direct(emitted)
+  end subroutine ion_peel_reemission
 
   !=========================================================================
   ! Scattered peel at a dust interaction: called AFTER the albedo weight

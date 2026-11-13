@@ -166,6 +166,9 @@ every rank meets the same failure (a missing \code{amr\_file} is read by
 every rank) the log holds the line once, from rank~0, and when one other
 rank meets it alone that rank writes it after the wait.  On a heavily
 loaded host the same line can appear more than once; it is never lost.
+Before MPI starts or after it ends the line is \code{ERROR:} and the reason,
+with exit status~1.  The reason of a failed run is therefore its last
+\code{ERROR} line.
 
 \paragraph{Switches.}  The switches compose: \code{gas\_niter = 0} gives a single rates-only
 pass; \code{gas\_niter > 0} iterates the ionization; \code{solve\_te}
@@ -670,6 +673,7 @@ parameter & default & meaning \\
 \code{use\_sec\_ion} & F & secondary ionization by fast photoelectrons (\code{photoelectron\_degradation\_mod}): a photoelectron with $E_0 = h\nu - E_{\rm th} > 30$~eV from H\,\textsc{i}, He\,\textsc{i} or He\,\textsc{ii} deposits $f_{\rm heat}(x,E_0)$ as heat (Dalgarno, Yan \& Liu 1999 eq.~14 with a $(1-x)$ closure) and spends $f_{\rm ion}(x,E_0)$ ionizing H\,\textsc{i}/He\,\textsc{i} (Shull \& van Steenberg 1985 amplitudes with DYL99's $E_0$ dependence), divided over the neutrals present; $x = n_e/(n_{\rm H}+n_{\rm He})$ of the current cell-solve iterate; below 30~eV all heat, metal photoelectrons all heat; $\sim$0 in fully ionized gas, matters at fronts and in hard fields\\
 \code{absorption\_ledger} & F & diagnostic: every transport pass, the imaging pass of \code{ion\_peel} included, prints (\code{LEDGER:} lines) for each source --- the stellar band, diffuse channels 1--8, the stellar band below \code{eion\_min} --- the photons emitted, absorbed by H$^0$, He$^0$, He$^+$, the metals and dust, and escaping [s$^{-1}$], with the closure (absorbed\,+\,escaped)/emitted\,$-$\,1.  The absorptions come from the path estimators the rates use; the escapes count the direct transmission of each packet and the scattered walks that leave through the grid boundary, the same escapes as \code{L\_ESC}.  Without scattering the closure holds packet by packet; with dust scattering it holds in expectation, and a finite sample shows Monte Carlo noise in it, since the scattered absorption is a path estimator.  A lost walk (\code{L\_LOST}) escapes nowhere and shows in the closure as $-$lost/emitted.  The same pass's log also compares the absorbed power of these path estimators [erg\,s$^{-1}$] with \code{L\_ABS} (\code{ION: continuous energy absorbed by the path estimators}).  The H$^0$, He$^0$, He$^+$ absorptions of every leaf by source in the final pass (the imaging pass with \code{ion\_peel}) go to the rates file (\code{Ledger\_H0}, \code{Ledger\_He0}, \code{Ledger\_He+}, leaf $\times$ source); costs one metal-opacity sum for each scored segment and 30 doubles a leaf on every rank \\
 \code{metal\_recombination\_photons} & 'none' & photons a metal recombination releases besides its ground continuum (channel 6), as diffuse channel 8 (needs \code{recombination\_continuum = 'transported'} and metals): 'none' (default); 'valence\_fractions' the approximation of Cloudy c25.00 --- each RR\,+\,DR recombination X$^{i+1}$\,+\,e\,$\to$\,X$^{i}$, X$^{i}$ with $\ge 3$ electrons, emits one photon at 0.75 and one at 0.25 of the ionization potential of X$^{i}$; those in [\code{eion\_min}, \code{eion\_max}) are transported, the rest is printed.  No atomic data, ground captures counted twice with channel 6: kept to measure how much of a difference from Cloudy this term carries, not a physical model (md/METAL\_RECOMBINATION\_\allowbreak DIFFUSE\_PLAN\_\allowbreak 2026-10-14.md) \\
+\code{diffuse\_launch} & 'leaf\_emissivity' & where the transported diffuse packets start (needs \code{recombination\_continuum = 'transported'} for \code{'absorption\_reemission'}; any other combination is refused with \code{ERROR: par\%diffuse\_launch = 'absorption\_reemission' needs par\%recombination\_continuum = 'transported'.}).  \code{'leaf\_emissivity'} (default): every diffuse packet is launched from the leaf whose frozen state emits it.  \code{'absorption\_reemission'}: a packet absorbed by H$^0$, He$^0$ or He$^+$ continues, with its weight times $t$ (Physics document, Section ``Diffuse field re-emitted at the absorption point''), as a diffuse packet of the ion it produced, from the absorption point; only the share the re-emission does not carry, and channels 6--8, are launched from the leaves.  The yield uses the previous pass's photoionizations, so the first pass of a run, the first after a restart and the first after a re-refinement have none: that pass is fully explicit (header \code{REVALID} $=0$), and a restart prints \code{RESTART: absorption\_reemission starts with explicit leaf emission; histories reset}.  Cost and noise (measured 2026-11-13, Lexington HII40, $2^{25}$ packets, 44 ranks on a shared host): an iteration took $\sim$5.1 instead of $\sim$4.0~min, and at equal packets the iteration-to-iteration fluctuation of the state is 2--5 times larger (at HII20 the He$^0$--He$^+$ step stayed above \code{gas\_tol}, so the stopping test did not pass in 38 iterations).  Writes the extra header keywords and datasets of Section~\ref{sec:outputs} \\
 \code{metal\_freefree} & T & include the trace metals in the free--free cooling with the net ion charge $Z_{\rm ion}=$ (stage $-1$), not the nuclear $Z$; a trace ($\sim$10$^{-4}$ of the H/He free--free) correctness term, on by default \\
 \end{longtable}
 }
@@ -866,6 +870,52 @@ $5{\times}10^{-13}$.
 file scale yields the transported-band total, including FUV, as before.
 Use \code{SourceLuminosity} for each source's full and transported
 luminosities in a full-spectrum run.
+
+\paragraph{With \code{diffuse\_launch = 'absorption\_reemission'}.}  The
+re-emitted power counts as emitted: \code{L\_EMIT} $=$ \code{L\_DIREMT} $+$
+\code{L\_REEMIT} and \code{L\_ABS} keeps its definition.  Extra header
+keywords [erg\,s$^{-1}$ unless stated]: \code{DIFLAUNC} (the mode),
+\code{L\_REEMIT} (gas re-emission), \code{L\_LEAFEM} (explicit leaf launch),
+\code{L\_NETABS} $=$ \code{L\_ABS} $-$ \code{L\_REEMIT} (what gas and dust
+keep), \code{L\_SRCEMT} (launched sources), \code{L\_DIREMT} (sources plus
+explicit launch), \code{L\_EXTING} and \code{L\_TRANS} (extinguished and
+transmitted direct light), \code{L\_DEPOS} (signed net event deposition),
+\code{L\_ROULET} (signed roulette correction), \code{L\_CESC} and
+\code{L\_CLOST} (continued light that escaped or was lost), \code{L\_GASEVT}
+and \code{L\_DUSTEVT} (gas and dust event absorption), \code{NLEAFEM}
+(explicit leaf packet count), \code{LPACKREF} (reference packet luminosity),
+\code{REVALID} (the previous field was used).  Extra datasets:
+\begin{center}\small
+\begin{tabular}{lp{9.5cm}}
+\toprule
+dataset & content \\
+\midrule
+\code{GasAbsorbedPower} & leaf: measured path absorption [erg/s] \\
+\code{GasEventAbsorption} & leaf: gas event absorption [erg/s] \\
+\code{DiffuseStateLuminosity} & (channel, leaf), 8 channels: $L_c$ of the
+frozen state [erg/s] \\
+\code{DiffuseExplicitLuminosity} & (channel, leaf): explicit launch $X_c$
+[erg/s] \\
+\code{ReemittedLuminosity} & (channel, leaf): measured re-emission $R_c$
+[erg/s] \\
+\code{RecombinationRate} & (absorber, leaf), absorbers H$^0$, He$^0$,
+He$^+$: case-A recombinations $N_{\rm rec}$ [s$^{-1}$] \\
+\code{PhotoionizationRatePrev} & (absorber, leaf): raw photoionizations
+$N_{\rm abs}$ of the previous pass on the current densities [s$^{-1}$] \\
+\code{ReemissionPsi} & (absorber, leaf): $\psi=N_{\rm abs}/N_{\rm rec}$;
+$-1$ where the absorber does not re-emit \\
+\code{ReemissionEnergy} & (absorber, leaf): $\epsilon_{\rm re}/\max(\psi,1)$
+[erg]; the continuation factor of an absorption at photon energy $E$ is
+this over $E$ \\
+\code{ReemissionFraction} & (absorber, leaf): $f=\epsilon_{\rm
+re}/\epsilon$, the share of the in-band recombination energy below the cap
+$E_{\rm th}+\frac32kT_e$ \\
+\code{LedgerTotals} & with \code{absorption\_ledger}: (4, source) photons
+s$^{-1}$ emitted, absorbed, escaped, lost, for the 10 ledger sources \\
+\bottomrule
+\end{tabular}
+\end{center}
+Shapes are as h5py reads them; FITS axes are reversed.
 
 \subsection{Line and emissivity outputs}
 \label{sec:lineout}
@@ -1355,6 +1405,17 @@ Huang labels are adopted; see \code{make\_element\_data.py}).
   \code{ion\_dust\_kext} names an explicit table, that table must cover the
   transported band; tables are sorted on read (the D03 file has an
   out-of-order seam).
+\item \textbf{Absorption re-emission}: \code{diffuse\_launch =
+  'absorption\_reemission'} follows MOCASSIN in starting the diffuse field
+  where the ionizing photons are absorbed.  On the measured cases it agrees
+  with the default to $0.04\%$ in the Str\"omgren radius at level 5 and to
+  $0.04\%$ in $L({\rm H}\beta)$, and moves the [O\,\textsc{i}] and
+  [N\,\textsc{i}] lines of the partly ionized edge by 2--6\%.  It needs
+  more packets for the same iteration noise, and its first pass after a
+  start, restart or re-refinement is the default scheme.  The Lexington
+  comparisons restarted from converged default-mode states (HII40: 8
+  iterations to the stopping test).  The open questions are
+  in the Physics document.
 \item \textbf{Re-refinement}: one event per run; the old shared-memory
   windows are reclaimed only at exit.
 \item \textbf{SEDust}: the grain-model data are resolved from

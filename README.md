@@ -1,4 +1,4 @@
-# MoCHII v1.00 <img src="docs/mochii_icon.png" width="64" alt="MoCHII icon" align="top">
+# MoCHII v1.10 <img src="docs/mochii_icon.png" width="64" alt="MoCHII icon" align="top">
 
 MoCHII (**Mo**nte **C**arlo for **H II** regions) is a Monte-Carlo
 photoionization and radiative-transfer code (Fortran 90 + MPI) for **dusty
@@ -28,7 +28,11 @@ infrared dust/PAH spectrum.
   continua, the He I and He III excited cascades, the metal ground
   free-bound continua and the free-free emission inside the band) or
   on-the-spot (case B), dust absorption and Henyey–Greenstein scattering
-  in the band.  The three ground recombination continua are sampled from
+  in the band.  The diffuse packets start from the cells that emit them;
+  with `diffuse_launch='absorption_reemission'` an ionizing packet absorbed
+  by H, He or He+ instead continues from the absorption point as a
+  recombination packet of the ion it produced, as in MOCASSIN, with the
+  share this does not carry still launched from the cells.  The three ground recombination continua are sampled from
   their detailed-balance Milne free-bound spectra
   (`diffuse_energy_model='milne'`), using the same cross sections transport
   absorbs with, so a diffuse packet is absorbed with the cross section it
@@ -212,4 +216,4 @@ Kwang-Il Seon (KASI / UST)
 
 ---
 
-Last updated: 2026-11-14 00:12 KST
+Last updated: 2026-11-14 00:16 KST

@@ -352,7 +352,8 @@ Diffuse field & Explicit H/He recombination channels, the metal ground
 free--bound continua and the free--free of every ion inside the band, rebuilt
 from the current state and transported (the default since 2026-09-26; the
 metal and free--free channels since 2026-10-11); on-the-spot remains
-available.  No metal recombination lines. & Local continuum and line
+available; optionally re-emitted at the absorption point
+(\code{diffuse\_launch}).  No metal recombination lines. & Local continuum and line
 emissivity PDF sampled immediately after gas absorption; isotropic
 re-emission. \\
 
@@ -1111,6 +1112,27 @@ inventory sampled by \Mthree{}: metal recombination lines and metal
 captures into excited levels bound by more than 13.6~eV are not emitted.  Free--free absorption is not
 in the opacity; its largest share of the H/He bound--free opacity over the
 band is $5.9\times10^{-17}$ at HII40.
+
+Where the transported packets start is a separate switch,
+\code{par\%diffuse\_launch} (2026-11-13; physics memo, Section~``Diffuse
+field re-emitted at the absorption point'').  The default,
+\code{'leaf\_emissivity'}, launches them from the leaves in proportion to the
+emission table above.  \code{'absorption\_reemission'} does what \Mthree{} and
+\Wood{} do: a packet absorbed by H$^0$, He$^0$ or He$^+$ continues from the
+absorption point as a diffuse packet of the ion it produced, with an
+isotropic direction and an energy drawn from that ion's channels.  It does not
+re-emit every absorbed packet, nor with a fixed probability
+$\alpha_1/\alpha_A$: the weight is multiplied by the in-band energy one recombination
+radiates, capped at $E_{\rm th}+\frac32kT_e$, over the absorbed photon's
+energy and over $\max(\psi,1)$, $\psi$ the photoionizations of the previous
+pass per recombination, and the share of the emission table not carried this
+way (and all of the metal and free--free channels) is still launched from
+the leaves.  At a stationary field the two give the same expected emission
+in every leaf and channel; on finite grids they are two spatial models of the
+same emissivity.  Measured: the Str\"omgren radius of the G1 sphere differs by
+$-0.04\%$ at level~5 and $0.00\%$ at level~6, $L({\rm H}\beta)$ of the
+Lexington benchmarks by $-0.04\%$ (HII40) and $-0.004\%$ (HII20), and the
+[O\,\textsc{i}] and [N\,\textsc{i}] lines of the partly ionized edge by 2--6\%.
 
 \subsection{Spectral discretization}
 \label{sec:specdisc}

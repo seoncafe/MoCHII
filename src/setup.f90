@@ -682,6 +682,21 @@ contains
         'par%recombination_continuum must be ''on_the_spot'', ' // &
         '''transported'' (default) or ''escaping''.')
   endif
+  if (trim(par%diffuse_launch) /= 'leaf_emissivity' .and. &
+      trim(par%diffuse_launch) /= 'absorption_reemission') then
+     call refuse_input( &
+        'par%diffuse_launch must be ''leaf_emissivity'' (default) or ' // &
+        '''absorption_reemission''.')
+  endif
+  !--- re-emission at the absorption point re-emits the transported diffuse
+  !--- field; with 'on_the_spot' (also with channel 5 alone, par%heii_diffuse)
+  !--- or 'escaping' the ground continua are not transported packets.
+  if (trim(par%diffuse_launch) == 'absorption_reemission' .and. &
+      trim(par%recombination_continuum) /= 'transported') then
+     call refuse_input( &
+        'par%diffuse_launch = ''absorption_reemission'' needs ' // &
+        'par%recombination_continuum = ''transported''.')
+  endif
   if (par%solve_te .and. par%te_min >= par%te_max) then
      call refuse_input( &
         'par%solve_te needs par%te_min < par%te_max.')
@@ -802,6 +817,7 @@ contains
      write(*,'(a,l14)') 'Metal free-free cooling   : ', par%metal_freefree
      write(*,'(2a)')    'Metal recomb. photons     : ', trim(par%metal_recombination_photons)
      write(*,'(2a)')    'Recombination continuum   : ', trim(par%recombination_continuum)
+     write(*,'(2a)')    'Diffuse launch            : ', trim(par%diffuse_launch)
      write(*,'(2a)')    'Lyman lines               : ', trim(par%lyman_lines)
      if (trim(par%recombination_continuum) == 'on_the_spot') then
         write(*,'(a,l14)') 'He I on the spot          : ', par%hei_on_the_spot

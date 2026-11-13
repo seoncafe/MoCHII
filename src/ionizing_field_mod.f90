@@ -22,6 +22,17 @@ module ionizing_field_mod
 ! direct contribution toward each observer, and -- when dust scattering is
 ! sampled -- every interaction peels a scattered contribution through the
 ! hook installed here for the duration of the pass.
+!
+! Under par%diffuse_launch = 'absorption_reemission' the diffuse emission of
+! the pass (diffuse_build: the state emission L_c, the re-emission energy
+! eps_s/max(psi_s, 1) of each absorber and the explicit launch X_c, from the
+! frozen state and the photoionizations of the previous pass's field) is
+! tabulated BEFORE the first source packet and before ion_score_reset (psi
+! comes from the previous pass's estimators), since the source packets
+! already re-emit at their gas absorptions; the
+! remainder is then launched after the sources by the same diffuse loop.  The
+! default mode keeps its order (sources, then diffuse_build and the diffuse
+! loop).  diffuse_build draws no random numbers.
 !---------------------------------------------------------------------------
   use define
   use ion_band_mod,     only : gen_ion_photon, gen_ion_photon_qmc, &
@@ -38,15 +49,18 @@ module ionizing_field_mod
   use ion_score_mod,    only : ion_score_reset, ion_score_reduce, &
                                ion_score_report_energy_closure, &
                                ion_score_report_ledger, &
-                               ion_score_report_metal_rates
+                               ion_score_report_metal_rates, &
+                               ion_score_report_reemission
   use raytrace_amr_mod, only : transport_ion_packet
   use gas_rates_mod,    only : gas_rates_compute
   use species_mod,      only : species_gamma_compute
   use diffuse_mod,      only : diffuse_build, gen_diffuse_photon, &
                                gen_diffuse_photon_qmc, diffuse_nphot, diffuse_lum, &
-                               diffuse_channel_luminosity, metal_valence_luminosity_outside
+                               diffuse_channel_luminosity, metal_valence_luminosity_outside, &
+                               diffuse_remainder_luminosity
   use heii_cascade_mod, only : heii_cascade_transported
-  use ion_peel_mod,     only : ion_peel_setup, ion_peel_direct, ion_peel_scatter
+  use ion_peel_mod,     only : ion_peel_setup, ion_peel_direct, ion_peel_scatter, &
+                               ion_peel_reemission
   use photon_schedule_mod, only : photon_schedule_begin, photon_schedule_next, &
                                   photon_schedule_end
   use utility,          only : time_stamp
@@ -98,17 +112,23 @@ contains
     real(kind=wp)       :: u_launch(QMC_MAXDIM)   ! stellar (1:nd_qmc) + diffuse (1:9) launch uniforms
     real(kind=wp)       :: dtime
     real(kind=LEDGER_WP) :: launched(2)   ! launched Sum Lpacket*wgt: stratum 1 (or whole band), FUV
-    logical             :: peel
+    logical             :: peel, reemission
 
     peel = .false.
     if (present(with_peel)) peel = with_peel
+    reemission = trim(par%diffuse_launch) == 'absorption_reemission'
 
     if (peel) then
        call ion_peel_setup()
        if (par%ion_add_dust .and. par%ion_dust_scatter) &
           ion_peel_scatter_hook => ion_peel_scatter
+       ! Gas re-emission also peels in dust-free calculations.
+       if (reemission) ion_peel_reemission_hook => ion_peel_reemission
     end if
     if (jt_ion_on) jt_ion(:,:) = 0.0_wp
+    ! Freeze absorber yields and explicit emission before the first packet,
+    ! using raw photoionization paths before ion_score_reset clears them.
+    if (reemission) call diffuse_build(ionizing_packet_luminosity())
     call ion_score_reset()
     !--- keep the last pass's escaping field: an iterating pass starts the
     !--- slab tally from zero, the imaging pass adds to what is already there.
@@ -124,6 +144,7 @@ contains
              dtime/60.0_wp, ' mins'
        end if
     end if
+    if (reemission) call report_diffuse_emission()
     n_done = 0
     launched = 0.0_LEDGER_WP
     !--- how the photon indices are split over the ranks (static cyclic or
@@ -146,25 +167,7 @@ contains
     !--- with the on-the-spot one and par%heii_diffuse.
     if (trim(par%recombination_continuum) == 'transported' .or. &
         heii_cascade_transported()) then
-       !--- the diffuse packets carry the luminosity of one IONIZING source
-       !--- packet (ionizing_packet_luminosity: ion_Ltot/nphotons for the
-       !--- whole band, L_ion/nphotons with the strata), so the recombination
-       !--- field is sampled as finely as the field that drives it.
-       call diffuse_build(ionizing_packet_luminosity())
-       if (.not. peel .and. mpar%p_rank == 0) then
-          write(6,'(a,es12.4,a,i12,a)') &
-             '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
-             diffuse_nphot, ' packets'
-          !--- by channel: H I, He I, He II ground; He I, He III cascades;
-          !--- metal ground continua; free-free; metal valence-fraction
-          !--- photons (par%metal_recombination_photons)
-          write(6,'(a,8es11.3)') '     diffuse L by channel 1-8 [erg/s]:', &
-             diffuse_channel_luminosity
-          if (trim(par%metal_recombination_photons) /= 'none') &
-             write(6,'(a,2es11.3)') '     channel 8 not launched, below '// &
-                'eion_min / at or above eion_max [erg/s]:', &
-                metal_valence_luminosity_outside
-       end if
+       if (.not. reemission) call tabulate_diffuse_emission()
        !--- diffuse packets ride the SECOND (decorrelated) Sobol stream,
        !--- indexed by the global diffuse photon number (ip-1); diffuse_nphot
        !--- varies with each pass. Arbitrary prefixes are usable, but the
@@ -185,6 +188,7 @@ contains
        call photon_schedule_end()
     end if
     if (peel) ion_peel_scatter_hook => null()
+    ion_peel_reemission_hook => null()
     call jtally_ion_reduce()
     call ion_score_reduce()
     call gas_rates_compute()
@@ -192,10 +196,232 @@ contains
     !--- every pass, the imaging pass included: with par%ion_peel it is the
     !--- last pass, and its ledger is the one written to the rates file.
     call ion_score_report_ledger(label)
+    if (reemission) then
+       call ion_score_report_reemission(diffuse_channel_luminosity, &
+                                        diffuse_remainder_luminosity)
+       call report_local_residuals()
+    end if
     if (par%use_metals) call species_gamma_compute()
     call ion_score_report_metal_rates()
 
   contains
+
+    !--- the diffuse emission of the pass from the current state
+    !--- (diffuse_build) and its report.  The diffuse packets carry the
+    !--- luminosity of one IONIZING source packet (ionizing_packet_luminosity:
+    !--- ion_Ltot/nphotons for the whole band, L_ion/nphotons with the
+    !--- strata), so the recombination field is sampled as finely as the
+    !--- field that drives it; under absorption_reemission that holds for
+    !--- the launched remainder, n = max(1, nint(Sum X / Lpacket)) packets of
+    !--- Sum X / n.
+    subroutine tabulate_diffuse_emission()
+      call diffuse_build(ionizing_packet_luminosity())
+      call report_diffuse_emission()
+    end subroutine tabulate_diffuse_emission
+
+    !--- the report of the last diffuse_build (rank 0, iterating passes)
+    subroutine report_diffuse_emission()
+      if (.not. peel .and. mpar%p_rank == 0) then
+         if (reemission) then
+            write(6,'(a,es12.4,a,es12.4,a,i12,a)') &
+               '     diffuse field: state emission L = ', &
+               sum(diffuse_channel_luminosity), ' erg/s, explicit remainder X = ', &
+               diffuse_lum, ' erg/s in ', diffuse_nphot, ' packets'
+         else
+            write(6,'(a,es12.4,a,i12,a)') &
+               '     diffuse field: L = ', diffuse_lum, ' erg/s, ', &
+               diffuse_nphot, ' packets'
+         end if
+         !--- by channel: H I, He I, He II ground; He I, He III cascades;
+         !--- metal ground continua; free-free; metal valence-fraction
+         !--- photons (par%metal_recombination_photons)
+         write(6,'(a,8es11.3)') '     diffuse L by channel 1-8 [erg/s]:', &
+            diffuse_channel_luminosity
+         if (reemission) then
+            write(6,'(a,8es11.3)') &
+               '     remainder X by channel 1-8 [erg/s]:', diffuse_remainder_luminosity
+            call report_absorber_psi()
+         end if
+         if (trim(par%metal_recombination_photons) /= 'none') &
+            write(6,'(a,2es11.3)') '     channel 8 not launched, below '// &
+               'eion_min / at or above eion_max [erg/s]:', &
+               metal_valence_luminosity_outside
+      end if
+    end subroutine report_diffuse_emission
+
+    !--- emission of the pass against the state emission, by channel and
+    !--- leaf (rank 0), plan Section 12.4: with L_c,i the state emission,
+    !--- X_c,i the explicit launch (its expectation; the launch samples it)
+    !--- and Re_c,i the sampled re-emission into channel c of absorbing leaf
+    !--- i, R_c,i = X_c,i + Re_c,i.  By channel: Sum L_c, Sum X_c, Sum Re_c
+    !--- and (Re_c + X_c)/L_c; over all (c, i): Sum |R - L| / Sum L, the
+    !--- L-weighted rms of (R - L)/L over L > 0, and max |R - L| / Sum L.
+    subroutine report_local_residuals()
+      use diffuse_mod,   only : diffuse_leaf_emission, diffuse_explicit_leaf_emission
+      use ion_score_mod, only : ion_score_reemission_leaf, NDIFFUSE_CHANNEL
+      use gas_state_mod, only : gas_nleaf
+      real(kind=wp), allocatable :: lem(:,:), xem(:,:), reem(:,:), gev(:)
+      real(kind=wp) :: lsum, wl, d, sabs, srms, smax, ratio(NDIFFUSE_CHANNEL)
+      integer :: il, c
+      if (peel .or. mpar%p_rank /= 0) return
+      allocate(lem(NDIFFUSE_CHANNEL,gas_nleaf), xem(NDIFFUSE_CHANNEL,gas_nleaf), &
+               reem(NDIFFUSE_CHANNEL,gas_nleaf), gev(gas_nleaf))
+      call diffuse_leaf_emission(lem)
+      call diffuse_explicit_leaf_emission(xem)
+      call ion_score_reemission_leaf(reem, gev)
+      lsum = sum(lem)
+      if (lsum <= 0.0_wp) return
+      wl = 0.0_wp;  sabs = 0.0_wp;  srms = 0.0_wp;  smax = 0.0_wp
+      do il = 1, gas_nleaf
+         do c = 1, NDIFFUSE_CHANNEL
+            d = xem(c,il) + reem(c,il) - lem(c,il)
+            sabs = sabs + abs(d)
+            smax = max(smax, abs(d))
+            if (lem(c,il) > 0.0_wp) then
+               wl = wl + lem(c,il)
+               srms = srms + d*d/lem(c,il)
+            end if
+         end do
+      end do
+      do c = 1, NDIFFUSE_CHANNEL
+         ratio(c) = 0.0_wp
+         if (sum(lem(c,:)) > 0.0_wp) ratio(c) = (sum(xem(c,:)) + sum(reem(c,:)))/sum(lem(c,:))
+      end do
+      write(6,'(a,8es11.3)') ' REEMIT: (Re_c + X_c)/L_c by channel 1-8 :', ratio
+      call report_count_residuals(lem, xem, reem, lsum)
+      write(6,'(a,es11.3,a,es11.3,a,es11.3)') &
+         ' REEMIT: local R - L over (channel, leaf): Sum|.|/Sum L = ', sabs/lsum, &
+         ', L-weighted rms of ./L = ', sqrt(srms/wl), ', max|.|/Sum L = ', smax/lsum
+    end subroutine report_local_residuals
+
+    !--- count-based residual of the re-emission (rank 0, after the
+    !--- reduction): for c in C(s), Re_c,i - b_c,i N_now,s,i with
+    !--- b_c = f_s L_c / max(N_rec,s, N_abs,s) and N_now,s the photoionizations
+    !--- of s in this pass (raw path sums, the pass's own state) -- zero in
+    !--- expectation, the sampling noise of the re-emission alone --
+    !--- as Sum|.|/Sum L, L-weighted rms of ./L_c and max|.|/Sum L over
+    !--- (c, i), and the signed total over Sum L
+    subroutine report_count_residuals(lem, xem, reem, lsum)
+      use diffuse_mod,   only : diffuse_absorber_leaf, reemission_field_valid, &
+                                NABSORBER, ABSORBER_CHANNELS
+      use ion_score_mod, only : previous_photoionizations
+      use gas_state_mod, only : gas_nleaf
+      real(kind=wp), intent(in) :: lem(:,:), xem(:,:), reem(:,:), lsum
+      real(kind=wp), allocatable :: psi(:,:), en(:,:), nrec(:,:), nabs(:,:), fs(:,:)
+      real(kind=wp) :: nnow(NABSORBER), b, d, sabs, srms, smax, stot, wl
+      integer :: il, is, k, c
+      logical :: valid
+      if (.not. reemission_field_valid) return
+      allocate(psi(NABSORBER,gas_nleaf), en(NABSORBER,gas_nleaf), &
+               nrec(NABSORBER,gas_nleaf), nabs(NABSORBER,gas_nleaf), fs(NABSORBER,gas_nleaf))
+      call diffuse_absorber_leaf(psi, en, nrec, nabs, fs)
+      sabs = 0.0_wp;  srms = 0.0_wp;  smax = 0.0_wp;  stot = 0.0_wp;  wl = 0.0_wp
+      do il = 1, gas_nleaf
+         call previous_photoionizations(il, nnow, valid)
+         do is = 1, NABSORBER
+            if (psi(is,il) < 0.0_wp) cycle
+            do k = 1, 2
+               c = ABSORBER_CHANNELS(k,is)
+               if (c <= 0) cycle
+               b = fs(is,il)*lem(c,il)/max(nrec(is,il), nabs(is,il))
+               d = reem(c,il) - b*nnow(is)
+               sabs = sabs + abs(d);  stot = stot + d;  smax = max(smax, abs(d))
+               if (lem(c,il) > 0.0_wp) then
+                  wl = wl + lem(c,il);  srms = srms + d*d/lem(c,il)
+               end if
+            end do
+         end do
+      end do
+      if (wl <= 0.0_wp) return
+      write(6,'(a,es11.3,a,es11.3,a,es11.3,a,es11.3)') &
+         ' REEMIT: count residual Re - b N_now: Sum|.|/Sum L = ', sabs/lsum, &
+         ', L-weighted rms of ./L = ', sqrt(srms/wl), ', max|.|/Sum L = ', smax/lsum, &
+         ', signed Sum/Sum L = ', stot/lsum
+    end subroutine report_count_residuals
+
+    !--- the distribution of psi_s over the leaves where absorber s re-emits
+    !--- (rank 0): minimum, median, maximum and the fraction with psi > 1,
+    !--- for H0, He0, He+
+    subroutine report_absorber_psi()
+      use diffuse_mod,   only : diffuse_absorber_leaf, reemission_field_valid, NABSORBER, &
+                                ABSORBER_CHANNELS, diffuse_leaf_emission
+      use gas_state_mod, only : gas_nleaf
+      integer, parameter :: NCHAN = 8
+      character(len=4), parameter :: ABS_NAME(NABSORBER) = ['H0  ', 'He0 ', 'He+ ']
+      real(kind=wp), allocatable :: psi(:,:), en(:,:), v(:), nrec(:,:), nabs(:,:), fs(:,:), lem(:,:)
+      real(kind=wp) :: moved, ls, ls_tot
+      integer :: is, n, il, k
+      if (.not. reemission_field_valid) then
+         write(6,'(a)') '     no valid previous field: re-emission off, '// &
+            'every channel launched explicitly'
+         return
+      end if
+      allocate(psi(NABSORBER,gas_nleaf), en(NABSORBER,gas_nleaf), &
+               nrec(NABSORBER,gas_nleaf), nabs(NABSORBER,gas_nleaf), fs(NABSORBER,gas_nleaf), &
+               lem(NCHAN,gas_nleaf))
+      call diffuse_absorber_leaf(psi, en, nrec, nabs, fs)
+      call diffuse_leaf_emission(lem)
+      do is = 1, NABSORBER
+         !--- the luminosity the cap eps_cap moves to the explicit launch,
+         !--- Sum_c L_c (1 - f) min(psi, 1) over the leaves where s re-emits
+         moved = 0.0_wp;  ls_tot = 0.0_wp
+         do il = 1, gas_nleaf
+            ls = 0.0_wp
+            do k = 1, 2
+               if (ABSORBER_CHANNELS(k,is) > 0) ls = ls + lem(ABSORBER_CHANNELS(k,is),il)
+            end do
+            ls_tot = ls_tot + ls
+            if (psi(is,il) >= 0.0_wp) moved = moved + ls*(1.0_wp - fs(is,il))*min(psi(is,il), 1.0_wp)
+         end do
+         n = count(psi(is,:) >= 0.0_wp)
+         write(6,'(3a,2es12.4,a,es11.3,a,i0,a,es11.3,a,es11.3)') '     ', ABS_NAME(is), &
+            ' Sum N_rec, Sum N_abs [1/s] =', sum(nrec(is,:)), sum(nabs(is,:)), &
+            ';  Sum eps_re N_rec/max(psi,1) =', sum(en(is,:)*nrec(is,:)), &
+            ';  leaves with f < 1: ', count(psi(is,:) >= 0.0_wp .and. fs(is,:) < 1.0_wp), &
+            ';  Sum L_s (1-f) min(psi,1), moved to the explicit launch by the cap [erg/s] =', moved, ' of Sum L_s =', ls_tot
+      end do
+      do is = 1, NABSORBER
+         n = count(psi(is,:) >= 0.0_wp)
+         if (n == 0) then
+            write(6,'(3a)') '     psi(', trim(ABS_NAME(is)), '): no leaf re-emits'
+            cycle
+         end if
+         v = pack(psi(is,:), psi(is,:) >= 0.0_wp)
+         write(6,'(3a,i0,a,3es11.3,a,f9.6)') '     psi(', trim(ABS_NAME(is)), ') over ', &
+            n, ' leaves: min/median/max =', minval(v), median_of(v), maxval(v), &
+            ', fraction psi > 1: ', real(count(v > 1.0_wp), wp)/real(n, wp)
+      end do
+    end subroutine report_absorber_psi
+
+    !--- the median of v (v is reordered): Hoare selection of the middle
+    !--- element (the upper one for an even count)
+    real(kind=wp) function median_of(v) result(m)
+      real(kind=wp), intent(inout) :: v(:)
+      integer :: lo, hi, i, j, k
+      real(kind=wp) :: pivot, tmp
+      k = size(v)/2 + 1
+      lo = 1;  hi = size(v)
+      do while (lo < hi)
+         pivot = v((lo + hi)/2)
+         i = lo;  j = hi
+         do while (i <= j)
+            do while (v(i) < pivot);  i = i + 1;  end do
+            do while (v(j) > pivot);  j = j - 1;  end do
+            if (i <= j) then
+               tmp = v(i);  v(i) = v(j);  v(j) = tmp
+               i = i + 1;  j = j - 1
+            end if
+         end do
+         if (k <= j) then
+            hi = j
+         else if (k >= i) then
+            lo = i
+         else
+            exit
+         end if
+      end do
+      m = v(k)
+    end function median_of
 
     !--- one launch loop over npk packets of band part iband, on the Sobol
     !--- stream istream (indices 0..npk-1) or the Mersenne Twister; adds the

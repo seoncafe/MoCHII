@@ -21,8 +21,14 @@ module raytrace_amr_mod
                          slab_tally_on, slab_bnd_add
   use ion_score_mod, only : score_ion_path, ion_score_energy_packet, &
                             ion_score_scattered_escape, ion_score_lost_weight, &
+                            ion_score_forced_interaction, ion_score_interaction, &
+                            ion_score_interaction_absorption, &
+                            ion_score_reemission, ion_score_roulette, &
+                            ion_score_continuation_factor, &
+                            ion_score_gain_history_weight, &
                             FLIGHT_STOPPED_IN_GRID, FLIGHT_ESCAPED, FLIGHT_LOST
-  use ion_packet_mod, only : build_ion_packet_physics, ion_packet_opacity
+  use ion_packet_mod, only : build_ion_packet_physics, ion_packet_opacity, &
+                             ion_packet_gas_opacity, ion_packet_absorber_opacities
   implicit none
   private
 
@@ -47,6 +53,21 @@ module raytrace_amr_mod
   !--- its remaining weight enters the energy totals as lost, not escaped.
   integer, parameter :: MAX_WALK_STEPS = 20000000
   integer :: slab_walk_kills = 0
+  !--- Failure detector of par%diffuse_launch = 'absorption_reemission': the
+  !--- interactions one packet history may take (photon%nevent) before the
+  !--- run is stopped (history_event_limit).  An interaction keeps the
+  !--- expected weight W t and Russian roulette ends a history once its
+  !--- weight falls below WMIN, so a history whose t stays below 1 takes of
+  !--- order ln(WMIN)/ln(t) interactions.  t may exceed 1 where the in-band
+  !--- energy of a recombination exceeds the absorbed photon's (measured up
+  !--- to 1.16 with the He I 2^3S coupling, 2026-11-13); only a region that
+  !--- recycles without net destruction or escape comes near the limit.
+  !--- Measured on the G1 sphere (pure hydrogen, 2026-11-13, 8 ranks):
+  !--- 2.1e8 interactions in 58 s, about 4.6e5 per second on one rank, so
+  !--- 1e7 interactions stop a non-destroying history within about 20 s,
+  !--- while the longest pass there averaged about 200 interactions for one
+  !--- history.
+  integer, parameter :: MAX_HISTORY_EVENTS = 10000000
 
 contains
 
@@ -236,31 +257,63 @@ contains
   !     (weight w1 = 1 - e^-tau_edge, for every tau_edge > 0), albedo weight at each interaction
   !     (a_eff = kappa_sca,dust / kappa_ext), Henyey-Greenstein direction
   !     with g(E_b) from the kext table, Russian roulette below w_min;
-  !     the scattered flights tally jt_ion along their sampled segments
-  !     (the Lucy pathlength estimator, nscatt > 0).  A scattered flight
-  !     that leaves through an open face carries its remaining weight out of
-  !     the grid (ion_score_scattered_escape); one that ends as FLIGHT_LOST,
-  !     or that the loop cannot continue, books its weight as lost
-  !     (ion_score_lost_weight); one ended by Russian roulette carries
+  !     the flights after an interaction tally jt_ion along their sampled
+  !     segments (the Lucy pathlength estimator, nevent > 0).  A sampled
+  !     flight that leaves through an open face carries its remaining weight
+  !     out of the grid (ion_score_scattered_escape); one that ends as
+  !     FLIGHT_LOST, or that the loop cannot continue, books its weight as
+  !     lost (ion_score_lost_weight); one ended by Russian roulette carries
   !     nothing, the survivors' 1/PSURV keeping the expectation.
+  ! (3) under par%diffuse_launch = 'absorption_reemission', ionizing band
+  !     only (the dust thermal band, transported_band = BAND_DUST_IR, keeps
+  !     (2)): the interactions are sampled with or without dust scattering.
+  !     At an interaction in leaf i, with kap = kap_gas + kap_abs,dust +
+  !     kap_sca,dust at the packet energy (kap_sca,dust = 0 without
+  !     par%ion_dust_scatter), k_s the opacity of the re-emitting absorber
+  !     s = H0, He0, He+ and y_s(E) = diffuse_mod::reemitted_energy(s,i)/
+  !     (E erg) (plan Section 12, r7),
+  !         s_sca = kap_sca,dust/kap,  r = Sum_s (k_s/kap) y_s(E),
+  !         t = s_sca + r;
+  !     t = 0 ends the history; otherwise the weight is multiplied by t
+  !     (no clipping: t exceeds 1 only where the in-band energy of one
+  !     recombination exceeds the absorbed photon's, ion_score's maximum t)
+  !     and the packet scatters with probability s_sca/t, else the absorber
+  !     is drawn with probability k_s y_s / Sum and the packet is re-emitted
+  !     at the absorption point as a diffuse packet of leaf i: same position,
+  !     Lpacket and weight, isotropic direction, channel within C(s) and
+  !     energy from diffuse_mod::sample_absorber_diffuse_photon
+  !     (source_channel, energy_eV, inu and the packet cross sections reset;
+  !     from_external cleared).  A history that passes
+  !     MAX_HISTORY_EVENTS interactions stops the run (history_event_limit):
+  !     it is outside the mode's domain, not a result to be truncated.
   ! Gas heating/ionization and dust heating derive from the same path
   ! estimators; the energy totals (ion_score_mod) take the direct split of
-  ! the edge walk and the escapes and losses of the scattered flights.
+  ! the edge walk, the interactions, the roulette and the escapes and losses
+  ! of the sampled flights.
   !=========================================================================
   subroutine transport_ion_packet(photon)
     use define
-    use random,          only : rand_number
+    use random,           only : rand_number
+    use dust_ir_band_mod, only : transported_band, BAND_IONIZING
+    use diffuse_mod,      only : reemit_at_absorption, reemitted_energy, NABSORBER
     implicit none
     type(photon_type), intent(inout) :: photon
     real(wp), parameter :: WMIN = 1.0e-4_wp, PSURV = 0.1_wp
     real(wp) :: tau_edge, wgt1, tau, a_eff, gg, cost, sint, phi
     real(wp) :: kx, ky, kz, ux, uy, uz, vx, vy, vz, norm
-    integer  :: il, flight_end
+    real(wp) :: wgt_in, kap, kap_gas, kap_dabs, kap_sca, kap_reemit, kap_continue, t
+    real(wp) :: k_abs(NABSORBER), k_reemit(NABSORBER), e_erg, u_abs
+    integer  :: il, flight_end, is_abs
+    logical  :: reemit, scatter, gained
 
+    photon%nevent = 0
+    photon%root_channel = photon%source_channel
+    gained = .false.    ! the history has had an interaction with t > 1
     call build_ion_packet_physics(photon)
     call raytrace_ion_to_edge_amr(photon, tau_edge, flight_end)
     call ion_score_energy_packet(photon, tau_edge, flight_end)
-    if (.not. (par%ion_add_dust .and. par%ion_dust_scatter)) return
+    reemit = reemit_at_absorption .and. transported_band == BAND_IONIZING
+    if (.not. (par%ion_add_dust .and. par%ion_dust_scatter) .and. .not. reemit) return
     !--- every positive optical depth forces an interaction: the
     !--- extinguished weight is 1 - e^-tau_edge however small tau_edge is
     if (tau_edge <= 0.0_wp) return
@@ -271,6 +324,7 @@ contains
     !--- tau_edge > 0 (define::extinguished_fraction and its inverse)
     wgt1 = extinguished_fraction(tau_edge)
     photon%wgt = photon%wgt*wgt1
+    call ion_score_forced_interaction(photon)
     tau = optical_depth_of_extinguished_fraction(rand_number()*wgt1)
     call raytrace_ion_to_tau_amr(photon, tau, flight_end)
     call score_flight_end(photon, flight_end)
@@ -283,60 +337,194 @@ contains
           call ion_score_lost_weight(photon)
           exit
        end if
-       !--- effective albedo at (bin, leaf): dust scattering / extinction
-       a_eff = amr_grid%rhokap(il)*photon%ionphys%dust_sca &
-               / max(ion_packet_opacity(photon, il), tinest)
-       photon%wgt = photon%wgt*a_eff
+       wgt_in = photon%wgt
+       if (reemit) then
+          if (photon%nevent >= MAX_HISTORY_EVENTS) call history_event_limit(photon, il)
+          !--- the three opacities at the packet energy; kap is their sum,
+          !--- the ion_packet_opacity of the flight that stopped here
+          kap_gas  = ion_packet_gas_opacity(photon, il)
+          kap_dabs = 0.0_wp
+          kap_sca  = 0.0_wp
+          if (par%ion_add_dust) then
+             kap_dabs = amr_grid%rhokap(il)*photon%ionphys%dust_abs
+             if (par%ion_dust_scatter) kap_sca = amr_grid%rhokap(il)*photon%ionphys%dust_sca
+          end if
+          kap = kap_gas + kap_dabs + kap_sca
+          !--- the re-emitting absorbers: k_s y_s(E) [per code length]
+          call ion_packet_absorber_opacities(photon, il, k_abs)
+          e_erg = photon%energy_eV*ev2erg
+          k_reemit = k_abs*reemitted_energy(:,il)/e_erg
+          kap_reemit   = sum(k_reemit)
+          kap_continue = kap_sca + kap_reemit
+          if (kap > 0.0_wp) then
+             call ion_score_interaction_absorption(photon, wgt_in, kap_gas/kap, &
+                                                   kap_dabs/kap, kap_reemit/kap)
+             t = kap_continue/kap
+             call ion_score_continuation_factor(t)
+             gained = gained .or. t > 1.0_wp
+          else
+             !--- no absorber and no scatterer: reached only by a zero-length
+             !--- forced flight (a uniform draw of exactly 0) in an empty leaf
+             t = 0.0_wp
+          end if
+          if (t <= 0.0_wp) then
+             !--- nothing continues: the whole weight is deposited here
+             photon%wgt = 0.0_wp
+             call ion_score_interaction(photon, wgt_in)
+             exit
+          end if
+          photon%wgt = photon%wgt*t
+          call ion_score_interaction(photon, wgt_in)
+          if (gained) call ion_score_gain_history_weight(photon%wgt)
+          !--- branch: scattering with probability s/t = kap_sca/kap_continue
+          if (kap_sca <= 0.0_wp) then
+             scatter = .false.
+          else if (kap_reemit <= 0.0_wp) then
+             scatter = .true.
+          else
+             scatter = rand_number()*kap_continue < kap_sca
+          end if
+          if (.not. scatter) then
+             !--- the absorber, with probability k_s y_s / Sum
+             u_abs = rand_number()*kap_reemit
+             is_abs = NABSORBER
+             do while (is_abs > 1)
+                if (u_abs >= sum(k_reemit(1:is_abs-1))) exit
+                is_abs = is_abs - 1
+             end do
+             call reemit_diffuse_photon(photon, il, is_abs)
+             call ion_score_reemission(photon)
+             !--- peel-off of the re-emitted packet (imaging pass only):
+             !--- isotropic, with the continued weight before roulette
+             if (associated(ion_peel_reemission_hook)) &
+                call ion_peel_reemission_hook(photon)
+          end if
+       else
+          scatter = .true.
+          !--- effective albedo at (bin, leaf): dust scattering / extinction
+          a_eff = amr_grid%rhokap(il)*photon%ionphys%dust_sca &
+                  / max(ion_packet_opacity(photon, il), tinest)
+          photon%wgt = photon%wgt*a_eff
+          call ion_score_interaction(photon, wgt_in)
+       end if
        !--- peel-off of the scattered contribution (imaging pass only;
        !--- photon%k is still the incident direction here).
-       if (associated(ion_peel_scatter_hook)) &
+       if (scatter .and. associated(ion_peel_scatter_hook)) &
           call ion_peel_scatter_hook(photon)
        if (photon%wgt < WMIN) then
-          if (rand_number() > PSURV) exit
+          wgt_in = photon%wgt
+          if (rand_number() > PSURV) then
+             call ion_score_roulette(photon, wgt_in, .false.)
+             exit
+          end if
           photon%wgt = photon%wgt/PSURV
+          call ion_score_roulette(photon, wgt_in, .true.)
+          if (gained) call ion_score_gain_history_weight(photon%wgt)
        end if
-       !--- Henyey-Greenstein scattering about the current direction
-       gg = photon%ionphys%dust_g
-       if (abs(gg) > 1.0e-3_wp) then
-          cost = (1.0_wp + gg*gg - ((1.0_wp - gg*gg) &
-                 /(1.0_wp + gg*(2.0_wp*rand_number() - 1.0_wp)))**2) &
-                 /(2.0_wp*gg)
-       else
-          cost = 2.0_wp*rand_number() - 1.0_wp
+       if (scatter) then
+          !--- Henyey-Greenstein scattering about the current direction
+          gg = photon%ionphys%dust_g
+          if (abs(gg) > 1.0e-3_wp) then
+             cost = (1.0_wp + gg*gg - ((1.0_wp - gg*gg) &
+                    /(1.0_wp + gg*(2.0_wp*rand_number() - 1.0_wp)))**2) &
+                    /(2.0_wp*gg)
+          else
+             cost = 2.0_wp*rand_number() - 1.0_wp
+          end if
+          cost = min(max(cost, -1.0_wp), 1.0_wp)
+          sint = sqrt(1.0_wp - cost*cost)
+          phi  = twopi*rand_number()
+          kx = photon%kx;  ky = photon%ky;  kz = photon%kz
+          norm = sqrt(kx*kx + ky*ky + kz*kz)
+          if (norm <= 0.0_wp) then
+             call ion_score_lost_weight(photon)
+             exit
+          end if
+          kx = kx/norm;  ky = ky/norm;  kz = kz/norm
+          !--- orthonormal frame (u, v, k)
+          if (abs(kz) < 0.99_wp) then
+             ux = -ky;  uy = kx;  uz = 0.0_wp
+          else
+             ux = 0.0_wp;  uy = -kz;  uz = ky
+          end if
+          norm = sqrt(ux*ux + uy*uy + uz*uz)
+          ux = ux/norm;  uy = uy/norm;  uz = uz/norm
+          vx = ky*uz - kz*uy;  vy = kz*ux - kx*uz;  vz = kx*uy - ky*ux
+          photon%kx = sint*(cos(phi)*ux + sin(phi)*vx) + cost*kx
+          photon%ky = sint*(cos(phi)*uy + sin(phi)*vy) + cost*ky
+          photon%kz = sint*(cos(phi)*uz + sin(phi)*vz) + cost*kz
+          norm = sqrt(photon%kx**2 + photon%ky**2 + photon%kz**2)
+          photon%kx = photon%kx/norm
+          photon%ky = photon%ky/norm
+          photon%kz = photon%kz/norm
+          photon%nscatt = photon%nscatt + 1
        end if
-       cost = min(max(cost, -1.0_wp), 1.0_wp)
-       sint = sqrt(1.0_wp - cost*cost)
-       phi  = twopi*rand_number()
-       kx = photon%kx;  ky = photon%ky;  kz = photon%kz
-       norm = sqrt(kx*kx + ky*ky + kz*kz)
-       if (norm <= 0.0_wp) then
-          call ion_score_lost_weight(photon)
-          exit
-       end if
-       kx = kx/norm;  ky = ky/norm;  kz = kz/norm
-       !--- orthonormal frame (u, v, k)
-       if (abs(kz) < 0.99_wp) then
-          ux = -ky;  uy = kx;  uz = 0.0_wp
-       else
-          ux = 0.0_wp;  uy = -kz;  uz = ky
-       end if
-       norm = sqrt(ux*ux + uy*uy + uz*uz)
-       ux = ux/norm;  uy = uy/norm;  uz = uz/norm
-       vx = ky*uz - kz*uy;  vy = kz*ux - kx*uz;  vz = kx*uy - ky*ux
-       photon%kx = sint*(cos(phi)*ux + sin(phi)*vx) + cost*kx
-       photon%ky = sint*(cos(phi)*uy + sin(phi)*vy) + cost*ky
-       photon%kz = sint*(cos(phi)*uz + sin(phi)*vz) + cost*kz
-       norm = sqrt(photon%kx**2 + photon%ky**2 + photon%kz**2)
-       photon%kx = photon%kx/norm
-       photon%ky = photon%ky/norm
-       photon%kz = photon%kz/norm
-       photon%nscatt = photon%nscatt + 1
+       photon%nevent = photon%nevent + 1
        !--- next flight (unforced); segments tally into jt_ion
        tau = -log(max(rand_number(), tinest))
        call raytrace_ion_to_tau_amr(photon, tau, flight_end)
        call score_flight_end(photon, flight_end)
     end do
   end subroutine transport_ion_packet
+
+  !=========================================================================
+  ! Re-emission of a packet absorbed by absorber is (1 H0, 2 He0, 3 He+) at
+  ! the absorption point (absorption_reemission): the position, leaf,
+  ! Lpacket and weight are kept; the direction is isotropic; the channel
+  ! within C(is) and the energy are drawn by
+  ! diffuse_mod::sample_absorber_diffuse_photon (Mersenne Twister draws, in
+  ! that order: mu, phi, channel, energy); the bin, the channel, the origin
+  ! flag and the packet cross sections follow the new energy.
+  !=========================================================================
+  subroutine reemit_diffuse_photon(photon, il, is)
+    use define
+    use random,       only : rand_number
+    use diffuse_mod,  only : sample_absorber_diffuse_photon
+    use ion_band_mod, only : ion_bin_of
+    implicit none
+    type(photon_type), intent(inout) :: photon
+    integer,           intent(in)    :: il, is
+    real(wp) :: cost, sint, phi, eph
+    integer  :: ch
+
+    cost = 2.0_wp*rand_number() - 1.0_wp
+    sint = sqrt(1.0_wp - cost*cost)
+    phi  = twopi*rand_number()
+    photon%kx = sint*cos(phi)
+    photon%ky = sint*sin(phi)
+    photon%kz = cost
+    call sample_absorber_diffuse_photon(il, is, ch, eph)
+    photon%energy_eV = eph
+    photon%inu = ion_bin_of(eph)
+    photon%source_channel = ch
+    photon%from_external = .false.      ! re-emitted packets peel isotropically
+    call build_ion_packet_physics(photon)
+  end subroutine reemit_diffuse_photon
+
+  !=========================================================================
+  ! A history passed MAX_HISTORY_EVENTS interactions: the run stops on every
+  ! rank (abort_run), before any final product is written, with the leaf,
+  ! weight and packet printed by the rank that found it.
+  !=========================================================================
+  subroutine history_event_limit(photon, il)
+    use define
+    implicit none
+    type(photon_type), intent(in) :: photon
+    integer,           intent(in) :: il
+    character(len=160) :: event_line
+    character(len=256) :: packet_line
+    write(event_line,'(a,i0,a,i0,a,i0,a)') 'a packet history passed MAX_HISTORY_EVENTS = ', &
+       MAX_HISTORY_EVENTS, ' events (interactions) at leaf ', il, ' (rank ', mpar%p_rank, ')'
+    write(packet_line,'(a,es14.6,a,es14.6,a,f10.4,a,i0,a,i0,a,i0,a,i0)') &
+       ' ERROR:   weight ', photon%wgt, ', Lpacket ', photon%Lpacket, &
+       ' erg/s, energy ', photon%energy_eV, ' eV, channel ', photon%source_channel, &
+       ', root ', photon%root_channel, ', launch ', photon%id, ', stream ', photon%istream
+    call abort_run(trim(event_line)//new_line('a')//trim(packet_line)//new_line('a')// &
+       ' ERROR:   the history recycles its weight with little '// &
+       'destruction or escape (t close to 1 at its interactions); such an input '// &
+       'is outside the domain of par%diffuse_launch = ''absorption_reemission''.'// &
+       '  Run stopped.')
+  end subroutine history_event_limit
 
   !=========================================================================
   ! Where a scattered flight's weight goes when the flight ends: out of the
@@ -377,7 +565,8 @@ contains
 
   !=========================================================================
   ! Ionizing-band walk to optical depth tau_in (extinction ion_packet_opacity);
-  ! scattered flights (nscatt > 0) tally jt_ion along their segments.
+  ! the flights after an interaction (nevent > 0: a dust scattering or a
+  ! re-emission) score their segments; the forced first flight does not.
   ! flight_end (ion_score_mod): FLIGHT_STOPPED_IN_GRID when the walk ends at
   ! tau_in inside the grid; FLIGHT_ESCAPED only when the flight leaves the
   ! grid through an open face (any face of a closed box, a z face of the
@@ -404,7 +593,7 @@ contains
     end if
 
     inu = photon%inu
-    do_tally = photon%nscatt > 0
+    do_tally = photon%nevent > 0
     wl = photon%wgt*photon%Lpacket
 
     x  = photon%x;    y  = photon%y;    z  = photon%z
@@ -694,7 +883,7 @@ contains
                   photon%kz, ix, iy, iz, stp, tmax, tdel, ok)
     nx = amr_grid%nx;  ny = amr_grid%ny;  nz = amr_grid%nz
     inu = photon%inu
-    do_tally = photon%nscatt > 0
+    do_tally = photon%nevent > 0
     wl = photon%wgt*photon%Lpacket
     tau = 0.0_wp;  t_cur = 0.0_wp
 

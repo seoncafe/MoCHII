@@ -194,9 +194,16 @@ contains
     integer :: cmdstat, exitstat
     real(kind=wp), allocatable :: leafxyz(:,:), leafsize(:), jnu(:,:)
     real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped, energy_lost
-    integer :: status, il, inu, ic, nleaf
+    integer :: status, il, inu, ic, nleaf, writer_ierr
 
-    if (mpar%p_rank /= 0) return
+    ! All ranks call this writer. Hold the other ranks until rank 0 has
+    ! copied the shared frozen emission; the next diffuse_build overwrites
+    ! it before its first collective. Keep default-mode execution unchanged.
+    if (mpar%p_rank /= 0) then
+       if (trim(par%diffuse_launch) == 'absorption_reemission') &
+          call MPI_BARRIER(MPI_COMM_WORLD, writer_ierr)
+       return
+    end if
     nleaf = amr_grid%nleaf
 
     write_iterate = .false.
@@ -266,6 +273,46 @@ contains
        'escaped: direct + scattered out of grid',status)
     call io_put_keyword(file,'L_LOST',energy_lost, &
        'lost in walks (step cap, slab re-entry)',status)
+    if (trim(par%diffuse_launch) == 'absorption_reemission') then
+       block
+         use ion_score_mod, only : ion_score_reemission_totals, ion_score_interaction_energy_totals
+         use diffuse_mod, only : diffuse_nphot, diffuse_nominal_packet_lum, reemission_field_valid
+         real(kind=wp) :: re, leafem, netabs, src, launched, ext, trans, dep, roul, cesc, clost, gas, dust
+         call ion_score_reemission_totals(re, leafem, netabs)
+         call ion_score_interaction_energy_totals(src, launched, ext, trans, dep, roul, cesc, clost, gas, dust)
+         call io_put_keyword(file,'DIFLAUNC',trim(par%diffuse_launch), &
+              'diffuse emission position rule',status)
+         call io_put_keyword(file,'L_REEMIT',re, &
+              'gas re-emission [erg/s]',status)
+         call io_put_keyword(file,'L_LEAFEM',leafem, &
+              'explicit leaf emission [erg/s]',status)
+         call io_put_keyword(file,'L_NETABS',netabs, &
+              'L_ABS minus L_REEMIT [erg/s]',status)
+         call io_put_keyword(file,'L_SRCEMT',src, &
+              'launched sources [erg/s]',status)
+         call io_put_keyword(file,'L_DIREMT',launched, &
+              'sources plus explicit emission [erg/s]',status)
+         call io_put_keyword(file,'L_EXTING',ext, &
+              'extinguished direct light [erg/s]',status)
+         call io_put_keyword(file,'L_TRANS',trans, &
+              'direct transmitted light [erg/s]',status)
+         call io_put_keyword(file,'L_DEPOS',dep, &
+              'signed net event deposition [erg/s]',status)
+         call io_put_keyword(file,'L_ROULET',roul, &
+              'signed roulette correction [erg/s]',status)
+         call io_put_keyword(file,'L_CESC',cesc, &
+              'continued escaping light [erg/s]',status)
+         call io_put_keyword(file,'L_CLOST',clost, &
+              'continued lost light [erg/s]',status)
+         call io_put_keyword(file,'L_GASEVT',gas, &
+              'gas event absorption [erg/s]',status)
+         call io_put_keyword(file,'L_DUSTEVT',dust, &
+              'dust event absorption [erg/s]',status)
+         call io_put_keyword(file,'NLEAFEM',diffuse_nphot,'explicit leaf packet count',status)
+         call io_put_keyword(file,'LPACKREF',diffuse_nominal_packet_lum,'reference packet luminosity [erg/s]',status)
+         call io_put_keyword(file,'REVALID',reemission_field_valid,'previous field used for re-emission',status)
+       end block
+    end if
     if (trim(par%launch_sequence) == 'sobol') &
        call io_put_keyword(file,'QMCSEED',par%qmc_seed,'Sobol scramble seed',status)
     call io_append_image(file, gamma_HeI, status, bitpix=-64)
@@ -440,6 +487,50 @@ contains
        end block
     end if
 
+    if (trim(par%diffuse_launch) == 'absorption_reemission') then
+       block
+         use ion_score_mod, only : ion_score_absorbed_power_leaf, ion_score_reemission_leaf, &
+                                  ion_score_ledger_channels, LEDGER_NSRC, LEDGER_NABS
+         use diffuse_mod, only : diffuse_leaf_emission, diffuse_explicit_leaf_emission, diffuse_absorber_leaf
+         real(kind=wp), allocatable :: ch(:,:), re(:,:), event(:), psi(:,:), q(:,:), nr(:,:), na(:,:), f(:,:)
+         real(kind=wp) :: le(0:LEDGER_NSRC-1), la(LEDGER_NABS,0:LEDGER_NSRC-1), &
+                         ls(0:LEDGER_NSRC-1), ll(0:LEDGER_NSRC-1), ledger(LEDGER_NSRC,4)
+         allocate(ch(8,nleaf), re(8,nleaf), event(nleaf), psi(3,nleaf), q(3,nleaf), &
+                  nr(3,nleaf), na(3,nleaf), f(3,nleaf))
+         call ion_score_absorbed_power_leaf(event)
+         call io_append_image(file,event,status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','GasAbsorbedPower','measured path absorption [erg/s]',status)
+         call diffuse_leaf_emission(ch)
+         call io_append_image(file,transpose(ch),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','DiffuseStateLuminosity','frozen L_c [erg/s], leaf then channel',status)
+         call diffuse_explicit_leaf_emission(ch)
+         call io_append_image(file,transpose(ch),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','DiffuseExplicitLuminosity','explicit X_c [erg/s], leaf then channel',status)
+         call ion_score_reemission_leaf(re,event)
+         call io_append_image(file,transpose(re),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','ReemittedLuminosity','measured Re_c [erg/s], leaf then channel',status)
+         call io_append_image(file,event,status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','GasEventAbsorption','gas event absorption [erg/s]',status)
+         call diffuse_absorber_leaf(psi,q,nr,na,f)
+         call io_append_image(file,transpose(nr),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','RecombinationRate','N_rec [1/s]; H0 He0 He+',status)
+         call io_append_image(file,transpose(na),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','PhotoionizationRatePrev','raw previous N_abs [1/s]; H0 He0 He+',status)
+         call io_append_image(file,transpose(psi),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','ReemissionPsi','N_abs/N_rec; -1 inactive; H0 He0 He+',status)
+         call io_append_image(file,transpose(q),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','ReemissionEnergy','eps_re/max(psi,1) [erg]; H0 He0 He+',status)
+         call io_append_image(file,transpose(f),status,bitpix=-64)
+         call io_put_keyword(file,'EXTNAME','ReemissionFraction','eps_re/eps; H0 He0 He+',status)
+         if (par%absorption_ledger) then
+            call ion_score_ledger_channels(le,la,ls,ll)
+            ledger(:,1) = le; ledger(:,2) = sum(la,dim=1); ledger(:,3) = ls; ledger(:,4) = ll
+            call io_append_image(file,ledger,status,bitpix=-64)
+            call io_put_keyword(file,'EXTNAME','LedgerTotals','photons/s: emitted absorbed escaped lost',status)
+         end if
+       end block
+    end if
+
     call io_close(file, status)
     if (status /= 0) call abort_run('failed to write rates file: '//trim(partname))
     if (write_iterate) then
@@ -451,6 +542,8 @@ contains
     else
        write(*,'(2a)') ' ION: rates written to: ', trim(filename)
     end if
+    if (trim(par%diffuse_launch) == 'absorption_reemission') &
+       call MPI_BARRIER(MPI_COMM_WORLD, writer_ierr)
   contains
 
     subroutine write_history(h, name)
