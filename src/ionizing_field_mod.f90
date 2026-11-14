@@ -212,8 +212,9 @@ contains
     !--- ion_Ltot/nphotons for the whole band, L_ion/nphotons with the
     !--- strata), so the recombination field is sampled as finely as the
     !--- field that drives it; under absorption_reemission that holds for
-    !--- the launched remainder, n = max(1, nint(Sum X / Lpacket)) packets of
-    !--- Sum X / n.
+    !--- the launched remainder Sum X.  The count is
+    !--- n = min(par%nphotons, max(1, nint(L / Lpacket))) packets of L / n
+    !--- (diffuse_build), L being the diffuse luminosity or Sum X.
     subroutine tabulate_diffuse_emission()
       call diffuse_build(ionizing_packet_luminosity())
       call report_diffuse_emission()

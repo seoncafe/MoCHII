@@ -15,8 +15,9 @@ module jtally_mod
 !--- sample the standard exponential free path and are tallied along the
 !--- actual walked segments in raytrace_to_tau_car (unbiased).
 !---
-!--- The tally array is private to each MPI rank and MPI_REDUCEd once at the
-!--- end of the run.  SED-mode scope: Cartesian grid.
+!--- The tally array is private to each MPI rank; jtally_reduce sums it over
+!--- the ranks (memory_mod::sum_over_ranks) and leaves the sum on every rank.
+!--- SED-mode scope: Cartesian grid.
   use define
   implicit none
   public
@@ -174,20 +175,13 @@ contains
   !---------------------------------------------------------------
   subroutine jtally_reduce()
   use mpi
+  use memory_mod, only : sum_over_ranks
   implicit none
-  integer :: ierr, ic, nchunk, i0, n
-  !--- ALLREDUCE (not reduce-to-0) so every rank holds the full tally: the
-  !--- dust-emission stage distributes cells across ranks and reads jt_sum
-  !--- locally.  Reduce in chunks of cells to keep each MPI count within int32.
+  integer :: ierr
+  !--- every rank holds the full tally after the sum: the dust-emission
+  !--- stage distributes cells across ranks and reads jt_sum locally.
   if (.not. jt_on) return
-  nchunk = max(1, 100000000/max(size(jt_sum,1),1))   ! ~1e8 elements per call
-  i0 = 1
-  do while (i0 <= jt_ncell)
-     n = min(nchunk, jt_ncell-i0+1)
-     call MPI_ALLREDUCE(MPI_IN_PLACE, jt_sum(:,i0:i0+n-1), int(size(jt_sum,1)*n), &
-                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-     i0 = i0 + n
-  enddo
+  call sum_over_ranks(jt_sum)
   call MPI_ALLREDUCE(MPI_IN_PLACE, jt_eabs, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
   end subroutine jtally_reduce
 
@@ -239,18 +233,10 @@ contains
 
   !---------------------------------------------------------------
   subroutine jtally_ion_reduce()
-  use mpi
+  use memory_mod, only : sum_over_ranks
   implicit none
-  integer :: ierr, nchunk, i0, n
   if (.not. jt_ion_on) return
-  nchunk = max(1, 100000000/max(size(jt_ion,1),1))
-  i0 = 1
-  do while (i0 <= jt_ion_nleaf)
-     n = min(nchunk, jt_ion_nleaf-i0+1)
-     call MPI_ALLREDUCE(MPI_IN_PLACE, jt_ion(:,i0:i0+n-1), int(size(jt_ion,1)*n), &
-                        MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-     i0 = i0 + n
-  enddo
+  call sum_over_ranks(jt_ion)
   end subroutine jtally_ion_reduce
 
   !---------------------------------------------------------------

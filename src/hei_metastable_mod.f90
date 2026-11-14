@@ -104,7 +104,8 @@ module hei_metastable_mod
   use define
   use mpi
   use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
-                          shared_host_rank, shared_host_size, shared_host_comm
+                          shared_host_rank, shared_host_size, shared_host_comm, &
+                          sum_over_ranks
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use photo_xsec,   only : sigma_vfky96
   implicit none
@@ -426,17 +427,15 @@ contains
     heat3_path(il) = heat3_path(il) + s*max(1.0_wp - (IP_HE_EV - hm_E23S)/E, 0.0_wp)
   end subroutine hei_metastable_path_score
 
-  !--- reduce, then turn Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu
-  !--- per leaf, as for Gamma_i.
+  !--- sum over the ranks, then turn Sum(path_lum coeff) into
+  !--- Int 4 pi J_nu coeff dnu in each leaf, as for Gamma_i.
   subroutine hei_metastable_path_reduce()
-    integer :: ierr, il, n
+    integer :: il, n
     real(kind=wp) :: fac
     if (.not. allocated(phi3_path)) return
     n = size(phi3_path)
-    call MPI_ALLREDUCE(MPI_IN_PLACE, phi3_path, n, MPI_DOUBLE_PRECISION, &
-                       MPI_SUM, MPI_COMM_WORLD, ierr)
-    call MPI_ALLREDUCE(MPI_IN_PLACE, heat3_path, n, MPI_DOUBLE_PRECISION, &
-                       MPI_SUM, MPI_COMM_WORLD, ierr)
+    call sum_over_ranks(phi3_path)
+    call sum_over_ranks(heat3_path)
     call phi3_leaf_windows(n)
     do il = shared_host_rank() + 1, n, shared_host_size()
        fac = 1.0_wp/((2.0_wp*leaf_half(il))**3*par%distance2cm**2)

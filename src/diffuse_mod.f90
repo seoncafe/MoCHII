@@ -194,7 +194,8 @@ module diffuse_mod
   !--- less than half a packet).
   real(kind=wp) :: diffuse_packet_lum = 0.0_wp
   !--- the nominal packet luminosity diffuse_build was given (lpacket), the
-  !--- divisor of the count rule n = max(1, nint(L_diffuse/lpacket)) [erg/s]
+  !--- divisor of the count rule
+  !--- n = min(par%nphotons, max(1, nint(L_diffuse/lpacket))) [erg/s]
   real(kind=wp) :: diffuse_nominal_packet_lum = 0.0_wp
   integer(kind=int64) :: diffuse_nphot = 0
 
@@ -417,7 +418,15 @@ contains
     end if
     diffuse_nominal_packet_lum = lpacket
     if (diffuse_lum > 0.0_wp) then
-       diffuse_nphot = max(1_int64, nint(diffuse_lum/lpacket, int64))
+       !--- count: one packet for each lpacket of diffuse luminosity, at most
+       !--- par%nphotons (the source packet count).  A state far more ionized
+       !--- than the source can keep (a fully ionized initial state) has
+       !--- L_diffuse of hundreds of L_source; without the limit its packets
+       !--- would outnumber the source packets by that factor.  At the limit
+       !--- each packet carries more than lpacket, diffuse_lum/par%nphotons,
+       !--- so the transported total stays diffuse_lum.
+       diffuse_nphot = min(par%nphotons, &
+                           max(1_int64, nint(diffuse_lum/lpacket, int64)))
        diffuse_packet_lum = diffuse_lum/real(diffuse_nphot, wp)
     else
        diffuse_nphot = 0

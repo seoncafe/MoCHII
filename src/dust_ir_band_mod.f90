@@ -219,18 +219,12 @@ contains
   !=========================================================================
   subroutine dust_ir_band_reduce()
     use mpi
+    use memory_mod, only : sum_over_ranks
     implicit none
-    integer :: ierr, nchunk, i0, n
+    integer :: ierr
     real(kind=wp) :: totals(6)
 
-    nchunk = 100000000
-    i0 = 1
-    do while (i0 <= ir_nleaf)
-       n = min(nchunk, ir_nleaf-i0+1)
-       call MPI_ALLREDUCE(MPI_IN_PLACE, ir_abs_path(i0:i0+n-1), n, &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-       i0 = i0 + n
-    end do
+    call sum_over_ranks(ir_abs_path(1:ir_nleaf))
     if (ir_nlam > 0) &
        call MPI_ALLREDUCE(MPI_IN_PLACE, Lesc_bin, ir_nlam, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)

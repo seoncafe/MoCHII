@@ -2339,7 +2339,7 @@ read grid $\rightarrow$ persist gas leaf state $\rightarrow$ refresh the leaf
 \> sample and transport stellar packets (analytic edge walk, Eq.~\ref{eq:edgewalk})\\
 \> [transported continuum] rebuild the diffuse emission table from the\\
 \> \> current state; sample and transport
-   $\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})$ diffuse packets\\
+   $\min[N,\,\mathrm{nint}(L_{\rm dif}/L_{\rm pkt})]$ diffuse packets\\
 \> reduce the path estimators; rates (Eq.~\ref{eq:rates}); metal $\Gamma$'s\\
 \> solve each leaf: ionization only or coupled $(x, T_e)$\\
 \> refresh the dust density and the metal stage cache from the new state\\
@@ -2433,7 +2433,11 @@ of diffuse recombination packets is set by the luminosity of one
 \emph{ionizing} source packet, $L_{\rm ion}/N$ ($L/N$ without the strata),
 and each carries $L_{\rm dif}$ over that number (\S\ref{sec:diffuse}), so
 the field that drives the ionization and the field it produces are sampled
-equally finely whatever the FUV share.  With \code{launch\_sequence = 'sobol'} the ionizing
+equally finely whatever the FUV share.  The number is limited to the source
+packet count $N$ (\code{no\_photons}): a state far more ionized than the
+source can keep, such as a fully ionized initial state, has $L_{\rm dif}$
+of hundreds of $L_{\rm ion}$, and at the limit each diffuse packet carries
+$L_{\rm dif}/N$, more than a source packet.  With \code{launch\_sequence = 'sobol'} the ionizing
 stratum uses the stellar stream at indices $0\ldots N-1$ --- the points a
 run without the extension uses --- and the FUV stratum a third scramble
 stream of its own, indexed from 0.
@@ -2468,6 +2472,12 @@ volume-integrated tests
   \frac{\sum_{\rm leaf} V\,n_e\,|\Delta T_e|}
        {\sum_{\rm leaf} V\,n_e\,T_e} < \code{gas\_tol\_te}.
 \end{equation}
+Each denominator is the larger of its values before and after the
+iteration, $\max(\sum V x_{{\rm HII},n-1},\,\sum V x_{{\rm HII},n})$ and its
+counterpart for $n_e T_e$, and $\max|\Delta T_e|/T_e$ divides by the larger
+$T_e$ of the cell: a measure is then at most 1 whether the ionized volume
+grows or collapses, where over the new state alone a collapse to $1/k$ of
+the volume would read $k-1$.
 The volume measures fix both stall modes of the cell-max tests: front
 jitter occupies little volume (the front shell is a few thousand cells
 against $\sim$10$^5$ ionized ones, so its noise enters the $L_1$ norm
@@ -2488,7 +2498,8 @@ passes with fewer than 8 iterations of history, and the floor is accepted
 only when the signed step
 \begin{equation}
   s_n = \frac{\sum_{\rm leaf} V\,(x_{{\rm HII},n} - x_{{\rm HII},n-1})}
-             {\sum_{\rm leaf} V\,x_{{\rm HII},n}}
+             {\max\left(\sum_{\rm leaf} V\,x_{{\rm HII},n-1},\,
+                         \sum_{\rm leaf} V\,x_{{\rm HII},n}\right)}
 \end{equation}
 (and its helium counterparts) has a mean over those 8 iterations that does
 not stand out of its scatter, $|\bar s| < 2.365\,\sigma_s/\sqrt{8}$ (Student's

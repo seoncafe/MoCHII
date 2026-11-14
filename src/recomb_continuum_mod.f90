@@ -9,7 +9,7 @@ module recomb_continuum_mod
 !    interpolation, linear-in-nu interpolation of log gamma between edge
 !    pairs, as MOCASSIN fb_ff), plus the ranges the tables leave out (the
 !    gaps around each edge, the stretch up to the ground edge, and below the
-!    first node), which returned 0 until 2026-09-26; see gamma_tab.
+!    first node); see gamma_tab.
 !    VERIFIED (2026-07-12, tools check vs a hydrogenic Kramers Milne sum):
 !    the tables are free-bound PLUS free-free combined — do not add ff again
 !    inside the table range.  The Ercolano & Storey (2006) machine-readable
@@ -33,6 +33,7 @@ module recomb_continuum_mod
 
   public :: recomb_continuum_setup, recomb_continuum_is_ready
   public :: gamma_tab, gamma_milne, gamma_ff, gamma_tab_nodes
+  public :: gamma_tab_pair, gamma_tab_spectrum
   public :: RYD_ERG, HCRYD_K, MILNE_C, NU_HI, NU_HEI, NU_HEII
   public :: freefree_band_setup, freefree_band_coefficient
   public :: freefree_band_sample_energy, freefree_band_is_ready
@@ -65,15 +66,20 @@ module recomb_continuum_mod
   real(kind=wp), parameter :: RYD_ERG   = 2.1798723611035e-11_wp
   !--- Ryd/k [K] for the frequencies of these tables, which are in units of
   !--- the infinite-mass Rydberg (RYD_ERG; the H edge sits at 0.999466 of
-  !--- it, and MILNE_C carries R_inf^2).  It was MOCASSIN's 157807 K, close
-  !--- to the H ionization energy over k (157802 K) rather than R_inf/k
-  !--- (157887.5 K), so exp(-h nu/kT) was too large by exp(5.1e-4 h nu/kT):
-  !--- the free-free coefficient +0.8% at 1 Ryd and 1e4 K, +3.3% at 4 Ryd.
+  !--- it, and MILNE_C carries R_inf^2).  MOCASSIN's 157807 K is close to
+  !--- the H ionization energy over k (157802 K) rather than R_inf/k
+  !--- (157887.5 K), which makes exp(-h nu/kT) too large by
+  !--- exp(5.1e-4 h nu/kT): the free-free coefficient +0.8% at 1 Ryd and
+  !--- 1e4 K, +3.3% at 4 Ryd.
   real(kind=wp), parameter :: HCRYD_K   = RYD_ERG/kboltz_cgs
   real(kind=wp), parameter :: MILNE_C   = 4.9874105e-6_wp   ! (h^2/2 pi me k)^1.5 Ryd^2 [cm K^1.5]
   real(kind=wp), parameter :: NU_HI     = 0.999466_wp       ! edges [Ryd]
   real(kind=wp), parameter :: NU_HEI    = 1.80804_wp
   real(kind=wp), parameter :: NU_HEII   = 4.001067_wp
+  real(kind=wp), parameter :: NU_GROUND(3) = [NU_HI, NU_HEI, NU_HEII]
+
+  !--- gamma_tab_pair codes for the two ranges outside the node pairs
+  integer, parameter :: PAIR_BELOW_TABLE = 0, PAIR_ABOVE_GROUND = -1
 
 contains
 
@@ -116,12 +122,11 @@ contains
   ! at (nu, T) BELOW its ground edge (0 at and above it, where the caller
   ! takes the Milne ground continuum plus free-free).  Inside the table:
   ! linear log-gamma interpolation within an edge pair, log-log linear in T
-  ! (clamped) -- the fb_ff scheme.  Three ranges the table does not cover,
-  ! all of which used to return 0, i.e. no emission at all:
+  ! (clamped) -- the fb_ff scheme.  Three ranges the table does not cover:
   !  - the gaps between pairs.  Each pair runs from just above one edge to
   !    just below the next, so the nodes (rounded to 1e-4 Ryd) leave a gap of
   !    about 2e-4 Ryd with the edge inside it: 10 in the H+ table, 7 in He+,
-  !    1 in He2+, and five of the written-continuum frequencies fell in one.
+  !    1 in He2+, and five of the written-continuum frequencies fall in one.
   !    The edge is placed at the gap's midpoint, within 1e-4 Ryd of the true
   !    edge (the precision of the nodes themselves; for H at 1/121 Ryd it is
   !    3.5e-5 Ryd off), and each side extends its own pair.
@@ -141,30 +146,80 @@ contains
   !    is -0.3% (H+, 0.00689 against 0.0069 Ryd) and +3.6% (He2+, 0.02779
   !    against 0.0278 Ryd) off the table; free-free alone would be -6.6% and
   !    -30%.
+  ! gamma_tab_spectrum gives the same coefficient on a fixed frequency grid
+  ! at one T, with the frequency positions found once (gamma_tab_pair).
   !=========================================================================
   recursive real(kind=wp) function gamma_tab(k, nu, T) result(g)
     implicit none
     integer,       intent(in) :: k
     real(kind=wp), intent(in) :: nu, T
-    real(kind=wp), parameter :: NU_GROUND(3) = [NU_HI, NU_HEI, NU_HEII]
-    integer :: i, ilo, n
+    real(kind=wp) :: w
+    integer :: ilo, iT
 
-    g = 0.0_wp
-    n = gtab(k)%nnu
-    if (nu >= NU_GROUND(k)) return
-    if (nu < gtab(k)%nu(1)) then
-       select case (k)
-       case (1)
-          g = high_level_capture(nu, T, 1)
-       case (2)
-          g = gamma_tab(1, nu, T)
-       case (3)
-          g = high_level_capture(nu, T, 2)
+    ilo = gamma_tab_pair(k, nu)
+    select case (ilo)
+    case (PAIR_ABOVE_GROUND)
+       g = 0.0_wp
+    case (PAIR_BELOW_TABLE)
+       g = gamma_below_table(k, nu, T)
+    case default
+       call gamma_tab_temperature(k, T, iT, w)
+       g = pair_value(k, ilo, nu, &
+              gtab(k)%lg(ilo,  iT)*(1.0_wp - w) + gtab(k)%lg(ilo,  iT+1)*w, &
+              gtab(k)%lg(ilo+1,iT)*(1.0_wp - w) + gtab(k)%lg(ilo+1,iT+1)*w)
+    end select
+  end function gamma_tab
+
+  !=========================================================================
+  ! gamma_tab(k, nu(i), T) for every frequency of a grid, pair(i) =
+  ! gamma_tab_pair(k, nu(i)): the temperature interpolation of the table
+  ! is done once for all its nodes, the frequency positions are the
+  ! caller's.  The arithmetic of each value is that of gamma_tab.
+  !=========================================================================
+  subroutine gamma_tab_spectrum(k, nu, pair, T, g)
+    implicit none
+    integer,       intent(in)  :: k, pair(:)
+    real(kind=wp), intent(in)  :: nu(:), T
+    real(kind=wp), intent(out) :: g(:)
+    real(kind=wp) :: w, lgT(gtab(k)%nnu)
+    integer :: i, iT, ilo
+
+    call gamma_tab_temperature(k, T, iT, w)
+    lgT = gtab(k)%lg(:, iT)*(1.0_wp - w) + gtab(k)%lg(:, iT+1)*w
+    do i = 1, size(nu)
+       ilo = pair(i)
+       select case (ilo)
+       case (PAIR_ABOVE_GROUND)
+          g(i) = 0.0_wp
+       case (PAIR_BELOW_TABLE)
+          g(i) = gamma_below_table(k, nu(i), T)
+       case default
+          g(i) = pair_value(k, ilo, nu(i), lgT(ilo), lgT(ilo+1))
        end select
+    end do
+  end subroutine gamma_tab_spectrum
+
+  !=========================================================================
+  ! The node pair of table k that gamma_tab interpolates in at nu: the
+  ! first node ilo of the pair whose span, extended halfway across the gaps
+  ! on either side (and to the ground edge above the last node), contains
+  ! nu; PAIR_BELOW_TABLE below the first node, PAIR_ABOVE_GROUND at and
+  ! above the ground edge.
+  !=========================================================================
+  integer function gamma_tab_pair(k, nu) result(ilo)
+    implicit none
+    integer,       intent(in) :: k
+    real(kind=wp), intent(in) :: nu
+    integer :: i, n
+    n = gtab(k)%nnu
+    if (nu >= NU_GROUND(k)) then
+       ilo = PAIR_ABOVE_GROUND
        return
     end if
-    !--- the pair whose span, extended halfway across the gaps on either
-    !--- side (and to the ground edge above the last node), contains nu
+    if (nu < gtab(k)%nu(1)) then
+       ilo = PAIR_BELOW_TABLE
+       return
+    end if
     ilo = n - 1
     do i = 1, n/2 - 1
        if (nu < 0.5_wp*(gtab(k)%nu(2*i) + gtab(k)%nu(2*i+1))) then
@@ -172,8 +227,39 @@ contains
           exit
        end if
     end do
-    g = pair_value(k, ilo, nu, T)
-  end function gamma_tab
+  end function gamma_tab_pair
+
+  !--- below the first node of table k (see gamma_tab)
+  recursive real(kind=wp) function gamma_below_table(k, nu, T) result(g)
+    integer,       intent(in) :: k
+    real(kind=wp), intent(in) :: nu, T
+    select case (k)
+    case (1)
+       g = high_level_capture(nu, T, 1)
+    case (2)
+       g = gamma_tab(1, nu, T)
+    case default
+       g = high_level_capture(nu, T, 2)
+    end select
+  end function gamma_below_table
+
+  !--- temperature node iT of table k and the log-log weight w (clamped)
+  subroutine gamma_tab_temperature(k, T, iT, w)
+    integer,       intent(in)  :: k
+    real(kind=wp), intent(in)  :: T
+    integer,       intent(out) :: iT
+    real(kind=wp), intent(out) :: w
+    if (T <= gtab(k)%tk(1)) then
+       iT = 1;  w = 0.0_wp
+    else if (T >= gtab(k)%tk(gtab(k)%nT)) then
+       iT = gtab(k)%nT - 1;  w = 1.0_wp
+    else
+       do iT = 1, gtab(k)%nT - 1
+          if (T < gtab(k)%tk(iT+1)) exit
+       end do
+       w = log10(T/gtab(k)%tk(iT)) / log10(gtab(k)%tk(iT+1)/gtab(k)%tk(iT))
+    end if
+  end subroutine gamma_tab_temperature
 
   !--- Free-free plus Kramers free-bound into all levels n >= n1 of a
   !--- hydrogenic ion of charge Z, n1 the lowest level with Z^2/n^2 <= nu
@@ -192,25 +278,13 @@ contains
     g = ff*(1.0_wp + (exp(chi1*HCRYD_K/T) - 1.0_wp)/gff)
   end function high_level_capture
 
-  !--- log gamma linear in nu through the pair (ilo, ilo+1), log-log in T
-  !--- (clamped); used inside the pair and, extended, across a gap.
-  real(kind=wp) function pair_value(k, ilo, nu, T) result(g)
+  !--- log gamma linear in nu through the pair (ilo, ilo+1), whose log
+  !--- values at the temperature are lg1 and lg2; used inside the pair and,
+  !--- extended, across a gap.
+  real(kind=wp) function pair_value(k, ilo, nu, lg1, lg2) result(g)
     integer,       intent(in) :: k, ilo
-    real(kind=wp), intent(in) :: nu, T
-    integer :: iT
-    real(kind=wp) :: w, lg1, lg2, lg
-    if (T <= gtab(k)%tk(1)) then
-       iT = 1;  w = 0.0_wp
-    else if (T >= gtab(k)%tk(gtab(k)%nT)) then
-       iT = gtab(k)%nT - 1;  w = 1.0_wp
-    else
-       do iT = 1, gtab(k)%nT - 1
-          if (T < gtab(k)%tk(iT+1)) exit
-       end do
-       w = log10(T/gtab(k)%tk(iT)) / log10(gtab(k)%tk(iT+1)/gtab(k)%tk(iT))
-    end if
-    lg1 = gtab(k)%lg(ilo,  iT)*(1.0_wp - w) + gtab(k)%lg(ilo,  iT+1)*w
-    lg2 = gtab(k)%lg(ilo+1,iT)*(1.0_wp - w) + gtab(k)%lg(ilo+1,iT+1)*w
+    real(kind=wp), intent(in) :: nu, lg1, lg2
+    real(kind=wp) :: lg
     lg  = lg2 + (lg1 - lg2)*(gtab(k)%nu(ilo+1) - nu) &
           / (gtab(k)%nu(ilo+1) - gtab(k)%nu(ilo))
     g = 10.0_wp**lg
@@ -248,9 +322,7 @@ contains
   !=========================================================================
   ! Free-free coefficient [1e-40 erg cm^3/s/Hz], 4 pi j_nu / (n_e n_i):
   ! gamma_ff = FF_SPECTRAL Z^2 g_ff exp(-h nu/kT)/sqrt(T) * 1e40, with
-  ! FF_SPECTRAL and g_ff from free_free_mod (until 2026-10-11 the rounded
-  ! MOCASSIN 6.8391e-38 and the Hummer fit at every u, also above its
-  ! stated u <= 10^1.5).
+  ! FF_SPECTRAL and g_ff from free_free_mod.
   !=========================================================================
   real(kind=wp) function gamma_ff(nu, T, Z) result(g)
     implicit none

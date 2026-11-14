@@ -54,7 +54,7 @@ for this memo. Atomic-data comparisons are excluded.
 \Source The three columns below mean:
 \begin{description}[leftmargin=2.1em,style=nextline,itemsep=2pt]
 \item[A: MOCASSIN] The inspected tree
-\path{~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/source/}.
+\path{~/MOCASSIN/mocassin-mocassin.2.02.73.2/source/}, identified by the author on November 14, 2026 as the original-author code, with the five supplied \path{~/MOCASSIN/error_fix/} files already incorporated.
 \item[B: v1.00 algorithm] The default leaf-emissivity algorithm, evaluated
 in the current v1.10 source with
 \code{par\%diffuse\_launch}\allowbreak\code{='leaf\_emissivity'}.
@@ -64,20 +64,23 @@ recombination radiation, using the current capped r7 rule.
 \end{description}
 References \textsf{M:}, \textsf{S:}, and \textsf{O:} identify files in that
 MOCASSIN directory, \path{MoCHII_v1.10/src/}, and
-\path{MoCHII_v1.00/src/}, respectively. Line numbers refer to the source
-read on November 13, 2026. An isolated routine is not counted as an active
+\path{MoCHII_v1.00/src/}, respectively. MOCASSIN line numbers refer to the original-author tree rechecked on
+November 14, 2026; the MoCHII citations retain their earlier source basis. An isolated routine is not counted as an active
 algorithm without following its caller.
 
-\Source The MOCASSIN directory contains local modifications, including
-fixed-seed input, face-based traversal, and revised MPI/convergence code.
-Its driver calls input, seeding, grid setup, and \code{iterateMC}; its
-Makefile includes the corresponding objects
-(\mc{mocassin.f90}{67--88,\allowbreak 129--131}; \mc{../Makefile}{59--66}).
-A same-named local archive already contains spectral CDF sampling,
-exponential optical depths, and HG scattering, but was not authenticated
-as a release reference. Thus ``MOCASSIN'' here means this concrete local
-tree; local changes are not silently attributed to an unmodified public
-2.02.73 release.
+\Source The five files in \path{~/MOCASSIN/error_fix/} match the
+corresponding files in source A. ``Original-author code'' identifies this
+specified tree, not an independently authenticated pristine release;
+its supplied files also contain dated corrections. Its driver calls
+input, grid/radiation setup, and \code{MCIterationDriver}, which enters
+\code{iterateMC} (\mc{mocassin.f90}{65--83,\allowbreak 124--126};
+\mc{../Makefile}{41--45}; \mc{iteration_mod.f90}{12--34}).
+The separate \path{~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/source/}
+tree is the user's unfinished error-fix and optimization work, including
+fixed-seed input, explicit-face traversal, and revised MPI/convergence
+code; it is not source A. Differences relevant here are stated where
+they affect the description. No equivalence of the two executables is
+assumed.
 
 \Source B denotes algorithm equivalence, not universal executable or byte
 identity. Direct source comparison finds identical common spectral,
@@ -135,17 +138,17 @@ Low energies & Ordinary lines terminate; low-energy continuum travels if dust is
 \both{Chosen source band can include FUV; general optical/IR line outputs are local emissivities, not full line transfer}\\
 Thermal dust & Current dust emission CDF in absorption histories; temperature updated between passes &
 \both{Gas-band grain absorption/scattering plus a separate optional dust-IR iteration}\\
-Outer iteration & Transport, cell update, converged-cell fraction; optional packet growth &
+Outer iteration & Transport, cell update, weighted grid convergence fractions; optional packet growth &
 \both{Transport, rates, relaxed gas update, opacity update; fixed prescribed source count; final transport and gas update}\\
 Conservation & Unchanged history normalization; photon number changes with frequency &
 Separate source/state emission and band accounting & Gross band closure plus re-emission/net absorption; signed deposition and roulette\\
 Diffuse noise & Ordinary sample count follows absorption histories &
 Full-state explicit sample population & Remainder samples plus correlated descendants; no general noise advantage\\
-Grid & Nested Cartesian grids; local face/DDA implementation &
+Grid & Nested Cartesian grids; cell boundaries derived from axis midpoints &
 \both{Octree leaves or dedicated Cartesian DDA; optional solution-driven refinement}\\
 MPI & Source packet division; estimator/state reductions &
 \both{Static cyclic or dynamic packet scheduling; distributed gas solves; node-shared state arrays}\\
-Random histories & Intrinsic rank-associated streams; fixed-seed option is local &
+Random histories & Intrinsic streams reseeded from clock/rank state in driver calls &
 \both{QMC fixes launches by global index; interactions remain pseudorandom and rank/schedule dependent}\\
 Observations & Escaped energy by origin, frequency, angle; auxiliary cube outputs &
 Direct and dust-scattering observer estimates & Same, plus isotropic re-emission peel before roulette\\
@@ -159,7 +162,7 @@ Mapped gas/rate state, vacuum by stored $n_{\rm H}$; optional stopping histories
 not physical time integration of individual photons and gas parcels.
 A pass fixes cell properties for transfer, accumulates radiation
 estimators, then updates gas. In A, opacity and emission precede packets
-and \code{updateCell} follows (\mc{iteration_mod.f90}{135--218,\allowbreak 345,\allowbreak 497--578,\allowbreak 803--808}).
+and \code{updateCell} follows (\mc{iteration_mod.f90}{120--218,\allowbreak 295,\allowbreak 458--551,\allowbreak 828--833}).
 In B/C, the loop calls \code{ionizing\_field\_and\_rates}, then the
 ionization/thermal update and opacity rebuild
 (\ms{main.f90}{194--241,\allowbreak 262}).
@@ -168,7 +171,7 @@ ionization/thermal update and opacity rebuild
 probabilities, use straight flights through piecewise cell coefficients,
 and estimate radiation from traversed material rather than requiring
 absorption in a cell. A samples frequency indices and lengths
-(\mc{photon_mod.f90}{728--754,\allowbreak 821--822,\allowbreak 1487--1496}); B/C invert an
+(\mc{photon_mod.f90}{730--756,\allowbreak 823--824,\allowbreak 1563--1574}); B/C invert an
 energy-luminosity CDF and score exact-energy path integrals
 (\ms{energy_sampler_mod.f90}{44--81,\allowbreak 203--254};
 \ms{ion_score_mod.f90}{401--487}). This common principle does not imply
@@ -178,7 +181,7 @@ identical frequency discretization or variance.
 ``energy packet'' changes its represented photon number after a frequency
 change. In steady state its normalization is an energy rate: A explicitly
 describes \code{deltaE} in units of $10^{36}$ erg~s$^{-1}$
-(\mc{photon_mod.f90}{286--293}); B/C use $W=wL_{\rm packet}$ and photon
+(\mc{photon_mod.f90}{272--279}); B/C use $W=wL_{\rm packet}$ and photon
 rate $W/E$ (\ms{ion_score_mod.f90}{554--575}). Merely contrasting energy
 and luminosity misses the substantive difference: how normalization
 changes during a history.
@@ -186,7 +189,7 @@ changes during a history.
 \Source Both families include dust extinction/scattering, local emission
 spectra depending on the current state, and MPI field reductions. A uses
 scattering opacity divided by extinction and an HG direction when selected
-(\mc{photon_mod.f90}{1575--1600,\allowbreak 1668--1700}); B/C use exact-energy dust
+(\mc{photon_mod.f90}{1672--1697,\allowbreak 1765--1797}); B/C use exact-energy dust
 coefficients and HG scattering with weighted continuation
 (\ms{ion_packet_mod.f90}{22--90}; \ms{raytrace_amr.f90}{402--460}).
 These are common operations implemented with different Monte Carlo decisions.
@@ -196,9 +199,9 @@ These are common operations implemented with different Monte Carlo decisions.
 \subsection{Packet normalization, spectra, and source sampling}
 \Source A's packet stores frequency/index, position, direction, grid/cell
 indices, and stellar/line flags, with no evolving weight
-(\mc{common_mod.f90}{353--369}). Each star has $\delta E_j=L_j/N_j$;
+(\mc{common_mod.f90}{305--321}). Each star has $\delta E_j=L_j/N_j$;
 an extended diffuse source can have a cell normalization
-(\mc{set_input_mod.f90}{991--996}; \mc{photon_mod.f90}{73}).
+(\mc{set_input_mod.f90}{900--905}; \mc{photon_mod.f90}{65}).
 Re-emission and escape retain that history's \code{deltaE(iStar)}.
 ``Equal energy'' is therefore a within-history statement here, not a
 guarantee of identical normalization across every source/cell.
@@ -209,10 +212,10 @@ or the corresponding stratum value (\ms{define.f90}{131--162};
 \ms{ion_band_mod.f90}{531--566,\allowbreak 2459--2466}). Components are drawn in
 proportion to integrated band luminosity
 (\ms{ion_band_mod.f90}{341--424,\allowbreak 595--623}); A loops over sources and
-partitions prescribed counts among ranks (\mc{iteration_mod.f90}{511--533}).
+partitions prescribed counts among ranks (\mc{iteration_mod.f90}{474--496}).
 
 \Source A selects an index with \code{getNu2}, then sets
-$\nu=\code{nuArray(nuP)}$ (\mc{photon_mod.f90}{531--545,\allowbreak 728--754,\allowbreak 821--822}).
+$\nu=\code{nuArray(nuP)}$ (\mc{photon_mod.f90}{538--552,\allowbreak 730--756,\allowbreak 823--824}).
 B integrates a nonnegative piecewise linear spectral luminosity density,
 searches its independent CDF, and inverts within the sampler interval.
 It then labels the energy with an output bin; it does not select that
@@ -222,9 +225,45 @@ output bin first and draw uniformly inside it
 adopted representation, not an unapproximated Planck function. The CDF
 is proportional to energy luminosity, not luminosity divided by photon energy.
 
+A tabulated input spectrum reaches the two codes differently, and the same
+file then gives different source spectra. For a spectrum file (a file name
+as \code{contShape}, branch \code{'rauch'}), \Source A converts each input
+point to $F_\nu$, assigns it to the frequency bin whose midpoint interval
+contains it, and averages the points of a bin; a bin that receives no
+input point keeps zero flux, and the bin probabilities are
+$F_\nu\,\Delta\nu$ over their sum
+(\mc{set_input_mod.f90}{351--357}; \mc{continuum_mod.f90}{216--283,\allowbreak 442--458}).
+No interpolation fills the empty bins in this \code{rauch} branch,
+which has the same binning expressions in the user's RT tree. The
+\code{SB99} branch instead interpolates internal empty energy-flux bins;
+in A it constructs photon flux before filling them, without recomputing
+that flux afterward (\mc{continuum_mod.f90}{192--214}). A also initializes
+\code{lamCount} outside the source loop, so multiple tabulated sources
+reuse earlier counts; the RT tree moves that reset inside the loop and
+recomputes SB99 photon flux after filling gaps
+(\mc{continuum_mod.f90}{59,\allowbreak 92--99}).
+\Source B integrates the piecewise linear spectrum through the file points. Where the frequency grid of A is
+finer than the file, part of the band is therefore removed from A's
+source, and the removed share varies with energy because A refines its grid
+near the ionization edges.
+
+\Measured Previously evaluated for one input (a 1220-point
+stellar population spectrum, \code{nbins = 600}, $0.092$--$17$~Ryd): the
+file has 42, 36 and 43 points in 13.6--24.6~eV, 24.6--54.4~eV and above,
+against 51, 70 and 89 bins of A, of which 15, 34 and 46 are empty. At equal
+hydrogen-ionizing photon rate, $Q({\rm He^0})/Q({\rm H^0})$ is 0.1297 for
+the integrated file and 0.1054 for A's binned spectrum, a factor 1.230;
+between 27 and 40~eV the integrated file carries 1.35 to 1.55 times the
+photons of the binned one. Matching $Q({\rm H^0})$ between the codes thus
+leaves the helium- and metal-ionizing parts of the source unmatched; an
+identical source needs A's binned spectrum, zeros included, as the input of
+B, or an input file resampled more finely than A's grid. These are quoted
+source-spectrum reconstruction values, not a new MOCASSIN execution;
+the output provenance is qualified in item 8 of Section~\ref{sec:unknown}.
+
 \Source A uses intrinsic \code{random\_number}; isotropic directions
 sample uniform cosine/azimuth, with separate plane/symmetry rules
-(\mc{vector_mod.f90}{303--314}; \mc{photon_mod.f90}{553--673}). B/C offer
+(\mc{vector_mod.f90}{303--314}; \mc{photon_mod.f90}{560--675}). B/C offer
 pseudorandom or scrambled Sobol launches. Spectrum, angles, and additional
 position coordinates are indexed by global packet number on separate
 stellar, diffuse, and FUV streams (\ms{qmc_mod.f90}{54--56,\allowbreak 78--177};
@@ -237,11 +276,11 @@ non-power-of-two diffuse count.
 \label{sec:flight}
 \Source A draws $\tau_*=-\ln(1-u)$, accumulates cell optical depth,
 and places the event at the corresponding distance inside the cell
-(\mc{photon_mod.f90}{1184--1191,\allowbreak 1390,\allowbreak 1434--1445}). With dust it selects
+(\mc{photon_mod.f90}{1177--1184,\allowbreak 1435,\allowbreak 1516--1527}). With dust it selects
 scattering versus absorption using $\kappa_{\rm sca}/\kappa_{\rm ext}$.
 Gas-only absorption selects diffuse emission; dust-only selects dust
 emission; mixed cells select combined diffuse emission
-(\mc{photon_mod.f90}{1575--1617,\allowbreak 1704--1715}). This connected decision
+(\mc{photon_mod.f90}{1672--1714,\allowbreak 1801--1812}). This connected decision
 contains no separate H/He/metal-absorber selection.
 
 \Source B first integrates attenuation along the complete chosen launch
@@ -284,15 +323,15 @@ noise advantage.
 \label{sec:estimator}
 \Source A accumulates both crossed and interaction-segment lengths,
 schematically $\sum\delta E\ell/V$, in frequency-indexed arrays
-(\mc{photon_mod.f90}{1487--1496,\allowbreak 1727--1735}). Stellar segments enter
+(\mc{photon_mod.f90}{1563--1574,\allowbreak 1822--1833}). Stellar segments enter
 \code{Jste}; nonstellar segments enter \code{Jdif} only with
 \code{lgDebug}, otherwise also \code{Jste}. Thus ordinary \code{Jste}
 is not purely stellar. Rate/heating consumers combine the separated
 fields when debug separation is enabled
-(\mc{update_mod.f90}{248--266,\allowbreak 1200--1243,\allowbreak 1487--1501}). The arrays have
+(\mc{update_mod.f90}{253--271,\allowbreak 1205--1248,\allowbreak 1492--1506}). The arrays have
 bin-integrated normalization; conventional $J_\nu$ factors cannot be
-assigned from their names alone (\mc{photon_mod.f90}{286--293};
-\mc{iteration_mod.f90}{686--702}).
+assigned from their names alone (\mc{photon_mod.f90}{272--279};
+\mc{iteration_mod.f90}{705--722}).
 
 \Source B/C directly accumulate primary gas rates at the actual packet
 energy. For H/He, in physical units the corresponding expressions are
@@ -328,34 +367,39 @@ cell state. \code{recPDF} is a normalized gas/dust continuum CDF with selected
 ionizing helium lines inserted into its frequency bins.
 \code{totalLines} is the ordinary-line energy fraction, and
 \code{linePDF} is a separate cumulative line distribution for debug
-recording (\mc{emission_mod.f90}{114--160,\allowbreak 980--1119,\allowbreak 1169--1302}). A
+recording (\mc{emission_mod.f90}{113--159,\allowbreak 990--1129,\allowbreak 1179--1312}). A
 replacement draws those probabilities while retaining history
 normalization. In gas--dust cells its emission spectrum is combined,
-not conditioned on an atomic absorber (\mc{photon_mod.f90}{905--988}).
+not conditioned on an atomic absorber (\mc{photon_mod.f90}{907--990}).
 
 \Source Ordinary absorption returns the actual location to the next
-initialization (\mc{photon_mod.f90}{1442--1445,\allowbreak 2416--2424}). Additional
+initialization (\mc{photon_mod.f90}{1524--1527,\allowbreak 2861--2869}). Additional
 extended diffuse and resonance-related populations can start at cell
-centers (\mc{photon_mod.f90}{161--167,\allowbreak 222--227,\allowbreak 255--263,\allowbreak 880--887}).
+centers (\mc{photon_mod.f90}{208--213,\allowbreak 241--249,\allowbreak 882--903}).
 Ordinary line packets are marked \code{lgLine}, optionally counted,
 and terminate without normal trajectory transfer, even with dust.
 A continuum below the hydrogen edge immediately escapes only without
-dust; with dust it travels (\mc{photon_mod.f90}{384--475,\allowbreak 921--958}).
+dust; with dust it travels (\mc{photon_mod.f90}{370--482,\allowbreak 923--960}).
 Resonance escape probabilities and associated dust-energy packets are an
 additional approximation, not general tracking of every optical/IR line
-(\mc{emission_mod.f90}{162--247,\allowbreak 3069--3109};
-\mc{photon_mod.f90}{194--278}).
+(\mc{emission_mod.f90}{161--246,\allowbreak 3059--3099};
+\mc{photon_mod.f90}{180--264}).
 
 \Source B computes state luminosities $L_{c,i}$ for diffuse channels in
 leaf $i$. It chooses the leaf by $\sum_cL_{c,i}$, position uniformly
 inside it, isotropic direction, channel by energy luminosity, and energy
 from that channel. For positive total luminosity,
 \begin{equation}
- N_{\rm dif}=\max\left[1,\operatorname{nint}
- \left(\frac{L_{\rm dif}}{L_{{\rm packet,ion}}}\right)\right],
- \qquad L_{{\rm packet,dif}}=L_{\rm dif}/N_{\rm dif}.
+ N_{\rm dif}=\min\left\{N,\,\max\left[1,\operatorname{nint}
+ \left(\frac{L_{\rm dif}}{L_{{\rm packet,ion}}}\right)\right]\right\},
+ \qquad L_{{\rm packet,dif}}=L_{\rm dif}/N_{\rm dif},
  \label{eq:ndif}
 \end{equation}
+with $N$ the source packet count (\code{no\_photons}). The limit acts only
+where $L_{\rm dif}$ exceeds the ionizing source luminosity, as in a state
+far more ionized than the source can keep (a fully ionized initial state);
+each diffuse packet then carries more than a source packet and the
+transported total stays $L_{\rm dif}$.
 Zero luminosity launches no packets
 (\ms{diffuse_mod.f90}{274--332,\allowbreak 399--424,\allowbreak 482--537,\allowbreak 677--763}). B tabulates
 this after source transport, without a gas solve between populations;
@@ -378,8 +422,8 @@ diffuse channels are the explicit exception.
 \Source A includes dust continuum in the current combined emission CDF,
 or a dust-only CDF without gas. Temperatures are updated after transfer
 from grain/radiation energy balance
-(\mc{emission_mod.f90}{1043--1119,\allowbreak 1331--1385};
-\mc{photon_mod.f90}{992--1045}; \mc{update_mod.f90}{291--298,\allowbreak 1848--1920}).
+(\mc{emission_mod.f90}{1053--1129,\allowbreak 1342--1396};
+\mc{photon_mod.f90}{994--1047}; \mc{update_mod.f90}{296--303,\allowbreak 1853--1925}).
 Immediate re-emission uses that computed distribution; it is not an
 identified event-by-event temperature correction from a difference of
 Planck functions.
@@ -401,7 +445,7 @@ gas-band grain absorption into a dust-IR descendant in its r7 gas rule.
 \Source A freezes opacity/emission, transports packets, reduces the
 field, and updates local gas/dust states. B/C likewise update gas after
 transport and rebuild opacity for the next pass
-(\mc{iteration_mod.f90}{135--218,\allowbreak 345,\allowbreak 497--702,\allowbreak 803--895};
+(\mc{iteration_mod.f90}{120--218,\allowbreak 295,\allowbreak 458--722,\allowbreak 828--889};
 \ms{main.f90}{194--262}). B/C relax H/He fractions toward the local
 solution through \code{ion\_relax}; their selected temperature is taken
 directly (\ms{ion_balance_mod.f90}{1192--1215};
@@ -413,18 +457,24 @@ qualifications are compared in Section~\ref{sec:stopping}.
 \label{sec:implementation}
 \Source A's Cartesian parent/child grids mark replaced cells with
 negative child-grid indices. Transfer changes grids and resynchronizes
-parent indices. Its local 3D route calls explicit-face DDA: describing
-it as lacking DDA would be incorrect
-(\mc{grid_mod.f90}{838--878}; \mc{subgrid_mod.f90}{32--67};
-\mc{photon_mod.f90}{1213--1230,\allowbreak 1292--1310,\allowbreak 1745--1747}). Its current input
-reader rejects \code{oneD}, despite retained spherical expressions
-(\mc{set_input_mod.f90}{342--351}). B/C use octree leaves or dedicated
+parent indices. Its connected 3D path computes distances to cell walls
+from adjacent axis midpoints, selects the nearest wall, and updates
+position and indices inline (\mc{grid_mod.f90}{835--875};
+\mc{photon_mod.f90}{1206--1242,\allowbreak 1263--1376,\allowbreak 1394--1435,\allowbreak 1838--1878}).
+The user's RT tree replaces this code with explicit-face DDA and separate
+subgrid/multigrid routines; those added modules are not part of A.
+A rejects \code{oneD}, despite retained spherical expressions
+(\mc{set_input_mod.f90}{291--297}). B/C use octree leaves or dedicated
 Cartesian DDA and can refine from the gas solution
 (\ms{raytrace_amr.f90}{692--742,\allowbreak 764--956}; \ms{main.f90}{263--274}).
-DDA is a traversal method, not a mesh hierarchy.
+DDA is a traversal method, not a mesh hierarchy; the distinction here is
+the actual boundary representation and connected calls.
 
 \Source A divides packets by quotient/remainder and reduces fields
-(\mc{iteration_mod.f90}{514--529,\allowbreak 630--702,\allowbreak 869--895}). B/C assign global
+(\mc{iteration_mod.f90}{474--496,\allowbreak 616--722,\allowbreak 848--889}).
+A reduces private arrays through temporary buffers; the user's RT tree
+adds shared windows and revised reductions, without those additions
+being part of this description of A. B/C assign global
 indices cyclically or in dynamic batches; a dynamic dispatcher rank does
 not transport. Gas solves are distributed and published state/rate
 arrays node-shared, but not every tally is shared
@@ -432,10 +482,12 @@ arrays node-shared, but not every tally is shared
 \ms{setup.f90}{75--81}; \ms{gas_state_mod.f90}{167--204};
 \ms{gas_rates_mod.f90}{94--104}; \ms{jtally_mod.f90}{198--226}).
 
-\Source A's local fixed-seed option uses rank-dependent intrinsic
-streams; otherwise driver calls also reseed from clock/rank state
-(\mc{set_input_mod.f90}{440--443,\allowbreak 1011--1036};
-\mc{photon_mod.f90}{79--100}). B/C Sobol launches can preserve their
+\Source A uses intrinsic pseudorandom streams. Each
+\code{energyPacketDriver} call obtains the current seed, adds clock
+milliseconds and \code{taskid}, and resets it
+(\mc{photon_mod.f90}{68--87}). The fixed-seed input and one-time seeding
+option belong to the user's RT tree, not A.
+B/C Sobol launches can preserve their
 global point set, but interactions/roulette/re-emission use stateful,
 rank-associated pseudorandom draws (\ms{random_mt.f90}{947--957};
 \ms{raytrace_amr.f90}{328,\allowbreak 385,\allowbreak 414--427,\allowbreak 464}). Fixed launches or seeds do
@@ -443,9 +495,12 @@ not guarantee bitwise outputs after rank/schedule/reduction changes.
 
 \Source A bins escape by its current origin cell, frequency, and angle;
 initialization resets that origin. Its driver writes escaped SED/cube
-products (\mc{photon_mod.f90}{403--453,\allowbreak 677--679};
-\mc{iteration_mod.f90}{719--722};
-\mc{output_mod.f90}{2548--2555,\allowbreak 2621--2646}). B/C use observer-directed
+products (\mc{photon_mod.f90}{389--460,\allowbreak 679--681};
+\mc{iteration_mod.f90}{738--741};
+\mc{output_mod.f90}{2574--2581,\allowbreak 2647--2672}). A's nonsymmetric
+azimuth bins use \code{atan(y/x)}, which loses the opposite-quadrant
+distinction; the user's RT tree uses an \code{atan2}-based routine
+(\mc{photon_mod.f90}{389--410}). B/C use observer-directed
 peel at launches and scattering: they estimate contributions toward each
 camera, trace attenuation, and use isotropic, inward-surface, or HG
 weights (\ms{ionizing_field_mod.f90}{121--126,\allowbreak 185,\allowbreak 449};
@@ -454,8 +509,8 @@ establish a matching MoCHII-style peel calculation.
 
 \Source A's warm driver reloads state and reconstructs radiation setup;
 \code{writeGrid} writes binary state
-(\mc{mocassinWarm.f90}{43--63};
-\mc{grid_mod.f90}{2712--2832,\allowbreak 2946--2948,\allowbreak 3476--3523,\allowbreak 3619--3622}). B/C map
+(\mc{mocassinWarm.f90}{39--59};
+\mc{grid_mod.f90}{2646--2721,\allowbreak 2774--2816,\allowbreak 2843--2923,\allowbreak 3476--3488,\allowbreak 3546--3580}). B/C map
 new leaf centers into old leaves and restore gas/available rate state,
 with optional stopping histories in B
 (\ms{previous_state_mod.f90}{204--242,\allowbreak 296--377};
@@ -497,27 +552,32 @@ other ion fractions are not additional outer gas-cell requirements.
 In gas with dust, the same H I flag is used; only in dust without gas
 is the tested relative change instead that of the size/species-weighted
 mean \code{Tdust(0,0,cellP)}
-(\mc{update_mod.f90}{157--167,\allowbreak 314--325,\allowbreak 508--516,\allowbreak 1934--1941}). The literal
+(\mc{update_mod.f90}{159--169,\allowbreak 319--330,\allowbreak 513--521,\allowbreak 1939--1946}). The literal
 relative expressions do not protect a zero old denominator at their
 point of use.
 
-\Source The local driver computes
+\Source For grid $g$, let $\mathcal A_g$ be its counted active
+cells (restricted by light-echo settings), $m_g=\code{grid(g)\%nCells}$,
+and $c_g=\sum_{i\in\mathcal A_g}q_i/|\mathcal A_g|$, with $c_g=0$ for an
+empty counted set. The original driver computes
 \begin{equation}
- C_n=100\frac{\sum_{i\in\mathcal A}q_i}{|\mathcal A|},\qquad
- \hbox{outer success if }C_n\geq\code{minConvergence},
+ C_n=100\frac{\sum_g m_gc_g}{\sum_g m_g},\qquad
+ \hbox{outer success if }C_n\geq\code{minConvergence}.
  \label{eq:mocpercent}
 \end{equation}
-where $\mathcal A$ contains the counted active cells; light-echo settings
-restrict that set. Counts are summed across grids, without cell-volume,
-mass, or luminosity weights. A cell receiving no sampled radiation
+This is a mean of grid passing fractions weighted by \code{nCells},
+not generally a direct sum over the counted cells, and uses no physical
+volume, mass, or luminosity weights. For one ordinary grid it reduces
+to the passing-cell percentage. The user's RT tree instead sums the
+converged and counted-active cell totals across grids. A cell receiving no sampled radiation
 keeps its old state but its convergence flag remains zero; it still
 belongs to the ordinary active-cell denominator. Thus unchanged because
 of no hits is not accepted as convergence
-(\mc{iteration_mod.f90}{782--789,\allowbreak 965--1015,\allowbreak 1079--1083};
-\mc{update_mod.f90}{90--154}). The code can declare the percentage test
+(\mc{iteration_mod.f90}{807--816,\allowbreak 955--998,\allowbreak 1056--1061};
+\mc{update_mod.f90}{92--156}). The code can declare the percentage test
 satisfied even when some local thermal/ionization solves set failure
 counters: those counters and \code{lgBlack} do not veto the H I flag
-(\mc{update_mod.f90}{488--515}).
+(\mc{update_mod.f90}{493--520}).
 
 \Source The actual input records and fresh-input defaults are:
 \begin{center}\small
@@ -535,21 +595,24 @@ counters: those counters and \code{lgBlack} do not veto the H I flag
 These are input keywords, not interchangeable aliases for internal
 variable names. In particular, \code{XHILimit} and \code{minConvergence}
 are not standalone input keys. Parser assignments and reads are at
-\mc{set_input_mod.f90}{38,\allowbreak 73--95,\allowbreak 111--123,\allowbreak 197--205,\allowbreak 332--342,\allowbreak 431--439,\allowbreak 489--492};
-state declarations are at \mc{common_mod.f90}{34,\allowbreak 89--106,\allowbreak 467--508,\allowbreak 525}.
+\mc{set_input_mod.f90}{34,\allowbreak 67--89,\allowbreak 105--117,\allowbreak 191--199,\allowbreak 281--291,\allowbreak 377--385,\allowbreak 413--416};
+state declarations are at \mc{common_mod.f90}{33,\allowbreak 76--93,\allowbreak 402--443,\allowbreak 460}.
 Warm-state loading can restore controls from its records, so parser
 defaults are not assertions about every warm run
-(\mc{grid_mod.f90}{3077,\allowbreak 3087}).
+(\mc{grid_mod.f90}{3097,\allowbreak 3107}).
 
 \Source After a completed pass, automatic packet growth requires all of
 \begin{equation}
  n>1,\quad C_n<95,\quad C_{n-1}>0,\quad
- \code{lgAutoPackets},\quad N_{\star,n}<\code{maxPhotons},\quad
+ \code{lgAutoPackets},\quad \widetilde N_n<\code{maxPhotons},\quad
  \frac{C_n-C_{n-1}}{C_{n-1}}\leq\code{convIncPercent}.
  \label{eq:mocgrowth}
 \end{equation}
-$N_{\star,n}=\sum_j N_{j,n}$ is the stellar packet sum; extended-diffuse
-packets are excluded from this maximum comparison.
+The implemented maximum comparison uses
+$\widetilde N_n=N_{1,n}+\sum_{j=1}^{n_\star}N_{j,n}$, because
+\code{nPhotonsTot} starts at \code{nPhotons(1)} before adding all stars.
+The first star is counted twice; extended-diffuse packets are excluded.
+The user's RT tree starts the sum at zero and removes this double count.
 The value 95 here is literal, independent of a changed
 \code{minConvergence}. The increment is a dimensionless relative change,
 not percentage points. When triggered, each stellar count is rounded
@@ -560,15 +623,15 @@ it is not a strict upper bound on the next count. A previous zero
 percentage prevents growth. This logic runs before testing either the
 convergence percentage or \code{maxIterateMC}; the last pass can therefore
 change counts without executing another, enlarged population
-(\mc{iteration_mod.f90}{1113--1140,\allowbreak 1158--1191}).
+(\mc{iteration_mod.f90}{1088--1112,\allowbreak 1129--1160}).
 
 \Source There is no eight-sample minimum. On either percentage success
-or exhaustion of the outer cap, A writes grid/gas results and exits the
-iteration loop; cap exhaustion has a separate message but does not
+or exhaustion of the outer cap, A writes grid/gas results and returns
+without another recursive pass; cap exhaustion has a separate message but does not
 provide a strict abort analogous to MoCHII's
 \code{require\_convergence}. No additional transport of the final updated
 gas is invoked on these exit branches
-(\mc{iteration_mod.f90}{803--895,\allowbreak 1164--1191}). Exiting normally is
+(\mc{iteration_mod.f90}{828--889,\allowbreak 1135--1160}). Exiting normally is
 therefore not itself evidence that the configured percentage was reached.
 
 \subsection{MoCHII: maximum steps or normalized integrated histories}
@@ -672,21 +735,23 @@ are a different mechanism, given by Equation~\eqref{eq:ndif}.
 \subsection{Inner gas and dust solves are separate certificates}
 \label{sec:innerstop}
 
-\Source A's hard-coded \code{maxIterateT=25} limits thermal evaluations.
+\Source A's executable \code{maxIterateT=50} limits thermal evaluations;
+a commented-out value 25 is not the active limit. The user's RT tree
+uses 25.
 The heated-gas test is $|H-C|<0.01H$, a heating/cooling residual rather
 than a temperature step. A bracket is sought with factor-1.2 changes
 and then residual interpolation. At the cap, a bound or bracket midpoint
 is retained, failure diagnostics are set, and execution continues;
 ionization is not reevaluated at that final replacement temperature
-(\mc{update_mod.f90}{50,\allowbreak 82--87,\allowbreak 355--365,\allowbreak 391--515}). The ionization
+(\mc{update_mod.f90}{49,\allowbreak 81--89,\allowbreak 360--370,\allowbreak 396--520}). The ionization
 recursion has \code{maxIterateX=25}; it tests relative H I, He I, and
 He II changes against 0.01, allowing equality. Electron density is
 recomputed from ionic charge, without an independent density residual
 or density-change tolerance. Exceeding those inner tests at the cap
 returns the last values with failure flags; the outer H I percentage
-can nevertheless pass (\mc{update_mod.f90}{1337,\allowbreak 1563--1622}). Grain charge
+can nevertheless pass (\mc{update_mod.f90}{1342,\allowbreak 1568--1627}). Grain charge
 has its own 100-call cap when that calculation is used
-(\mc{update_mod.f90}{82--87,\allowbreak 585--594}). These are compiled limits, not
+(\mc{update_mod.f90}{81--89,\allowbreak 590--599}). These are compiled limits, not
 \code{maxIterateMC} input values.
 
 \Source MoCHII's thermal solve evaluates heating minus cooling at
@@ -727,10 +792,10 @@ iteration cap/tolerance. There is no separate qHeat success flag or
 required extra outer pass. With default outer target 95\% and qHeat
 activation strictly above 99\%, enabling qHeat does not guarantee it
 runs before ordinary stopping
-(\mc{common_mod.f90}{34,\allowbreak 89--106};
-\mc{set_input_mod.f90}{85--89,\allowbreak 197--205};
-\mc{iteration_mod.f90}{345,\allowbreak 969--1012,\allowbreak 1164--1191};
-\mc{emission_mod.f90}{1061--1068,\allowbreak 1339--1347,\allowbreak 1627--1658}).
+(\mc{common_mod.f90}{33,\allowbreak 76--93};
+\mc{set_input_mod.f90}{79--83,\allowbreak 191--199};
+\mc{iteration_mod.f90}{295,\allowbreak 955--998,\allowbreak 1051--1061,\allowbreak 1135--1160};
+\mc{emission_mod.f90}{1071--1078,\allowbreak 1350--1358,\allowbreak 1638--1669}).
 
 \Source MoCHII's optional dust-IR loop is separate from its gas stop.
 It tests integrated dust-emission luminosity change
@@ -795,7 +860,7 @@ exceptions are given in Section~\ref{sec:stopping}.}\label{tab:stops}\\
 \bottomrule\endfoot
 Gas quantity & Relative H I change, $\leq0.05$ by default &
 \both{Default cell: maximum absolute H II step; optional vol: normalized integrated H/He histories}\\
-Spatial weight & Percentage of counted active cells; default target 95\% &
+Spatial weight & \code{nCells}-weighted mean of grid passing fractions; default target 95\% &
 \both{Cell maximum, or volume-integrated composition; thermal vol step weights $Vn_e$}\\
 Outer thermal test & No extra gas-temperature requirement; dust-only uses mean grain temperature &
 \both{Maximum relative temperature step for cell; latest integrated $d_T$ for vol}\\
@@ -809,7 +874,7 @@ Maximum & \code{maxIterateMC=30} &
 \both{\code{gas\_niter}; default 0 is one fixed-state transfer; positive input caps the gas loop}\\
 At cap & Writes results and exits with cap message &
 \both{Warns and may output; \code{require\_convergence=true} aborts before normal output; default false}\\
-Inner gas T & Heat/cool residual below 1\%; at most 25 evaluations &
+Inner gas T & Heat/cool residual below 1\%; at most 50 evaluations &
 \both{Bracket ratio below $10^{-5}$ or 60 bisections; bound clamping possible}\\
 Inner ions/$n_e$ & H I/He I/He II relative changes at most 1\%; 25 evaluations; no independent $n_e$ test &
 \both{200 iterations with $n_e$ relative step $10^{-10}$, plus enabled coupled-ion tests; optional second charge loop}\\
@@ -829,8 +894,8 @@ Refinement clears histories; restart optionally restores them & Same refinement 
 
 \Inferred The following are constructed logical examples, not new
 MOCASSIN/MoCHII runs. Use the stated defaults unless otherwise specified.
-Assume every active cell receives sampled radiation, so the no-hit
-exception does not apply. First let 960 of 1000 equal-volume active
+Assume a single grid without echo filtering and that every active cell
+receives sampled radiation, so the no-hit exception does not apply. First let 960 of 1000 equal-volume active
 cells have no change and a
 moving front affect the remaining 40, with $x_{\rm HI}^{\rm old}=0.5$
 and $|\Delta x_{\rm HI}|=0.1$ there. A sees 96\% passing cells and meets
@@ -1289,11 +1354,15 @@ These finite runs do not isolate individual noise sources.}
 \clearpage
 \section{What was not verified}
 \label{sec:unknown}
-The following seven items delimit this comparison.
+The following eight items delimit this comparison.
 \begin{enumerate}[leftmargin=2em,itemsep=5pt]
-\item \textbf{Unmodified release equivalence.} The MOCASSIN working tree
-has local changes. Archive authenticity and a complete mapping to the
-official 2.02.73 release were not established.
+\item \textbf{Independent release authentication.} Source A is the
+original-author tree identified by the author on November 14, 2026,
+including the five supplied \path{~/MOCASSIN/error_fix/} files verified
+identical to its source copies. The separate \path{~/RT_Codes/} tree is
+the user's unfinished correction/optimization work. Neither an official
+release archive nor the authorship of every dated correction was
+independently authenticated.
 \item \textbf{Matched numerical cross-code performance.} No MOCASSIN
 binary was built or run. Accuracy, time, memory, convergence rate, energy
 budgets, and efficiency of A versus B/C were not numerically compared
@@ -1321,23 +1390,42 @@ ordinary transfer, resonance approximations, output, and warm paths were
 read, but their numerical correctness, zero-depth behavior, exact
 random-state continuation, and rank-count reproducibility were not
 executed or certified.
+\item \textbf{The binned source spectrum of MOCASSIN.} The quoted
+bin counts and photon-rate ratios were previously reconstructed from the
+input spectrum and a frequency grid in the student's clumpy-model
+output; no such reconstruction or transport was rerun here. According to
+the author, that run used the original-author code. The accessible
+student tree \path{/home/dg.a9mon/test_Mocassin/mocassin_fix2/source/}
+matches A in \code{mocassinPlot}, \code{grid\_mod}, \code{output\_mod},
+\code{continuum\_mod}, \code{photon\_mod}, and \code{emission\_mod};
+\code{mocassinPlot} writes the same four-integer plot-grid header (\mc{mocassinPlot.f90}{474--482}). Its
+\code{iteration\_mod} includes the April 16, 2025 column-wise MPI
+changes, \code{update\_mod} uses a thermal cap 25 rather than A's 50 and
+initializes photoionization sums differently, and \code{set\_input\_mod}
+uses a different output-directory inquiry. Thus the student tree is not
+identical to A as a whole. The \code{rauch} binning expressions are the
+same (\mc{continuum_mod.f90}{216--283,\allowbreak 442--458}); unlike
+\code{SB99}, they do not interpolate empty bins. The executable used
+for the existing output was not forensically identified, and its binned
+spectrum was not printed by a new run. The share of the model's
+metal-line differences caused by this source mismatch was not computed.
 \end{enumerate}
 
 \paragraph{Source caveats found during inspection.}
-\Source Two external-source expressions deserve separate notice.
+\Source The following original-source expressions deserve separate notice.
 \code{writeContCube} computes a requested frequency range but sums
 \code{freq=1,nbins}, ignoring the selection
-(\mc{output_mod.f90}{2730--2737,\allowbreak 2751--2754}). The resonance escape formula
+(\mc{output_mod.f90}{2756--2763,\allowbreak 2777--2780}). The resonance escape formula
 allows $\tau_\mu=0$, then evaluates
 $[1-\exp(-2\tau_\mu)]/(2\tau_\mu)$: its continuous limit is 1 but its
-literal zero argument is $0/0$ (\mc{emission_mod.f90}{3061--3075}).
+literal zero argument is $0/0$ (\mc{emission_mod.f90}{3051--3065}).
 These are source findings, not runtime measurements; reachability and
 consequences of the second were not tested.
 The qHeat routine additionally zeros its probability array, includes
 all temperature states in the normalization, but fills only the first
 \code{nTbins-1} probabilities. Thus the returned sum lacks the final
-state's share; an unsupported-grain return can also leave the spectrum
-arrays zero (\mc{emission_mod.f90}{1454--1477,\allowbreak 1649--1666}). These are
+state's share; an unsupported-grain return can also leave the
+temperature-grid and probability arrays zero (\mc{emission_mod.f90}{1465--1488,\allowbreak 1660--1677}). These are
 source-level limitations of the optional path, not measured effect
 sizes or new convergence results. Its ordinary outer percentage does
 not certify stochastic-temperature-distribution accuracy.

@@ -35,6 +35,27 @@ module memory_mod
          destroy_shared_mem_window, destroy_shared_mem_all, get_window, destroy_mem, &
          destroy_shared_mem
   public shared_host_rank, shared_host_size, shared_host_comm
+  public sum_over_ranks
+
+  !--- sum_over_ranks(array): in-place MPI_SUM of a real64 array over all
+  !--- ranks of MPI_COMM_WORLD; every rank holds the sum on return.  The sum
+  !--- is taken in three steps so that a large array crosses the network
+  !--- once for each host, not once for each pair of ranks:
+  !---   1. MPI_REDUCE over hostcomm to the first rank of the host (shared
+  !---      memory, no network);
+  !---   2. MPI_ALLREDUCE among the first ranks of the hosts over
+  !---      same_hrank_comm (skipped with one host);
+  !---   3. MPI_BCAST from the first rank of the host over hostcomm.
+  !--- The result equals that of one MPI_ALLREDUCE over MPI_COMM_WORLD up to
+  !--- the order of summation.  The array is sent in chunks of at most
+  !--- SUM_CHUNK elements, so no MPI count exceeds the default integer range.
+  !--- Collective over MPI_COMM_WORLD: every rank calls it with an array of
+  !--- the same size.
+  interface sum_over_ranks
+     module procedure sum_over_ranks_1D_real64, sum_over_ranks_2D_real64, &
+                      sum_over_ranks_3D_real64, sum_over_ranks_4D_real64
+  end interface sum_over_ranks
+  integer(kind=int64), parameter :: SUM_CHUNK = 100000000_int64
 
   !--- destroy_shared_mem(array): the counterpart of create_shared_mem —
   !--- looks the window up from the array pointer (get_window), frees it
@@ -2853,4 +2874,53 @@ contains
   islot = num_windows
   end function free_window_slot
   !---------------------------
+  !---------------------------
+  !--- the three-step sum of sum_over_ranks on n contiguous elements
+  subroutine sum_over_ranks_real64(buf, n)
+  implicit none
+  integer(kind=int64), intent(in)    :: n
+  real(kind=real64),   intent(inout) :: buf(n)
+  real(kind=real64) :: unused(1)
+  integer(kind=int64) :: i0
+  integer :: m, ierr
+
+  if (.not.mpi_parameters_defined) call init_mpi_parameters()
+  i0 = 1
+  do while (i0 <= n)
+     m = int(min(SUM_CHUNK, n - i0 + 1))
+     if (h_rank == 0) then
+        call MPI_REDUCE(MPI_IN_PLACE, buf(i0), m, MPI_REAL8, MPI_SUM, 0, hostcomm, ierr)
+        if (num_hosts > 1) &
+           call MPI_ALLREDUCE(MPI_IN_PLACE, buf(i0), m, MPI_REAL8, MPI_SUM, same_hrank_comm, ierr)
+     else
+        call MPI_REDUCE(buf(i0), unused, m, MPI_REAL8, MPI_SUM, 0, hostcomm, ierr)
+     endif
+     call MPI_BCAST(buf(i0), m, MPI_REAL8, 0, hostcomm, ierr)
+     i0 = i0 + m
+  enddo
+  end subroutine sum_over_ranks_real64
+  !---------------------------
+  subroutine sum_over_ranks_1D_real64(array)
+  implicit none
+  real(kind=real64), contiguous, intent(inout) :: array(:)
+  call sum_over_ranks_real64(array, size(array, kind=int64))
+  end subroutine sum_over_ranks_1D_real64
+  !---------------------------
+  subroutine sum_over_ranks_2D_real64(array)
+  implicit none
+  real(kind=real64), contiguous, intent(inout) :: array(:,:)
+  call sum_over_ranks_real64(array, size(array, kind=int64))
+  end subroutine sum_over_ranks_2D_real64
+  !---------------------------
+  subroutine sum_over_ranks_3D_real64(array)
+  implicit none
+  real(kind=real64), contiguous, intent(inout) :: array(:,:,:)
+  call sum_over_ranks_real64(array, size(array, kind=int64))
+  end subroutine sum_over_ranks_3D_real64
+  !---------------------------
+  subroutine sum_over_ranks_4D_real64(array)
+  implicit none
+  real(kind=real64), contiguous, intent(inout) :: array(:,:,:,:)
+  call sum_over_ranks_real64(array, size(array, kind=int64))
+  end subroutine sum_over_ranks_4D_real64
 end module memory_mod

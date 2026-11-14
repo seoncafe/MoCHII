@@ -37,7 +37,7 @@ module ion_balance_mod
   private
 
   public :: gas_equilibrium_update, solve_ion_cell, charge_neutrality_ne
-  public :: helium_change_measures, signed_change_measures
+  public :: helium_change_measures, signed_change_measures, larger_state_sum
   public :: hydrogen_balance_residual, hydrogen_balance_residual_grid
   public :: cx_HeII_H, cx_HeI_Hp, cx_HeIII_H, cx_HeII_Hp
   public :: helium_charge_exchange_heating, nonradiative_HeII_H
@@ -1144,7 +1144,8 @@ contains
   !=========================================================================
   ! Returns both convergence measures (par%conv_crit picks which gates the
   ! iteration): max_dx = max leaf |delta x_HII| (stalls at the front-cell
-  ! Monte Carlo noise floor); dx_vol = sum V |delta x_HII| / sum V x_HII,
+  ! Monte Carlo noise floor); dx_vol = sum V |delta x_HII| / sum V x_HII
+  ! (the larger of the old and the new sum V x_HII, larger_state_sum),
   ! the volume-weighted L1 change of the ionized volume — front jitter
   ! occupies little volume, so this measure converges when the global
   ! solution has.  dhe_vol(2): the same measure for helium
@@ -1172,7 +1173,7 @@ contains
     !--- every rank solves its own leaves (gas_state_mod, "Where the cell
     !--- solves run"; until 2026-09-26 each node's rank 0 solved all of them
     !--- alone), into arrays that are zero elsewhere, and gas_state_publish
-    !--- sums them over MPI_COMM_WORLD into every node's shared state
+    !--- sums them over all ranks into every node's shared state
     allocate(xHI_new(gas_nleaf), xHII_new(gas_nleaf), xHeI_new(gas_nleaf), &
              xHeII_new(gas_nleaf), xHeIII_new(gas_nleaf), ne_new(gas_nleaf))
     xHI_new = 0.0_wp;  xHII_new = 0.0_wp;  xHeI_new = 0.0_wp
@@ -1236,8 +1237,8 @@ contains
     call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
                            ne_new)
     deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new)
-    dx_vol  = sums(1) / max(sums(2), tinest)
-    dhe_vol = helium_change_measures(sums(3:6))
+    dx_vol  = sums(1) / max(larger_state_sum(sums(2), sums(7)), tinest)
+    dhe_vol = helium_change_measures(sums(3:6), sums(8:9))
     drift_vol = signed_change_measures(sums([7, 2, 8, 4, 9, 6]), dhe_vol)
     !--- global rank 0's metrics everywhere, so every rank makes the same
     !--- loop-exit decision
@@ -1252,10 +1253,13 @@ contains
   ! helium counterpart of dx_vol, from the sums
   !   s = [sum V |d x_HeI|, sum V (x_HeII + x_HeIII), sum V |d x_HeIII|,
   !        sum V x_HeIII]
-  ! (x at the new state):
-  !   d(1) = s1/s2, the He0 <-> He+ front, normalized on ionized helium so
+  ! (x at the new state) and the net changes
+  !   net = [sum V (x_HeI,old - x_HeI,new), sum V (x_HeIII,new - x_HeIII,old)],
+  ! which give the same sums at the old state.  Each denominator is the
+  ! larger of the old and the new sum (larger_state_sum), D2 and D4:
+  !   d(1) = s1/D2, the He0 <-> He+ front, normalized on ionized helium so
   !          that He+ <-> He2+ exchange does not enter it;
-  !   d(2) = s3/s4, the He+ <-> He2+ front, set to -1 (not measured) where
+  !   d(2) = s3/D4, the He+ <-> He2+ front, set to -1 (not measured) where
   !          He2+ is less than HE3_SHARE of the ionized helium.  Below that
   !          its relative change is Monte Carlo noise on a trace species:
   !          in the HII40 benchmark He2+ fills 1.2e-4 of the volume and this
@@ -1263,13 +1267,15 @@ contains
   !          would never pass a stopping test while carrying nothing the
   !          model depends on.
   !=========================================================================
-  pure function helium_change_measures(s) result(d)
-    real(kind=wp), intent(in) :: s(4)
-    real(kind=wp) :: d(2)
+  pure function helium_change_measures(s, net) result(d)
+    real(kind=wp), intent(in) :: s(4), net(2)
+    real(kind=wp) :: d(2), ionized, doubly
     real(kind=wp), parameter :: HE3_SHARE = 1.0e-2_wp
-    d(1) = s(1)/max(s(2), tinest)
-    if (s(4) > HE3_SHARE*s(2)) then
-       d(2) = s(3)/s(4)
+    ionized = larger_state_sum(s(2), net(1))
+    doubly  = larger_state_sum(s(4), net(2))
+    d(1) = s(1)/max(ionized, tinest)
+    if (doubly > HE3_SHARE*ionized) then
+       d(2) = s(3)/doubly
     else
        d(2) = -1.0_wp
     end if
@@ -1280,22 +1286,36 @@ contains
   !   s = [sum V (x_HII,new - x_HII,old), sum V x_HII,
   !        sum V (x_HeI,old - x_HeI,new), sum V (x_HeII + x_HeIII),
   !        sum V (x_HeIII,new - x_HeIII,old), sum V x_HeIII]
-  ! (denominators at the new state, as there): the net change of the
-  ! ionized volume of each front over one iteration, positive when it
-  ! grows.  The third is 0 where the He+ <-> He2+ step is not measured
+  ! (sums at the new state; each denominator is the larger of the old and
+  ! the new sum, as there): the net change of the ionized volume of each
+  ! front over one iteration, positive when it grows, between -1 and 1.  The third is 0 where the He+ <-> He2+ step is not measured
   ! (dhe(2) < 0).  fixed_point_distance_mod uses them to tell a front that
   ! still moves from one fluctuating about its fixed point.
   !=========================================================================
   pure function signed_change_measures(s, dhe) result(d)
     real(kind=wp), intent(in) :: s(6), dhe(2)
     real(kind=wp) :: d(3)
-    d(1) = s(1)/max(s(2), tinest)
-    d(2) = s(3)/max(s(4), tinest)
+    d(1) = s(1)/max(larger_state_sum(s(2), s(1)), tinest)
+    d(2) = s(3)/max(larger_state_sum(s(4), s(3)), tinest)
     if (dhe(2) >= 0.0_wp) then
-       d(3) = s(5)/max(s(6), tinest)
+       d(3) = s(5)/max(larger_state_sum(s(6), s(5)), tinest)
     else
        d(3) = 0.0_wp
     end if
   end function signed_change_measures
+
+  !=========================================================================
+  ! The larger of a volume sum at the old and at the new state, from the sum
+  ! at the new state and the net change (new - old).  It is the denominator
+  ! of every relative change measure, so that a measure is the change over
+  ! the larger of the two states: at most 1 for a quantity of one sign
+  ! whether the ionized volume grows or collapses.  (Over the new state
+  ! alone a collapse to 1/k of the volume would read k - 1.)
+  !=========================================================================
+  pure function larger_state_sum(sum_new, net_change) result(s)
+    real(kind=wp), intent(in) :: sum_new, net_change
+    real(kind=wp) :: s
+    s = max(sum_new, sum_new - net_change)
+  end function larger_state_sum
 
 end module ion_balance_mod

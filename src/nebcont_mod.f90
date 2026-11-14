@@ -23,9 +23,8 @@ module nebcont_mod
 ! continuum L_nu on a log frequency grid, total and per component.
 !---------------------------------------------------------------------------
   use define
-  use recomb_continuum_mod, only : recomb_continuum_setup, gamma_tab, &
-                                   gamma_milne, gamma_ff, &
-                                   HCRYD_K, NU_HI, NU_HEI, NU_HEII
+  use recomb_continuum_mod, only : recomb_continuum_setup, gamma_milne, &
+                                   gamma_ff, NU_HI, NU_HEI, NU_HEII
   implicit none
   private
 
@@ -147,166 +146,204 @@ contains
   end function h2s_quench_denominator
 
   !=========================================================================
-  ! Two-photon coefficients (1e-40 erg cm^3/s/Hz), MOCASSIN formulas.
+  ! Two-photon continua.  Each is a decay rate per unit volume times the
+  ! spectral energy one decay radiates, h nu_pair y n(y) [erg/Hz] with
+  ! y = nu/nu_pair and n(y) the photons per unit y, normalized on the
+  ! shape's own integral so that a decay emits exactly two photons.  The
+  ! spectral energy depends on the frequency alone and the rate on the leaf
+  ! alone, so nebcont_write forms the first once on the output grid and the
+  ! second once for each leaf.
+  !  - H I 2s and He II 2s: Nussbaumer & Schmutz (1984) shape
+  !    (hydrogenic_twophoton_mod, one evaluation for both).  The 2s level is
+  !    fed at alpha_B f_2s (twophoton_2s_feed): MoCHII's own alpha_B, the
+  !    rate the ionization balance uses, times the share of the n >= 2
+  !    captures that end in 2s (hydrogenic_recombination_mod), in the case
+  !    of the recombination lines (lyman_line_case) -- case A when the
+  !    Lyman lines escape (par%lyman_lines = 'escaping'), case B otherwise.
+  !    For He II in case B this is the rate the He III cascade of the
+  !    diffuse field sends through 2^2S (heii_cascade_mod, the same alpha_B
+  !    and the same f_2s), so the written continuum and the transported
+  !    packets describe one nebula.  H I is divided by the collisional
+  !    2s -> 2p suppression h2s_quench_denominator; He II 2s is not
+  !    quenched (A_2s = 526.6 s^-1 puts its critical density near 1e6 cm^-3).
+  !  - He I 2^1S: Drake, Victor & Dalgarno (1969) shape (hei_twophoton_mod,
+  !    which owns data/HeI2phot.dat), at the 2^1S decay rate of
+  !    hei_recombination_photons_mod::hei_twophoton_decays: the population
+  !    is fed by recombination, by the trapped 584 A line that decays to
+  !    2^1S (the 2.06 micron 2^1P -> 2^1S branch) rather than photoionizing
+  !    hydrogen, and, with the 2^3S population coupled, by its collisional
+  !    transfers into the singlets.  One routine gives those exits to the
+  !    diffuse channel 4, the on-the-spot sources and this written
+  !    continuum, so the three describe one nebula.  The table carries
+  !    A = 50.93 s^-1 (Drake, Victor & Dalgarno 1969 psi times that A value;
+  !    CHIANTI's heseq_2photon.dat gives A = 50.94); normalizing on its
+  !    integral, not on a separately quoted A, keeps the pair at two
+  !    photons, as in the transported packets.
   !=========================================================================
-  !--- H I two-photon; dq is h2s_quench_denominator at the leaf.  The 2s
-  !--- population is fed at alpha_B f_2s: MoCHII's own alpha_B, the rate the
-  !--- ionization balance uses, times the share of the n >= 2 captures that
-  !--- end in 2s (hydrogenic_recombination_mod), in the case of the
-  !--- recombination lines (lyman_line_case) -- case A when the Lyman lines
-  !--- escape (par%lyman_lines = 'escaping'), case B otherwise.  This took
-  !--- the case-B Pengelly (1964) power law 0.8368e-13 T4^-0.723 whatever the
-  !--- lines did, so a case-A run wrote case-A Balmer lines beside a
-  !--- two-photon continuum 2.63x its own case at 1e4 K.
-  real(kind=wp) function gamma_2q_HI(nu, T, dq, lyman_case) result(g)
-    use hydrogenic_twophoton_mod,     only : h2q_photons_per_y
-    use hydrogenic_recombination_mod, only : hydrogenic_f_2s
-    use recomb_mod,                   only : alphaB_HII
+  !--- spectral energy of one hydrogenic 2s decay [erg/Hz]; nu, nu_pair in
+  !--- Ryd (H I 0.7496, He II 3.00); 0 at and above nu_pair
+  real(kind=wp) function hydrogenic_twophoton_energy(nu, nu_pair) result(e)
+    use hydrogenic_twophoton_mod, only : h2q_photons_per_y
     implicit none
-    real(kind=wp),    intent(in) :: nu, T, dq
-    character(len=1), intent(in) :: lyman_case
-    real(kind=wp) :: y, gNu, a2s
-    real(kind=wp), parameter :: nu0 = 0.7496_wp
-    g = 0.0_wp
-    y = nu/nu0
+    real(kind=wp), intent(in) :: nu, nu_pair
+    real(kind=wp) :: y
+    e = 0.0_wp
+    y = nu/nu_pair
     if (y >= 1.0_wp) return
-    a2s = alphaB_HII(T)*hydrogenic_f_2s(1, T, lyman_case)   ! [cm^3/s]
-    gNu = h_planck_cgs*y*h2q_photons_per_y(y)               ! [erg/Hz]
-    g = a2s*gNu/dq * 1.0e40_wp
-  end function gamma_2q_HI
+    e = h_planck_cgs*y*h2q_photons_per_y(y)
+  end function hydrogenic_twophoton_energy
 
-  !--- He II two-photon, fed at alphaB_HeIII f_2s in the case of the
-  !--- recombination lines, as for H I.  In case B this is the rate the He III
-  !--- cascade of the diffuse field sends through 2^2S (heii_cascade_mod, the
-  !--- same alpha_B and the same f_2s), so the written continuum and the
-  !--- transported packets describe one nebula.  It used to take SH95's
-  !--- alpha_eff(2^2S) at n_e = 100 on four anchors, 5000-30000 K, held at the
-  !--- end values outside them, and case B only.  The shape is normalized on
-  !--- its own integral (two photons per decay).
-  real(kind=wp) function gamma_2q_HeII(nu, T, lyman_case) result(g)
-    use hydrogenic_twophoton_mod,     only : h2q_photons_per_y
-    use hydrogenic_recombination_mod, only : hydrogenic_f_2s
-    use recomb_mod,                   only : alphaB_HeIII
-    implicit none
-    real(kind=wp),    intent(in) :: nu, T
-    character(len=1), intent(in) :: lyman_case
-    real(kind=wp) :: y, gNu, a2s
-    real(kind=wp), parameter :: nu0 = 3.00_wp
-    g = 0.0_wp
-    y = nu/nu0
-    if (y >= 1.0_wp) return
-    a2s = alphaB_HeIII(T)*hydrogenic_f_2s(2, T, lyman_case) ! [cm^3/s]
-    gNu = h_planck_cgs*y*h2q_photons_per_y(y)               ! [erg/Hz]
-    g = a2s*gNu * 1.0e40_wp
-  end function gamma_2q_HeII
-
-  !--- He I two-photon continuum, per 2^1S decay rate r2q [cm^-3 s^-1]
-  !--- (hei_recombination_photons_mod::hei_twophoton_decays): the population
-  !--- is fed by recombination, by the trapped 584 A line that decays to
-  !--- 2^1S (the 2.06 micron 2^1P -> 2^1S branch) rather than photoionizing
-  !--- hydrogen, and, with the 2^3S population coupled, by its collisional
-  !--- transfers into the singlets.  One routine gives those exits to the
-  !--- diffuse channel 4, the on-the-spot sources and this written
-  !--- continuum, so the three describe one nebula.  It used to take
-  !--- alpha(2^1S) + [1 - p_584] alpha(2^1P) from the BSS99 + JSM fits in
-  !--- absolute units, while the cascade normalizes the same fits by their
-  !--- sum and scales by alpha_B(He II): the two differed by that sum,
-  !--- 0.91 alpha_B at 8000 K and 0.985 at 1e4 K, and the coupled transfers
-  !--- were missing (x1.09 at n_e = 100, x3.5 at 1e4 in the 2^1S energy).
-  !--- The earlier port took MOCASSIN's 6.23e-14 (T4)^-0.827, the singlet
-  !--- TOTAL (every singlet ends in 2^1S, the p_584 -> 0 limit).
-  !---
-  !--- The shape comes from hei_twophoton_mod, normalized on the table's own
-  !--- integral so that the decay emits exactly two photons.  The port divided
-  !--- the same table by a separately quoted A = 51.3 s^-1, but the tabulation
-  !--- carries A = 50.93 (it is Drake, Victor & Dalgarno 1969 psi times that
-  !--- A value, as CHIANTI's heseq_2photon.dat shows with A = 50.94), so the
-  !--- written continuum radiated 1.9945 photons per decay while the packets
-  !--- transported 2.  A pair is two photons; the normalization is not a
-  !--- constant the shape can disagree with.  Result: r2q h y n(y) [erg/s/Hz
-  !--- per cm^3], in the 1e-40 units of the other emissivities times n_e n_i.
-  real(kind=wp) function gamma_2q_HeI(nu, r2q) result(g)
+  !--- spectral energy of one He I 2^1S decay [erg/Hz]; 0 at and above
+  !--- the pair energy 1.514 Ryd
+  real(kind=wp) function hei_twophoton_energy(nu) result(e)
     use hei_twophoton_mod, only : hei_2ph_photons_per_y
     implicit none
-    real(kind=wp), intent(in) :: nu, r2q
+    real(kind=wp), intent(in) :: nu
     real(kind=wp) :: y
-    real(kind=wp), parameter :: nu0 = 1.514_wp
-    g = 0.0_wp
-    y = nu/nu0
+    real(kind=wp), parameter :: nu_pair = 1.514_wp
+    e = 0.0_wp
+    y = nu/nu_pair
     if (y >= 1.0_wp) return
-    g = r2q*h_planck_cgs*y*hei_2ph_photons_per_y(y)*1.0e40_wp
-  end function gamma_2q_HeI
+    e = h_planck_cgs*y*hei_2ph_photons_per_y(y)
+  end function hei_twophoton_energy
+
+  !--- the rate coefficient alpha_B f_2s [cm^3/s] that feeds 2s of the
+  !--- hydrogenic ion of nuclear charge z (1: H I from H II, 2: He II from
+  !--- He III), in the case lyman_case of the recombination lines
+  real(kind=wp) function twophoton_2s_feed(z, T, lyman_case) result(a)
+    use hydrogenic_recombination_mod, only : hydrogenic_f_2s
+    use recomb_mod,                   only : alphaB_HII, alphaB_HeIII
+    implicit none
+    integer,          intent(in) :: z
+    real(kind=wp),    intent(in) :: T
+    character(len=1), intent(in) :: lyman_case
+    if (z == 1) then
+       a = alphaB_HII(T)*hydrogenic_f_2s(1, T, lyman_case)
+    else
+       a = alphaB_HeIII(T)*hydrogenic_f_2s(2, T, lyman_case)
+    end if
+  end function twophoton_2s_feed
 
   !=========================================================================
-  ! Grid-integrated continuum spectrum: '<base>_nebcont.txt'.
+  ! Grid-integrated continuum spectrum: '<base>_nebcont.txt'.  Collective:
+  ! every rank sums the leaves it owns in the thermal solve
+  ! (gas_state_mod::gas_leaf_owner_first/stride, cyclic over
+  ! MPI_COMM_WORLD; the gas state, the octree and the Phi_3 leaf rates are
+  ! node-shared), the three spectra are summed over the ranks, and rank 0
+  ! writes the file.  Everything that depends on the frequency alone is
+  ! evaluated once on the output grid before the leaf loop.
   !=========================================================================
   subroutine nebcont_write()
-    use octree_mod, only : amr_grid, leaf_half
+    use mpi
+    use octree_mod,    only : leaf_half
     use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
-                              gas_xHeIII, gas_ne, gas_Te, gas_nleaf
+                              gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
+                              gas_leaf_owner_first, gas_leaf_owner_stride
     use photo_xsec,    only : sigma_HI, sigma_HeI, sigma_HeII
     use utility,       only : get_base_name
+    use recomb_continuum_mod, only : gamma_tab_pair, gamma_tab_spectrum
     use hei_recombination_photons_mod, only : hei_twophoton_decays
-    use hydrogenic_recombination_mod, only : lyman_line_case
+    use hydrogenic_recombination_mod,  only : lyman_line_case
     implicit none
-    real(kind=wp) :: Lfb(NNU_OUT), Lff(NNU_OUT), L2q(NNU_OUT)
-    real(kind=wp) :: T, ne, nH, vol, nHII, nHeII_n, nHeIII, xHeIII, dq, r2q_HeI
-    real(kind=wp) :: nu, e_eV, gH, gHe1, gHe2, ff1, ff2
+    integer, parameter :: L_FB = 1, L_FF = 2, L_2Q = 3
+    real(kind=wp), parameter :: RYD_EV = 13.605693_wp      ! eV/Ryd
+    !--- L_nu [erg/s/Hz]: fb+ff(+Milne) (L_FB), the free-free estimate below
+    !--- the H edge (L_FF), two-photon (L_2Q)
+    real(kind=wp) :: Lnu(NNU_OUT, 3)
+    !--- frequency-only factors on nu_out: ground photoionization cross
+    !--- sections [cm^2] (0 below each edge), the table pair of each
+    !--- frequency, and the two-photon spectral energy of one decay [erg/Hz]
+    real(kind=wp) :: sigma_HI_out(NNU_OUT), sigma_HeI_out(NNU_OUT), &
+                     sigma_HeII_out(NNU_OUT)
+    integer       :: tab_pair_out(NNU_OUT, 3)
+    real(kind=wp) :: e2q_HI_out(NNU_OUT), e2q_HeII_out(NNU_OUT), &
+                     e2q_HeI_out(NNU_OUT)
+    logical       :: above_HI(NNU_OUT), above_HeI(NNU_OUT), above_HeII(NNU_OUT)
+    !--- the table coefficients of the leaf on nu_out (1e-40 erg cm^3/s/Hz)
+    real(kind=wp) :: gtab_out(NNU_OUT, 3)
+    real(kind=wp) :: T, ne, nH, vol, nHII, nHeII_n, nHeIII, dq, r2q_HeI
+    real(kind=wp) :: feed_2s_HI, feed_2s_HeII, g2q_HI, g2q_HeII, g2q_HeI
+    real(kind=wp) :: nu, gH, gHe1, gHe2, ff1, ff2
     character(len=PATH_LEN) :: outname
     character(len=1) :: lcase
-    integer :: il, i, unit
+    integer :: il, i, k, unit, ierr
 
-    if (mpar%p_rank /= 0) return
-    Lfb = 0.0_wp;  Lff = 0.0_wp;  L2q = 0.0_wp
     lcase = lyman_line_case()
+    do i = 1, NNU_OUT
+       nu = nu_out(i)
+       above_HI(i)   = nu >= NU_HI
+       above_HeI(i)  = nu >= NU_HEI
+       above_HeII(i) = nu >= NU_HEII
+       sigma_HI_out(i) = 0.0_wp;  sigma_HeI_out(i) = 0.0_wp
+       sigma_HeII_out(i) = 0.0_wp
+       if (above_HI(i))   sigma_HI_out(i)   = sigma_HI(nu*RYD_EV)
+       if (above_HeI(i))  sigma_HeI_out(i)  = sigma_HeI(nu*RYD_EV)
+       if (above_HeII(i)) sigma_HeII_out(i) = sigma_HeII(nu*RYD_EV)
+       do k = 1, 3
+          tab_pair_out(i, k) = gamma_tab_pair(k, nu)
+       end do
+       e2q_HI_out(i)   = hydrogenic_twophoton_energy(nu, 0.7496_wp)
+       e2q_HeII_out(i) = hydrogenic_twophoton_energy(nu, 3.00_wp)
+       e2q_HeI_out(i)  = hei_twophoton_energy(nu)
+    end do
 
-    do il = 1, gas_nleaf
+    Lnu = 0.0_wp
+    do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
        nH = gas_nH(il)
        if (nH <= 0.0_wp) cycle
        T  = gas_Te(il);  ne = gas_ne(il)
        vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
-       xHeIII  = gas_xHeIII(il)
        nHII    = nH*gas_xHII(il)
        nHeII_n = nH*par%abund_He*gas_xHeII(il)
-       nHeIII  = nH*par%abund_He*xHeIII
+       nHeIII  = nH*par%abund_He*gas_xHeIII(il)
        dq      = h2s_quench_denominator(T, ne, nHII, nHeII_n, nHeIII)
        r2q_HeI = 0.0_wp
        if (par%abund_He > 0.0_wp) &
           r2q_HeI = hei_twophoton_decays(il, T, nH, ne, gas_xHI(il), &
                                          gas_xHeI(il), gas_xHeII(il))
+       feed_2s_HI   = twophoton_2s_feed(1, T, lcase)
+       feed_2s_HeII = twophoton_2s_feed(2, T, lcase)
+       do k = 1, 3
+          call gamma_tab_spectrum(k, nu_out, tab_pair_out(:, k), T, &
+                                  gtab_out(:, k))
+       end do
        do i = 1, NNU_OUT
           nu = nu_out(i)
-          e_eV = nu*13.605693_wp
           !--- table region: fb+ff combined; above: Milne fb + explicit ff
-          gH   = gamma_tab(1, nu, T)
-          gHe1 = gamma_tab(2, nu, T)
-          gHe2 = gamma_tab(3, nu, T)
-          if (nu >= NU_HI)   gH   = gamma_milne(nu, NU_HI,  sigma_HI(e_eV), &
+          gH   = gtab_out(i, 1)
+          gHe1 = gtab_out(i, 2)
+          gHe2 = gtab_out(i, 3)
+          if (above_HI(i))   gH   = gamma_milne(nu, NU_HI,  sigma_HI_out(i), &
                                     1.0_wp, T)
-          if (nu >= NU_HEI)  gHe1 = gamma_milne(nu, NU_HEI, sigma_HeI(e_eV), &
+          if (above_HeI(i))  gHe1 = gamma_milne(nu, NU_HEI, sigma_HeI_out(i), &
                                     0.25_wp, T)
-          if (nu >= NU_HEII) gHe2 = gamma_milne(nu, NU_HEII, sigma_HeII(e_eV), &
+          if (above_HeII(i)) gHe2 = gamma_milne(nu, NU_HEII, sigma_HeII_out(i), &
                                     1.0_wp, T)
-          if (nu >= NU_HI) then
+          if (above_HI(i)) then
              ff1 = gamma_ff(nu, T, 1)
              gH = gH + ff1
-             if (nu >= NU_HEI)  gHe1 = gHe1 + ff1
-             if (nu >= NU_HEII) gHe2 = gHe2 + gamma_ff(nu, T, 2) - ff1
-          end if
-          Lfb(i) = Lfb(i) + ne*(nHII*gH + nHeII_n*gHe1 + nHeIII*gHe2) &
-                   *1.0e-40_wp*vol
-          !--- explicit ff component for the report (table region estimate)
-          if (nu < NU_HI) then
+             if (above_HeI(i))  gHe1 = gHe1 + ff1
+             if (above_HeII(i)) gHe2 = gHe2 + gamma_ff(nu, T, 2) - ff1
+          else
+             !--- explicit ff component for the report (table region estimate)
              ff1 = gamma_ff(nu, T, 1)
              ff2 = gamma_ff(nu, T, 2)
-             Lff(i) = Lff(i) + ne*((nHII + nHeII_n)*ff1 + nHeIII*ff2) &
-                      *1.0e-40_wp*vol
+             Lnu(i, L_FF) = Lnu(i, L_FF) + ne*((nHII + nHeII_n)*ff1 + nHeIII*ff2) &
+                            *1.0e-40_wp*vol
           end if
-          L2q(i) = L2q(i) + ( ne*( nHII*gamma_2q_HI(nu, T, dq, lcase) &
-                   + nHeIII*gamma_2q_HeII(nu, T, lcase) ) &
-                   + gamma_2q_HeI(nu, r2q_HeI) )*1.0e-40_wp*vol
+          Lnu(i, L_FB) = Lnu(i, L_FB) + ne*(nHII*gH + nHeII_n*gHe1 + nHeIII*gHe2) &
+                         *1.0e-40_wp*vol
+          !--- two-photon coefficients in the 1e-40 units of the others
+          g2q_HI   = feed_2s_HI*e2q_HI_out(i)/dq * 1.0e40_wp
+          g2q_HeII = feed_2s_HeII*e2q_HeII_out(i) * 1.0e40_wp
+          g2q_HeI  = r2q_HeI*e2q_HeI_out(i)*1.0e40_wp
+          Lnu(i, L_2Q) = Lnu(i, L_2Q) + ( ne*( nHII*g2q_HI + nHeIII*g2q_HeII ) &
+                         + g2q_HeI )*1.0e-40_wp*vol
        end do
     end do
+    call MPI_ALLREDUCE(MPI_IN_PLACE, Lnu, size(Lnu), MPI_DOUBLE_PRECISION, &
+                       MPI_SUM, MPI_COMM_WORLD, ierr)
+    if (mpar%p_rank /= 0) return
 
     outname = trim(get_base_name(par%out_file))//'_nebcont.txt'
     open(newunit=unit, file=trim(outname), status='replace')
@@ -317,7 +354,8 @@ contains
        '4: ff estimate below the H edge; 5: two-photon'
     do i = 1, NNU_OUT
        write(unit,'(f10.5,f12.5,3es14.5)') nu_out(i), &
-          0.0911267_wp/nu_out(i), Lfb(i) + L2q(i), Lff(i), L2q(i)
+          0.0911267_wp/nu_out(i), Lnu(i, L_FB) + Lnu(i, L_2Q), Lnu(i, L_FF), &
+          Lnu(i, L_2Q)
     end do
     close(unit)
     write(*,'(2a)') ' NEBC: nebular continuum written to: ', trim(outname)

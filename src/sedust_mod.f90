@@ -326,6 +326,7 @@ contains
   !=========================================================================
   subroutine sedust_compute_write(heat_dust)
     use mpi
+    use memory_mod, only : sum_over_ranks
     use octree_mod, only : amr_grid, leaf_half
     use utility,         only : get_base_name, is_finite
     implicit none
@@ -380,8 +381,7 @@ contains
     call MPI_ALLREDUCE(MPI_IN_PLACE, Ltot, nl_sed, MPI_DOUBLE_PRECISION, &
                        MPI_SUM, MPI_COMM_WORLD, ierr)
     if (nband > 0) then
-       call MPI_ALLREDUCE(MPI_IN_PLACE, em_band, size(em_band), &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+       call sum_over_ranks(em_band)
        call dustemis_write(em_band, band_wl, nband)
        deallocate(em_band)
     end if
