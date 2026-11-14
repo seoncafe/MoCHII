@@ -375,7 +375,9 @@ contains
                       call MPI_REDUCE(emk, em(1, i0), nsel*nk, MPI_DOUBLE_PRECISION, &
                                       MPI_SUM, 0, MPI_COMM_WORLD, ierr)
                    else
-                      call MPI_REDUCE(emk, emk, nsel*nk, MPI_DOUBLE_PRECISION, &
+                      !--- the receive buffer is not used here; em(1,1) keeps
+                      !--- it apart from the send buffer
+                      call MPI_REDUCE(emk, em, nsel*nk, MPI_DOUBLE_PRECISION, &
                                       MPI_SUM, 0, MPI_COMM_WORLD, ierr)
                    end if
                 end do

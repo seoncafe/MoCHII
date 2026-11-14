@@ -13,7 +13,7 @@ module ion_score_mod
 !---------------------------------------------------------------------------
   use utility, only : abort_run
   use define
-  use memory_mod, only : shared_host_rank, shared_host_size
+  use memory_mod, only : shared_host_rank, shared_host_size, sum_over_ranks
   use photoelectron_degradation_mod, only : N_EDEP, E_SECONDARY, &
                                             photoelectron_energy_weights
   implicit none
@@ -443,24 +443,13 @@ contains
   subroutine ion_score_reduce()
     use mpi
     implicit none
-    integer :: ierr, nchunk, i0, n
+    integer :: ierr
     integer(kind=int64) :: counts(3)
     real(kind=wp) :: energy_totals(7)
 
-    nchunk = max(1, 100000000/NHHE)
-    i0 = 1
-    do while (i0 <= score_nleaf)
-       n = min(nchunk, score_nleaf-i0+1)
-       call MPI_ALLREDUCE(MPI_IN_PLACE, hhe_rate_path(:,i0:i0+n-1), NHHE*n, &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-       i0 = i0 + n
-    end do
-    if (allocated(dust_abs_path)) &
-       call MPI_ALLREDUCE(MPI_IN_PLACE, dust_abs_path, score_nleaf, &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    if (allocated(sec_ion_path)) &
-       call MPI_ALLREDUCE(MPI_IN_PLACE, sec_ion_path, NSEC*score_nleaf, &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+    call sum_over_ranks(hhe_rate_path)
+    if (allocated(dust_abs_path)) call sum_over_ranks(dust_abs_path)
+    if (allocated(sec_ion_path))  call sum_over_ranks(sec_ion_path)
     counts = [direct_segments, scattered_segments, lost_flights]
     call MPI_ALLREDUCE(MPI_IN_PLACE, counts, 3, MPI_INTEGER8, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
@@ -510,18 +499,7 @@ contains
     ledger_emitted  = real(buf(1:n), ENERGY_ACC_WP)
     ledger_escaped  = real(buf(n+1:2*n), ENERGY_ACC_WP)
     ledger_absorbed = real(reshape(buf(2*n+1:), [LEDGER_NABS, n]), ENERGY_ACC_WP)
-    block
-      integer :: i0, nl, nchunk
-      nchunk = max(1, 100000000/(LEDGER_NLEAF_ABS*LEDGER_NSRC))
-      i0 = 1
-      do while (i0 <= score_nleaf)
-         nl = min(nchunk, score_nleaf-i0+1)
-         call MPI_ALLREDUCE(MPI_IN_PLACE, ledger_leaf(:,:,i0:i0+nl-1), &
-                            LEDGER_NLEAF_ABS*LEDGER_NSRC*nl, MPI_DOUBLE_PRECISION, &
-                            MPI_SUM, MPI_COMM_WORLD, ierr)
-         i0 = i0 + nl
-      end do
-    end block
+    call sum_over_ranks(ledger_leaf)
   end subroutine ledger_reduce
 
   !--- one row for each source that emitted: emitted, absorbed by each

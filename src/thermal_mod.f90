@@ -27,6 +27,7 @@ module thermal_mod
   use photoelectron_degradation_mod, only : ionized_fraction_svs
   use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne, NE_FLOOR_PER_H, &
                               helium_change_measures, signed_change_measures, &
+                              larger_state_sum, &
                               helium_charge_exchange_heating
   use cooling_mod,     only : cooling_total
   implicit none
@@ -192,6 +193,10 @@ contains
   ! (par%conv_crit picks which pair gates the iteration):
   !   dx_vol  = sum V |delta x_HII| / sum V x_HII
   !   dte_vol = sum V n_e |delta T_e| / sum V n_e T_e
+  ! Each denominator is the larger of its value at the old and at the new
+  ! state (ion_balance_mod::larger_state_sum), so dx_vol is at most 1 also
+  ! when the ionized volume collapses; max_dte likewise divides by the
+  ! larger of the old and the new T_e of the cell.
   ! The n_e weight removes the cells with vanishing heating (deep PDR /
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
   ! dhe_vol(2), the same measure for helium, which enters the 'vol'
@@ -232,7 +237,7 @@ contains
                                   te_new(:)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol, xHII
     real(kind=wp) :: max_local(2), max_host(2)
-    real(kind=wp) :: sum_local(11), sum_host(11), metrics(9)
+    real(kind=wp) :: sum_local(12), sum_host(12), metrics(9)
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(5), flag_host(5)
     real(kind=wp) :: gterm(3), grain_local(4), grain_host(4)
@@ -353,8 +358,8 @@ contains
        end if
        te_new(il) = te
        max_local(1) = max(max_local(1), abs(xHII_new(il) - gas_xHII(il)))
-       max_local(2) = max(max_local(2), &
-                          abs(te_new(il) - gas_Te(il))/gas_Te(il))
+       max_local(2) = max(max_local(2), abs(te_new(il) - gas_Te(il)) &
+                                        /max(te_new(il), gas_Te(il)))
        sum_local(1) = sum_local(1) + vol*abs(xHII_new(il) - gas_xHII(il))
        sum_local(2) = sum_local(2) + vol*xHII_new(il)
        sum_local(3) = sum_local(3) &
@@ -367,11 +372,12 @@ contains
        sum_local(9)  = sum_local(9)  + vol*(xHII_new(il) - gas_xHII(il))
        sum_local(10) = sum_local(10) + vol*(gas_xHeI(il) - xHeI_new(il))
        sum_local(11) = sum_local(11) + vol*(xHeIII_new(il) - gas_xHeIII(il))
+       sum_local(12) = sum_local(12) + vol*gas_ne(il)*gas_Te(il)
     end do
 
     call MPI_ALLREDUCE(max_local, max_host, 2, MPI_DOUBLE_PRECISION, MPI_MAX, &
                        MPI_COMM_WORLD, ierr)
-    call MPI_ALLREDUCE(sum_local, sum_host, 11, MPI_DOUBLE_PRECISION, MPI_SUM, &
+    call MPI_ALLREDUCE(sum_local, sum_host, 12, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(flag_local, flag_host, 5, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
@@ -410,9 +416,9 @@ contains
     end if
     max_dx  = max_host(1)
     max_dte = max_host(2)
-    dx_vol  = sum_host(1) / max(sum_host(2), tinest)
-    dte_vol = sum_host(3) / max(sum_host(4), tinest)
-    dhe_vol = helium_change_measures(sum_host(5:8))
+    dx_vol  = sum_host(1) / max(larger_state_sum(sum_host(2), sum_host(9)), tinest)
+    dte_vol = sum_host(3) / max(sum_host(4), sum_host(12), tinest)
+    dhe_vol = helium_change_measures(sum_host(5:8), sum_host(10:11))
     drift_vol = signed_change_measures(sum_host([9, 2, 10, 6, 11, 8]), dhe_vol)
 
     !--- every rank's leaves into every node's shared state

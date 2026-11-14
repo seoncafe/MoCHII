@@ -112,10 +112,14 @@ energy-integrated path estimators of the photoionization and heating rates
 (a few values per leaf and absorber) and, only with \code{jnu\_output} or
 the SEDust emission, the $n_{\rm bin}\times n_{\rm leaf}$ band tally behind
 \code{J\_nu} --- private, so the transport adds to them without locks, then
-summed over all ranks.  The ionization and thermal solves of the leaves are then
+summed over all ranks in three steps: onto the first rank of each node
+through shared memory, among the first ranks of the nodes across the
+network, and back to every rank of the node by a broadcast in shared
+memory, so each tally crosses the network once for each node.  The ionization and thermal solves of the leaves are then
 divided over \emph{all} ranks of the job, cyclically by rank as the SEDust
 solve is, and the solved leaves are summed back into every node's shared
-copy (each leaf has one contributor, so the sum is exact), so adding nodes
+copy by the same three-step sum (each leaf has one contributor, so the
+sum is exact), so adding nodes
 divides the cell work too (since 2026-09-26; before, every node repeated
 all leaves and the fixed-$T_e$ solve ran on one rank per node).  On several
 nodes with Intel MPI, for example
@@ -550,7 +554,10 @@ measure} against a tolerance:
     < \code{gas\_tol\_te},
   \]
   with the He$^+\to$He$^{2+}$ measure added where He$^{2+}$ is at least 1\%
-  of the ionized helium.  The ionization measures are tested on the
+  of the ionized helium.  Each denominator is the larger of its values
+  before and after the iteration, so a measure is at most 1 whether the
+  ionized volume grows or collapses (the cell maximum
+  $\max|\Delta T_e|/T_e$ likewise divides by the larger $T_e$).  The ionization measures are tested on the
   \emph{drift still to come}, not on the last step: with $\rho$ the decay
   ratio fitted to $\ln d$ over the last 8 iterations, a measure passes when
   $d\,\rho/(1-\rho) <$ \code{gas\_tol}, or, once it has stopped decaying

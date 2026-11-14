@@ -149,7 +149,9 @@ contains
        !--- the diffuse packets carry the luminosity of one IONIZING source
        !--- packet (ionizing_packet_luminosity: ion_Ltot/nphotons for the
        !--- whole band, L_ion/nphotons with the strata), so the recombination
-       !--- field is sampled as finely as the field that drives it.
+       !--- field is sampled as finely as the field that drives it; their
+       !--- number is limited to par%nphotons, and at the limit each carries
+       !--- more (diffuse_build).
        call diffuse_build(ionizing_packet_luminosity())
        if (.not. peel .and. mpar%p_rank == 0) then
           write(6,'(a,es12.4,a,i12,a)') &

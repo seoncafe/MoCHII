@@ -363,6 +363,7 @@ contains
   !=========================================================================
   subroutine ion_peel_write()
     use mpi
+    use memory_mod, only : sum_over_ranks
     use iofile_mod
     use utility, only : get_base_name, abort_run
     implicit none
@@ -391,13 +392,9 @@ contains
       if (nbad > 0) write(*,'(a,i4,a,i6)') ' PEEL: rank', mpar%p_rank, &
          ' local non-finite count =', nbad
     end block
-    call MPI_ALLREDUCE(MPI_IN_PLACE, img_dir, size(img_dir), &
-                       MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    call MPI_ALLREDUCE(MPI_IN_PLACE, img_sca, size(img_sca), &
-                       MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-    if (par%save_direc0) &
-       call MPI_ALLREDUCE(MPI_IN_PLACE, img_dir0, size(img_dir0), &
-                          MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+    call sum_over_ranks(img_dir)
+    call sum_over_ranks(img_sca)
+    if (par%save_direc0) call sum_over_ranks(img_dir0)
     if (mpar%p_rank /= 0) return
 
     status = 0

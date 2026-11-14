@@ -30,15 +30,16 @@ module gas_state_mod
 ! k gas_leaf_owner_stride() (cyclic, as the SEDust solve and the dust
 ! emission launch divide theirs), so adding nodes divides the work.  Each
 ! rank fills its own leaves of private arrays, zero elsewhere, and
-! gas_state_publish sums them over MPI_COMM_WORLD: every leaf has exactly one
-! nonzero contribution, so the sum is exact and the same on every rank
-! whatever the reduction order, and each node's rank 0 then writes it into
-! that node's shared copy.  Until 2026-09-26 the thermal solve was divided
+! gas_state_publish sums them over all ranks (memory_mod::sum_over_ranks:
+! within each node, then between the nodes' first ranks, then back to the
+! node's ranks): every leaf has exactly one nonzero contribution, so the sum
+! is exact and the same on every rank whatever the reduction order, and each
+! node's rank 0 then writes it into that node's shared copy.  Until 2026-09-26 the thermal solve was divided
 ! over the ranks of one node only, every node repeating all leaves, and the
 ! fixed-Te solve ran on each node's rank 0 alone.
 !---------------------------------------------------------------------------
   use define
-  use memory_mod, only : create_shared_mem, get_window
+  use memory_mod, only : create_shared_mem, get_window, sum_over_ranks
   use mpi
   implicit none
   private
@@ -173,8 +174,9 @@ contains
   end function gas_leaf_owner_stride
 
   !=========================================================================
-  ! Sum the ranks' solved leaves over MPI_COMM_WORLD (each array holds this
-  ! rank's own leaves, zero elsewhere) and write the result into every
+  ! Sum the ranks' solved leaves over all ranks with sum_over_ranks (each
+  ! array holds this rank's own leaves, zero elsewhere; the arrays cross
+  ! between nodes once for each node) and write the result into every
   ! node's shared state.  te_new is absent for the fixed-T_e solve, which
   ! leaves T_e as it is.  The arrays come back holding the full state.
   !=========================================================================
@@ -184,13 +186,13 @@ contains
                                               xHeI_new(:), xHeII_new(:), &
                                               xHeIII_new(:), ne_new(:)
     real(kind=wp), intent(inout), optional :: te_new(:)
-    call sum_over_world(xHI_new)
-    call sum_over_world(xHII_new)
-    call sum_over_world(xHeI_new)
-    call sum_over_world(xHeII_new)
-    call sum_over_world(xHeIII_new)
-    call sum_over_world(ne_new)
-    if (present(te_new)) call sum_over_world(te_new)
+    call sum_over_ranks(xHI_new)
+    call sum_over_ranks(xHII_new)
+    call sum_over_ranks(xHeI_new)
+    call sum_over_ranks(xHeII_new)
+    call sum_over_ranks(xHeIII_new)
+    call sum_over_ranks(ne_new)
+    if (present(te_new)) call sum_over_ranks(te_new)
     if (mpar%h_rank == 0) then
        gas_xHI(1:gas_nleaf)   = xHI_new(1:gas_nleaf)
        gas_xHII(1:gas_nleaf)  = xHII_new(1:gas_nleaf)
@@ -202,20 +204,6 @@ contains
     end if
     call gas_state_sync()
   end subroutine gas_state_publish
-
-  !--- in-place MPI_SUM over MPI_COMM_WORLD, in chunks of at most 1e8 values
-  subroutine sum_over_world(a)
-    real(kind=wp), intent(inout) :: a(:)
-    integer, parameter :: NCHUNK = 100000000
-    integer :: i0, n, ierr
-    i0 = 1
-    do while (i0 <= size(a))
-       n = min(NCHUNK, size(a) - i0 + 1)
-       call MPI_ALLREDUCE(MPI_IN_PLACE, a(i0:i0+n-1), n, MPI_DOUBLE_PRECISION, &
-                          MPI_SUM, MPI_COMM_WORLD, ierr)
-       i0 = i0 + n
-    end do
-  end subroutine sum_over_world
 
   !=========================================================================
   ! Publish direct loads/stores to the node-shared gas-state windows.

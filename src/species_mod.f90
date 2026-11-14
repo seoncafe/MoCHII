@@ -611,13 +611,11 @@ contains
   end subroutine species_rate_path_score
 
   subroutine species_rate_path_reduce()
-    use mpi
+    use memory_mod, only : sum_over_ranks
     implicit none
-    integer :: ie, ierr
+    integer :: ie
     do ie = 1, n_elements
-       call MPI_ALLREDUCE(MPI_IN_PLACE, metal_rate_path(ie)%raw, &
-                          size(metal_rate_path(ie)%raw), MPI_DOUBLE_PRECISION, &
-                          MPI_SUM, MPI_COMM_WORLD, ierr)
+       call sum_over_ranks(metal_rate_path(ie)%raw)
     end do
   end subroutine species_rate_path_reduce
 
