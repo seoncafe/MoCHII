@@ -37,6 +37,7 @@ program main
   use heii_cascade_mod, only : heii_cascade_transported
   use nlevel_cooling_mod, only : nlevel_cooling_report
   use species_mod,     only : species_setup, species_terminal_photoionization_check, &
+                              species_stage_start_as_hydrogen, &
                               n_elements, elem_nstage, elem_abund, elem_eth
   use memory_mod,      only : destroy_shared_mem_all
   use utility
@@ -48,7 +49,11 @@ program main
   real(kind=wp)       :: drift_vol(3)
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
-  logical             :: converged, use_vol, refined_this_iteration
+  !--- MOCASSIN's measure (ion_balance_mod::neutral_hydrogen_convergence_count):
+  !--- leaves with gas, leaves whose x_HI changed by at most
+  !--- par%conv_xHI_tol, leaves no packet of any transported band crossed
+  integer             :: xhi_counts(3)
+  logical             :: converged, refined_this_iteration
   integer             :: ierr, iter, niter
   character(len=32)   :: pass_label
   !--- active metal photoionization thresholds gathered for the
@@ -104,6 +109,14 @@ program main
      end block
   end if
   call gas_opacity_setup()
+  !--- MOCASSIN's metal start, on a fresh namelist start only: with conv_crit
+  !--- = 'cell_fraction' and no restart_file the first transport pass sees
+  !--- every metal at stage I = the leaf's x_HI, higher stages 0, until the
+  !--- first solve refreshes the cache (species_stage_start_as_hydrogen).
+  !--- A re-refinement calls gas_opacity_setup again and keeps the refreshed
+  !--- cache.
+  if (par%use_metals .and. trim(par%conv_crit) == 'cell_fraction' .and. &
+      len_trim(par%restart_file) == 0) call species_stage_start_as_hydrogen()
   call jtally_ion_setup(amr_grid%nleaf)
   call ion_score_setup(amr_grid%nleaf)
   if (len_trim(par%restart_file) > 0) then
@@ -166,10 +179,12 @@ program main
   if (trim(par%cooling_model) == 'local_ne') call nlevel_cooling_report()
 
   !--- iteration: transport -> rates -> equilibrium -> opacity feedback,
-  !--- until the stopping test of par%conv_crit passes ('vol': the drift
-  !--- still to come in x_HII and helium below par%gas_tol, see
-  !--- composition_converged; 'cell': the largest leaf step below
-  !--- par%gas_tol).  gas_niter = 0 = single
+  !--- until the stopping test of par%conv_crit passes (stopping_test_passed:
+  !--- 'vol': the drift still to come in x_HII and helium below
+  !--- par%gas_tol, see composition_converged; 'cell': the largest leaf
+  !--- step below par%gas_tol; 'cell_fraction': the share of leaves whose
+  !--- x_HI changed by at most par%conv_xHI_tol reaches
+  !--- par%conv_cell_fraction).  gas_niter = 0 = single
   !--- pass (no equilibrium solve, fixed state).  The stellar tally is
   !--- recomputed from zero each iteration (opacity changed).
   !--- the grains of the gas-grain physics (par%grain_pe,
@@ -193,18 +208,12 @@ program main
      write(pass_label,'(a,i4)') 'iteration ', iter
      call ionizing_field_and_rates(pass_label)
      if (par%gas_niter < 1) exit          ! rates only, no solve
-     use_vol = trim(par%conv_crit) == 'vol'
      if (par%solve_te) then
         thermal_t0 = MPI_WTIME()
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol)
+                                drift_vol, xhi_counts)
         thermal_dt = MPI_WTIME() - thermal_t0
         call record_change_history()
-        if (use_vol) then
-           converged = composition_converged() .and. dte_vol < par%gas_tol_te
-        else
-           converged = max_dx < par%gas_tol .and. max_dte < par%gas_tol_te
-        end if
         if (mpar%p_rank == 0) then
            write(6,'(a,i4,2(a,es12.4))') &
               '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
@@ -220,13 +229,9 @@ program main
               ' s (', mpar%nproc, ' MPI ranks, all nodes)'
         end if
      else
-        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol)
+        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol, &
+                                    xhi_counts)
         call record_change_history()
-        if (use_vol) then
-           converged = composition_converged()
-        else
-           converged = max_dx < par%gas_tol
-        end if
         if (mpar%p_rank == 0) then
            write(6,'(a,i4,2(a,es12.4))') &
               '     iteration ', iter, ': max |delta x_HII| = ', max_dx, &
@@ -236,6 +241,11 @@ program main
               drift_vol
         end if
      end if
+     if (mpar%p_rank == 0) write(6,'(a,f6.2,a,f8.2,a,f7.2,a)') &
+        '                  x_HI within', 100.0_wp*par%conv_xHI_tol, '%:', &
+        100.0_wp*leaf_share(xhi_counts(2)), ' % of leaves,  no packet:', &
+        100.0_wp*leaf_share(xhi_counts(3)), ' %'
+     converged = stopping_test_passed()
      !--- distance from the fixed point, H and He (fixed_point_distance_mod):
      !--- the step d, the decay ratio rho fitted over the last NWIN steps,
      !--- the drift still to come e = d rho/(1 - rho), and the mean signed
@@ -246,7 +256,7 @@ program main
         call report_fixed_point_distance(' He0-He+', hist_dhe1)
         if (dhe_vol(2) >= 0.0_wp) &
            call report_fixed_point_distance(' He+-He2+', hist_dhe3)
-        if (use_vol .and. hist_dx%n < NWIN) write(6,'(a,i0,a)') &
+        if (trim(par%conv_crit) == 'vol' .and. hist_dx%n < NWIN) write(6,'(a,i0,a)') &
            '                  (the stopping test needs ', NWIN, ' iterations)'
      end if
      !--- residual of hydrogen's ionization balance on the written state,
@@ -305,10 +315,19 @@ program main
   !--- communicator.  This avoids letting any other rank act on its own copy
   !--- of the flag.
   if (par%gas_niter >= 1 .and. .not. converged .and. mpar%p_rank == 0) then
-     write(6,'(a,i0,2(a,es10.3),a)') &
-        ' WARNING: gas iteration did NOT converge in ', niter, &
-        ' iterations (max|dx_HII| = ', max_dx, ', max|dTe|/Te = ', max_dte, &
-        '); the written state is not at equilibrium.'
+     if (trim(par%conv_crit) == 'cell_fraction') then
+        write(6,'(a,i0,7a)') &
+           ' WARNING: gas iteration did NOT converge in ', niter, &
+           ' iterations (x_HI within ', percent_text(par%conv_xHI_tol), '% in ', &
+           percent_text(leaf_share(xhi_counts(2))), ' % of the leaves, below '// &
+           'conv_cell_fraction = ', percent_text(par%conv_cell_fraction), &
+           ' %); the written state is not at equilibrium.'
+     else
+        write(6,'(a,i0,2(a,es10.3),a)') &
+           ' WARNING: gas iteration did NOT converge in ', niter, &
+           ' iterations (max|dx_HII| = ', max_dx, ', max|dTe|/Te = ', max_dte, &
+           '); the written state is not at equilibrium.'
+     end if
      if (par%require_convergence) then
         call abort_run('par%require_convergence is set; stopping before output.')
      end if
@@ -338,9 +357,10 @@ program main
   if (par%gas_niter >= 1) then
      if (par%solve_te) then
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol)
+                                drift_vol, xhi_counts)
      else
-        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol)
+        call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol, &
+                                    xhi_counts)
         max_dte = 0.0_wp
      end if
      call hydrogen_balance_residual_grid(eps_hmax, eps_hvol)
@@ -471,6 +491,55 @@ contains
        call history_reset(hist_dhe3)
     end if
   end subroutine record_change_history
+
+  !--- the stopping test of the gas iteration, chosen by par%conv_crit
+  !--- (validated by setup_mod::read_input):
+  !---   'cell'          max |delta x_HII| < gas_tol and, with solve_te,
+  !---                   max |delta Te|/Te < gas_tol_te;
+  !---   'vol'           composition_converged and, with solve_te,
+  !---                   the n_e-weighted vol |delta Te|/Te < gas_tol_te;
+  !---   'cell_fraction' MOCASSIN's test (iteration_mod.f90, minConvergence):
+  !---                   the share of leaves with gas whose x_HI changed by at
+  !---                   most conv_xHI_tol (relative) is >= conv_cell_fraction;
+  !---                   a count, not a volume weight, also on an AMR grid; a
+  !---                   leaf no packet of any band crossed counts as not
+  !---                   converged; T_e, gas_tol, gas_tol_te and
+  !---                   conv_drift_test do not enter it.
+  logical function stopping_test_passed() result(done)
+    select case (trim(par%conv_crit))
+    case ('cell')
+       done = max_dx < par%gas_tol
+       if (par%solve_te) done = done .and. max_dte < par%gas_tol_te
+    case ('vol')
+       done = composition_converged()
+       if (par%solve_te) done = done .and. dte_vol < par%gas_tol_te
+    case ('cell_fraction')
+       done = leaf_share(xhi_counts(2)) >= par%conv_cell_fraction
+    case default
+       call abort_run('stopping_test_passed: par%conv_crit = '''// &
+                      trim(par%conv_crit)//''' has no stopping test.')
+    end select
+  end function stopping_test_passed
+
+  !--- a count of leaves over the leaves with gas, xhi_counts(1) (0 when
+  !--- the grid has no gas, as MOCASSIN's percentage of an empty grid)
+  real(kind=wp) function leaf_share(n) result(f)
+    integer, intent(in) :: n
+    if (xhi_counts(1) > 0) then
+       f = real(n, wp)/real(xhi_counts(1), wp)
+    else
+       f = 0.0_wp
+    end if
+  end function leaf_share
+
+  !--- a fraction as a percentage with two decimals, without blanks
+  function percent_text(f) result(text)
+    real(kind=wp), intent(in) :: f
+    character(len=:), allocatable :: text
+    character(len=24) :: buffer
+    write(buffer,'(f24.2)') 100.0_wp*f
+    text = trim(adjustl(buffer))
+  end function percent_text
 
   !--- par%conv_crit = 'vol': the ionization state has converged when the
   !--- drift still to come is below par%gas_tol for x_HII, for He0 <-> He+,

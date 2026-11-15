@@ -16,6 +16,8 @@ module previous_state_mod
 !                         2026-09-26), else max(0, 1 - x_HeI - x_HeII);
 !   T_e, n_e              the diffuse-field emission (recombination spectra,
 !                         alpha(T_e), n_e n_ion) of the first diffuse pass;
+!                         T_e is the start of the thermal solve with
+!                         solve_te, and is replaced by te_fixed without it;
 !   Gamma_<el>_stages     the metal photoionization rates: the stage-fraction
 !                         cache behind the metal opacity is built from them
 !                         (species_stage_cache_refresh), and a fresh run
@@ -101,6 +103,7 @@ contains
     end type rate_block
     type(rate_block), allocatable :: orates(:)
     integer, allocatable :: match(:)
+    integer :: nte_replaced
     integer :: status, n1, n2, nold, il, j, ie, k, nr, nmatched, ngas_new, &
                nunmatched_gas, ierr, nst, nneutral
     logical :: have(8), have_xhii, have_xheiii, have_phi3, have_nh
@@ -259,6 +262,18 @@ contains
     call MPI_BCAST(nx4, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nne, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(nte, gas_nleaf, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    !--- solve_te = .false. holds every leaf at te_fixed for the whole run, a
+    !--- restart included: the restored temperatures are replaced, so the ion
+    !--- solve (which takes par%te_fixed) and every reader of gas_Te (the
+    !--- metal stage cache, the diffuse emission) see one temperature.  With
+    !--- solve_te = .true. the restored T_e is the start of the thermal solve.
+    if (.not. par%solve_te) then
+       nte_replaced = count(gas_nH(1:gas_nleaf) > 0.0_wp .and. nte /= par%te_fixed)
+       nte = par%te_fixed
+       if (mpar%p_rank == 0 .and. nte_replaced > 0) write(*,'(a,i12,a,f10.1,a)') &
+          ' RESTART: T_e of ', nte_replaced, ' gas leaves replaced by te_fixed = ', &
+          par%te_fixed, ' K (solve_te = F holds every leaf at te_fixed)'
+    end if
     if (mpar%h_rank == 0) then
        gas_xHI(1:gas_nleaf)   = nx1;  gas_xHII(1:gas_nleaf) = nx1p
        gas_xHeI(1:gas_nleaf)  = nx2

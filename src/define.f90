@@ -914,8 +914,24 @@ private :: c_expm1, c_log1p
      !---   sum V ne|dTe| / sum V ne Te         < gas_tol_te  (a step test).
      !--- Until 2026-09-25 'vol' tested the x_HII step alone, which stopped
      !--- the HII40 benchmark 21 iterations early with its He I front
-     !--- 0.17 pc short.  All measures are printed each iteration.
-     character(len=8)   :: conv_crit    = 'cell'
+     !--- 0.17 pc short.
+     !--- 'cell_fraction' = MOCASSIN's test: a leaf with gas has converged
+     !--- when |x_HI,new - x_HI,old|/x_HI,old <= conv_xHI_tol over one
+     !--- iteration's solve (a leaf no transported packet crossed has
+     !--- not), and the run stops when the share of converged leaves, a
+     !--- count, not a volume weight, is >= conv_cell_fraction
+     !--- (ion_balance_mod::neutral_hydrogen_convergence_count); T_e,
+     !--- gas_tol, gas_tol_te and conv_drift_test do not enter it.
+     !--- All measures, this share among them, are printed each iteration.
+     character(len=16)  :: conv_crit    = 'cell'
+     !--- MOCASSIN's measure: conv_xHI_tol (>= 0) is the largest relative
+     !--- change of x_HI in a converged leaf (MOCASSIN convLimit), used for
+     !--- the share printed every iteration whatever conv_crit is;
+     !--- conv_cell_fraction (in (0, 1]) is the share of converged leaves
+     !--- that stops the iteration with conv_crit = 'cell_fraction'
+     !--- (MOCASSIN's minConvergence / 100).
+     real(kind=wp)      :: conv_xHI_tol       = 0.05_wp
+     real(kind=wp)      :: conv_cell_fraction = 0.95_wp
      !--- with conv_crit = 'vol': whether a measure on its Monte Carlo floor
      !--- must also show no net drift of the ionized volume over the window
      !--- (|mean s| < 2.365 sigma(s)/sqrt(8), fixed_point_distance_mod).
@@ -1001,8 +1017,24 @@ private :: c_expm1, c_log1p
      !--- old steps say nothing about the new iteration.  A file without the
      !--- histories is refused when this is on.
      logical            :: restart_iteration_history = .false.
-     !--- gas-state initialization (overridden by AMR file columns where
-     !--- present): ion fractions and the He abundance n_He/n_H.
+     !--- gas-state initialization of a fresh start (restart_file replaces
+     !--- it): ion fractions in [0, 1] and the He abundance n_He/n_H.
+     !--- xHI_init is the x_HI of every leaf (an xHI column of the AMR file
+     !--- wins), x_HII = 1 - x_HI.  Helium starts at x_HeI = xHeI_init,
+     !--- x_HeII = xHeII_init, x_HeIII = 1 - xHeI_init - xHeII_init
+     !--- (xHeI_init + xHeII_init <= 1), with one exception: with conv_crit =
+     !--- 'cell_fraction' and both He items left out of the input, helium
+     !--- starts as hydrogen does in each leaf, x_HeI = x_HI,
+     !--- x_HeII = 1 - x_HI, x_HeIII = 0 (MOCASSIN's start, grid_mod.f90
+     !--- setMotherGrid: X(He0) = X(H0) = H0in = 1e-5, X(He+) = 1 - X(He0)).
+     !--- Either He item given in the input is the start of both.  The metal
+     !--- stage fractions are not carried between iterations (every solve
+     !--- forms them from the rates); the first transport pass takes them
+     !--- from the rates of the start state, except with conv_crit =
+     !--- 'cell_fraction' on a namelist start, where, as in MOCASSIN, the
+     !--- first stage of every metal starts at the leaf's x_HI and the higher
+     !--- stages at 0 until the first solve (main.f90, species_mod::
+     !--- species_stage_start_as_hydrogen).
      real(kind=wp)      :: xHI_init     = 1.0_wp
      real(kind=wp)      :: xHeI_init    = 1.0_wp
      real(kind=wp)      :: xHeII_init   = 0.0_wp
@@ -1054,13 +1086,20 @@ private :: c_expm1, c_log1p
      real(kind=wp)      :: f_ion_pah    = 0.0_wp
      !--- ionization equilibrium + opacity feedback iteration.
      !--- gas_niter = 0 keeps the single-pass behavior (no solve).
-     !--- Convergence: max |delta x_HII| < gas_tol.  te_fixed [K] is the
-     !--- electron temperature of every leaf when solve_te is off, and the
-     !--- starting temperature of the first pass when it is on.
+     !--- gas_niter is the iteration limit; the stopping test is set by
+     !--- conv_crit (gas_tol is its tolerance for 'cell' and 'vol').  The electron
+     !--- temperature has one key for each mode of solve_te, and an input
+     !--- that gives the key of the other mode is refused (setup.f90):
+     !---   te_fixed [K], solve_te = .false.: the T_e held in every leaf for
+     !---       the whole run (a restart included: the restored T_e is
+     !---       replaced);
+     !---   te_start [K], solve_te = .true.: the starting T_e of every leaf
+     !---       (the T_e of the first pass) unless restart_file supplies one.
      !--- ion_relax < 1 under-relaxes x between iterations (sharp I-fronts).
      integer            :: gas_niter    = 0
      real(kind=wp)      :: gas_tol      = 1.0e-3_wp
      real(kind=wp)      :: te_fixed     = 1.0e4_wp
+     real(kind=wp)      :: te_start     = 1.0e4_wp
      real(kind=wp)      :: ion_relax    = 1.0_wp
      !--- write the iterate every rates_write_interval gas iterations to
      !--- <base>_rates_iterate (the <base>_rates layout, header CONVERGD F,
@@ -1193,11 +1232,14 @@ private :: c_expm1, c_log1p
      logical            :: charge_exchange_heating = .true.
      !--- thermal balance.  solve_te (default .true.) solves heating =
      !--- cooling by bisection on log T in [te_min, te_max] in every leaf,
-     !--- with the ionization re-solved at each trial T; convergence
-     !--- additionally requires max |delta Te|/Te < gas_tol_te.  Cooling
+     !--- with the ionization re-solved at each trial T; with conv_crit =
+     !--- 'cell' or 'vol' convergence additionally requires the T_e step
+     !--- below gas_tol_te (max |delta Te|/Te, or its n_e-weighted volume
+     !--- measure with 'vol'; 'cell_fraction' has no T_e test).  Cooling
      !--- coefficient files are read from atomic_dir.  With solve_te the
-     !--- value of te_fixed is only the starting Te of the first pass;
-     !--- .false. holds every leaf at te_fixed for the whole run.
+     !--- starting Te of the first pass is te_start (the restored T_e with
+     !--- restart_file); .false. holds every leaf at te_fixed for the whole
+     !--- run.
      logical            :: solve_te     = .true.
      real(kind=wp)      :: te_min       = 1.0e3_wp
      real(kind=wp)      :: te_max       = 5.0e4_wp

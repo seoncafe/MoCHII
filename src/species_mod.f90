@@ -65,6 +65,7 @@ module species_mod
   public :: species_rate_path_setup, species_rate_path_reset
   public :: species_rate_path_score, species_rate_path_reduce
   public :: species_stage_cache_refresh, species_set_photoionization_rates
+  public :: species_stage_start_as_hydrogen
   public :: species_photoionization_rates
   public :: species_packet_cross_sections, species_cached_opacity
   public :: species_cross_section, species_outer_shell_cross_section
@@ -519,6 +520,46 @@ contains
     end do
     call species_shared_sync()
   end subroutine species_stage_cache_refresh
+
+  !--- MOCASSIN's metal start (grid_mod.f90 setMotherGrid: the neutral stage of
+  !--- every heavy element at X(H0), the higher stages 0), applied once, by
+  !--- main.f90 on a fresh namelist start with conv_crit = 'cell_fraction':
+  !--- in each leaf with gas the first-stage fraction is the leaf's starting
+  !--- x_HI and every higher stage is 0, so the fractions of an element sum
+  !--- to x_HI, not 1.  The cache is read by the packet opacity and the metal
+  !--- diffuse channels 6-8 (which take the higher stages and so emit
+  !--- nothing) until the first solve; the cell solve forms the stage
+  !--- fractions from the rates (species_fractions) without reading it, and
+  !--- gas_opacity_fill then rebuilds it from the solved state.  A vacuum
+  !--- leaf keeps the cache convention (all in the first stage).
+  subroutine species_stage_start_as_hydrogen()
+    use gas_state_mod, only : gas_nH, gas_xHI, gas_nleaf
+    implicit none
+    integer :: ie, il
+    if (n_elements == 0) return
+    do ie = 1, n_elements
+       do il = shared_host_rank() + 1, size(stage_frac(ie)%g,2), shared_host_size()
+          stage_frac(ie)%g(:,il) = 0.0_wp
+          if (gas_nH(il) > 0.0_wp) then
+             stage_frac(ie)%g(1,il) = gas_xHI(il)
+          else
+             stage_frac(ie)%g(1,il) = 1.0_wp
+          end if
+       end do
+    end do
+    call species_shared_sync()
+    if (mpar%p_rank == 0) then
+       if (all(gas_xHI(1:gas_nleaf) == par%xHI_init)) then
+          write(*,'(a,es13.6,a)') ' METALS: stage I fraction initialized to ', &
+             par%xHI_init, ', higher stages 0 (conv_crit = ''cell_fraction'': '// &
+             'metals start as hydrogen until the first solve)'
+       else
+          write(*,'(a)') ' METALS: stage I fraction initialized to x_HI of each '// &
+             'leaf, higher stages 0 (conv_crit = ''cell_fraction'': metals '// &
+             'start as hydrogen until the first solve)'
+       end if
+    end if
+  end subroutine species_stage_start_as_hydrogen
 
   !--- cross sections (and, optionally, photoheating coefficients) of every
   !--- active transition at one packet energy, ordered by threshold.

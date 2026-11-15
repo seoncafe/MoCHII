@@ -29,7 +29,7 @@ src/heii_recombination_photons_mod.o: src/define.o src/heii_cascade_mod.o src/ma
 src/hydrogenic_recombination_mod.o: src/define.o src/hydrogenic_recombination_data.inc
 src/hydrogenic_twophoton_mod.o: src/define.o
 src/iofile_mod.o: src/define.o src/fitsio_mod.o src/hdf5io_mod.o src/utility.o
-src/ion_balance_mod.o: src/define.o src/gas_rates_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/hei_recombination_photons_mod.o src/heii_recombination_photons_mod.o src/octree_mod.o src/photoelectron_degradation_mod.o src/recomb_mod.o src/species_mod.o src/heii_h_charge_exchange_data.inc
+src/ion_balance_mod.o: src/define.o src/gas_rates_mod.o src/gas_state_mod.o src/hei_metastable_mod.o src/hei_recombination_photons_mod.o src/heii_recombination_photons_mod.o src/ion_score_mod.o src/octree_mod.o src/photoelectron_degradation_mod.o src/recomb_mod.o src/species_mod.o src/heii_h_charge_exchange_data.inc
 src/ion_band_mod.o: src/define.o src/energy_sampler_mod.o src/octree_mod.o src/random_mt.o src/utility.o
 src/ion_packet_mod.o: src/define.o src/gas_opacity_mod.o src/gas_state_mod.o src/octree_mod.o src/photo_xsec.o src/species_mod.o
 src/ion_peel_mod.o: src/define.o src/iofile_mod.o src/ion_band_mod.o src/ion_packet_mod.o src/memory_mod_mpi.o src/raytrace_amr.o src/utility.o
@@ -61,8 +61,8 @@ src/recomb_continuum_mod.o: src/define.o src/free_free_mod.o src/mathlib.o src/u
 src/recomb_mod.o: src/define.o src/hydrogenic_recombination_mod.o
 src/sed_mod.o: src/define.o src/random_mt.o src/utility.o
 src/sedust_mod.o: src/define.o src/gas_state_mod.o src/grain_model_mod.o src/iofile_mod.o src/ion_band_mod.o src/jtally_mod.o src/memory_mod_mpi.o src/octree_mod.o src/utility.o
-src/setup.o: src/define.o src/iofile_mod.o src/ion_band_mod.o src/metal_ionization_potential_mod.o src/qmc_mod.o src/random_mt.o src/raytrace_amr.o src/utility.o
+src/setup.o: src/define.o src/gas_state_mod.o src/iofile_mod.o src/ion_band_mod.o src/metal_ionization_potential_mod.o src/qmc_mod.o src/random_mt.o src/raytrace_amr.o src/utility.o
 src/sh95_mod.o: src/define.o src/utility.o
 src/species_mod.o: src/cooling_mod.o src/define.o src/free_free_mod.o src/gas_state_mod.o src/iofile_mod.o src/ion_stage_equilibrium_mod.o src/memory_mod_mpi.o src/metal_ionization_potential_mod.o src/nlevel_cooling_mod.o src/nlevel_mod.o src/octree_mod.o src/photo_xsec.o src/recomb_mod.o src/utility.o
-src/thermal_mod.o: src/cooling_mod.o src/define.o src/dust_temp_mod.o src/gas_grain_collision_mod.o src/gas_rates_mod.o src/gas_state_mod.o src/grain_photoelectric_mod.o src/grain_size_bins_mod.o src/hei_metastable_mod.o src/hei_recombination_photons_mod.o src/heii_recombination_photons_mod.o src/ion_balance_mod.o src/octree_mod.o src/photo_xsec.o src/photoelectron_degradation_mod.o src/species_mod.o
+src/thermal_mod.o: src/cooling_mod.o src/define.o src/dust_temp_mod.o src/gas_grain_collision_mod.o src/gas_rates_mod.o src/gas_state_mod.o src/grain_photoelectric_mod.o src/grain_size_bins_mod.o src/hei_metastable_mod.o src/hei_recombination_photons_mod.o src/heii_recombination_photons_mod.o src/ion_balance_mod.o src/ion_score_mod.o src/octree_mod.o src/photo_xsec.o src/photoelectron_degradation_mod.o src/species_mod.o
 src/utility.o: src/define.o

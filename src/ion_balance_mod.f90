@@ -32,6 +32,7 @@ module ion_balance_mod
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             secondary_ionization
   use photoelectron_degradation_mod, only : ionized_fraction_svs
+  use ion_score_mod, only : band_path_luminosity
   use recomb_mod
   implicit none
   private
@@ -42,6 +43,7 @@ module ion_balance_mod
   public :: cx_HeII_H, cx_HeI_Hp, cx_HeIII_H, cx_HeII_Hp
   public :: helium_charge_exchange_heating, nonradiative_HeII_H
   public :: NE_FLOOR_PER_H
+  public :: neutral_hydrogen_convergence_count
 
   !--- Lower bound on n_e/n_H in the cell solve and the charge-neutrality
   !--- closure: a guard against n_e = 0, not a physical floor.  n_e is the
@@ -1151,12 +1153,16 @@ contains
   ! solution has.  dhe_vol(2): the same measure for helium
   ! (helium_change_measures); with conv_crit = 'vol' it enters the stopping
   ! test beside dx_vol (main.f90::composition_converged).  drift_vol(3):
-  ! the signed counterparts (signed_change_measures).
-  subroutine gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol)
+  ! the signed counterparts (signed_change_measures).  xhi_counts(3):
+  ! MOCASSIN's measure, leaves with gas, leaves whose x_HI converged, leaves
+  ! no packet crossed (neutral_hydrogen_convergence_count).
+  subroutine gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol, &
+                                    xhi_counts)
     use mpi
     use octree_mod, only : amr_grid, leaf_half
     implicit none
     real(kind=wp), intent(out) :: max_dx, dx_vol, dhe_vol(2), drift_vol(3)
+    integer,       intent(out) :: xhi_counts(3)
 
     real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
                                   xHeII_new(:), xHeIII_new(:), ne_new(:)
@@ -1181,6 +1187,7 @@ contains
 
     max_dx  = 0.0_wp
     sums    = 0.0_wp
+    xhi_counts = 0
     do il = gas_leaf_owner_first(), gas_nleaf, gas_leaf_owner_stride()
        nH = gas_nH(il)
        if (nH <= 0.0_wp) then
@@ -1216,6 +1223,9 @@ contains
                                     xHII_new(il), ne)
           end block
        end if
+       call neutral_hydrogen_convergence_count(gas_xHI(il), xHI_new(il), &
+                                               band_path_luminosity(il) > 0.0_wp, &
+                                               xhi_counts)
        max_dx = max(max_dx, abs(xHII_new(il) - gas_xHII(il)))
        vol = (2.0_wp*leaf_half(il))**3
        sums(1) = sums(1) + vol*abs(xHII_new(il) - gas_xHII(il))
@@ -1234,6 +1244,10 @@ contains
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, sums, 9, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
+    !--- an integer sum is exact and the same on every rank whatever the
+    !--- reduction order, so the counts need no broadcast from rank 0
+    call MPI_ALLREDUCE(MPI_IN_PLACE, xhi_counts, 3, MPI_INTEGER, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
     call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
                            ne_new)
     deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new)
@@ -1247,6 +1261,66 @@ contains
     call MPI_BCAST(dhe_vol, 2, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(drift_vol, 3, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
   end subroutine gas_equilibrium_update
+
+  !=========================================================================
+  ! MOCASSIN's convergence measure of one leaf (MOCASSIN 2.02.73.2,
+  ! update_mod.f90 updateCell: lgHit, then the test on deltaXHI after the
+  ! T iteration; iteration_mod.f90: the percentage of converged active
+  ! cells against minConvergence), added to the counts
+  !   counts(1) leaves with gas (n_H > 0; MOCASSIN's active cells),
+  !   counts(2) leaves whose neutral hydrogen fraction converged,
+  !   counts(3) leaves no packet crossed.
+  ! The caller passes only leaves with gas.  A leaf has converged when
+  !   |x_HI,new - x_HI,old| / x_HI,old <= par%conv_xHI_tol
+  ! (MOCASSIN convLimit, XHILimit), x_HI,old the state before this
+  ! iteration's solve and x_HI,new the state the solve writes, i.e. after
+  ! the under-relaxation par%ion_relax (MOCASSIN has none), the same step
+  ! max_dx and dx_vol measure.  T_e does not enter the test.
+  !
+  ! No packet.  MOCASSIN sets lgHit when any frequency bin of the cell's
+  ! Jste is positive; outside lgDebug Jste carries the stellar and the
+  ! diffuse packets over its whole frequency grid, nuMin to nuMax (input
+  ! keys; default 1.001e-5 to 15 Ryd, the clumpy comparison model sets
+  ! 0.092 to 17 Ryd), and the stellar packets are drawn over that whole
+  ! grid, below the Lyman limit too.  A cell with no hit returns before the
+  ! test with lgConverged left at 0, and stays in the active-cell
+  ! denominator.  MoCHII's counterpart, packet_crossed, is computed by the
+  ! caller as ion_score_mod::band_path_luminosity(il) > 0: band_path =
+  ! Sum path_lum over every segment scored in the leaf in this iteration's
+  ! transport (score_ion_path: source and diffuse packets, the direct edge
+  ! walk and the sampled flights, the ionizing band and, with par%add_fuv,
+  ! the FUV band from par%efuv_min to the Lyman limit), reduced over the
+  ! ranks before the solve.  These are all the bands the gas iteration
+  ! transports (the dust infrared band is transported only after it and is
+  ! not scored there).  Remaining differences from lgHit: MoCHII has no
+  ! packets below par%efuv_min, and with par%add_fuv = .false. none below
+  ! par%eion_min, where MOCASSIN's grid reaches nuMin; and the analytic edge
+  ! walk scores every leaf a direct flight crosses until e^-tau underflows
+  ! (tau_huge), whereas a MOCASSIN packet stops at its sampled absorption
+  ! point.
+  !
+  ! x_HI,old = 0 (MOCASSIN divides by zero there): the leaf has converged
+  ! when x_HI,new = 0 too (it has not changed) and a packet crossed it, and
+  ! not when x_HI,new > 0.
+  !=========================================================================
+  pure subroutine neutral_hydrogen_convergence_count(xHI_old, xHI_new, &
+                                                     packet_crossed, counts)
+    real(kind=wp), intent(in)    :: xHI_old, xHI_new
+    logical,       intent(in)    :: packet_crossed
+    integer,       intent(inout) :: counts(3)
+    logical :: converged
+    counts(1) = counts(1) + 1
+    if (.not. packet_crossed) then
+       counts(3) = counts(3) + 1
+       return
+    end if
+    if (xHI_old > 0.0_wp) then
+       converged = abs(xHI_new - xHI_old)/xHI_old <= par%conv_xHI_tol
+    else
+       converged = .not. (xHI_new > 0.0_wp)
+    end if
+    if (converged) counts(2) = counts(2) + 1
+  end subroutine neutral_hydrogen_convergence_count
 
   !=========================================================================
   ! Volume-integrated change of the helium state over one iteration, the

@@ -2340,8 +2340,8 @@ read grid $\rightarrow$ persist gas leaf state $\rightarrow$ refresh the leaf
 \> refresh the dust density and the metal stage cache from the new state\\
 \> \> (the stellar estimators are recomputed from zero each\\
 \> \> iteration --- no reuse)\\
-\> converged by \code{par\%conv\_crit}: cell-max or volume-integrated
-   tests (below)\\
+\> converged by \code{par\%conv\_crit}: cell-max, volume-integrated or
+   converged-leaf-share tests (below)\\
 \textbf{end do}\\
 outputs: rates + state maps; line luminosities; nebular continuum
 \end{tabbing}
@@ -2455,8 +2455,8 @@ bit (verified against the previous binary, all \code{rates.h5} datasets and
 the line files, with and without the extension, pseudo-random and Sobol,
 single, multiple and preset sources).
 
-\paragraph{Convergence measures.}\label{sec:conv}  Two pairs are computed every
-iteration and \code{par\%conv\_crit} selects which gates the loop:
+\paragraph{Convergence measures.}\label{sec:conv}  Two pairs and one share are
+computed every iteration and \code{par\%conv\_crit} selects which gates the loop:
 the cell-max tests ($\max|\Delta x_{\rm HII}| <$ \code{gas\_tol},
 $\max|\Delta T_e|/T_e <$ \code{gas\_tol\_te}) and the
 volume-integrated tests
@@ -2528,6 +2528,41 @@ convergence.  Set the tolerances just above the floor for the packet
 count in use (here $5{\times}10^{-3}$ and $10^{-2}$ would stop the
 loop at iteration $\sim$23); the floors scale as
 $1/\sqrt{N_{\rm packets}}$.
+\emph{MOCASSIN's test} (\code{par\%conv\_crit = 'cell\_fraction'}).
+A leaf with gas has converged in an iteration when
+\begin{equation}
+  \frac{|x_{{\rm HI},n} - x_{{\rm HI},n-1}|}{x_{{\rm HI},n-1}}
+  \le \code{conv\_xHI\_tol},
+\end{equation}
+$x_{{\rm HI},n-1}$ the state before the solve and $x_{{\rm HI},n}$ the state
+it writes (after \code{ion\_relax}), and the loop stops when the number of
+converged leaves over the number of leaves with gas, a count and not a
+volume weight, is $\ge$ \code{conv\_cell\_fraction} (defaults 0.05 and
+0.95, MOCASSIN's \code{convLimit} and \code{minConvergence}; Ercolano et
+al.\ 2003).  $T_e$ does not enter it.  As in MOCASSIN, where a cell with
+no photon hit returns before the test with its flag at zero, a leaf that
+no packet crossed in the iteration has not converged and stays in the
+denominator.  MOCASSIN's hit is any nonzero frequency bin of its mean
+intensity tally (stellar and diffuse packets over its whole grid, from
+\code{nuMin}); here a crossing is a positive path tally $\sum \ell L$
+over every segment the iteration scores in the leaf, of every band it
+transports: the ionizing band and, with \code{add\_fuv}, the FUV band from
+\code{efuv\_min} to the Lyman limit
+(\code{ion\_score\_mod::band\_path\_luminosity},
+\code{ion\_balance\_mod::neutral\_hydrogen\_convergence\_count}).
+Remaining differences: MoCHII has no packets below \code{efuv\_min} (none
+below \code{eion\_min} without \code{add\_fuv}), where MOCASSIN draws its
+stellar packets down to \code{nuMin}; and the analytic edge walk scores
+every leaf a direct flight crosses until $e^{-\tau}$ underflows, whereas a
+MOCASSIN packet stops where it is absorbed.  MOCASSIN divides by
+$x_{{\rm HI},n-1}$ unguarded; here a leaf with $x_{{\rm HI},n-1} = 0$ has
+converged when $x_{{\rm HI},n} = 0$ and a packet crossed it.  The counts
+are integer sums over the MPI ranks: for given leaf flags the sum is
+exact and the same on every rank, whatever the reduction order.  The flags
+themselves come from floating-point path sums and solved fractions, so a
+leaf near the crossing or the tolerance boundary can change its flag with
+the rank count.  The share and the share of leaves with no
+packet are printed every iteration whatever \code{par\%conv\_crit} is.
 With \code{par\%require\_convergence} (default off) a non-converged gas
 iteration prints a warning and, when the switch is set, aborts before
 writing output; either way the rates-file header records the convergence
