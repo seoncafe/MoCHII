@@ -49,6 +49,7 @@ module gas_state_mod
   public :: gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, gas_xHeIII
   public :: gas_ne, gas_Te
   public :: gas_nleaf
+  public :: helium_starts_as_hydrogen
 
   real(kind=wp), pointer :: gas_nH(:)    => null()  ! H number density [cm^-3]
   real(kind=wp), pointer :: gas_xHI(:)   => null()  ! n_HI / n_H
@@ -59,6 +60,10 @@ module gas_state_mod
   real(kind=wp), pointer :: gas_ne(:)    => null()  ! electron density [cm^-3]
   real(kind=wp), pointer :: gas_Te(:)    => null()  ! electron temperature [K]
   integer :: gas_nleaf = 0
+  !--- set by setup.f90 (read_parameters_with_implicit_defaults): conv_crit =
+  !--- 'cell_fraction' with xHeI_init and xHeII_init both left out of the
+  !--- input, so gas_state_setup starts helium as hydrogen in each leaf
+  logical :: helium_starts_as_hydrogen = .false.
   integer :: win_xHI = MPI_WIN_NULL, win_xHII = MPI_WIN_NULL
   integer :: win_xHeI = MPI_WIN_NULL
   integer :: win_xHeII = MPI_WIN_NULL, win_xHeIII = MPI_WIN_NULL
@@ -72,7 +77,11 @@ contains
   ! when absent every leaf starts at par%xHI_init.  x_HII starts at 1 - x_HI
   ! (the only information the file or the namelist gives).  He fractions
   ! start at par%xHeI_init / par%xHeII_init (no He columns in the generic
-  ! format), x_HeIII at max(0, 1 - xHeI_init - xHeII_init).
+  ! format), x_HeIII at max(0, 1 - xHeI_init - xHeII_init); with
+  ! helium_starts_as_hydrogen (conv_crit = 'cell_fraction', both He items
+  ! left out of the input) at x_HeI = x_HI, x_HeII = x_HII, x_HeIII = 0 in
+  ! each leaf, as MOCASSIN starts.  T_e starts at par%te_start with
+  ! solve_te and is held at par%te_fixed without it.
   !=========================================================================
   subroutine gas_state_setup(nH, nleaf, xHI)
     implicit none
@@ -106,14 +115,26 @@ contains
        do il = 1, nleaf
           gas_xHII(il) = 1.0_wp - gas_xHI(il)
        end do
-       gas_xHeI(:)  = par%xHeI_init
-       gas_xHeII(:) = par%xHeII_init
-       gas_xHeIII(:) = max(0.0_wp, 1.0_wp - par%xHeI_init - par%xHeII_init)
+       if (helium_starts_as_hydrogen) then
+          do il = 1, nleaf
+             gas_xHeI(il)   = gas_xHI(il)
+             gas_xHeII(il)  = gas_xHII(il)
+             gas_xHeIII(il) = 0.0_wp
+          end do
+       else
+          gas_xHeI(:)  = par%xHeI_init
+          gas_xHeII(:) = par%xHeII_init
+          gas_xHeIII(:) = max(0.0_wp, 1.0_wp - par%xHeI_init - par%xHeII_init)
+       end if
        do il = 1, nleaf
           gas_ne(il) = gas_nH(il) * ( gas_xHII(il) &
                        + par%abund_He*(gas_xHeII(il) + 2.0_wp*gas_xHeIII(il)) )
        end do
-       gas_Te(:) = par%te_fixed
+       if (par%solve_te) then
+          gas_Te(:) = par%te_start
+       else
+          gas_Te(:) = par%te_fixed
+       end if
     end if
     call gas_state_sync()
 
@@ -122,10 +143,26 @@ contains
        if (present(xHI)) then
           write(*,'(a)')     ' GAS: x_HI initialized from the AMR file column'
        else
-          write(*,'(a,f8.4)')' GAS: x_HI initialized to ', par%xHI_init
+          write(*,'(a,es13.6)') ' GAS: x_HI initialized to ', par%xHI_init
        end if
-       write(*,'(a,2f8.4)')  ' GAS: x_HeI, x_HeII initialized to ', &
+       if (helium_starts_as_hydrogen .and. present(xHI)) then
+          write(*,'(a)')     ' GAS: x_HeI = x_HI, x_HeII = 1 - x_HI, '// &
+                             'x_HeIII = 0 in each leaf (helium starts as hydrogen)'
+       else if (helium_starts_as_hydrogen) then
+          write(*,'(a,2es13.6,a)') ' GAS: x_HeI, x_HeII initialized to ', &
+                             par%xHI_init, 1.0_wp - par%xHI_init, &
+                             ' (helium starts as hydrogen)'
+       else
+          write(*,'(a,2es13.6)') ' GAS: x_HeI, x_HeII initialized to ', &
                              par%xHeI_init, par%xHeII_init
+       end if
+       if (par%solve_te) then
+          write(*,'(a,f10.1,a)') ' GAS: T_e initialized to ', par%te_start, &
+             ' K (te_start, the start of the thermal solve)'
+       else
+          write(*,'(a,f10.1,a)') ' GAS: T_e held at ', par%te_fixed, &
+             ' K in every leaf (te_fixed; solve_te = F)'
+       end if
        write(*,'(a,f8.4)')   ' GAS: He abundance n_He/n_H = ', par%abund_He
     end if
   end subroutine gas_state_setup

@@ -507,15 +507,17 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{xHI\_init} & 1.0 & initial $n_{\rm HI}/n_{\rm H}$ (an \code{xHI} file column wins); an ionized start (1e-3) converges much faster than neutral \\
-\code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions \\
+\code{xHI\_init} & 1.0 & initial $x_{\rm HI} = n_{\rm HI}/n_{\rm H}$ of every leaf, in [0, 1] (an \code{xHI} file column wins), $x_{\rm HII} = 1 - x_{\rm HI}$; an ionized start (1e-3) converges much faster than neutral \\
+\code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions $x_{\rm HeI}$, $x_{\rm HeII}$ ($\ge 0$, sum $\le 1$; $x_{\rm HeIII} = 1 - $ \code{xHeI\_init} $-$ \code{xHeII\_init}).  With \code{conv\_crit = 'cell\_fraction'} and both left out of the input, helium starts as hydrogen does in each leaf, $x_{\rm HeI} = x_{\rm HI}$, $x_{\rm HeII} = 1 - x_{\rm HI}$, $x_{\rm HeIII} = 0$ (MOCASSIN's start); either one given is the start of both (the other at its default).  The metal stages of that mode are in \S\ref{sec:convergence} \\
 \code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values, and so does gas whose previous leaf was vacuum: stored \code{n\_H} $= 0$, or, in a file without \code{n\_H} (written before 2026-11-13), stored $n_e = 0$ with ionized fractions, a state gas cannot have (the log names the rule; such a file cannot tell a vacuum leaf of a fully neutral initial state from neutral gas).  Stored gas with $n_e \le 0$ (an unsolved neutral state) is restored with the ion-balance floor $n_e = 10^{-30}\,n_{\rm H}$.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations, unless \code{restart\_iteration\_history} is set.  Gate \code{tests/restart/} \\
 \code{rates\_write\_interval} & 0 & every this many gas iterations, write the iterate to \code{<base>\_rates\_iterate} (the \code{\_rates} layout; header \code{CONVERGD} F, \code{STATESOL} F, \code{NITERDON} the iteration, \code{FINALDX}/\code{FINALDTE} that iteration's step), replacing the previous one through a temporary file and a rename, so a run stopped at any point can be resumed with \code{restart\_file}.  Not written at the last iteration or after convergence, where \code{\_rates} follows.  0 or negative = never \\
 \code{restart\_iteration\_history} & F & with \code{restart\_file}: also take the stopping-test histories the file carries (\code{ConvHist\_*}), so a resumed run of the same physics continues the 8-iteration window of the \code{'vol'} test instead of refilling it.  Off by default: after a change of binary, physics or packet count the old steps say nothing about the new iteration.  A file without the histories (written before 2026-10-13) is refused; without \code{restart\_file} the input is refused \\
 \code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
-\code{gas\_niter} & 0 & iterations (0 = a single rates-only pass) \\
-\code{gas\_tol} & 1e-3 & convergence tolerance on the ionization state (measure set by \code{conv\_crit}; with 'vol' it bounds the drift still to come in $x_{\rm HII}$ and helium) \\
-\code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor) or 'vol' (volume-integrated $L_1$; noise-robust, recommended); any other value is refused (it used to run as 'cell').  See \S\ref{sec:convergence} \\
+\code{gas\_niter} & 0 & iterations (0 = a single rates-only pass); the limit of the gas iteration whatever \code{conv\_crit} is \\
+\code{gas\_tol} & 1e-3 & convergence tolerance on the ionization state with \code{conv\_crit} 'cell' or 'vol' (with 'vol' it bounds the drift still to come in $x_{\rm HII}$ and helium); not used by 'cell\_fraction' \\
+\code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor), 'vol' (volume-integrated $L_1$; noise-robust, recommended) or 'cell\_fraction' (MOCASSIN's test: the share of leaves whose $x_{\rm HI}$ has converged); any other value is refused.  See \S\ref{sec:convergence} \\
+\code{conv\_xHI\_tol} & 0.05 & the largest relative change $|\Delta x_{\rm HI}|/x_{\rm HI}$ over one iteration of a leaf counted as converged (MOCASSIN's \code{convLimit}); $\ge 0$.  The share of such leaves is printed every iteration whatever \code{conv\_crit} is \\
+\code{conv\_cell\_fraction} & 0.95 & with \code{conv\_crit = 'cell\_fraction'}: the iteration stops when at least this share of the leaves with gas has converged (MOCASSIN's \code{minConvergence}/100); in $(0, 1]$ \\
 \code{conv\_drift\_test} & F & with \code{conv\_crit = 'vol'}: T requires a measure on its Monte Carlo floor to show also no net drift of the ionized volume over the last 8 iterations (Student's $t < 2.365$, \S\ref{sec:convergence}); F (the default since 2026-10-18; T from 2026-09-26, which the tests/ and results/ inputs that relied on it pin) accepts the floor on $d <$ \code{gas\_tol} alone, which does not see a front still moving slowly under the noise.  Read only with \code{'vol'} (a note says so when T is set otherwise) \\
 \code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
 \code{recombination\_continuum} & 'transported' & what becomes of the ground-state recombination photons (the H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii} ground continua): 'on\_the\_spot' absorbed where they are made, the balance uses $\alpha_B$ (Baker \& Menzel case B for the continuum; the He\,\textsc{i} photons that can ionize H are given to H by \code{hei\_on\_the\_spot}, the He\,\textsc{ii} ones to H and He$^0$ by \code{heii\_on\_the\_spot}); 'transported' (default since 2026-09-26; 'on\_the\_spot' before, which the tests/ and results/ inputs that relied on it pin) emitted as diffuse-field packets and followed through the grid, the balance uses $\alpha_A$, and the He\,\textsc{i}/He\,\textsc{iii} cascade channels follow it when the input leaves them out; the metal ground free--bound continua (channel 6) and the free--free emission inside the band (channel 7, H$^+$, He$^+$, He$^{2+}$ and, with \code{metal\_freefree}, the metal ions) are transported with it and are not transported in the other two modes (their photons leave); 'escaping' lost from an optically thin nebula, $\alpha_A$ and no packets.  Replaces \code{case\_ab} and \code{diffuse\_field} (2026-09-25) \\
@@ -532,13 +534,15 @@ integrals $\rightarrow$ leaf solve $\rightarrow$ opacity refill) stops when
 the state stops changing between sweeps.  Each sweep compares a \emph{change
 measure} against a tolerance:
 \begin{itemize}\itemsep2pt
-\item ionization only (\code{te\_fixed}, no thermal solve): converged when the
+\item ionization only (\code{solve\_te = F}, every leaf held at \code{te\_fixed}): converged when the
   $x_{\rm HII}$ change $<$ \code{gas\_tol};
 \item coupled (\code{solve\_te}): converged when the $x_{\rm HII}$ change $<$
   \code{gas\_tol} \emph{and} the $T_e$ change $<$ \code{gas\_tol\_te}.
 \end{itemize}
+These two hold for \code{conv\_crit} 'cell' and 'vol'; 'cell\_fraction'
+counts converged leaves instead and has no $T_e$ test (below).
 
-\paragraph{Two measures (\code{conv\_crit}).}  Both are computed every sweep;
+\paragraph{Three measures (\code{conv\_crit}).}  All are computed every sweep;
 \code{conv\_crit} selects which one gates the loop.
 \begin{description}\itemsep2pt
 \item[\code{'cell'}] the cell maxima $\max_{\rm leaf}|\Delta x_{\rm HII}|$ and
@@ -590,6 +594,68 @@ measure} against a tolerance:
   the $n_e$ weight drops the vacuum and \code{te\_min}-pinned no-heating cells
   that otherwise dominate $\max|\Delta T_e|$ in FUV/PDR runs.  These measures
   decay smoothly --- the recommended production setting.
+\item[\code{'cell\_fraction'}] the test of MOCASSIN (Ercolano et al.\ 2003),
+  for runs compared with it.  A leaf with gas has converged in an iteration
+  when its neutral hydrogen fraction before ($x^{\rm old}_{\rm HI}$) and
+  after ($x^{\rm new}_{\rm HI}$, after \code{ion\_relax}) the solve satisfy
+  \[
+    \frac{|x^{\rm new}_{\rm HI}-x^{\rm old}_{\rm HI}|}{x^{\rm old}_{\rm HI}}
+    \le \code{conv\_xHI\_tol},
+  \]
+  and the iteration stops when the number of converged leaves divided by the
+  number of leaves with gas is at least \code{conv\_cell\_fraction}.  It is a
+  count, not a volume weight, also on an AMR grid.  A leaf that no packet
+  crossed in the iteration has not converged and stays in the denominator,
+  as a cell with no photon hit in MOCASSIN.  The state update differs:
+  MOCASSIN keeps the old state of a cell no packet hit, whereas MoCHII
+  solves every leaf with gas and uses the crossing only in the count.  A crossing is any scored path
+  segment of any band the iteration transports: the ionizing band (source
+  and diffuse packets) and, with \code{add\_fuv}, the FUV band from
+  \code{efuv\_min} to 13.6~eV, whose packets cross the neutral gas that
+  ionizing packets do not reach.  A leaf with $x^{\rm old}_{\rm HI}=0$ has converged when
+  $x^{\rm new}_{\rm HI}=0$ too and a packet crossed it.  $T_e$,
+  \code{gas\_tol}, \code{gas\_tol\_te} and \code{conv\_drift\_test} do not
+  enter the test; \code{gas\_niter} is still the limit.  The analytic edge
+  walk scores every leaf a direct flight crosses until $e^{-\tau}$
+  underflows, whereas a MOCASSIN packet stops where it is absorbed; and
+  MOCASSIN draws its stellar packets over its whole frequency grid, down to
+  its input \code{nuMin} (default $10^{-5}$~Ryd; an input may raise it,
+  e.g.\ to 0.092~Ryd $=$ 1.25~eV), while MoCHII has no packets below
+  \code{efuv\_min}, and with \code{add\_fuv = F} none below
+  \code{eion\_min}: then neutral gas beyond the reach of the ionizing
+  photons counts as not crossed and the share cannot reach a high
+  \code{conv\_cell\_fraction}.  Every iteration prints, whatever
+  \code{conv\_crit} is,
+\begin{verbatim}
+   x_HI within  5.00%:   95.67 % of leaves,  no packet:   0.12 %
+\end{verbatim}
+  (the share of converged leaves and of leaves no packet crossed, in
+  percent of the leaves with gas).  Like \code{'cell'}, the
+  share stalls at a Monte Carlo floor set by the packet count, so
+  \code{conv\_cell\_fraction} has to lie below that floor to be reached.
+
+  A relative test on $x_{\rm HI}$ can pass prematurely when crossed
+  neutral leaves that do not change dominate the count: in the clumpy
+  model with \code{xHI\_init = 1} (a neutral start, $10^8$ packets, FUV
+  band on, every leaf crossed) 99.96\% of the leaves passed at
+  iteration~1.  Check the share in the first iterations; an ionized start,
+  as MOCASSIN uses, avoids this.  The test covers hydrogen alone; helium
+  and the metals can still be changing when it passes.  This mode
+  starts as MOCASSIN does (a namelist
+  start, no \code{restart\_file}): $x_{\rm HI}$ = \code{xHI\_init}
+  (MOCASSIN fixes $10^{-5}$) and $T_e$ = \code{te\_start} with
+  \code{solve\_te = T} (MOCASSIN's \code{TeStart}; \code{te\_fixed} with
+  \code{solve\_te = F}) as the input gives them; helium as hydrogen,
+  $x_{\rm HeI} = x_{\rm HI}$, $x_{\rm HeII} = 1 - x_{\rm HI}$,
+  $x_{\rm HeIII} = 0$, unless the input gives \code{xHeI\_init} or
+  \code{xHeII\_init}; and, until the first cell solve, the first stage of
+  every metal at the leaf's $x_{\rm HI}$ and the higher stages at 0 (they
+  sum to $x_{\rm HI}$, not 1; the first cell solve forms the stage
+  fractions from the rates).  $n_e$ starts from the H and He fractions,
+  $n_{\rm H}[x_{\rm HII} + y_{\rm He}(x_{\rm HeII} + 2x_{\rm HeIII})]
+  \approx 1.1\,n_{\rm H}$ ($y_{\rm He}$ = \code{abund\_He} = 0.1), where MOCASSIN takes $n_e = n_{\rm H}$.  The
+  log prints each of these at start-up (\code{GAS:} and \code{METALS:}
+  lines).
 \end{description}
 
 \paragraph{The Monte Carlo floor.}  Even the volume measures do not reach
@@ -607,7 +673,8 @@ reduced-count \code{examples/} use the looser values for this reason).
 
 \paragraph{When it does not converge.}  Hitting \code{gas\_niter} without
 meeting the test is not fatal: the state is still written and a warning is
-printed on rank~0.  Set \code{require\_convergence = T} to abort before the
+printed on rank~0 (with the cell maxima, or with \code{'cell\_fraction'} the
+share of converged leaves against \code{conv\_cell\_fraction}).  Set \code{require\_convergence = T} to abort before the
 output instead.  Either way the \code{\_rates} header records the outcome in
 \code{CONVERGD} (0/1), \code{NITERDON} (sweeps run), \code{FINALDX}, and
 \code{FINALDTE}.  The derivation and the gate measurements are in
@@ -627,9 +694,10 @@ parameter & default & meaning \\
 \bottomrule
 \endlastfoot
 \code{solve\_te} & T & bisection on $\log T_e$ in [\code{te\_min}, \code{te\_max}] coupled with the ionization (heating = cooling in every leaf); F holds every leaf at \code{te\_fixed} \\
-\code{te\_fixed} & 1e4 & $T_e$ [K] of every leaf when \code{solve\_te} is off; with it on, only the starting $T_e$ of the first pass \\
+\code{te\_fixed} & 1e4 & with \code{solve\_te = F} only: $T_e$ [K], $> 0$, held in every leaf for the whole run; a restart's stored $T_e$ is replaced by it (a \code{RESTART:} line says so).  Given with \code{solve\_te = T}, the input is refused \\
+\code{te\_start} & 1e4 & with \code{solve\_te = T} only: the starting $T_e$ [K], $> 0$, of every leaf (the $T_e$ of the first pass) unless a restart file supplies one.  Given with \code{solve\_te = F}, the input is refused \\
 \code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
-\code{gas\_tol\_te} & 1e-3 & convergence tolerance on $T_e$ (with \code{solve\_te}): $\max|\Delta T_e|/T_e$ under \code{conv\_crit = 'cell'}, the $n_e$-weighted volume measure under \code{'vol'} (\S\ref{sec:convergence}) \\
+\code{gas\_tol\_te} & 1e-3 & convergence tolerance on $T_e$ (with \code{solve\_te}): $\max|\Delta T_e|/T_e$ under \code{conv\_crit = 'cell'}, the $n_e$-weighted volume measure under \code{'vol'}, not used under \code{'cell\_fraction'} (\S\ref{sec:convergence}) \\
 \code{metal\_excitation\_model} & 'chianti' & the metal atoms (\code{data/atomic/excitation/<model>/}: levels, radiative and collision rows, the matching cooling fits, the atomic-H collision files), used for the cooling, the level populations, the lines and the charge-exchange product populations.  'chianti' (default): full CHIANTI 11.0.2 atoms for 67 stages and Stout atoms for Cl\,\textsc{vii}, Ar\,\textsc{ii}, Ca\,\textsc{iv} (70 atoms, 6629 levels); no line cooling for C\,\textsc{vii}, Ar\,\textsc{i}, Cl\,\textsc{i}, Ca\,\textsc{i}, Fe\,\textsc{i}, Cl\,\textsc{v}, Ca\,\textsc{iii} (no data).  'mocassin\_v2': the MOCASSIN v2 atoms (55) plus the CHIANTI Fe\,\textsc{ii} forbidden rows, for parity runs.  Every stage with an atom cools and emits.  Measured cost of 'chianti' against 'mocassin\_v2' (262144 leaves, 11 metals, 72 ranks, 2026-10-11): setup $+0.5$~min, one iteration $+0.45$~min, line output $+2.7$~min, 672 against 647~MB on each rank.  'extended' (removed 2026-10-11) is refused, as are \code{fe\_levels\_full} and \code{additional\_line\_cooling} \\
 \code{neutral\_hydrogen\_excitation} & T & atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii}, O\,\textsc{i} ground-term fine structure (Abrahamsson et al.\ 2007, Barinovs et al.\ 2005; \code{hcoll\_<el>\_<stage>.txt} beside the atom) in the same level equilibrium as the electrons, for cooling and lines; the dominant excitation of these coolants in neutral gas.  F only for parity with electron-only codes \\
 \code{metal\_collisional\_ionization} & T & electron-impact ionization of the metal stages (Voronov 1997, or with \code{ci\_model}) in the stage balance and its ionization-energy loss in the thermal balance.  F only for parity with a code that omits it (\textsc{Mocassin} v2 reads the data and sets the rate to zero) \\

@@ -41,6 +41,7 @@ module ion_score_mod
   public :: score_ion_path, ion_score_reduce
   public :: ion_score_apply_hhe
   public :: ion_score_apply_dust_heat
+  public :: band_path_luminosity
   public :: ion_score_apply_sec
   public :: ion_score_energy_packet, ion_score_energy_totals
   public :: ion_score_scattered_escape, ion_score_lost_weight
@@ -91,6 +92,13 @@ module ion_score_mod
                                                    ! for the three photoionization
                                                    ! rates and the three photoheating
                                                    ! integrals.
+  real(kind=wp), allocatable :: band_path(:)       ! (nleaf), rank local then reduced;
+                                                   ! Sum(path_lum) over every scored
+                                                   ! segment of every band the gas
+                                                   ! iteration transports (ionizing,
+                                                   ! FUV), all energies: positive
+                                                   ! exactly when a packet crossed
+                                                   ! the leaf in the pass.
   real(kind=wp), allocatable :: dust_abs_path(:)   ! (nleaf), rank local then reduced;
                                                    ! Sum(path_lum * sigma_abs,dust(E))
                                                    ! per leaf, the EUV grain-heating
@@ -267,11 +275,14 @@ contains
     integer, intent(in) :: nleaf
 
     if (allocated(hhe_rate_path)) deallocate(hhe_rate_path)
+    if (allocated(band_path)) deallocate(band_path)
     if (allocated(dust_abs_path)) deallocate(dust_abs_path)
     if (allocated(sec_ion_path)) deallocate(sec_ion_path)
     score_nleaf = nleaf
     allocate(hhe_rate_path(NHHE,nleaf))
     hhe_rate_path = 0.0_wp
+    allocate(band_path(nleaf))
+    band_path = 0.0_wp
 
     !--- EUV grain-heating integral: allocated only when dust is on.  Left
     !--- unallocated otherwise, so score_ion_path, the reduction, and the reset
@@ -334,6 +345,7 @@ contains
 
   subroutine ion_score_reset()
     if (allocated(hhe_rate_path)) hhe_rate_path = 0.0_wp
+    if (allocated(band_path)) band_path = 0.0_wp
     if (allocated(dust_abs_path)) dust_abs_path = 0.0_wp
     if (allocated(sec_ion_path)) sec_ion_path = 0.0_wp
     direct_segments = 0_int64
@@ -423,6 +435,7 @@ contains
     end if
     inu = photon%inu
     if (jt_ion_on) jt_ion(inu,il) = jt_ion(inu,il) + path_lum
+    band_path(il) = band_path(il) + path_lum
     !--- EUV grain-heating integral: accumulate the packet's dust absorption
     !--- cross section, evaluated at its exact energy.
     if (allocated(dust_abs_path)) &
@@ -783,6 +796,7 @@ contains
     real(kind=wp) :: energy_totals(7)
 
     call sum_over_ranks(hhe_rate_path)
+    call sum_over_ranks(band_path)
     if (allocated(dust_abs_path)) call sum_over_ranks(dust_abs_path)
     if (allocated(sec_ion_path))  call sum_over_ranks(sec_ion_path)
     counts = [direct_segments, sampled_segments, lost_flights]
@@ -995,6 +1009,15 @@ contains
        hHeII(il) = hhe_rate_path(I_HHEII,il)*fac
     end do
   end subroutine ion_score_apply_hhe
+
+  !--- Sum(path_lum) [erg/s * code length] of the last reduced pass in
+  !--- leaf il over every band the gas iteration transports (band_path):
+  !--- 4 pi J V integrated over the transported band, up to the factor of
+  !--- ion_score_apply_hhe.  Positive exactly when a packet crossed the leaf.
+  real(kind=wp) function band_path_luminosity(il) result(path)
+    integer, intent(in) :: il
+    path = band_path(il)
+  end function band_path_luminosity
 
   subroutine ion_score_apply_dust_heat(heat_dust)
     !--- EUV grain heating [erg/s/cm^3] per leaf.  dust_abs_path

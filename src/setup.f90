@@ -156,10 +156,34 @@ contains
   if (par%conv_drift_test .and. trim(par%conv_crit) /= 'vol' &
       .and. mpar%p_rank == 0) write(*,'(a)') &
      ' NOTE: par%conv_drift_test is read only with par%conv_crit = ''vol''.'
-  if (trim(par%conv_crit) /= 'cell' .and. trim(par%conv_crit) /= 'vol') then
-     call refuse_input('par%conv_crit must be ''cell'' (default; the cell '// &
-        'maxima) or ''vol'' (the volume-integrated drift test).')
-  endif
+  select case (trim(par%conv_crit))
+  case ('cell', 'vol', 'cell_fraction')
+  case default
+     call refuse_input('par%conv_crit = '''//trim(par%conv_crit)//''': it must be '// &
+        '''cell'' (default; the cell maxima), ''vol'' (the volume-integrated '// &
+        'drift test) or ''cell_fraction'' (the share of leaves whose x_HI '// &
+        'converged, MOCASSIN''s test).')
+  end select
+  !--- MOCASSIN's measure is printed whatever conv_crit is, so its two
+  !--- values are checked always
+  if (.not. (par%conv_xHI_tol >= 0.0_wp)) &
+     call refuse_input('par%conv_xHI_tol must be >= 0 (the largest relative '// &
+        'change of x_HI in a converged leaf).')
+  if (.not. (par%conv_cell_fraction > 0.0_wp .and. par%conv_cell_fraction <= 1.0_wp)) &
+     call refuse_input('par%conv_cell_fraction must be in (0, 1] (the share of '// &
+        'converged leaves that stops the iteration).')
+  !--- the starting state (gas_state_mod::gas_state_setup): fractions in
+  !--- [0, 1], x_HeIII = 1 - xHeI_init - xHeII_init not negative, T_e > 0
+  if (.not. (par%xHI_init >= 0.0_wp .and. par%xHI_init <= 1.0_wp)) &
+     call refuse_input('par%xHI_init must be in [0, 1] (the starting x_HI).')
+  if (.not. (par%xHeI_init >= 0.0_wp .and. par%xHeII_init >= 0.0_wp .and. &
+             par%xHeI_init + par%xHeII_init <= 1.0_wp + 1.0e-12_wp)) &
+     call refuse_input('par%xHeI_init and par%xHeII_init must be >= 0 with '// &
+        'xHeI_init + xHeII_init <= 1 (x_HeIII starts at 1 - xHeI_init - xHeII_init).')
+  if (par%solve_te .and. .not. (par%te_start > 0.0_wp)) &
+     call refuse_input('par%te_start must be > 0 (the starting T_e [K]).')
+  if (.not. par%solve_te .and. .not. (par%te_fixed > 0.0_wp)) &
+     call refuse_input('par%te_fixed must be > 0 (the T_e held in every leaf [K]).')
   !--- iofile_mod::io_file_extension maps 'hdf5'/'h5' to HDF5 and anything
   !--- else to FITS, so a misspelling would silently write FITS.
   if (strlowcase(trim(par%file_format)) /= 'hdf5' .and. &
@@ -810,6 +834,9 @@ contains
      write(*,'(2a)')    'Convergence measure       : ', trim(par%conv_crit)
      if (trim(par%conv_crit) == 'vol') &
         write(*,'(a,l14)') 'Drift test on the floor   : ', par%conv_drift_test
+     write(*,'(a,f14.4)') 'x_HI relative tolerance   : ', par%conv_xHI_tol
+     if (trim(par%conv_crit) == 'cell_fraction') &
+        write(*,'(a,f14.4)') 'Converged leaf fraction   : ', par%conv_cell_fraction
      write(*,'(a,l14)') 'Secondary ionization      : ', par%use_sec_ion
      write(*,'(a,l14)') 'He I 2^3S coupling        : ', par%hei_metastable_coupling
      if (par%ion_add_dust) &
@@ -875,10 +902,22 @@ contains
   !   no_photons_fuv        not in the input: no_photons/4, or no_photons when
   !                         no source has ionizing luminosity (resolved in
   !                         ion_band_mod once the band luminosities are known).
+  !   te_fixed, te_start    each belongs to one mode of solve_te: an input
+  !                         that gives te_start with solve_te = .false., or
+  !                         te_fixed with solve_te = .true., is refused with
+  !                         the name of the key of its mode;
+  !   xHeI_init, xHeII_init both not in the input: with conv_crit =
+  !                         'cell_fraction' helium starts as hydrogen in each
+  !                         leaf, x_HeI = x_HI, x_HeII = 1 - x_HI, x_HeIII = 0
+  !                         (gas_state_mod::helium_starts_as_hydrogen;
+  !                         MOCASSIN's start), else the define.f90 defaults;
+  !                         either one in the input: both take their
+  !                         namelist values (the other its default).
   ! A value the input does set is kept as given.  Fortran namelist input does
   ! not report which items it contained, so the file is read twice, from two
   ! states that differ only in these items (the switches .true. then
-  ! .false., the abundances, efuv_min and no_photons_fuv -1 then -2): an item
+  ! .false., the abundances, efuv_min, no_photons_fuv, xHeI_init,
+  ! xHeII_init, te_fixed and te_start -1 then -2): an item
   ! the input sets comes out equal in both reads, an item it leaves out does
   ! not.
   !=========================================================================
@@ -886,6 +925,8 @@ contains
     use define
     use mpi
     use metal_ionization_potential_mod, only : metal_ionization_potential
+    use gas_state_mod, only : helium_starts_as_hydrogen
+    use utility, only : refuse_input
     implicit none
     character(len=*), intent(in) :: fname
     integer, parameter :: NAB = 11
@@ -897,7 +938,8 @@ contains
     logical :: given_um, given_ne, given_heat, given_ab(NAB), any_positive
     logical :: given_hei, given_heii, transported
     logical :: given_fuv, given_efuv, given_nfuv, uses_23s
-    logical :: given_pe, given_gge
+    logical :: given_pe, given_gge, given_xhei, given_xheii
+    logical :: given_tefix, given_testart
     logical :: metal_below_hi_edge, fuv_absorbers
     character(len=128) :: fuv_reasons
     !--- the He II Ly-alpha energy [eV] (heii_cascade_mod::E_HEII_LYA)
@@ -931,6 +973,10 @@ contains
                  par%gas_grain_energy_exchange
     given_efuv = par_hi%efuv_min       == par%efuv_min
     given_nfuv = par_hi%no_photons_fuv == par%no_photons_fuv
+    given_xhei  = par_hi%xHeI_init  == par%xHeI_init
+    given_xheii = par_hi%xHeII_init == par%xHeII_init
+    given_tefix   = par_hi%te_fixed == par%te_fixed
+    given_testart = par_hi%te_start == par%te_start
 
     !--- every other item is identical in the two reads: keep the first, and
     !--- restore the defaults of the abundances the input left out
@@ -978,6 +1024,22 @@ contains
     !--- resolved once the band luminosities are known (ion_band_mod):
     !--- no_photons/4, or no_photons when no source has ionizing luminosity
     if (.not. given_nfuv) par%no_photons_fuv = -1.0_wp
+    !--- the helium start: the namelist values when the input gives either
+    !--- item, else with 'cell_fraction' MOCASSIN's start (helium as hydrogen)
+    if (.not. given_xhei)  par%xHeI_init  = par0%xHeI_init
+    if (.not. given_xheii) par%xHeII_init = par0%xHeII_init
+    helium_starts_as_hydrogen = trim(par%conv_crit) == 'cell_fraction' .and. &
+                                .not. (given_xhei .or. given_xheii)
+    !--- the electron temperature: the key of the solve_te mode, the other
+    !--- key refused (one key never stands in for the other)
+    if (.not. given_tefix)   par%te_fixed = par0%te_fixed
+    if (.not. given_testart) par%te_start = par0%te_start
+    if (par%solve_te .and. given_tefix) call refuse_input('par%te_fixed '// &
+       'is the T_e held in every leaf with solve_te = .false.; with '// &
+       'solve_te = .true. the starting T_e is par%te_start.')
+    if (.not. par%solve_te .and. given_testart) call refuse_input( &
+       'par%te_start is the starting T_e of the thermal solve (solve_te = '// &
+       '.true.); with solve_te = .false. the T_e held in every leaf is par%te_fixed.')
 
     !--- the rank communicators are built after this read; ask MPI directly
     call MPI_COMM_RANK(MPI_COMM_WORLD, world_rank, ierr)
@@ -1011,6 +1073,15 @@ contains
     if (world_rank == 0 .and. fuv_absorbers .and. .not. given_fuv) &
        write(*,'(3a)') ' FUV: add_fuv = T for the absorbers below 13.6 eV:', &
           trim(fuv_reasons), ' (the input leaves it out)'
+    if (world_rank == 0 .and. helium_starts_as_hydrogen) write(*,'(a)') &
+       ' GAS: helium starts as hydrogen, x_HeI = x_HI, x_HeII = 1 - x_HI, '// &
+       'x_HeIII = 0 (conv_crit = ''cell_fraction''; the input leaves out '// &
+       'xHeI_init and xHeII_init)'
+    if (world_rank == 0 .and. trim(par%conv_crit) == 'cell_fraction' .and. &
+        (given_xhei .or. given_xheii)) write(*,'(a)') &
+       ' GAS: helium starts at xHeI_init, xHeII_init of the input '// &
+       '(conv_crit = ''cell_fraction'' starts helium as hydrogen only when '// &
+       'the input leaves both out)'
     if (world_rank == 0 .and. fuv_absorbers .and. par%add_fuv .and. .not. given_efuv) &
        write(*,'(a,f7.3,a)') ' FUV: efuv_min = ', par%efuv_min, &
           ' eV, where the 2^3S photoionization cross section starts,'// &
@@ -1131,7 +1202,7 @@ contains
     end function input_lines_near
 
     !--- flag for the logical items, sentinel for the real ones (a value no
-    !--- input gives: every real item here is > 0 when set).
+    !--- input gives: every real item here is >= 0 when set).
     subroutine set_implicit_items(flag, sentinel)
       logical,       intent(in) :: flag
       real(kind=wp), intent(in) :: sentinel
@@ -1140,6 +1211,8 @@ contains
       par%add_fuv = flag
       par%grain_pe = flag;  par%gas_grain_energy_exchange = flag
       par%efuv_min = sentinel;  par%no_photons_fuv = sentinel
+      par%xHeI_init = sentinel;  par%xHeII_init = sentinel
+      par%te_fixed = sentinel;  par%te_start = sentinel
       call set_abundances([(sentinel, k = 1, NAB)])
     end subroutine set_implicit_items
 

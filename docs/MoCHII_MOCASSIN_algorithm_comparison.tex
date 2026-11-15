@@ -75,7 +75,7 @@ its supplied files also contain dated corrections. Its driver calls
 input, grid/radiation setup, and \code{MCIterationDriver}, which enters
 \code{iterateMC} (\mc{mocassin.f90}{65--83,\allowbreak 124--126};
 \mc{../Makefile}{41--45}; \mc{iteration_mod.f90}{12--34}).
-The separate \path{~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2/source/}
+The separate \path{~/RT_Codes/MOCASSIN/mocassin-mocassin.2.02.73.2r/source/}
 tree is the user's unfinished error-fix and optimization work, including
 fixed-seed input, explicit-face traversal, and revised MPI/convergence
 code; it is not source A. Differences relevant here are stated where
@@ -165,7 +165,7 @@ estimators, then updates gas. In A, opacity and emission precede packets
 and \code{updateCell} follows (\mc{iteration_mod.f90}{120--218,\allowbreak 295,\allowbreak 458--551,\allowbreak 828--833}).
 In B/C, the loop calls \code{ionizing\_field\_and\_rates}, then the
 ionization/thermal update and opacity rebuild
-(\ms{main.f90}{194--241,\allowbreak 262}).
+(\ms{main.f90}{200--237,\allowbreak 263}).
 
 \Source All three sample spectra by cumulative energy-emission
 probabilities, use straight flights through piecewise cell coefficients,
@@ -174,7 +174,7 @@ absorption in a cell. A samples frequency indices and lengths
 (\mc{photon_mod.f90}{730--756,\allowbreak 823--824,\allowbreak 1563--1574}); B/C invert an
 energy-luminosity CDF and score exact-energy path integrals
 (\ms{energy_sampler_mod.f90}{44--81,\allowbreak 203--254};
-\ms{ion_score_mod.f90}{401--487}). This common principle does not imply
+\ms{ion_score_mod.f90}{413--500}). This common principle does not imply
 identical frequency discretization or variance.
 
 \Inferred None of these packets is one physical photon. Even A's
@@ -182,7 +182,7 @@ identical frequency discretization or variance.
 change. In steady state its normalization is an energy rate: A explicitly
 describes \code{deltaE} in units of $10^{36}$ erg~s$^{-1}$
 (\mc{photon_mod.f90}{272--279}); B/C use $W=wL_{\rm packet}$ and photon
-rate $W/E$ (\ms{ion_score_mod.f90}{554--575}). Merely contrasting energy
+rate $W/E$ (\ms{ion_score_mod.f90}{567--588}). Merely contrasting energy
 and luminosity misses the substantive difference: how normalization
 changes during a history.
 
@@ -294,7 +294,7 @@ and preceding optical depth $\tau_0$, its luminosity-length contribution is
 The code uses code lengths with unit conversion and stable
 \code{expm1}/\code{log1p} expressions
 (\ms{raytrace_amr.f90}{680--755,\allowbreak 803--869};
-\ms{define.f90}{1537--1546}). Direct escape is $We^{-\tau_{\rm edge}}$.
+\ms{define.f90}{1556--1565}). Direct escape is $We^{-\tau_{\rm edge}}$.
 Without dust scattering, B finishes this packet; gas absorption has
 already contributed through the attenuated path.
 
@@ -346,7 +346,7 @@ luminosity, and ${\cal P}$ is an attenuated direct or sampled
 luminosity-length segment. The code scores these coefficients before
 reduction and volume/unit normalization; gas-rate calculation calls the
 reduced integrals rather than re-integrating output bins at representative
-energies (\ms{ion_score_mod.f90}{401--487,\allowbreak 1016--1037};
+energies (\ms{ion_score_mod.f90}{413--500,\allowbreak 1039--1060};
 \ms{gas_rates_mod.f90}{110--116}). Optional secondary-electron and
 metastable-state integrals are additional terms. Metals likewise score
 cached exact-energy rate/heating coefficients, rather than assuming
@@ -355,7 +355,7 @@ one threshold for every absorption contribution
 
 \Source Binned \code{jt\_ion} still receives path luminosity and has
 physical consumers in dust radiation input and grain charge/heating,
-as well as spectral output (\ms{ion_score_mod.f90}{423--428};
+as well as spectral output (\ms{ion_score_mod.f90}{435--441};
 \ms{jtally_mod.f90}{198--226}; \ms{sedust_mod.f90}{259--274};
 \ms{grain_photoelectric_mod.f90}{200--215}). Thus gas primary rates avoid
 representative-bin energies, but the bins are not exclusively diagnostic.
@@ -411,9 +411,9 @@ with optional independent stratum normalization and count. Such photons
 can affect dust, metals, and enabled metastable photoionization
 (\ms{ion_band_mod.f90}{196--218,\allowbreak 531--566};
 \ms{ionizing_field_mod.f90}{155--163};
-\ms{ion_score_mod.f90}{425--475}). General line lists/leaf emissivities
+\ms{ion_score_mod.f90}{437--488}). General line lists/leaf emissivities
 are evaluated after the gas solution and summed locally, rather than
-propagated as general line transfer (\ms{main.f90}{436--439};
+propagated as general line transfer (\ms{main.f90}{447--450};
 \ms{lines_mod.f90}{45--80,\allowbreak 319--343}). Ionizing cascade lines carried in
 diffuse channels are the explicit exception.
 
@@ -433,11 +433,11 @@ heating in gas-band transfer. After the final gas pass they can compute
 dust emission and invoke a separate dust-IR iteration. It samples leaf
 spectra, uses luminosity-based systematic allocation to leaves, updates
 absorbed power, and stops on its own relative-change tolerance or cap
-(\ms{main.f90}{369--393};
+(\ms{main.f90}{380--404};
 \ms{dust_emis_transport_mod.f90}{244--299,\allowbreak 350--381,\allowbreak 533--589}). The shared
 transport routine runs under a dust-IR flag; scoring sends absorption to
 the dust estimator and returns before gas-rate scores
-(\ms{ion_score_mod.f90}{413--421}). C does not immediately turn each
+(\ms{ion_score_mod.f90}{425--433}). C does not immediately turn each
 gas-band grain absorption into a dust-IR descendant in its r7 gas rule.
 
 \subsection{Outer transport and gas updates}
@@ -446,10 +446,10 @@ gas-band grain absorption into a dust-IR descendant in its r7 gas rule.
 field, and updates local gas/dust states. B/C likewise update gas after
 transport and rebuild opacity for the next pass
 (\mc{iteration_mod.f90}{120--218,\allowbreak 295,\allowbreak 458--722,\allowbreak 828--889};
-\ms{main.f90}{194--262}). B/C relax H/He fractions toward the local
+\ms{main.f90}{200--263}). B/C relax H/He fractions toward the local
 solution through \code{ion\_relax}; their selected temperature is taken
-directly (\ms{ion_balance_mod.f90}{1192--1215};
-\ms{thermal_mod.f90}{330--350}). The separate outer and inner stopping
+directly (\ms{ion_balance_mod.f90}{1199--1222};
+\ms{thermal_mod.f90}{338--358}). The separate outer and inner stopping
 criteria, assigned defaults, packet-growth rules, and final-output
 qualifications are compared in Section~\ref{sec:stopping}.
 
@@ -466,7 +466,7 @@ subgrid/multigrid routines; those added modules are not part of A.
 A rejects \code{oneD}, despite retained spherical expressions
 (\mc{set_input_mod.f90}{291--297}). B/C use octree leaves or dedicated
 Cartesian DDA and can refine from the gas solution
-(\ms{raytrace_amr.f90}{692--742,\allowbreak 764--956}; \ms{main.f90}{263--274}).
+(\ms{raytrace_amr.f90}{692--742,\allowbreak 764--956}; \ms{main.f90}{264--275}).
 DDA is a traversal method, not a mesh hierarchy; the distinction here is
 the actual boundary representation and connected calls.
 
@@ -514,7 +514,7 @@ establish a matching MoCHII-style peel calculation.
 new leaf centers into old leaves and restore gas/available rate state,
 with optional stopping histories in B
 (\ms{previous_state_mod.f90}{204--242,\allowbreak 296--377};
-\ms{main.f90}{99--115}). A stored leaf is vacuum for new gas where the
+\ms{main.f90}{103--119}). A stored leaf is vacuum for new gas where the
 file's \code{n\_H} is zero; a file without \code{n\_H} (written before
 2026-11-13) falls back to stored $n_e\le0$ with ionized fractions, and
 stored neutral gas with $n_e\le0$ restarts at the $10^{-30}n_{\rm H}$
@@ -634,7 +634,7 @@ gas is invoked on these exit branches
 (\mc{iteration_mod.f90}{828--889,\allowbreak 1135--1160}). Exiting normally is
 therefore not itself evidence that the configured percentage was reached.
 
-\subsection{MoCHII: maximum steps or normalized integrated histories}
+\subsection{MoCHII: maximum steps, normalized integrated histories, or MOCASSIN's count}
 \label{sec:mochstop}
 
 \Source Write $\Delta x=x^{\rm new}-x^{\rm old}$, including the
@@ -655,8 +655,8 @@ Tiny denominator floors are applied where the code requires them. The
 He III measure is active only when its integrated abundance is strictly
 greater than 1\% of integrated ionized helium, rather than imposing that
 cut independently in each leaf
-(\ms{ion_balance_mod.f90}{1218--1240,\allowbreak 1266--1275};
-\ms{thermal_mod.f90}{355--362,\allowbreak 411--416}). These are normalized integrated
+(\ms{ion_balance_mod.f90}{1225--1254,\allowbreak 1340--1349};
+\ms{thermal_mod.f90}{363--373,\allowbreak 426--431}). These are normalized integrated
 absolute steps: opposite signs do not cancel in their numerators.
 
 \Source With \code{conv\_crit='cell'}, the outer test is
@@ -670,9 +670,31 @@ It does not impose a helium test or an eight-iteration window.
 With \code{conv\_crit='vol'}, each active composition measure instead
 passes the history test below, and temperature still requires the
 latest $d_T<\code{gas\_tol\_te}$
-(\ms{main.f90}{198--231,\allowbreak 485--490}). The hydrogen balance residual and
+(\ms{main.f90}{242,\allowbreak 501--515,\allowbreak 545--550}). The hydrogen balance residual and
 changes in every metal stage are not extra conditions in these outer
-logical expressions (\ms{main.f90}{255--261}).
+logical expressions (\ms{main.f90}{256--262}).
+
+\Source With \code{conv\_crit='cell\_fraction'}, MoCHII applies
+Eq.~\eqref{eq:moccell} leaf by leaf with
+$\epsilon_{\rm M}=\code{conv\_xHI\_tol}$ (default 0.05) and stops when the
+number of passing leaves divided by the number of leaves with gas is at
+least \code{conv\_cell\_fraction} (default 0.95), the one-grid form of
+Eq.~\eqref{eq:mocpercent}: a count with no volume weight, also on an AMR
+grid. Temperature, \code{gas\_tol}, \code{gas\_tol\_te}, and the drift test
+do not enter it; \code{gas\_niter} remains the cap. A leaf that no packet
+crossed in the iteration fails and stays in the denominator, as a MOCASSIN
+cell without a hit. A crossing is a positive path tally $\sum\ell L$ over
+every segment scored in the leaf, of every band the gas iteration
+transports: the ionizing band and, with \code{add\_fuv}, the FUV band
+from \code{efuv\_min} to the Lyman limit
+(\ms{main.f90}{242,\allowbreak 501--526};
+\ms{ion_balance_mod.f90}{1266--1323};
+\ms{ion_score_mod.f90}{438,\allowbreak 1017--1020}). The share and the share
+of leaves without a crossing are printed every iteration whatever
+\code{conv\_crit} is. This reproduces A's leaf test and count; in this
+mode the start state also follows A's (Section~\ref{sec:cfdiff}, item 9).
+Section~\ref{sec:cfdiff} lists what is identical and everything that
+still differs.
 
 \Source The declaration default for \code{conv\_crit} is \code{cell}.
 The composition and thermal tolerances are each 0.001; outer
@@ -680,12 +702,12 @@ The composition and thermal tolerances are each 0.001; outer
 and restart-history restoration default to false
 (\code{conv\_drift\_test}, \code{require\_convergence}, and
 \code{restart\_iteration\_history}, respectively;
-\ms{define.f90}{929--942,\allowbreak 1014,\allowbreak 1072--1075,\allowbreak 1230--1233}). The default
+\ms{define.f90}{937--955,\allowbreak 1030,\allowbreak 1089--1092,\allowbreak 1249--1252}). The default
 \code{gas\_niter=0} means one fixed-state transfer, not an attempted
 iterative gas solve. A positive value sets the outer cap; there is no
 separate default 30-pass solve. Setup restricts the criterion name and
 relaxation range, and notes that a drift flag outside \code{vol} has no
-effect (\ms{setup.f90}{154--162,\allowbreak 668--671}).
+effect (\ms{setup.f90}{154--174,\allowbreak 680--683}).
 
 \Source For \code{vol}, require eight samples in every active composition
 history. For positive $d_k$ in that window, fit
@@ -719,7 +741,7 @@ Zero signed mean gives $t_s=0$; nonzero mean with zero scatter gives an
 effectively infinite statistic. The drift test is applied in this
 fallback branch, not additionally to an available decaying-tail
 estimate (\ms{fixed_point_distance_mod.f90}{69--74,\allowbreak 119--192};
-\ms{ion_balance_mod.f90}{1289--1299}).
+\ms{ion_balance_mod.f90}{1363--1373}).
 
 \Inferred Calling the second branch a Monte Carlo floor does not prove
 that noise, rather than slow physical change, caused it. The drift
@@ -729,7 +751,7 @@ confidence guarantee for serially correlated radiation/state iterates.
 Nor does it allow arbitrarily large stationary noise: the positive
 absolute step must still lie below \code{gas\_tol}. MoCHII does not
 increase the prescribed source count automatically in this gas loop
-(\ms{setup.f90}{70}; \ms{main.f90}{194--297}); varying diffuse counts
+(\ms{setup.f90}{70}; \ms{main.f90}{200--298}); varying diffuse counts
 are a different mechanism, given by Equation~\eqref{eq:ndif}.
 
 \subsection{Inner gas and dust solves are separate certificates}
@@ -761,7 +783,7 @@ bisections stop at $T_{\rm hi}/T_{\rm lo}-1<10^{-5}$, followed by a
 fresh ionization evaluation at the selected midpoint. There is no
 separate normalized heat/cool residual acceptance test or post-cap
 failure flag for this bisection
-(\ms{define.f90}{1230--1233}; \ms{thermal_mod.f90}{283--311}). A small
+(\ms{define.f90}{1249--1252}; \ms{thermal_mod.f90}{291--319}). A small
 outer temperature step at a clamped bound does not certify an
 unconstrained thermal root.
 
@@ -771,10 +793,10 @@ floor. It requires $|\Delta n_e|\leq10^{-10}n_e$ and, for enabled coupled
 processes, the corresponding small hydrogen/helium-fraction changes.
 The optional subsequent metal charge-neutrality update also uses at
 most 200 half-damped iterations with the density criterion
-(\ms{ion_balance_mod.f90}{264,\allowbreak 414--450,\allowbreak 457--463,\allowbreak 969--987}). Cap exhaustion
+(\ms{ion_balance_mod.f90}{266,\allowbreak 416--452,\allowbreak 459--465,\allowbreak 971--989}). Cap exhaustion
 returns the last iterate without a dedicated warning/abort or failure
 flag. The separate hydrogen balance root has its own residual and
-bracket limits (\ms{ion_balance_mod.f90}{836--900}). None is the same as
+bracket limits (\ms{ion_balance_mod.f90}{838--902}). None is the same as
 \code{gas\_tol}, and there is no MoCHII input named \code{maxinneriter}
 in the inspected source.
 
@@ -817,7 +839,7 @@ outer result in \code{CONVERGD} and its pass count. Exhausting the cap
 warns; \code{require\_convergence=.true.} aborts before normal final
 output through \code{abort\_run} (an \code{ERROR [rank 0]:} line, then
 \code{MPI\_ABORT} with exit status~1), while false allows the result with
-its failed flag (\ms{main.f90}{309--316}; \ms{utility.f90}{396--399}). Missing restart metal-rate state can force strict reconvergence, an
+its failed flag (\ms{main.f90}{310--326}; \ms{utility.f90}{396--399}). Missing restart metal-rate state can force strict reconvergence, an
 exception to the permissive fresh-run default
 (\ms{previous_state_mod.f90}{338--345}). A permitted
 gas-solving run then performs an additional final transfer, or imaging
@@ -826,7 +848,7 @@ transfer, and another gas update. That update is still subject to
 \code{CONVERGD} value is not retested. \code{STATESOL} reports an update
 in the written field, not an independently verified equilibrium residual
 or transport/state fixed point
-(\ms{main.f90}{299--359}; \ms{gas_rates_mod.f90}{242--247}). For
+(\ms{main.f90}{300--370}; \ms{gas_rates_mod.f90}{242--247}). For
 \code{gas\_niter<1}, no final gas solve is requested. This differs from
 A's direct output/exit after its last ordinary cell update.
 
@@ -834,8 +856,8 @@ A's direct output/exit after its last ordinary cell update.
 composition histories, even if an old-grid criterion had passed. It
 also invalidates raw H/He field estimates and defers an iterate
 checkpoint until transfer has taken place on the new grid
-(\ms{main.f90}{263--295}; \ms{amr_refine_mod.f90}{223--228};
-\ms{ion_score_mod.f90}{329--332}). Ordinary B restart can optionally
+(\ms{main.f90}{264--296}; \ms{amr_refine_mod.f90}{223--228};
+\ms{ion_score_mod.f90}{340--343}). Ordinary B restart can optionally
 restore histories; by default it does not. C always clears them,
 regardless of the requested restoration flag. Initial estimator setup
 makes its first transfer entirely explicit; a later valid field permits
@@ -843,7 +865,7 @@ absorber re-emission. Accordingly a fresh \code{vol} history requires
 eight new samples, whereas a B history restored from a checkpoint can
 already contain earlier samples
 (\ms{previous_state_mod.f90}{296--308,\allowbreak 349--377};
-\ms{main.f90}{106--110}; \ms{diffuse_mod.f90}{339--347}). This is a changed
+\ms{main.f90}{110--114}; \ms{diffuse_mod.f90}{339--347}). This is a changed
 warm-start sequence, not a changed numerical tolerance. C adds no new
 outer acceptance test for every emission channel or the distribution
 of large history weights.
@@ -859,13 +881,13 @@ exceptions are given in Section~\ref{sec:stopping}.}\label{tab:stops}\\
 \toprule Aspect & MOCASSIN (A) & v1.00 algorithm (B) & v1.10 re-emission (C)\\\midrule\endhead
 \bottomrule\endfoot
 Gas quantity & Relative H I change, $\leq0.05$ by default &
-\both{Default cell: maximum absolute H II step; optional vol: normalized integrated H/He histories}\\
+\both{Default cell: maximum absolute H II step; optional vol: normalized integrated H/He histories; optional cell\_fraction: A's relative H I change}\\
 Spatial weight & \code{nCells}-weighted mean of grid passing fractions; default target 95\% &
-\both{Cell maximum, or volume-integrated composition; thermal vol step weights $Vn_e$}\\
+\both{Cell maximum, or volume-integrated composition; thermal vol step weights $Vn_e$; cell\_fraction: count of passing leaves over leaves with gas, default target 95\%}\\
 Outer thermal test & No extra gas-temperature requirement; dust-only uses mean grain temperature &
-\both{Maximum relative temperature step for cell; latest integrated $d_T$ for vol}\\
+\both{Maximum relative temperature step for cell; latest integrated $d_T$ for vol; none for cell\_fraction}\\
 Tolerances & \code{convLimit} sets 0.05; second \code{maxIterateMC} value sets 95\% &
-\both{\code{gas\_tol=0.001}, \code{gas\_tol\_te=0.001}; different norms from A}\\
+\both{\code{gas\_tol=0.001}, \code{gas\_tol\_te=0.001}; different norms from A; cell\_fraction: \code{conv\_xHI\_tol=0.05}, \code{conv\_cell\_fraction=0.95}}\\
 Noise & Optional conditional packet growth; no signed-drift test &
 \both{Fixed prescribed source budget. Vol floor still needs step below tolerance; optional signed-drift test defaults off}\\
 Minimum & No enforced multi-pass history minimum &
@@ -888,6 +910,73 @@ Grid/restart & Physical warm state can restore controls; no 8-step norm here &
 Refinement clears histories; restart optionally restores them & Same refinement reset; restart always clears histories and begins with explicit emission\\
 \end{longtable}\endgroup
 \FloatBarrier
+
+\subsection{\code{cell\_fraction} and A's test: what is identical and what still differs}
+\label{sec:cfdiff}
+
+\Source The list below was checked line by line against source A and the
+current v1.10 source on November 15, 2026; the \textsf{S:} line numbers
+here are those of that source, after the start-state rule of item 9 was
+added. B and C share every \MoCHII\ line cited here, except where item 3
+says otherwise. The compared inputs are the clumpy model of
+\path{clumpy_test/}: A's \path{mocassin/input/input.in} (one grid,
+$129^3$ cells) and the \MoCHII\ inputs \path{mochii_clmp1_cell_fraction/}
+and \path{mochii_clmp2_cell_fraction/}.
+
+\begingroup\small
+\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}P{.17\linewidth}P{.37\linewidth}P{.40\linewidth}@{}}
+\caption{A's convergence test and \code{conv\_crit='cell\_fraction'}:
+the identical parts.}\label{tab:cfsame}\\
+\toprule Aspect & MOCASSIN (A) & \MoCHII\ \code{cell\_fraction}\\\midrule\endfirsthead
+\toprule Aspect & MOCASSIN (A) & \MoCHII\ \code{cell\_fraction}\\\midrule\endhead
+\bottomrule\endfoot
+Leaf test & $|x^{\rm new}_{\rm HI}-x^{\rm old}_{\rm HI}|/x^{\rm old}_{\rm HI}\leq\code{XHILimit}$, set by \code{convLimit} (0.05) (\mc{update_mod.f90}{513--521}) & The same with \code{conv\_xHI\_tol} (0.05) (\ms{ion_balance_mod.f90}{1306--1323}); $x^{\rm new}$ is taken after \code{ion\_relax}, default 1 and not set in the clumpy inputs, so the same there; a zero old fraction is guarded, where A divides by zero\\
+Count & Converged cells over active cells; a mean of grid shares weighted by \code{nCells} over several grids, a plain count on the one grid of the clumpy input (\mc{iteration_mod.f90}{955--998,\allowbreak 1056--1061}) & Converged leaves over leaves with gas, no volume weight, also on an AMR grid (\ms{main.f90}{526--535}); the several-grid weighting has no counterpart\\
+Uncrossed cell & Not converged and kept in the denominator: \code{lgHit} needs a positive \code{Jste}, which also holds the diffuse packets; with \code{lgDebug} they go to \code{Jdif} instead, and a positive \code{Jdif} then counts as a hit as well (\mc{update_mod.f90}{106--125,\allowbreak 137--157}; \mc{photon_mod.f90}{1562--1574}); flags zeroed before every pass (\mc{iteration_mod.f90}{807--816}) & Not converged and kept in the denominator; a crossing is any scored path segment of any transported band (\ms{ion_balance_mod.f90}{1312--1316})\\
+Temperature & Not tested & Not tested (\ms{main.f90}{518--519})\\
+Stop & Share $\geq$ \code{minConvergence} (95) (\mc{iteration_mod.f90}{1135}) & Share $\geq$ \code{conv\_cell\_fraction} (0.95) (\ms{main.f90}{519})\\
+\end{longtable}\endgroup
+
+\begingroup\small
+\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}P{.03\linewidth}P{.29\linewidth}P{.33\linewidth}P{.25\linewidth}@{}}
+\caption{A's convergence test and \code{conv\_crit='cell\_fraction'}:
+what still differs, and whether its effect was measured.}\label{tab:cfdiff}\\
+\toprule & MOCASSIN (A) & \MoCHII\ \code{cell\_fraction} & Effect\\\midrule\endfirsthead
+\toprule & MOCASSIN (A) & \MoCHII\ \code{cell\_fraction} & Effect\\\midrule\endhead
+\bottomrule\endfoot
+1 & \code{autoPackets 0.20 2. 210000000} in the clumpy input multiplies \code{nPhotons} by 2 when the relative gain of the share is $\leq0.20$, the share is below 95, and the total is below the maximum (Eq.~\ref{eq:mocgrowth}; \mc{iteration_mod.f90}{1088--1112}). The first star is counted twice in \code{nPhotonsTot}, so A's run of $10^8$ packets kept $2\times10^8$ after one increase, where the RT tree went to $4\times10^8$ & Fixed \code{no\_photons} (and \code{no\_photons\_fuv}) in every iteration. The share can stall below the threshold on the Monte Carlo noise of $x_{\rm HI}$ & Stall measured: 80.42\% after 20 iterations at $10^6$ packets in a fixed-$T_e$ Str\"omgren sphere (\path{scratch_v1.10_claude/cell_fraction_check/v1.10/strom_cf}). The effect of a packet increase on \MoCHII\ was not measured\\
+2 & Writes the state of the iteration that passed (\mc{iteration_mod.f90}{1135--1146}) & One more transport and one more solve after the loop (\ms{main.f90}{338--379}): the written state is one update past the tested one; \code{FINALDX}/\code{FINALDTE} record that step & Not measured\\
+3 & Re-emits at the absorption point within the pass & B: leaf emission from the state of the previous solve; C: re-emission at the absorption point (Sections~\ref{sec:diffuseb} and \ref{sec:ac}) & Not measured under \code{cell\_fraction}\\
+4 & Sampled absorption; $10^8$ packets in iterations 1--5 and $2\times10^8$ in 6--7 (\path{mocassin/output/summary.out}), $2\times10^8$ then $4\times10^8$ in the RT tree & Analytic attenuation along the path (Section~\ref{sec:flight}); $10^7$ packets in each iteration in clmp2, $10^8$ in clmp1, plus \code{no\_photons}/4 FUV packets & The noise of $x_{\rm HI}$ at each count was not measured in either code\\
+5 & Ion balance stops at relative changes of H$^0$, He$^0$, He$^+$ $\leq0.01$ or at \code{maxIterateX}=25 (\mc{update_mod.f90}{83--84,\allowbreak 1342,\allowbreak 1602--1623}); thermal residual $|H-C|<0.01H$ or \code{maxIterateT}=50 (\mc{update_mod.f90}{49,\allowbreak 88--89,\allowbreak 404}). A cell at a cap is flagged (\code{lgBlack}, \mc{update_mod.f90}{495,\allowbreak 508--511}) and still enters the count & Section~\ref{sec:innerstop} & Not measured\\
+6 & No temperature bounds; only $T\leq0$ is reset to 1~K (\mc{update_mod.f90}{460}) & \code{te\_min}, \code{te\_max} (\ms{define.f90}{1273--1274}; $10^3$ and $3\times10^4$~K in the clumpy inputs) & Not measured\\
+7 & Packets from \code{nuMin} = 0.092~Ryd = 1.25~eV in the clumpy input; a packet stops where it is absorbed & No packet below \code{efuv\_min} = 4.78~eV (\code{eion\_min} without \code{add\_fuv}); the analytic edge walk scores leaves beyond the point a sampled packet would be absorbed & No-packet share 0.00\% in all 12 iterations of the two clumpy runs; the effect on the converged share was not measured\\
+8 & \code{maxIterateMC 30 95.} (30 iterations) & \code{gas\_niter} = 40 in the clumpy inputs & None while a run stops before 30\\
+9 & Start (\mc{grid_mod.f90}{1542,\allowbreak 1564--1601}): $X({\rm H^0})$ = \code{H0in} = $10^{-5}$, $X({\rm H^+}) = 1-X({\rm H^0})$; $X({\rm He^0}) = X({\rm H^0})$, $X({\rm He^+}) = 1-X({\rm He^0})$, $X({\rm He^{2+}}) = 0$; every metal: stage I $= X({\rm H^0})$, higher stages 0; $n_e = n_{\rm H}$; $T_e$ = \code{TeStart} (8000~K in the clumpy input) & Namelist start in this mode: $x_{\rm HI}$ = \code{xHI\_init} as the input gives it (not fixed at $10^{-5}$); helium as hydrogen, $x_{\rm HeI} = x_{\rm HI}$, $x_{\rm HeII} = 1-x_{\rm HI}$, $x_{\rm HeIII} = 0$, unless the input gives \code{xHeI\_init} or \code{xHeII\_init} (\ms{setup.f90}{1029--1032}; \ms{gas_state_mod.f90}{86--168}); until the first solve every metal at stage I $= x_{\rm HI}$, higher stages 0, not normalized, as in A (\ms{main.f90}{111--119}; \ms{species_mod.f90}{535--562}), applied once, so a re-refinement keeps the evolved cache, after which every solve forms the stages from the rates (\ms{species_mod.f90}{1902--1933}); $T_e$ = \code{te\_start} (the thermal solve; \code{te\_fixed} is the held $T_e$ of \code{solve\_te = F}). Still different: $n_e$ starts from the H and He fractions, $1.1\,n_{\rm H}$ at $y_{\rm He}=0.1$, where A takes $n_{\rm H}$ & Not yet measured: the clumpy runs quoted below started from $x_{\rm HI}=10^{-3}$, neutral helium and $T_e=10^4$~K\\
+10 & A relative $x_{\rm HI}$ test can pass prematurely when crossed neutral cells that do not change dominate the count; it tests hydrogen only. A starts ionized ($10^{-5}$), which avoids the first & The same test; with a neutral start (\code{xHI\_init = 1}) the outcome depends on how many crossed leaves stay neutral and unchanged, so the share of the first iterations should be checked & Measured, for this case only: clmp1 (\code{xHI\_init = 1}, $10^8$ packets, FUV band on, no-packet share 0.00\%) 99.96\% at iteration 1 (\path{clumpy_test/mochii_clmp1_cell_fraction/run.log}, line 159); clmp2 stopped with He$^0$--He$^+$ measure $d=0.135$\\
+11 & An unhit cell keeps its old state: \code{updateCell} copies its gas state and returns (\mc{update_mod.f90}{137--156}) & Every leaf with gas is solved whether or not a packet crossed it (\ms{ion_balance_mod.f90}{1191--1204}; \ms{thermal_mod.f90}{286--306}); the crossing enters only the count (\ms{ion_balance_mod.f90}{1226--1228}; \ms{thermal_mod.f90}{368--370}). An unilluminated leaf can recombine or cool in \MoCHII\ where A keeps it unchanged, which also changes the later field and histories & Not measured; no-packet share 0.00\% in the clumpy runs, so it did not act there\\
+\end{longtable}\endgroup
+
+\Measured Before the start of item 9 was matched (helium neutral,
+$T_e=10^4$~K, $x_{\rm HI}=10^{-3}$), with the crossing definition above,
+the B run clmp2 (\path{clumpy_test/mochii_clmp2_cell_fraction/}, $10^7$
+packets in each iteration) stopped at iteration 11 with converged shares
+0.43, 0.76, 6.90, 32.28, 45.57, 51.90, 55.74, 59.87, 73.39, 92.86 and
+96.14\%. At the stop its He$^0$--He$^+$ change measure was $d=0.135$, and
+its [O\,\textsc{iii}]~5007/H$\beta$ was 0.150, against 0.824 after 40
+iterations of the same input with \code{conv\_crit='vol'}
+(\path{clumpy_test/mochii_clmp2_matched/}). A's run reached 0.0043,
+2.07, 71.52, 89.57, 93.01, 94.58 and 95.67\% in its seven iterations
+(\path{mocassin/output/summary.out}).
+
+\Source Checked and not acting: A's \code{Xmax = 0.9999} is declared at
+\mc{update_mod.f90}{358} and referenced nowhere else in source A, so it
+bounds no fraction. \textbf{Not verified:} the size of the effects of
+items 2 and 4--7; whether A's first ion-balance call uses the starting
+metal fractions as its initial guess (\MoCHII's first solve does not read
+them).
 
 \subsection{When the tests answer differently for the same state sequence}
 \label{sec:stopcounterexamples}
@@ -995,7 +1084,7 @@ $C(s)=\{1\},\{2,4\},\{3,5\}$. In leaf $i$, C freezes
 The previous raw path-based photoionization rate is multiplied by the
 current absorber density. Gas-absorbed energy is not the normalization.
 These executable definitions include the cap
-(\ms{diffuse_mod.f90}{339--377}; \ms{ion_score_mod.f90}{926--938}). The
+(\ms{diffuse_mod.f90}{339--377}; \ms{ion_score_mod.f90}{940--952}). The
 balance coefficient defines a recombination count; its numerical data
 are outside this comparison.
 
@@ -1017,7 +1106,7 @@ is not a fourth extinction/re-emission absorber in this model; its
 coupled state can affect channel 4. The packet gas opacity and the
 three $\kappa_s$ refer to the same ground-state absorption terms
 (\ms{ion_packet_mod.f90}{92--138};
-\ms{ion_score_mod.f90}{472--476}; \ms{diffuse_mod.f90}{303--315}).
+\ms{ion_score_mod.f90}{485--489}; \ms{diffuse_mod.f90}{303--315}).
 
 \Source C combines scattering and re-emission:
 \begin{equation}
@@ -1042,7 +1131,7 @@ or rebuilt grid---all yields stay zero and full state emission is
 separately launched. Setup/reset invalidates the field; reduction
 publishes the next valid field (\ms{ionizing_field_mod.f90}{119--132};
 \ms{diffuse_mod.f90}{340--348};
-\ms{ion_score_mod.f90}{264--327,\allowbreak 334--399,\allowbreak 817--819,\allowbreak 926--938}). Explicit
+\ms{ion_score_mod.f90}{272--338,\allowbreak 345--411,\allowbreak 831--833,\allowbreak 940--952}). Explicit
 remainder packets themselves follow the same gas rule and can produce
 further descendants. A re-emitted packet stays in the interaction loop;
 its next flight is sampled, rather than starting another analytic
@@ -1083,9 +1172,9 @@ and metastable coupling prevent a universal $\psi=1$ claim.
 Deposition $W-W'$ is signed at $t>1$; realized roulette also has a signed
 correction. The ledgers retain these terms and count photon rates as
 luminosity divided by current energy
-(\ms{ion_score_mod.f90}{624--724,\allowbreak 1067--1093,\allowbreak 1129--1159}).
+(\ms{ion_score_mod.f90}{637--737,\allowbreak 1090--1116,\allowbreak 1152--1182}).
 \code{GasAbsorbedPower} is a path estimate of gross gas absorption, not
-the r7 yield input (\ms{ion_score_mod.f90}{479--485,\allowbreak 926--938}).
+the r7 yield input (\ms{ion_score_mod.f90}{492--498,\allowbreak 940--952}).
 
 \Inferred A keeps energy normalization in ordinary re-emission while
 changing represented photon number. C keeps weighted accounting and
@@ -1133,7 +1222,7 @@ variable-length re-emission chain is not thereby fixed-dimensional QMC.
 stopping histories and begins with full explicit emission. Refinement
 invalidates the estimator epoch and clears stopping histories
 (\ms{previous_state_mod.f90}{296--307,\allowbreak 349--377};
-\ms{main.f90}{99--110,\allowbreak 263--274}; \ms{ion_score_mod.f90}{264--332}).
+\ms{main.f90}{103--114,\allowbreak 264--275}; \ms{ion_score_mod.f90}{272--343}).
 B can retain optional histories. No old energy-normalization state is
 needed or restored for the r7 rule.
 
@@ -1238,9 +1327,9 @@ The H and He$^0$ steps are
 $\sum V|\Delta x_{\rm HII}|/\sum Vx_{\rm HII,new}$ and
 $\sum V|\Delta x_{\rm HeI}|/\sum V(x_{\rm HeII}+x_{\rm HeIII})_{\rm new}$,
 respectively. These are integrated measures, not maximum local changes
-(\ms{main.f90}{206--209,\allowbreak 485--490};
-\ms{ion_balance_mod.f90}{1218--1240,\allowbreak 1266--1275};
-\ms{thermal_mod.f90}{358--362,\allowbreak 411--416};
+(\ms{main.f90}{503--508,\allowbreak 545--550};
+\ms{ion_balance_mod.f90}{1225--1254,\allowbreak 1340--1349};
+\ms{thermal_mod.f90}{366--373,\allowbreak 426--431};
 \ms{fixed_point_distance_mod.f90}{69--74,\allowbreak 119--192}).
 The C input for the tabulated HII20 comparison caps iteration at 20
 and permits output without passing this test (saved input, lines 31

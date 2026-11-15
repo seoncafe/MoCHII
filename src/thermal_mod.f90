@@ -28,7 +28,9 @@ module thermal_mod
   use ion_balance_mod, only : solve_ion_cell, charge_neutrality_ne, NE_FLOOR_PER_H, &
                               helium_change_measures, signed_change_measures, &
                               larger_state_sum, &
-                              helium_charge_exchange_heating
+                              helium_charge_exchange_heating, &
+                              neutral_hydrogen_convergence_count
+  use ion_score_mod,   only : band_path_luminosity
   use cooling_mod,     only : cooling_total
   implicit none
   private
@@ -208,6 +210,10 @@ contains
   ! counterparts of dx_vol, dhe_vol(1), dhe_vol(2) (the net change of
   ! x_HII, 1 - x_HeI, x_HeIII over the same denominators), which tell a
   ! moving front from the Monte Carlo floor (fixed_point_distance_mod).
+  ! xhi_counts(3): MOCASSIN's measure, leaves with gas, leaves whose x_HI
+  ! converged, leaves no packet crossed
+  ! (ion_balance_mod::neutral_hydrogen_convergence_count; T_e does not
+  ! enter it).
   !
   ! Two validity counts are printed when not empty: the leaves whose thermal
   ! balance has no root below par%te_max (heating wins there, T is held at
@@ -224,13 +230,14 @@ contains
   ! heii_cascade_mod::heii_cascade_transported), and 'transported' carries
   ! every recombination photon.
   subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol)
+                                drift_vol, xhi_counts)
     use mpi
     use octree_mod, only : leaf_half
     use photo_xsec, only : sigma_HI, sigma_HeI
     implicit none
     real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
     real(kind=wp), intent(out) :: drift_vol(3)
+    integer,       intent(out) :: xhi_counts(3)
 
     real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
                                   xHeII_new(:), xHeIII_new(:), ne_new(:), &
@@ -258,6 +265,7 @@ contains
     max_local = 0.0_wp
     sum_local = 0.0_wp
     grain_local = 0.0_wp
+    xhi_counts = 0
     !--- the grain terms read T_d and the band field of this iteration
     if (par%grain_pe .or. par%gas_grain_energy_exchange) then
        block
@@ -357,6 +365,9 @@ contains
           end block
        end if
        te_new(il) = te
+       call neutral_hydrogen_convergence_count(gas_xHI(il), xHI_new(il), &
+                                               band_path_luminosity(il) > 0.0_wp, &
+                                               xhi_counts)
        max_local(1) = max(max_local(1), abs(xHII_new(il) - gas_xHII(il)))
        max_local(2) = max(max_local(2), abs(te_new(il) - gas_Te(il)) &
                                         /max(te_new(il), gas_Te(il)))
@@ -382,6 +393,10 @@ contains
     call MPI_ALLREDUCE(flag_local, flag_host, 5, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(grain_local, grain_host, 4, MPI_DOUBLE_PRECISION, MPI_SUM, &
+                       MPI_COMM_WORLD, ierr)
+    !--- an integer sum is exact and the same on every rank whatever the
+    !--- reduction order, so the counts need no broadcast from rank 0
+    call MPI_ALLREDUCE(MPI_IN_PLACE, xhi_counts, 3, MPI_INTEGER, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
     !--- volume integrals of the grain terms at the solved states, against
     !--- the H/He photoheating by the transported field
