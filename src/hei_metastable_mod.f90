@@ -38,7 +38,7 @@ module hei_metastable_mod
 !
 ! One population, four users.  hei_triplet_population is the one n_3 of
 !  (1) the output diagnostic (par%hei_metastable, hei_metastable_run),
-!  and, with explicitly enabled par%hei_metastable_coupling (default off),
+!  and, with par%hei_metastable_coupling (default on),
 !  (2) the ionization balance (ion_balance_mod::solve_ion_cell): C_3 and
 !      Phi_3 return He to He+ -- a share u = (n_e C_3 + Phi_3)/D of every
 !      triplet recombination and collisional triplet excitation is undone --
