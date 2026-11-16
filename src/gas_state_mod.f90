@@ -29,20 +29,21 @@ module gas_state_mod
 ! MPI_COMM_WORLD, rank p taking the leaves gas_leaf_owner_first() +
 ! k gas_leaf_owner_stride() (cyclic, as the SEDust solve and the dust
 ! emission launch divide theirs), so adding nodes divides the work.  Each
-! rank fills its own leaves of private arrays, zero elsewhere, and
-! gas_state_publish sums them over all ranks (memory_mod::sum_over_ranks:
-! within each node, then between the nodes' first ranks, then back to the
-! node's ranks): every leaf has exactly one nonzero contribution, so the sum
-! is exact and the same on every rank whatever the reduction order, and each
-! node's rank 0 then writes it into that node's shared copy.  Until 2026-09-26 the thermal solve was divided
-! over the ranks of one node only, every node repeating all leaves, and the
-! fixed-Te solve ran on each node's rank 0 alone.
+! rank writes its leaves into separate node-shared new-state buffers.
+! Leaves owned by another host remain zero. After all old-state readers
+! and change measures finish, gas_state_publish combines the host buffers
+! among their leaders, copies into the unchanged canonical current-state
+! allocations, and publishes the entire update. Packet scoring stays private.
 !---------------------------------------------------------------------------
   use define
-  use memory_mod, only : create_shared_mem, get_window, sum_over_ranks
-  use mpi
+  use utility, only : abort_run
+  use memory_mod, only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                        sum_shared_hosts
   implicit none
   private
+
+  public :: gas_state_release, gas_state_new_reset
+  public :: xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new, te_new
 
   public :: gas_state_setup, gas_state_recreate, gas_state_sync
   public :: gas_state_publish, gas_leaf_owner_first, gas_leaf_owner_stride
@@ -64,11 +65,14 @@ module gas_state_mod
   !--- 'cell_fraction' with xHeI_init and xHeII_init both left out of the
   !--- input, so gas_state_setup starts helium as hydrogen in each leaf
   logical :: helium_starts_as_hydrogen = .false.
-  integer :: win_xHI = MPI_WIN_NULL, win_xHII = MPI_WIN_NULL
-  integer :: win_xHeI = MPI_WIN_NULL
-  integer :: win_xHeII = MPI_WIN_NULL, win_xHeIII = MPI_WIN_NULL
-  integer :: win_ne = MPI_WIN_NULL
-  integer :: win_Te = MPI_WIN_NULL
+  type(shared_owner) :: state_owner(8)
+  ! Separate canonical allocations preserve the old state during every solve.
+  real(kind=wp), pointer, contiguous :: xHI_new(:) => null(), xHII_new(:) => null()
+  real(kind=wp), pointer, contiguous :: xHeI_new(:) => null(), xHeII_new(:) => null()
+  real(kind=wp), pointer, contiguous :: xHeIII_new(:) => null(), ne_new(:) => null()
+  real(kind=wp), pointer, contiguous :: te_new(:) => null()
+  type(shared_owner) :: new_state_owner(7)
+  logical :: new_state_ready = .false.
 
 contains
 
@@ -91,15 +95,14 @@ contains
     integer :: il
 
     gas_nleaf = nleaf
-    call create_shared_mem(gas_nH,    [nleaf])
-    call create_shared_mem(gas_xHI,   [nleaf])
-    call create_shared_mem(gas_xHII,  [nleaf])
-    call create_shared_mem(gas_xHeI,  [nleaf])
-    call create_shared_mem(gas_xHeII, [nleaf])
-    call create_shared_mem(gas_xHeIII, [nleaf])
-    call create_shared_mem(gas_ne,    [nleaf])
-    call create_shared_mem(gas_Te,    [nleaf])
-    call cache_state_windows()
+    call allocate_shared(state_owner(1), gas_nH, [nleaf])
+    call allocate_shared(state_owner(2), gas_xHI, [nleaf])
+    call allocate_shared(state_owner(3), gas_xHII, [nleaf])
+    call allocate_shared(state_owner(4), gas_xHeI, [nleaf])
+    call allocate_shared(state_owner(5), gas_xHeII, [nleaf])
+    call allocate_shared(state_owner(6), gas_xHeIII, [nleaf])
+    call allocate_shared(state_owner(7), gas_ne, [nleaf])
+    call allocate_shared(state_owner(8), gas_Te, [nleaf])
 
     if (mpar%h_rank == 0) then
        do il = 1, nleaf
@@ -179,15 +182,14 @@ contains
                                  x2(nleaf), x3(nleaf), x4(nleaf), &
                                  nev(nleaf), tev(nleaf)
     gas_nleaf = nleaf
-    call create_shared_mem(gas_nH,    [nleaf])
-    call create_shared_mem(gas_xHI,   [nleaf])
-    call create_shared_mem(gas_xHII,  [nleaf])
-    call create_shared_mem(gas_xHeI,  [nleaf])
-    call create_shared_mem(gas_xHeII, [nleaf])
-    call create_shared_mem(gas_xHeIII, [nleaf])
-    call create_shared_mem(gas_ne,    [nleaf])
-    call create_shared_mem(gas_Te,    [nleaf])
-    call cache_state_windows()
+    call allocate_shared(state_owner(1), gas_nH, [nleaf])
+    call allocate_shared(state_owner(2), gas_xHI, [nleaf])
+    call allocate_shared(state_owner(3), gas_xHII, [nleaf])
+    call allocate_shared(state_owner(4), gas_xHeI, [nleaf])
+    call allocate_shared(state_owner(5), gas_xHeII, [nleaf])
+    call allocate_shared(state_owner(6), gas_xHeIII, [nleaf])
+    call allocate_shared(state_owner(7), gas_ne, [nleaf])
+    call allocate_shared(state_owner(8), gas_Te, [nleaf])
     if (mpar%h_rank == 0) then
        gas_nH(1:nleaf)    = nHv
        gas_xHI(1:nleaf)   = x1
@@ -211,65 +213,99 @@ contains
   end function gas_leaf_owner_stride
 
   !=========================================================================
-  ! Sum the ranks' solved leaves over all ranks with sum_over_ranks (each
-  ! array holds this rank's own leaves, zero elsewhere; the arrays cross
-  ! between nodes once for each node) and write the result into every
-  ! node's shared state.  te_new is absent for the fixed-T_e solve, which
-  ! leaves T_e as it is.  The arrays come back holding the full state.
+  ! Finish previous buffer readers, then clear the whole host contribution.
+  ! World-rank ownership is unchanged: each writer stores only its own leaves.
+  ! Foreign-host leaves stay zero until sum_shared_hosts exchanges the sums.
+  ! Current state is read-only throughout this reset and the following solve.
   !=========================================================================
-  subroutine gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, &
-                               xHeIII_new, ne_new, te_new)
-    real(kind=wp), intent(inout)           :: xHI_new(:), xHII_new(:), &
-                                              xHeI_new(:), xHeII_new(:), &
-                                              xHeIII_new(:), ne_new(:)
-    real(kind=wp), intent(inout), optional :: te_new(:)
-    call sum_over_ranks(xHI_new)
-    call sum_over_ranks(xHII_new)
-    call sum_over_ranks(xHeI_new)
-    call sum_over_ranks(xHeII_new)
-    call sum_over_ranks(xHeIII_new)
-    call sum_over_ranks(ne_new)
-    if (present(te_new)) call sum_over_ranks(te_new)
+  subroutine gas_state_new_reset(solve_temperature)
+    logical, intent(in) :: solve_temperature
+    if (.not. shared_is_live(new_state_owner(1))) then
+       call allocate_shared(new_state_owner(1), xHI_new, [gas_nleaf])
+       call allocate_shared(new_state_owner(2), xHII_new, [gas_nleaf])
+       call allocate_shared(new_state_owner(3), xHeI_new, [gas_nleaf])
+       call allocate_shared(new_state_owner(4), xHeII_new, [gas_nleaf])
+       call allocate_shared(new_state_owner(5), xHeIII_new, [gas_nleaf])
+       call allocate_shared(new_state_owner(6), ne_new, [gas_nleaf])
+    end if
+    if (solve_temperature) then
+       if (.not. shared_is_live(new_state_owner(7))) &
+          call allocate_shared(new_state_owner(7), te_new, [gas_nleaf])
+    else
+       if (shared_is_live(new_state_owner(7))) call free_shared(new_state_owner(7), te_new)
+    end if
+    call publish_shared(new_state_owner)
     if (mpar%h_rank == 0) then
-       gas_xHI(1:gas_nleaf)   = xHI_new(1:gas_nleaf)
-       gas_xHII(1:gas_nleaf)  = xHII_new(1:gas_nleaf)
-       gas_xHeI(1:gas_nleaf)  = xHeI_new(1:gas_nleaf)
-       gas_xHeII(1:gas_nleaf) = xHeII_new(1:gas_nleaf)
-       gas_xHeIII(1:gas_nleaf) = xHeIII_new(1:gas_nleaf)
-       gas_ne(1:gas_nleaf)    = ne_new(1:gas_nleaf)
-       if (present(te_new)) gas_Te(1:gas_nleaf) = te_new(1:gas_nleaf)
+       xHI_new = 0.0_wp
+       xHII_new = 0.0_wp
+       xHeI_new = 0.0_wp
+       xHeII_new = 0.0_wp
+       xHeIII_new = 0.0_wp
+       ne_new = 0.0_wp
+       if (associated(te_new)) te_new = 0.0_wp
+    end if
+    call publish_shared(new_state_owner)
+    new_state_ready = .true.
+  end subroutine gas_state_new_reset
+
+  !=========================================================================
+  ! Called only after solves and all old-state change measures have finished.
+  ! Publish disjoint writers, combine the zero-padded host contributions,
+  ! then copy into stable current-state allocations and publish that update.
+  ! No temperature buffer in a fixed-temperature solve: T_e stays untouched.
+  !=========================================================================
+  subroutine gas_state_publish()
+    integer :: il
+    if (.not. new_state_ready) call abort_run('gas_state_publish: new state was not reset')
+    call sum_shared_hosts(new_state_owner)
+    call gas_state_sync()
+    if (mpar%h_rank == 0) then
+       ! Scalar stores need no array overlap temporary.
+       do il = 1, gas_nleaf
+          gas_xHI(il) = xHI_new(il)
+          gas_xHII(il) = xHII_new(il)
+          gas_xHeI(il) = xHeI_new(il)
+          gas_xHeII(il) = xHeII_new(il)
+          gas_xHeIII(il) = xHeIII_new(il)
+          gas_ne(il) = ne_new(il)
+          if (associated(te_new)) gas_Te(il) = te_new(il)
+       end do
     end if
     call gas_state_sync()
+    new_state_ready = .false.
   end subroutine gas_state_publish
 
+  subroutine gas_state_new_release()
+    if (shared_is_live(new_state_owner(1))) call free_shared(new_state_owner(1), xHI_new)
+    if (shared_is_live(new_state_owner(2))) call free_shared(new_state_owner(2), xHII_new)
+    if (shared_is_live(new_state_owner(3))) call free_shared(new_state_owner(3), xHeI_new)
+    if (shared_is_live(new_state_owner(4))) call free_shared(new_state_owner(4), xHeII_new)
+    if (shared_is_live(new_state_owner(5))) call free_shared(new_state_owner(5), xHeIII_new)
+    if (shared_is_live(new_state_owner(6))) call free_shared(new_state_owner(6), ne_new)
+    if (shared_is_live(new_state_owner(7))) call free_shared(new_state_owner(7), te_new)
+    new_state_ready = .false.
+  end subroutine gas_state_new_release
+
   !=========================================================================
-  ! Publish direct loads/stores to the node-shared gas-state windows.
-  !
-  ! The inherited shared-memory allocator keeps a fence epoch open for each
-  ! window.  Advancing that epoch collectively publishes the direct stores;
-  ! the host barrier then keeps all state windows at the same update boundary.
+  ! Publish one complete gas-state update and order its readers.
   !=========================================================================
   subroutine gas_state_sync()
-    integer :: ierr
-
-    if (win_xHI   /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHI,   ierr)
-    if (win_xHII  /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHII,  ierr)
-    if (win_xHeI  /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeI,  ierr)
-    if (win_xHeII /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeII, ierr)
-    if (win_xHeIII /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_xHeIII, ierr)
-    if (win_ne    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_ne,    ierr)
-    if (win_Te    /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win_Te,    ierr)
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call publish_shared(state_owner)
   end subroutine gas_state_sync
 
-  subroutine cache_state_windows()
-    call get_window(gas_xHI,   win_xHI)
-    call get_window(gas_xHII,  win_xHII)
-    call get_window(gas_xHeI,  win_xHeI)
-    call get_window(gas_xHeII, win_xHeII)
-    call get_window(gas_xHeIII, win_xHeIII)
-    call get_window(gas_ne,    win_ne)
-    call get_window(gas_Te,    win_Te)
-  end subroutine cache_state_windows
+  subroutine gas_state_release()
+    ! Complete old-state reads before releasing the canonical pointers.
+    call gas_state_sync()
+    call gas_state_new_release()
+    if (shared_is_live(state_owner(1))) call free_shared(state_owner(1), gas_nH)
+    if (shared_is_live(state_owner(2))) call free_shared(state_owner(2), gas_xHI)
+    if (shared_is_live(state_owner(3))) call free_shared(state_owner(3), gas_xHII)
+    if (shared_is_live(state_owner(4))) call free_shared(state_owner(4), gas_xHeI)
+    if (shared_is_live(state_owner(5))) call free_shared(state_owner(5), gas_xHeII)
+    if (shared_is_live(state_owner(6))) call free_shared(state_owner(6), gas_xHeIII)
+    if (shared_is_live(state_owner(7))) call free_shared(state_owner(7), gas_ne)
+    if (shared_is_live(state_owner(8))) call free_shared(state_owner(8), gas_Te)
+    gas_nleaf = 0
+  end subroutine gas_state_release
 
 end module gas_state_mod

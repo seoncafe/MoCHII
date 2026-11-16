@@ -44,7 +44,7 @@ module ionizing_field_mod
   use qmc_mod,          only : qmc_uniforms_stream, QMC_MAXDIM, &
                                QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE, &
                                QMC_STREAM_FUV
-  use jtally_mod,       only : jtally_ion_reduce, jt_ion, jt_ion_on, &
+  use jtally_mod,       only : jtally_ion_reduce, jtally_ion_reset, jt_ion_on, &
                                slab_tally_on, slab_Iesc
   use ion_score_mod,    only : ion_score_reset, ion_score_reduce, &
                                ion_score_report_energy_closure, &
@@ -125,9 +125,9 @@ contains
        ! Gas re-emission also peels in dust-free calculations.
        if (reemission) ion_peel_reemission_hook => ion_peel_reemission
     end if
-    if (jt_ion_on) jt_ion(:,:) = 0.0_wp
+    call jtally_ion_reset()
     ! Freeze absorber yields and explicit emission before the first packet,
-    ! using raw photoionization paths before ion_score_reset clears them.
+    ! using the shared previous-pass field before ion_score_reset invalidates it.
     if (reemission) call diffuse_build(ionizing_packet_luminosity())
     call ion_score_reset()
     !--- keep the last pass's escaping field: an iterating pass starts the

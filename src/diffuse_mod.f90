@@ -102,9 +102,8 @@ module diffuse_mod
 ! diffuse_remainder_luminosity is the explicit launch by channel.
 !---------------------------------------------------------------------------
   use define
-  use mpi
-  use memory_mod,    only : create_shared_mem, destroy_shared_mem, get_window, &
-                           shared_host_rank, shared_host_size, shared_host_comm
+  use memory_mod,    only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                           shared_host_rank, shared_host_size
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, gas_ne, gas_Te, gas_nleaf
@@ -126,6 +125,8 @@ module diffuse_mod
                                    freefree_band_sample_energy, FF_ZMAX
   implicit none
   private
+
+  public :: diffuse_release
 
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
@@ -173,7 +174,7 @@ module diffuse_mod
   !--- the channel table the launchers draw from: dif_ch, or explicit_ch
   !--- under absorption_reemission
   real(kind=wp), pointer, contiguous :: dif_launch(:,:) => null()
-  integer :: dif_win(7) = MPI_WIN_NULL     ! dif_cdf, dif_ch, dif_hei, reemitted_energy,
+  type(shared_owner) :: diffuse_owner(7)     ! dif_cdf, dif_ch, dif_hei, reemitted_energy,
                                            ! absorber_psi, explicit_ch, absorber_count
   !--- the last diffuse_build had a valid previous field (re-emission on)
   logical, protected :: reemission_field_valid = .false.
@@ -227,25 +228,26 @@ contains
     real(kind=wp) :: be3s, be1p, be1s
     real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
-    integer :: il, ic, ierr
+    integer :: il, ic
     logical :: all_channels
 
+    call diffuse_shared_sync()
+    nullify(dif_launch)
     if (associated(dif_cdf)) then
        if (size(dif_cdf) /= gas_nleaf) then
-          call destroy_shared_mem(dif_cdf);  call destroy_shared_mem(dif_ch)
+          call free_shared(diffuse_owner(1), dif_cdf);  call free_shared(diffuse_owner(2), dif_ch)
        end if
     end if
     if (.not. associated(dif_cdf)) then
-       call create_shared_mem(dif_cdf, [gas_nleaf]);  call get_window(dif_cdf, dif_win(1))
-       call create_shared_mem(dif_ch, [NCH, gas_nleaf]);  call get_window(dif_ch, dif_win(2))
+       call allocate_shared(diffuse_owner(1), dif_cdf, [gas_nleaf])
+       call allocate_shared(diffuse_owner(2), dif_ch, [NCH, gas_nleaf])
     end if
     if (par%hei_diffuse .and. par%hei_metastable_coupling) then
        if (associated(dif_hei)) then
-          if (size(dif_hei, 2) /= gas_nleaf) call destroy_shared_mem(dif_hei)
+          if (size(dif_hei, 2) /= gas_nleaf) call free_shared(diffuse_owner(3), dif_hei)
        end if
        if (.not. associated(dif_hei)) then
-          call create_shared_mem(dif_hei, [3, gas_nleaf])
-          call get_window(dif_hei, dif_win(3))
+          call allocate_shared(diffuse_owner(3), dif_hei, [3, gas_nleaf])
        end if
     end if
     reemit_at_absorption = trim(par%diffuse_launch) == 'absorption_reemission'
@@ -253,21 +255,17 @@ contains
     if (reemit_at_absorption) then
        if (associated(reemitted_energy)) then
           if (size(reemitted_energy, 2) /= gas_nleaf) then
-             call destroy_shared_mem(reemitted_energy)
-             call destroy_shared_mem(absorber_psi)
-             call destroy_shared_mem(explicit_ch)
-             call destroy_shared_mem(absorber_count)
+             call free_shared(diffuse_owner(4), reemitted_energy)
+             call free_shared(diffuse_owner(5), absorber_psi)
+             call free_shared(diffuse_owner(6), explicit_ch)
+             call free_shared(diffuse_owner(7), absorber_count)
           end if
        end if
        if (.not. associated(reemitted_energy)) then
-          call create_shared_mem(reemitted_energy, [NABSORBER, gas_nleaf])
-          call get_window(reemitted_energy, dif_win(4))
-          call create_shared_mem(absorber_psi, [NABSORBER, gas_nleaf])
-          call get_window(absorber_psi, dif_win(5))
-          call create_shared_mem(explicit_ch, [NCH, gas_nleaf])
-          call get_window(explicit_ch, dif_win(6))
-          call create_shared_mem(absorber_count, [3, NABSORBER, gas_nleaf])
-          call get_window(absorber_count, dif_win(7))
+          call allocate_shared(diffuse_owner(4), reemitted_energy, [NABSORBER, gas_nleaf])
+          call allocate_shared(diffuse_owner(5), absorber_psi, [NABSORBER, gas_nleaf])
+          call allocate_shared(diffuse_owner(6), explicit_ch, [NCH, gas_nleaf])
+          call allocate_shared(diffuse_owner(7), absorber_count, [3, NABSORBER, gas_nleaf])
        end if
        dif_launch => explicit_ch
     end if
@@ -435,11 +433,7 @@ contains
   contains
 
     subroutine diffuse_shared_sync()
-      integer :: k
-      do k = 1, size(dif_win)
-         if (dif_win(k) /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, dif_win(k), ierr)
-      end do
-      call MPI_BARRIER(shared_host_comm(), ierr)
+      call publish_shared(diffuse_owner)
     end subroutine diffuse_shared_sync
 
   end subroutine diffuse_build
@@ -1057,5 +1051,17 @@ contains
     end select
     eph = min(eph, par%eion_max*0.999_wp)
   end function ground_photon_energy
+
+  subroutine diffuse_release()
+    call publish_shared(diffuse_owner)
+    nullify(dif_launch)
+    if (shared_is_live(diffuse_owner(1))) call free_shared(diffuse_owner(1), dif_cdf)
+    if (shared_is_live(diffuse_owner(2))) call free_shared(diffuse_owner(2), dif_ch)
+    if (shared_is_live(diffuse_owner(3))) call free_shared(diffuse_owner(3), dif_hei)
+    if (shared_is_live(diffuse_owner(4))) call free_shared(diffuse_owner(4), reemitted_energy)
+    if (shared_is_live(diffuse_owner(5))) call free_shared(diffuse_owner(5), absorber_psi)
+    if (shared_is_live(diffuse_owner(6))) call free_shared(diffuse_owner(6), explicit_ch)
+    if (shared_is_live(diffuse_owner(7))) call free_shared(diffuse_owner(7), absorber_count)
+  end subroutine diffuse_release
 
 end module diffuse_mod

@@ -15,7 +15,7 @@ program main
   use ion_band_mod,    only : ion_setup, ion_Ltot, ion_eedge, ion_lum
   use gas_opacity_mod, only : gas_opacity_setup, gas_opacity_fill, &
                               dust_reference_extinction
-  use jtally_mod,      only : jtally_ion_setup, &
+  use jtally_mod,      only : jtally_ion_setup, jtally_ion_release, &
                               slab_tally_setup, slab_tally_reduce, &
                               slab_write_Imu, slab_tally_on
   use ion_score_mod,   only : ion_score_setup
@@ -39,7 +39,13 @@ program main
   use species_mod,     only : species_setup, species_terminal_photoionization_check, &
                               species_stage_start_as_hydrogen, &
                               n_elements, elem_nstage, elem_abund, elem_eth
-  use memory_mod,      only : destroy_shared_mem_all
+  use memory_mod,      only : shared_memory_finish
+  use gas_state_mod,   only : gas_state_release
+  use gas_rates_mod,   only : gas_rates_release
+  use species_mod,     only : species_release
+  use diffuse_mod,     only : diffuse_release
+  use hei_metastable_mod, only : hei_metastable_release
+  use ion_score_mod, only : ion_score_release
   use utility
   use mpi
   implicit none
@@ -379,7 +385,7 @@ program main
   end if
 
   !--- output
-  !--- The SEDust leaf spectra are final from here on: jt_ion was last
+  !--- The SEDust leaf spectra are final from here on: jt_ion_sum was last
   !--- written by the last transport pass above (final, imaging, or the
   !--- single pass of gas_niter < 1) and x_HI/x_HII by the last solve, and
   !--- nothing below transports the ionizing band, solves the gas or changes
@@ -478,7 +484,15 @@ program main
      write(6,'(2a)')       ' >>> STOP  @ ', get_date_time()
   endif
 
-  call destroy_shared_mem_all()
+  call ion_score_release()
+  call jtally_ion_release()
+  call diffuse_release()
+  call hei_metastable_release()
+  call species_release()
+  call gas_rates_release()
+  call gas_state_release()
+  call grid_destroy_amr(grid)
+  call shared_memory_finish()
   call MPI_FINALIZE(ierr)
   stop
 

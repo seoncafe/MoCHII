@@ -102,14 +102,15 @@ module hei_metastable_mod
 !---------------------------------------------------------------------------
   use utility, only : abort_run
   use define
-  use mpi
-  use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
-                          shared_host_rank, shared_host_size, shared_host_comm, &
-                          sum_over_ranks
+  use memory_mod,   only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                          shared_host_rank, shared_host_size, &
+                          sum_into_shared
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use photo_xsec,   only : sigma_vfky96
   implicit none
   private
+
+  public :: hei_metastable_release
 
   public :: hei_metastable_run, hei_metastable_load
   public :: hei_metastable_path_setup, hei_metastable_path_reset
@@ -167,9 +168,12 @@ module hei_metastable_mod
   !--- Sum(path_lum sigma_3(E) (1 - IP_3/E)), rank local then reduced, and
   !--- the rates [s^-1] and heating [erg s^-1 per 2^3S atom] they give.
   real(kind=wp), allocatable :: phi3_path(:), heat3_path(:)
+  !--- Distinct node-shared sums; packet scoring remains private.
+  real(kind=wp), pointer, contiguous :: phi3_sum(:) => null(), heat3_sum(:) => null()
+  type(shared_owner) :: path_sum_owner(2)
   !--- the rates are the same on every rank: node-shared (2026-10-12)
   real(kind=wp), pointer, contiguous :: phi3_leaf(:) => null(), heat3_leaf(:) => null()
-  integer :: phi3_win(2) = MPI_WIN_NULL
+  type(shared_owner) :: phi3_owner(2)
 
   real(kind=wp), parameter :: kb_eV = kboltz_cgs / ev2erg    ! [eV/K]
 
@@ -361,6 +365,7 @@ contains
   subroutine hei_phi3_assign(phi3, heat3)
     real(kind=wp), intent(in) :: phi3(:), heat3(:)
     call phi3_leaf_windows(size(phi3))
+    call phi3_leaf_sync()
     if (shared_host_rank() == 0) then
        phi3_leaf  = phi3
        heat3_leaf = heat3
@@ -375,23 +380,20 @@ contains
        if (size(phi3_leaf) /= n) call phi3_leaf_free()
     end if
     if (.not. associated(phi3_leaf)) then
-       call create_shared_mem(phi3_leaf,  [n]);  call get_window(phi3_leaf,  phi3_win(1))
-       call create_shared_mem(heat3_leaf, [n]);  call get_window(heat3_leaf, phi3_win(2))
+       call allocate_shared(phi3_owner(1), phi3_leaf, [n])
+       call allocate_shared(phi3_owner(2), heat3_leaf, [n])
     end if
   end subroutine phi3_leaf_windows
 
   subroutine phi3_leaf_free()
-    if (.not. associated(phi3_leaf)) return
-    call destroy_shared_mem(phi3_leaf)
-    call destroy_shared_mem(heat3_leaf)
-    phi3_win = MPI_WIN_NULL
+    if (.not. shared_is_live(phi3_owner(1))) return
+    call phi3_leaf_sync()
+    call free_shared(phi3_owner(1), phi3_leaf)
+    call free_shared(phi3_owner(2), heat3_leaf)
   end subroutine phi3_leaf_free
 
   subroutine phi3_leaf_sync()
-    integer :: ierr
-    call MPI_WIN_FENCE(0, phi3_win(1), ierr)
-    call MPI_WIN_FENCE(0, phi3_win(2), ierr)
-    call MPI_BARRIER(shared_host_comm(), ierr)
+    call publish_shared(phi3_owner)
   end subroutine phi3_leaf_sync
 
   !=========================================================================
@@ -405,16 +407,21 @@ contains
     call hei_metastable_load()
     if (allocated(phi3_path)) deallocate(phi3_path, heat3_path)
     call phi3_leaf_free()
+    if (shared_is_live(path_sum_owner(1))) call free_shared(path_sum_owner(1), phi3_sum)
+    if (shared_is_live(path_sum_owner(2))) call free_shared(path_sum_owner(2), heat3_sum)
+    call allocate_shared(path_sum_owner(1), phi3_sum, [nleaf])
+    call allocate_shared(path_sum_owner(2), heat3_sum, [nleaf])
     allocate(phi3_path(nleaf), heat3_path(nleaf))
     phi3_path  = 0.0_wp
     heat3_path = 0.0_wp
   end subroutine hei_metastable_path_setup
 
   subroutine hei_metastable_path_reset()
-    if (allocated(phi3_path)) then
-       phi3_path  = 0.0_wp
-       heat3_path = 0.0_wp
-    end if
+    if (.not. associated(phi3_sum)) return
+    if (.not. allocated(phi3_path)) &
+       allocate(phi3_path(size(phi3_sum)), heat3_path(size(heat3_sum)))
+    phi3_path  = 0.0_wp
+    heat3_path = 0.0_wp
   end subroutine hei_metastable_path_reset
 
   subroutine hei_metastable_path_score(il, E, path_lum)
@@ -434,15 +441,17 @@ contains
     real(kind=wp) :: fac
     if (.not. allocated(phi3_path)) return
     n = size(phi3_path)
-    call sum_over_ranks(phi3_path)
-    call sum_over_ranks(heat3_path)
+    call sum_into_shared(phi3_path, path_sum_owner(1))
+    call sum_into_shared(heat3_path, path_sum_owner(2))
     call phi3_leaf_windows(n)
+    call phi3_leaf_sync()
     do il = shared_host_rank() + 1, n, shared_host_size()
        fac = 1.0_wp/((2.0_wp*leaf_half(il))**3*par%distance2cm**2)
-       phi3_leaf(il)  = phi3_path(il)*fac
-       heat3_leaf(il) = heat3_path(il)*fac
+       phi3_leaf(il)  = phi3_sum(il)*fac
+       heat3_leaf(il) = heat3_sum(il)*fac
     end do
     call phi3_leaf_sync()
+    deallocate(phi3_path, heat3_path)
   end subroutine hei_metastable_path_reduce
 
   !=========================================================================
@@ -648,5 +657,12 @@ contains
     if (status /= 0) call abort_run('failed to write He I metastable file: '//trim(filename))
     write(*,'(2a)') ' HEIMETA: 2^3S diagnostic written to: ', trim(filename)
   end subroutine hei_metastable_write
+
+  subroutine hei_metastable_release()
+    call phi3_leaf_free()
+    if (shared_is_live(path_sum_owner(1))) call free_shared(path_sum_owner(1), phi3_sum)
+    if (shared_is_live(path_sum_owner(2))) call free_shared(path_sum_owner(2), heat3_sum)
+    if (allocated(phi3_path)) deallocate(phi3_path, heat3_path)
+  end subroutine hei_metastable_release
 
 end module hei_metastable_mod

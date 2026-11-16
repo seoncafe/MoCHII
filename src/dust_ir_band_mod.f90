@@ -219,12 +219,12 @@ contains
   !=========================================================================
   subroutine dust_ir_band_reduce()
     use mpi
-    use memory_mod, only : sum_over_ranks
+    use memory_mod, only : sum_to_all_ranks
     implicit none
     integer :: ierr
     real(kind=wp) :: totals(6)
 
-    call sum_over_ranks(ir_abs_path(1:ir_nleaf))
+    call sum_to_all_ranks(ir_abs_path(1:ir_nleaf))
     if (ir_nlam > 0) &
        call MPI_ALLREDUCE(MPI_IN_PLACE, Lesc_bin, ir_nlam, &
                           MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)

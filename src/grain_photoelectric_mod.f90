@@ -50,7 +50,7 @@ module grain_photoelectric_mod
 !       in; the 2 k T_d they take back is subtracted from Lambda_gr here.
 !       T_d is the leaf's equilibrium mixture temperature (dust_temp_mod).
 !
-! Radiation field: the band tally jt_ion of the leaf, the bin-integrated
+! Radiation field: the band tally jt_ion_sum of the leaf, the bin-integrated
 ! 4 pi J_nu of every transported packet over [efuv_min, eion_max] (stellar,
 ! diffuse and dust-scattered), taken constant in nu inside a band bin; the
 ! energy grid of grain_size_bins_mod resolves the yield inside the
@@ -197,7 +197,7 @@ contains
   !=========================================================================
   subroutine grain_photoelectric_leaf(il, T, Td, nH, ne, nHII, nHeII, nHeIII, &
                                       xHI, xHII, gamma, lambda)
-    use jtally_mod,   only : jt_ion
+    use jtally_mod,   only : jt_ion_sum
     use ion_band_mod, only : ion_eedge, nnu_band
     use octree_mod,   only : leaf_half
     use grain_size_bins_mod, only : photon_rates_from_band, grain_leaf_scale
@@ -212,7 +212,7 @@ contains
     if (s_other <= 0.0_wp .and. s_pah <= 0.0_wp) return
     if (il /= leaf_loaded) then
        fac = 1.0_wp/((2.0_wp*leaf_half(il))**3*par%distance2cm**2)
-       fband = jt_ion(1:nnu_band, il)*fac
+       fband = jt_ion_sum(1:nnu_band, il)*fac
        call photon_rates_from_band(fband, ion_eedge(1:nnu_band+1), nphot)
        call grain_field_load(nphot)
        leaf_loaded = il

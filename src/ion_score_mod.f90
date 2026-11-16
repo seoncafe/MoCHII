@@ -9,7 +9,8 @@ module ion_score_mod
 !
 ! [erg/s * code length].  Every rate coefficient is scored at the packet's own
 ! photon%energy_eV; those reduced arrays are authoritative for gas_rates_mod,
-! while the jt_ion(inu,leaf) tally is only a diagnostic spectrum.
+! while private jt_ion_path scores become the published jt_ion_sum spectrum
+! for diagnostics, SEDust, and grain heating.
 !
 ! Under par%diffuse_launch = 'absorption_reemission' (plan
 ! md/ABSORPTION_REEMISSION_PLAN_2026-11-13.md, Section 12, r7):
@@ -29,13 +30,15 @@ module ion_score_mod
 !---------------------------------------------------------------------------
   use utility, only : abort_run
   use define
-  use memory_mod, only : shared_host_rank, shared_host_size, shared_host_comm, &
-                         create_shared_mem, destroy_shared_mem, get_window, &
-                         sum_over_ranks
+  use memory_mod, only : shared_host_rank, shared_host_size, &
+                         shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                         sum_to_all_ranks, sum_to_root, sum_into_shared
   use photoelectron_degradation_mod, only : N_EDEP, E_SECONDARY, &
                                             photoelectron_energy_weights
   implicit none
   private
+
+  public :: ion_score_release
 
   public :: ion_score_setup, ion_score_resize, ion_score_reset
   public :: score_ion_path, ion_score_reduce
@@ -87,26 +90,31 @@ module ion_score_mod
   integer, parameter :: NSEC = 3*N_EDEP
   integer, parameter :: ENERGY_ACC_WP = selected_real_kind(18,300)
 
-  real(kind=wp), allocatable :: hhe_rate_path(:,:) ! (NHHE,nleaf), rank local then
-                                                   ! reduced; Sum(path_lum * coeff(E))
+  real(kind=wp), allocatable :: hhe_rate_path(:,:) ! (NHHE,nleaf), private transport scores;
+                                                   ! shared sums are stored separately; Sum(path_lum * coeff(E))
                                                    ! for the three photoionization
                                                    ! rates and the three photoheating
                                                    ! integrals.
-  real(kind=wp), allocatable :: band_path(:)       ! (nleaf), rank local then reduced;
+  real(kind=wp), allocatable :: band_path(:)       ! (nleaf), private transport scores;
                                                    ! Sum(path_lum) over every scored
                                                    ! segment of every band the gas
                                                    ! iteration transports (ionizing,
                                                    ! FUV), all energies: positive
                                                    ! exactly when a packet crossed
                                                    ! the leaf in the pass.
-  real(kind=wp), allocatable :: dust_abs_path(:)   ! (nleaf), rank local then reduced;
+  real(kind=wp), allocatable :: dust_abs_path(:)   ! (nleaf), private transport scores;
                                                    ! Sum(path_lum * sigma_abs,dust(E))
                                                    ! per leaf, the EUV grain-heating
                                                    ! integral.
-  real(kind=wp), allocatable :: sec_ion_path(:,:)  ! (NSEC,nleaf), rank local then
-                                                   ! reduced; the photoelectron
+  real(kind=wp), allocatable :: sec_ion_path(:,:)  ! (NSEC,nleaf), private transport scores;
+                                                   ! shared sums are stored separately; the photoelectron
                                                    ! energy deposited above 30 eV,
                                                    ! by absorber and energy node.
+  ! Private paths are transport scores only; published sums serve all readers.
+  real(kind=wp), pointer, contiguous :: hhe_rate_sum(:,:) => null()
+  real(kind=wp), pointer, contiguous :: band_path_sum(:) => null()
+  real(kind=wp), pointer, contiguous :: sec_ion_sum(:,:) => null()
+  type(shared_owner) :: score_result_owner(3)
   integer :: score_nleaf = 0
   integer(kind=int64) :: direct_segments = 0_int64
   !--- segments of the sampled flights (photon%nevent > 0)
@@ -248,8 +256,8 @@ module ion_score_mod
 
   !--- measured gas absorption of every leaf [erg/s] (absorption_reemission
   !--- only, see the header): gas_absorbed_now is this pass's rank-local
-  !--- path estimate, reduced in place by ion_score_reduce; gas_absorbed_power
-  !--- (node-shared, the node's ranks writing disjoint leaves) holds the
+  !--- path estimate; gas_absorbed_power
+  !--- (node-shared, reduced directly into its owner) holds the
   !--- reduced values until the next pass's reduction.  Neither exists in
   !--- the default mode.
   logical :: reemission_on = .false.
@@ -266,6 +274,7 @@ module ion_score_mod
   !--- interactions, G_event, by leaf.
   real(kind=wp), allocatable :: reemitted_leaf(:,:)     ! (NDIFFUSE_CHANNEL, nleaf)
   real(kind=wp), allocatable :: event_gas_leaf(:)
+  type(shared_owner) :: absorbed_owner(1)
   real(kind=wp), pointer, contiguous, protected :: gas_absorbed_power(:) => null()
 
 contains
@@ -274,6 +283,7 @@ contains
     implicit none
     integer, intent(in) :: nleaf
 
+    call ion_score_release()
     if (allocated(hhe_rate_path)) deallocate(hhe_rate_path)
     if (allocated(band_path)) deallocate(band_path)
     if (allocated(dust_abs_path)) deallocate(dust_abs_path)
@@ -281,8 +291,10 @@ contains
     score_nleaf = nleaf
     allocate(hhe_rate_path(NHHE,nleaf))
     hhe_rate_path = 0.0_wp
+    call allocate_shared(score_result_owner(1), hhe_rate_sum, [NHHE, nleaf])
     allocate(band_path(nleaf))
     band_path = 0.0_wp
+    call allocate_shared(score_result_owner(2), band_path_sum, [nleaf])
 
     !--- EUV grain-heating integral: allocated only when dust is on.  Left
     !--- unallocated otherwise, so score_ion_path, the reduction, and the reset
@@ -296,6 +308,7 @@ contains
     if (par%use_sec_ion) then
        allocate(sec_ion_path(NSEC,nleaf))
        sec_ion_path = 0.0_wp
+       call allocate_shared(score_result_owner(3), sec_ion_sum, [NSEC, nleaf])
     end if
 
     if (par%use_metals) then
@@ -319,7 +332,7 @@ contains
        end block
     end if
     !--- measured gas absorption (absorption_reemission): created anew on a
-    !--- new grid (create_shared_mem zeroes the window).
+    !--- new grid (allocate_shared initializes the window).
     !--- Collective on the node, as every caller (main, the re-refinement)
     !--- runs on all ranks.
     reemission_on = trim(par%diffuse_launch) == 'absorption_reemission'
@@ -327,14 +340,13 @@ contains
     if (allocated(gas_absorbed_now)) deallocate(gas_absorbed_now)
     if (allocated(reemitted_leaf)) deallocate(reemitted_leaf)
     if (allocated(event_gas_leaf)) deallocate(event_gas_leaf)
-    if (associated(gas_absorbed_power)) call destroy_shared_mem(gas_absorbed_power)
     if (reemission_on) then
        allocate(gas_absorbed_now(nleaf), &
                 reemitted_leaf(NDIFFUSE_CHANNEL,nleaf), event_gas_leaf(nleaf))
        gas_absorbed_now = 0.0_wp
        reemitted_leaf = 0.0_wp
        event_gas_leaf = 0.0_wp
-       call create_shared_mem(gas_absorbed_power, [nleaf])
+       call allocate_shared(absorbed_owner(1), gas_absorbed_power, [nleaf])
     end if
   end subroutine ion_score_setup
 
@@ -344,6 +356,10 @@ contains
   end subroutine ion_score_resize
 
   subroutine ion_score_reset()
+    if (.not. allocated(hhe_rate_path)) allocate(hhe_rate_path(NHHE, score_nleaf))
+    if (.not. allocated(band_path)) allocate(band_path(score_nleaf))
+    if (par%use_sec_ion .and. .not. allocated(sec_ion_path)) &
+       allocate(sec_ion_path(NSEC, score_nleaf))
     if (allocated(hhe_rate_path)) hhe_rate_path = 0.0_wp
     if (allocated(band_path)) band_path = 0.0_wp
     if (allocated(dust_abs_path)) dust_abs_path = 0.0_wp
@@ -393,6 +409,7 @@ contains
     root_energy_acc = 0.0_ENERGY_ACC_WP
     !--- this pass's estimate only; the published value is kept until
     !--- ion_score_reduce replaces it
+    if (reemission_on .and. .not. allocated(gas_absorbed_now)) allocate(gas_absorbed_now(score_nleaf))
     if (allocated(gas_absorbed_now)) gas_absorbed_now = 0.0_wp
     absorbed_field_valid = .false.
     if (allocated(reemitted_leaf)) reemitted_leaf = 0.0_wp
@@ -412,7 +429,7 @@ contains
   end subroutine ion_score_reset
 
   subroutine score_ion_path(photon, il, path_lum)
-    use jtally_mod,       only : jt_ion, jt_ion_on
+    use jtally_mod,       only : jt_ion_path, jt_ion_on
     use dust_ir_band_mod, only : transported_band, BAND_DUST_IR, &
                                  dust_ir_absorb_path
     implicit none
@@ -426,7 +443,7 @@ contains
     !--- Dust thermal re-emission packets sit below every gas photoionization
     !--- threshold, so they carry no photoionization, no photoheating, no
     !--- secondary ionization, and their energies lie outside
-    !--- the ionizing-band bin grid jt_ion is defined on.  Their only
+    !--- the ionizing-band bin grid jt_ion_path is defined on.  Their only
     !--- interaction is grain absorption, which is scored into the infrared
     !--- band's own estimator; every ionizing-band estimator is left untouched.
     if (transported_band == BAND_DUST_IR) then
@@ -434,7 +451,7 @@ contains
        return
     end if
     inu = photon%inu
-    if (jt_ion_on) jt_ion(inu,il) = jt_ion(inu,il) + path_lum
+    if (jt_ion_on) jt_ion_path(inu,il) = jt_ion_path(inu,il) + path_lum
     band_path(il) = band_path(il) + path_lum
     !--- EUV grain-heating integral: accumulate the packet's dust absorption
     !--- cross section, evaluated at its exact energy.
@@ -535,6 +552,7 @@ contains
 
   !--- photons/s absorbed by absorber ia (1 H0, 2 He0, 3 He+) in every leaf
   !--- from source is, after ion_score_reduce
+  ! Reduced leaf ledger values are valid on world rank 0 only.
   subroutine ion_score_ledger_leaf(ia, is, out)
     integer,       intent(in)  :: ia, is
     real(kind=wp), intent(out) :: out(:)
@@ -795,10 +813,15 @@ contains
     integer(kind=int64) :: counts(3)
     real(kind=wp) :: energy_totals(7)
 
-    call sum_over_ranks(hhe_rate_path)
-    call sum_over_ranks(band_path)
-    if (allocated(dust_abs_path)) call sum_over_ranks(dust_abs_path)
-    if (allocated(sec_ion_path))  call sum_over_ranks(sec_ion_path)
+    call sum_into_shared(hhe_rate_path, score_result_owner(1))
+    deallocate(hhe_rate_path)
+    call sum_into_shared(band_path, score_result_owner(2))
+    deallocate(band_path)
+    if (allocated(dust_abs_path)) call sum_to_all_ranks(dust_abs_path)
+    if (allocated(sec_ion_path)) then
+       call sum_into_shared(sec_ion_path, score_result_owner(3))
+       deallocate(sec_ion_path)
+    end if
     counts = [direct_segments, sampled_segments, lost_flights]
     call MPI_ALLREDUCE(MPI_IN_PLACE, counts, 3, MPI_INTEGER8, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
@@ -872,31 +895,22 @@ contains
     call MPI_ALLREDUCE(MPI_IN_PLACE, max_gain_weight, 1, MPI_DOUBLE_PRECISION, &
                        MPI_MAX, MPI_COMM_WORLD, ierr)
     if (reemission_on) then
-       call sum_over_ranks(reemitted_leaf(:,1:score_nleaf))
-       call sum_over_ranks(event_gas_leaf(1:score_nleaf))
+       call sum_to_root(reemitted_leaf(:,1:score_nleaf))
+       call sum_to_root(event_gas_leaf(1:score_nleaf))
     end if
   end subroutine interaction_totals_reduce
 
-  !--- A of this pass: summed in place over all ranks (sum_over_ranks), then
-  !--- published node-shared as gas_absorbed_power, the node's ranks writing
-  !--- disjoint leaves.  A diagnostic (GasAbsorbedPower); the split of the
+  !--- A of this pass: private scores summed directly into the shared
+  !--- gas_absorbed_power result.  A diagnostic (GasAbsorbedPower); the split of the
   !--- emission is formed from the photoionization counts
   !--- (previous_photoionizations).
   subroutine gas_absorbed_power_publish()
-    integer :: il
-    call sum_over_ranks(gas_absorbed_now(1:score_nleaf))
-    do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
-       gas_absorbed_power(il) = gas_absorbed_now(il)
-    end do
-    call gas_absorbed_power_sync()
+    call sum_into_shared(gas_absorbed_now, absorbed_owner(1))
+    deallocate(gas_absorbed_now)
   end subroutine gas_absorbed_power_publish
 
   subroutine gas_absorbed_power_sync()
-    use mpi
-    integer :: win, ierr
-    call get_window(gas_absorbed_power, win)
-    if (win /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, win, ierr)
-    call MPI_BARRIER(shared_host_comm(), ierr)
+    call publish_shared(absorbed_owner)
   end subroutine gas_absorbed_power_sync
 
   !=========================================================================
@@ -916,9 +930,9 @@ contains
     nabs = 0.0_wp
     valid = absorbed_field_valid .and. il >= 1 .and. il <= score_nleaf
     if (.not. valid) return
-    nabs(1) = gas_nH(il)*gas_xHI(il)*hhe_rate_path(I_GHI,il)
-    nabs(2) = gas_nH(il)*par%abund_He*gas_xHeI(il)*hhe_rate_path(I_GHEI,il)
-    nabs(3) = gas_nH(il)*par%abund_He*gas_xHeII(il)*hhe_rate_path(I_GHEII,il)
+    nabs(1) = gas_nH(il)*gas_xHI(il)*hhe_rate_sum(I_GHI,il)
+    nabs(2) = gas_nH(il)*par%abund_He*gas_xHeI(il)*hhe_rate_sum(I_GHEI,il)
+    nabs(3) = gas_nH(il)*par%abund_He*gas_xHeII(il)*hhe_rate_sum(I_GHEII,il)
     nabs = nabs*par%distance2cm
   end subroutine previous_photoionizations
 
@@ -942,7 +956,7 @@ contains
     ledger_lost     = real(buf(2*n+1:3*n), ENERGY_ACC_WP)
     ledger_roulette = real(buf(3*n+1:4*n), ENERGY_ACC_WP)
     ledger_absorbed = real(reshape(buf(4*n+1:), [LEDGER_NABS, n]), ENERGY_ACC_WP)
-    call sum_over_ranks(ledger_leaf)
+    call sum_to_root(ledger_leaf)
   end subroutine ledger_reduce
 
   !--- one row for each source that emitted: emitted, absorbed by each
@@ -996,17 +1010,17 @@ contains
     real(kind=wp) :: fac
     integer :: il
 
-    if (.not. allocated(hhe_rate_path)) &
+    if (.not. associated(hhe_rate_sum)) &
        call abort_run('H/He path estimators are not allocated')
     !--- node-shared output: the node's ranks take disjoint leaves
     do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
-       gHI(il)   = hhe_rate_path(I_GHI,il)*fac
-       gHeI(il)  = hhe_rate_path(I_GHEI,il)*fac
-       gHeII(il) = hhe_rate_path(I_GHEII,il)*fac
-       hHI(il)   = hhe_rate_path(I_HHI,il)*fac
-       hHeI(il)  = hhe_rate_path(I_HHEI,il)*fac
-       hHeII(il) = hhe_rate_path(I_HHEII,il)*fac
+       gHI(il)   = hhe_rate_sum(I_GHI,il)*fac
+       gHeI(il)  = hhe_rate_sum(I_GHEI,il)*fac
+       gHeII(il) = hhe_rate_sum(I_GHEII,il)*fac
+       hHI(il)   = hhe_rate_sum(I_HHI,il)*fac
+       hHeI(il)  = hhe_rate_sum(I_HHEI,il)*fac
+       hHeII(il) = hhe_rate_sum(I_HHEII,il)*fac
     end do
   end subroutine ion_score_apply_hhe
 
@@ -1016,7 +1030,7 @@ contains
   !--- ion_score_apply_hhe.  Positive exactly when a packet crossed the leaf.
   real(kind=wp) function band_path_luminosity(il) result(path)
     integer, intent(in) :: il
-    path = band_path(il)
+    path = band_path_sum(il)
   end function band_path_luminosity
 
   subroutine ion_score_apply_dust_heat(heat_dust)
@@ -1024,7 +1038,7 @@ contains
     !--- = Sum(path_lum * sigma_abs,dust(E)) with the factor below is the
     !--- transport form of
     !---   heat_dust = 4 pi J_abs rhokap / distance2cm,
-    !--- since jt_ion = Sum path_lum gives 4 pi J dnu after the same factor.
+    !--- since jt_ion_sum = Sum path_lum gives 4 pi J dnu after the same factor.
     use octree_mod, only : leaf_half, amr_grid
     implicit none
     real(kind=wp), intent(out) :: heat_dust(:)
@@ -1079,7 +1093,8 @@ contains
   !=========================================================================
   ! Accessors for the output of an absorption_reemission pass (the rates
   ! file, gas_rates_mod), valid after ion_score_reduce and until the next
-  ! ion_score_reset; every rank holds the reduced values.  [erg/s]
+  ! ion_score_reset. Leaf reemission and event arrays are valid only on
+  ! world rank 0; absorbed-power values are valid on every rank. [erg/s]
   !=========================================================================
   !--- leaf arrays (absorption_reemission only; size(.) = the leaf count):
   !--- measured = the gas absorption A_i measured in the pass on its own
@@ -1089,7 +1104,7 @@ contains
     real(kind=wp), intent(out) :: measured(:)
     if (.not. reemission_on) call abort_run('ion_score_absorbed_power_leaf: '// &
        'par%diffuse_launch = ''absorption_reemission'' only')
-    measured = gas_absorbed_now(1:size(measured))
+    measured = gas_absorbed_power(1:size(measured))
   end subroutine ion_score_absorbed_power_leaf
 
   !--- reemitted(c, i): sampled re-emission of absorbing leaf i into channel
@@ -1161,12 +1176,12 @@ contains
     if (.not. reemission_on) return
     call ion_score_reemission_totals(reem, rem, net)
     call ion_score_energy_totals(emitted, absorbed, escaped, lost)
+    if (mpar%p_rank /= 0) return
     path_gas = 0.0_wp
-    if (allocated(gas_absorbed_now)) path_gas = sum(gas_absorbed_now(1:score_nleaf))
+    if (associated(gas_absorbed_power)) path_gas = sum(gas_absorbed_power(1:score_nleaf))
     path_dust = 0.0_wp
     if (allocated(dust_abs_path)) &
        path_dust = sum(dust_abs_path(1:score_nleaf)*amr_grid%rhokap(1:score_nleaf))
-    if (mpar%p_rank /= 0) return
     write(*,'(a,8es11.3)') ' REEMIT: state emission L by channel 1-8 [erg/s]    :', &
        state_by_channel
     write(*,'(a,8es11.3)') ' REEMIT: explicit remainder X by channel 1-8 [erg/s]:', &
@@ -1282,7 +1297,7 @@ contains
   subroutine ion_score_apply_sec(edep)
     !--- Photoelectron energy deposition rate above E_SECONDARY [erg/s per
     !--- absorber particle], edep(k, a, leaf) for energy node k and absorber
-    !--- a = 1 (H I), 2 (He I), 3 (He II): sec_ion_path with the factor that
+    !--- a = 1 (H I), 2 (He I), 3 (He II): sec_ion_sum with the factor that
     !--- turns Sum(path_lum coeff) into Int 4 pi J_nu coeff dnu, as for the
     !--- photoheating.  Summed over k it is the part of heat_* whose
     !--- photoelectrons exceed E_SECONDARY.
@@ -1292,12 +1307,12 @@ contains
     real(kind=wp) :: fac
     integer :: il
 
-    if (.not. allocated(sec_ion_path)) &
+    if (.not. associated(sec_ion_sum)) &
        call abort_run('secondary-ionization path estimators are not allocated')
     !--- node-shared output: the node's ranks take disjoint leaves
     do il = shared_host_rank() + 1, score_nleaf, shared_host_size()
        fac = 1.0_wp / ((2.0_wp*leaf_half(il))**3 * par%distance2cm**2)
-       edep(:,:,il) = reshape(sec_ion_path(:,il)*fac, [N_EDEP, 3])
+       edep(:,:,il) = reshape(sec_ion_sum(:,il)*fac, [N_EDEP, 3])
     end do
   end subroutine ion_score_apply_sec
 
@@ -1307,5 +1322,19 @@ contains
     if (mpar%p_rank == 0) &
        write(*,'(a)') ' ION: continuous metal direct rates: ACTIVE'
   end subroutine ion_score_report_metal_rates
+
+  subroutine ion_score_release()
+    call gas_absorbed_power_sync()
+    if (shared_is_live(absorbed_owner(1))) call free_shared(absorbed_owner(1), gas_absorbed_power)
+    absorbed_field_valid = .false.
+    call publish_shared(score_result_owner)
+    if (shared_is_live(score_result_owner(1))) call free_shared(score_result_owner(1), hhe_rate_sum)
+    if (shared_is_live(score_result_owner(2))) call free_shared(score_result_owner(2), band_path_sum)
+    if (shared_is_live(score_result_owner(3))) call free_shared(score_result_owner(3), sec_ion_sum)
+    if (allocated(hhe_rate_path)) deallocate(hhe_rate_path)
+    if (allocated(band_path)) deallocate(band_path)
+    if (allocated(sec_ion_path)) deallocate(sec_ion_path)
+    if (allocated(gas_absorbed_now)) deallocate(gas_absorbed_now)
+  end subroutine ion_score_release
 
 end module ion_score_mod

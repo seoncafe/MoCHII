@@ -257,7 +257,7 @@ contains
   !     (weight w1 = 1 - e^-tau_edge, for every tau_edge > 0), albedo weight at each interaction
   !     (a_eff = kappa_sca,dust / kappa_ext), Henyey-Greenstein direction
   !     with g(E_b) from the kext table, Russian roulette below w_min;
-  !     the flights after an interaction tally jt_ion along their sampled
+  !     the flights after an interaction tally jt_ion_path along their sampled
   !     segments (the Lucy pathlength estimator, nevent > 0).  A sampled
   !     flight that leaves through an open face carries its remaining weight
   !     out of the grid (ion_score_scattered_escape); one that ends as
@@ -460,7 +460,7 @@ contains
           photon%nscatt = photon%nscatt + 1
        end if
        photon%nevent = photon%nevent + 1
-       !--- next flight (unforced); segments tally into jt_ion
+       !--- next flight (unforced); segments tally into jt_ion_path
        tau = -log(max(rand_number(), tinest))
        call raytrace_ion_to_tau_amr(photon, tau, flight_end)
        call score_flight_end(photon, flight_end)
@@ -663,7 +663,7 @@ contains
   ! MoCHII: ionizing-band analytic edge walk.  Walks the packet
   ! from its birth point to the domain edge, accumulating the exact
   ! expectation of the pathlength tally in each leaf,
-  !     jt_ion(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
+  !     jt_ion_path(inu, il) += wgt * Lpacket * (e^{-tau_in} - e^{-tau_out}) / kap
   ! with kap = ion_packet_opacity(photon, il), the packet's own extinction per
   ! code length at its exact energy (gas + optional dust).
   ! With no ionizing-band scattering, this zero-variance direct

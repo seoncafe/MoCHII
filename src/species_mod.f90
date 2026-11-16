@@ -34,9 +34,8 @@ module species_mod
 ! to the thermal balance (metal_cooling).
 !---------------------------------------------------------------------------
   use define
-  use mpi
-  use memory_mod, only : create_shared_mem, destroy_shared_mem, get_window, &
-                        shared_host_rank, shared_host_size, shared_host_comm
+  use memory_mod, only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                        shared_host_rank, shared_host_size
   use metal_ionization_potential_mod, only: metal_ionization_potential
   use ion_stage_equilibrium_mod, only : adjacent_ion_fractions
   use utility, only : abort_run
@@ -50,6 +49,8 @@ module species_mod
                          nlevel_hcoll_cooling, metal_excitation_data_file
   implicit none
   private
+
+  public :: species_release
 
   public :: species_setup, species_gamma_compute, species_fractions
   public :: metal_cooling, metal_freefree, species_write, species_resize
@@ -201,11 +202,11 @@ module species_mod
   !--- they were one copy per rank, 3.5 GB each at 2.1M leaves with the 77
   !--- stages).  Each node's ranks fill disjoint leaves (h_rank + 1, step
   !--- h_size) and species_shared_sync publishes them; the transport path
-  !--- estimators metal_rate_path below are accumulated separately by every
-  !--- rank and stay private.
+  !--- scores metal_rate_path%raw below are accumulated privately by each
+  !--- rank. Their reduced values occupy distinct node-shared allocations.
   type gamma_block
      real(kind=wp), pointer, contiguous :: g(:,:) => null()
-     integer :: win = MPI_WIN_NULL
+     type(shared_owner) :: owner
   end type gamma_block
   type(gamma_block) :: egam(MAX_EL)
   !--- photoheating per particle [erg/s] (transition, leaf); filled with
@@ -215,9 +216,11 @@ module species_mod
   !--- Sum(path_lum * coeff(E)) accumulated at each packet's exact energy,
   !--- raw(1,:,:) for sigma/(h nu) and raw(2,:,:) for the heating coefficient
   !--- sum_s sigma_s (1 - E_th,s/E) (species_cross_section).
-  !--- species_gamma_compute converts them into egam/eheat.
+  !--- species_gamma_compute converts the shared reduced values into egam/eheat.
   type metal_rate_path_block
-     real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf)
+     real(kind=wp), allocatable :: raw(:,:,:)    ! (2,ntransition,nleaf), private scores
+     real(kind=wp), pointer, contiguous :: reduced(:,:,:) => null()
+     type(shared_owner) :: reduced_owner
   end type metal_rate_path_block
   type(metal_rate_path_block) :: metal_rate_path(MAX_EL)
   type(gamma_block) :: stage_frac(MAX_EL)  ! (stage,leaf), refreshed per gas state
@@ -428,36 +431,34 @@ contains
     implicit none
     integer, intent(in) :: nleaf
     integer :: ie
+    call species_shared_sync()
     do ie = 1, n_elements
-       call destroy_shared_mem(egam(ie)%g)
-       call destroy_shared_mem(eheat(ie)%g)
-       call destroy_shared_mem(stage_frac(ie)%g)
+       call free_shared(egam(ie)%owner, egam(ie)%g)
+       call free_shared(eheat(ie)%owner, eheat(ie)%g)
+       call free_shared(stage_frac(ie)%owner, stage_frac(ie)%g)
        call species_shared_create(ie, nleaf)
     end do
   end subroutine species_resize
 
-  !--- the node-shared windows of element ie (zeroed by create_shared_mem)
+  !--- the node-shared windows of element ie (initialized by allocate_shared)
   subroutine species_shared_create(ie, nleaf)
     integer, intent(in) :: ie, nleaf
-    call create_shared_mem(egam(ie)%g, [elems(ie)%nstage-1, nleaf])
-    call get_window(egam(ie)%g, egam(ie)%win)
-    call create_shared_mem(eheat(ie)%g, [elems(ie)%nstage-1, nleaf])
-    call get_window(eheat(ie)%g, eheat(ie)%win)
-    call create_shared_mem(stage_frac(ie)%g, [elems(ie)%nstage, nleaf])
-    call get_window(stage_frac(ie)%g, stage_frac(ie)%win)
+    call allocate_shared(egam(ie)%owner, egam(ie)%g, [elems(ie)%nstage-1, nleaf])
+    call allocate_shared(eheat(ie)%owner, eheat(ie)%g, [elems(ie)%nstage-1, nleaf])
+    call allocate_shared(stage_frac(ie)%owner, stage_frac(ie)%g, [elems(ie)%nstage, nleaf])
   end subroutine species_shared_create
 
   !--- publish direct stores to the shared windows (collective on the node,
   !--- the gas_state_sync pattern)
   subroutine species_shared_sync()
-    integer :: ie, ierr
-    do ie = 1, n_elements
-       if (egam(ie)%win /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, egam(ie)%win, ierr)
-       if (eheat(ie)%win /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, eheat(ie)%win, ierr)
-       if (stage_frac(ie)%win /= MPI_WIN_NULL) &
-          call MPI_WIN_FENCE(0, stage_frac(ie)%win, ierr)
+    type(shared_owner) :: owners(3*MAX_EL)
+    integer :: ie
+    do ie = 1, MAX_EL
+       owners(3*ie-2) = egam(ie)%owner
+       owners(3*ie-1) = eheat(ie)%owner
+       owners(3*ie) = stage_frac(ie)%owner
     end do
-    call MPI_BARRIER(shared_host_comm(), ierr)
+    call publish_shared(owners)
   end subroutine species_shared_sync
 
   !--- Metal photoionization rates of element ie on every leaf, g(transition,
@@ -469,10 +470,9 @@ contains
   subroutine species_set_photoionization_rates(ie, g)
     integer,       intent(in) :: ie
     real(kind=wp), intent(in) :: g(:,:)
-    integer :: ierr
+    call publish_shared([egam(ie)%owner])
     if (shared_host_rank() == 0) egam(ie)%g(:,:) = g
-    if (egam(ie)%win /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, egam(ie)%win, ierr)
-    call MPI_BARRIER(shared_host_comm(), ierr)
+    call publish_shared([egam(ie)%owner])
   end subroutine species_set_photoionization_rates
 
   !--- the same rates as they stand (amr_refine_mod carries them onto a
@@ -505,6 +505,7 @@ contains
     implicit none
     real(kind=wp) :: frac(MAX_ST), nHI, nHII
     integer :: ie, il
+    call species_shared_sync()
     do ie = 1, n_elements
        do il = shared_host_rank() + 1, size(stage_frac(ie)%g,2), shared_host_size()
           if (gas_nH(il) > 0.0_wp) then
@@ -537,6 +538,7 @@ contains
     implicit none
     integer :: ie, il
     if (n_elements == 0) return
+    call species_shared_sync()
     do ie = 1, n_elements
        do il = shared_host_rank() + 1, size(stage_frac(ie)%g,2), shared_host_size()
           stage_frac(ie)%g(:,il) = 0.0_wp
@@ -620,8 +622,11 @@ contains
 
     do ie = 1, n_elements
        if (allocated(metal_rate_path(ie)%raw)) deallocate(metal_rate_path(ie)%raw)
+       if (shared_is_live(metal_rate_path(ie)%reduced_owner)) &
+          call free_shared(metal_rate_path(ie)%reduced_owner, metal_rate_path(ie)%reduced)
        nt = elems(ie)%nstage - 1
        allocate(metal_rate_path(ie)%raw(2,nt,nleaf))
+       call allocate_shared(metal_rate_path(ie)%reduced_owner, metal_rate_path(ie)%reduced, [2,nt,nleaf])
        metal_rate_path(ie)%raw = 0.0_wp
     end do
   end subroutine species_rate_path_setup
@@ -629,7 +634,10 @@ contains
   subroutine species_rate_path_reset()
     integer :: ie
     do ie = 1, n_elements
-       if (allocated(metal_rate_path(ie)%raw)) metal_rate_path(ie)%raw = 0.0_wp
+       if (.not. associated(metal_rate_path(ie)%reduced)) cycle
+       if (.not. allocated(metal_rate_path(ie)%raw)) &
+          allocate(metal_rate_path(ie)%raw, mold=metal_rate_path(ie)%reduced)
+       metal_rate_path(ie)%raw = 0.0_wp
     end do
   end subroutine species_rate_path_reset
 
@@ -652,11 +660,12 @@ contains
   end subroutine species_rate_path_score
 
   subroutine species_rate_path_reduce()
-    use memory_mod, only : sum_over_ranks
+    use memory_mod, only : sum_into_shared
     implicit none
     integer :: ie
     do ie = 1, n_elements
-       call sum_over_ranks(metal_rate_path(ie)%raw)
+       call sum_into_shared(metal_rate_path(ie)%raw, metal_rate_path(ie)%reduced_owner)
+       deallocate(metal_rate_path(ie)%raw)
     end do
   end subroutine species_rate_path_reduce
 
@@ -1189,16 +1198,17 @@ contains
     integer :: ie, it, il, nleaf
     real(kind=wp) :: vol, fac
 
+    call species_shared_sync()
     nleaf = amr_grid%nleaf
     do ie = 1, n_elements
-       if (.not. allocated(metal_rate_path(ie)%raw)) &
-          call abort_run('metal path estimators are not allocated')
+       if (.not. associated(metal_rate_path(ie)%reduced)) &
+          call abort_run('reduced metal path estimators are not allocated')
        do il = shared_host_rank() + 1, nleaf, shared_host_size()
           vol = (2.0_wp*leaf_half(il))**3
           fac = 1.0_wp/(vol*par%distance2cm**2)
           do it = 1, elems(ie)%nstage-1
-             egam(ie)%g(it,il) = metal_rate_path(ie)%raw(1,it,il)*fac
-             eheat(ie)%g(it,il) = metal_rate_path(ie)%raw(2,it,il)*fac
+             egam(ie)%g(it,il) = metal_rate_path(ie)%reduced(1,it,il)*fac
+             eheat(ie)%g(it,il) = metal_rate_path(ie)%reduced(2,it,il)*fac
           end do
        end do
     end do
@@ -2058,5 +2068,19 @@ contains
             'photoheating rates (transition, leaf) [erg/s per ion]',status)
     end do
   end subroutine species_write
+
+  subroutine species_release()
+    integer :: ie
+    call species_shared_sync()
+    do ie = 1, MAX_EL
+       if (allocated(metal_rate_path(ie)%raw)) deallocate(metal_rate_path(ie)%raw)
+       if (shared_is_live(metal_rate_path(ie)%reduced_owner)) &
+          call free_shared(metal_rate_path(ie)%reduced_owner, metal_rate_path(ie)%reduced)
+       if (shared_is_live(egam(ie)%owner)) call free_shared(egam(ie)%owner, egam(ie)%g)
+       if (shared_is_live(eheat(ie)%owner)) call free_shared(eheat(ie)%owner, eheat(ie)%g)
+       if (shared_is_live(stage_frac(ie)%owner)) &
+          call free_shared(stage_frac(ie)%owner, stage_frac(ie)%g)
+    end do
+  end subroutine species_release
 
 end module species_mod

@@ -1,5 +1,6 @@
 ! MoCHII: copied from MoCafe_v2.00/src/jtally_mod.f90 (2026-07-11)
 module jtally_mod
+  use memory_mod, only : shared_owner, allocate_shared, free_shared, shared_is_live, sum_into_shared
 !--- Mean-intensity tally J_lambda(cell).
 !--- Lucy (1999) pathlength estimator: every actual photon path segment
 !--- contributes wgt*dl to its (wavelength-bin, cell) slot; the mean
@@ -16,7 +17,7 @@ module jtally_mod
 !--- actual walked segments in raytrace_to_tau_car (unbiased).
 !---
 !--- The tally array is private to each MPI rank; jtally_reduce sums it over
-!--- the ranks (memory_mod::sum_over_ranks) and leaves the sum on every rank.
+!--- the ranks (memory_mod::sum_to_all_ranks) and leaves the sum on every rank.
 !--- SED-mode scope: Cartesian grid.
   use define
   implicit none
@@ -34,7 +35,9 @@ module jtally_mod
   !--- Same Lucy pathlength estimator; filled by raytrace_ion_to_edge_amr
   !--- (analytic first flight; no scattered ionizing flights without dust).
   logical :: jt_ion_on = .false.
-  real(kind=wp), pointer :: jt_ion(:,:) => null()
+  real(kind=wp), pointer, contiguous :: jt_ion_path(:,:) => null()
+  real(kind=wp), pointer, contiguous, protected :: jt_ion_sum(:,:) => null()
+  type(shared_owner), private :: ion_result_owner
   integer :: jt_ion_nleaf = 0
 
   !--- MoCHII plane-parallel slab: emergent-intensity boundary tally.  A packet
@@ -153,7 +156,6 @@ contains
   !---------------------------------------------------------------
   subroutine jtally_setup(grid)
   use sed_mod,      only : sed_nlam
-  use memory_mod,   only : create_mem
   use cellinfo_mod, only : ncell_total
   implicit none
   type(grid_type), intent(in) :: grid
@@ -166,7 +168,10 @@ contains
      if (mem_gb > 4.0_wp) write(*,'(a)') &
         'WARNING: J_lambda tally is large; consider fewer wavelength bins or cells.'
   endif
-  call create_mem(jt_sum, [sed_nlam, jt_ncell])
+  if (associated(jt_sum)) then
+    if (any(shape(jt_sum) /= [sed_nlam, jt_ncell])) deallocate(jt_sum)
+  end if
+  if (.not.associated(jt_sum)) allocate(jt_sum(sed_nlam, jt_ncell))
   jt_sum(:,:) = 0.0_wp
   jt_eabs = 0.0_wp
   jt_on   = .true.
@@ -175,13 +180,13 @@ contains
   !---------------------------------------------------------------
   subroutine jtally_reduce()
   use mpi
-  use memory_mod, only : sum_over_ranks
+  use memory_mod, only : sum_to_all_ranks
   implicit none
   integer :: ierr
   !--- every rank holds the full tally after the sum: the dust-emission
   !--- stage distributes cells across ranks and reads jt_sum locally.
   if (.not. jt_on) return
-  call sum_over_ranks(jt_sum)
+  call sum_to_all_ranks(jt_sum)
   call MPI_ALLREDUCE(MPI_IN_PLACE, jt_eabs, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
   end subroutine jtally_reduce
 
@@ -199,7 +204,6 @@ contains
   end function jtally_ion_needed
 
   subroutine jtally_ion_setup(nleaf)
-  use memory_mod,   only : create_mem
   use ion_band_mod, only : nnu_band
   implicit none
   integer, intent(in) :: nleaf
@@ -207,6 +211,7 @@ contains
   jt_ion_nleaf = nleaf
   mem_gb = real(nnu_band,wp)*nleaf*8.0_wp/1024.0_wp**3
   if (.not. jtally_ion_needed()) then
+     call jtally_ion_release()
      jt_ion_on = .false.
      if (mpar%p_rank == 0) write(*,'(a,f8.3,a)') &
         ' ION: J tally off (neither jnu_output, the SEDust emission nor'// &
@@ -215,8 +220,16 @@ contains
   end if
   if (mpar%p_rank == 0) write(*,'(a,i0,a,f8.3,a)') &
      ' ION: J tally: ', nleaf, ' leaves, ', mem_gb, ' GB per MPI rank'
-  call create_mem(jt_ion, [nnu_band, nleaf])
-  jt_ion(:,:) = 0.0_wp
+  if (shared_is_live(ion_result_owner)) then
+     if (any(shape(jt_ion_sum) /= [nnu_band, nleaf])) call free_shared(ion_result_owner, jt_ion_sum)
+  end if
+  if (.not. shared_is_live(ion_result_owner)) &
+     call allocate_shared(ion_result_owner, jt_ion_sum, [nnu_band, nleaf])
+  if (associated(jt_ion_path)) then
+    if (any(shape(jt_ion_path) /= [nnu_band, nleaf])) deallocate(jt_ion_path)
+  end if
+  if (.not.associated(jt_ion_path)) allocate(jt_ion_path(nnu_band, nleaf))
+  jt_ion_path(:,:) = 0.0_wp
   jt_ion_on   = .true.
   end subroutine jtally_ion_setup
 
@@ -225,18 +238,16 @@ contains
   subroutine jtally_ion_resize(nleaf)
   implicit none
   integer, intent(in) :: nleaf
-  if (associated(jt_ion)) deallocate(jt_ion)
-  jt_ion => null()
-  jt_ion_on = .false.
+  call jtally_ion_release()
   call jtally_ion_setup(nleaf)
   end subroutine jtally_ion_resize
 
   !---------------------------------------------------------------
   subroutine jtally_ion_reduce()
-  use memory_mod, only : sum_over_ranks
   implicit none
   if (.not. jt_ion_on) return
-  call sum_over_ranks(jt_ion)
+  call sum_into_shared(jt_ion_path, ion_result_owner)
+  deallocate(jt_ion_path)
   end subroutine jtally_ion_reduce
 
   !---------------------------------------------------------------
@@ -352,5 +363,18 @@ contains
   call io_put_keyword(file,'EABS_A',   eabs_A, 'absorbed L (pathlength tally)',         status)
   call io_put_keyword(file,'EABS_B',   eabs_B, 'absorbed L (event counter)',            status)
   end subroutine write_jlam_keys
+
+  subroutine jtally_ion_reset()
+    use ion_band_mod, only : nnu_band
+    if (.not. jt_ion_on) return
+    if (.not. associated(jt_ion_path)) allocate(jt_ion_path(nnu_band, jt_ion_nleaf))
+    jt_ion_path = 0.0_wp
+  end subroutine jtally_ion_reset
+
+  subroutine jtally_ion_release()
+    if (shared_is_live(ion_result_owner)) call free_shared(ion_result_owner, jt_ion_sum)
+    if (associated(jt_ion_path)) deallocate(jt_ion_path)
+    jt_ion_on = .false.
+  end subroutine jtally_ion_release
 
 end module jtally_mod

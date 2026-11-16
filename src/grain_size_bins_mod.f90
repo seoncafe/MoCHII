@@ -44,7 +44,7 @@ module grain_size_bins_mod
 ! charge distribution: their numbers are summed, and the neutral cross section
 ! is used at Z = 0 and the cation one at Z /= 0, as WD01 (footnote 5) do.
 !
-! Energy grid.  The radiation field a leaf has is the band tally jt_ion
+! Energy grid.  The radiation field a leaf has is the band tally jt_ion_sum
 ! (bin-integrated 4 pi J_nu over the transported band, the same input SEDust
 ! takes); inside a band bin J_nu is taken constant in nu, and the bin is cut
 ! into sub-intervals no wider than max(DE_SUB_ABS, DE_SUB_REL E) so that the

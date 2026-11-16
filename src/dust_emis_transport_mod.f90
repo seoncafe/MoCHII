@@ -58,7 +58,7 @@ module dust_emis_transport_mod
 ! Documented approximation: the reabsorbed infrared enters the EMITTED POWER
 ! of each leaf (exactly, through Heat_dust) but not the local mean intensity
 ! Jsed that sets the SEDust spectral SHAPE, because the ionizing-band tally
-! jt_ion does not extend below par%eion_min and an infrared J tally would be
+! jt_ion_sum does not extend below par%eion_min and an infrared J tally would be
 ! the leaf x wavelength array excluded above.  The shape error is therefore
 ! of order the reabsorbed fraction itself, valid while tau_IR << 1; the
 ! emitted POWER carries no such error at any optical depth.
@@ -574,7 +574,7 @@ contains
     photon%lambda    = lam
     photon%energy_eV = 1.23984_wp/lam
     photon%inu       = 1          ! no ionizing-band bin: the infrared
-                                  ! estimators never address jt_ion
+                                  ! estimators never address jt_ion_path
     photon%il        = k
     photon%icell_amr = il
     photon%nscatt    = 0

@@ -9,8 +9,9 @@ module gas_rates_mod
 ! per particle of species i (i = HI, HeI, HeII) are accumulated continuously
 ! rather than reconstructed from a binned tally.  This module normalizes those
 ! reduced path sums by the leaf volume and hands them to the solver.  The
-! ionizing-band tally jt_ion(inu, il) remains a diagnostic spectrum, written out
-! with par%jnu_output as J_nu = jt_ion / (4 pi V_leaf dnu distance2cm^2)
+! ionizing-band tally jt_ion_sum(inu, il) supplies diagnostics and dust physics,
+! and is written out
+! with par%jnu_output as J_nu = jt_ion_sum / (4 pi V_leaf dnu distance2cm^2)
 ! [erg/s/cm^2/Hz/sr]; without it (and without the SEDust emission and the grain
 ! charge distribution of par%grain_pe, which also read it) the tally is not
 ! kept at all.
@@ -20,13 +21,15 @@ module gas_rates_mod
 !---------------------------------------------------------------------------
   use define
   use mpi
-  use memory_mod,   only : create_shared_mem, destroy_shared_mem, get_window, &
-                          shared_host_rank, shared_host_size, shared_host_comm
+  use memory_mod,   only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                          shared_host_rank, shared_host_size
   use octree_mod,   only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
-  use jtally_mod,   only : jt_ion
+  use jtally_mod,   only : jt_ion_sum
   use ion_band_mod, only : ion_e, ion_de, ion_dnu, nnu_band, source_luminosity
   implicit none
   private
+
+  public :: gas_rates_release
 
   public :: gas_rates_compute, gas_rates_write
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
@@ -42,7 +45,7 @@ module gas_rates_mod
        gamma_HeI(:) => null(), gamma_HeII(:) => null()
   real(kind=wp), pointer, contiguous :: heat_HI(:) => null(), &
        heat_HeI(:) => null(), heat_HeII(:) => null()
-  integer :: rate_win(6) = MPI_WIN_NULL
+  type(shared_owner) :: rate_owner(6)
 
   !--- secondary ionization by fast photoelectrons (par%use_sec_ion;
   !--- photoelectron_degradation_mod): the photoelectron energy deposition
@@ -53,7 +56,7 @@ module gas_rates_mod
   !--- partitioned: they are trace absorbers, and their photoelectron energy is
   !--- all heat.
   real(kind=wp), pointer, contiguous :: sec_edep(:,:,:) => null()   ! node-shared
-  integer :: sec_win = MPI_WIN_NULL
+  type(shared_owner) :: sec_owner(1)
   !--- EUV grain heating [erg s^-1 cm^-3]: the ionizing-band part of the
   !--- grain heating integral that the dust SED band misses;
   !--- consumed by the SEDust stage later.
@@ -80,24 +83,26 @@ contains
   !=========================================================================
   subroutine gas_rates_compute()
     implicit none
-    integer  :: nleaf, k, ierr
+    integer  :: nleaf
 
+    call publish_shared(rate_owner)
+    call publish_shared(sec_owner)
     nleaf = amr_grid%nleaf
     if (associated(gamma_HI)) then
        if (size(gamma_HI) /= nleaf) then                     ! re-refinement
-          call destroy_shared_mem(gamma_HI);  call destroy_shared_mem(gamma_HeI)
-          call destroy_shared_mem(gamma_HeII)
-          call destroy_shared_mem(heat_HI);   call destroy_shared_mem(heat_HeI)
-          call destroy_shared_mem(heat_HeII)
+          call free_shared(rate_owner(1), gamma_HI);  call free_shared(rate_owner(2), gamma_HeI)
+          call free_shared(rate_owner(3), gamma_HeII)
+          call free_shared(rate_owner(4), heat_HI);   call free_shared(rate_owner(5), heat_HeI)
+          call free_shared(rate_owner(6), heat_HeII)
        end if
     end if
     if (.not. associated(gamma_HI)) then
-       call create_shared_mem(gamma_HI,   [nleaf]);  call get_window(gamma_HI,   rate_win(1))
-       call create_shared_mem(gamma_HeI,  [nleaf]);  call get_window(gamma_HeI,  rate_win(2))
-       call create_shared_mem(gamma_HeII, [nleaf]);  call get_window(gamma_HeII, rate_win(3))
-       call create_shared_mem(heat_HI,    [nleaf]);  call get_window(heat_HI,    rate_win(4))
-       call create_shared_mem(heat_HeI,   [nleaf]);  call get_window(heat_HeI,   rate_win(5))
-       call create_shared_mem(heat_HeII,  [nleaf]);  call get_window(heat_HeII,  rate_win(6))
+       call allocate_shared(rate_owner(1), gamma_HI, [nleaf])
+       call allocate_shared(rate_owner(2), gamma_HeI, [nleaf])
+       call allocate_shared(rate_owner(3), gamma_HeII, [nleaf])
+       call allocate_shared(rate_owner(4), heat_HI, [nleaf])
+       call allocate_shared(rate_owner(5), heat_HeI, [nleaf])
+       call allocate_shared(rate_owner(6), heat_HeII, [nleaf])
     end if
     !--- heat_dust stays private: the dust emission transport adds the
     !--- reabsorbed infrared to it on every rank
@@ -108,17 +113,14 @@ contains
     heat_dust = 0.0_wp
 
     !--- The already reduced packet-energy path estimators are the rates.
-    !--- jt_ion stays populated only as a diagnostic spectrum and must not feed
-    !--- solver rates.
+    !--- jt_ion_sum supplies spectral diagnostics and dust physics; H/He gas
+    !--- photoionization and photoheating use the continuous estimators.
     block
       use ion_score_mod, only : ion_score_apply_hhe
       call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
                                heat_HI, heat_HeI, heat_HeII)
     end block
-    do k = 1, 6
-       call MPI_WIN_FENCE(0, rate_win(k), ierr)
-    end do
-    call MPI_BARRIER(shared_host_comm(), ierr)
+    call publish_shared(rate_owner)
     if (par%ion_add_dust) then
        block
          use ion_score_mod, only : ion_score_apply_dust_heat
@@ -133,15 +135,13 @@ contains
          use ion_score_mod, only : ion_score_apply_sec
          use photoelectron_degradation_mod, only : N_EDEP
          if (associated(sec_edep)) then
-            if (size(sec_edep, 3) /= nleaf) call destroy_shared_mem(sec_edep)
+            if (size(sec_edep, 3) /= nleaf) call free_shared(sec_owner(1), sec_edep)
          end if
          if (.not. associated(sec_edep)) then
-            call create_shared_mem(sec_edep, [N_EDEP, 3, nleaf])
-            call get_window(sec_edep, sec_win)
+            call allocate_shared(sec_owner(1), sec_edep, [N_EDEP, 3, nleaf])
          end if
          call ion_score_apply_sec(sec_edep)
-         call MPI_WIN_FENCE(0, sec_win, ierr)
-         call MPI_BARRIER(shared_host_comm(), ierr)
+         call publish_shared(sec_owner)
        end block
     end if
   end subroutine gas_rates_compute
@@ -346,7 +346,7 @@ contains
        allocate(jnu(nnu_band, nleaf))
        do il = 1, nleaf
           do inu = 1, nnu_band
-             jnu(inu,il) = jt_ion(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
+             jnu(inu,il) = jt_ion_sum(inu,il) / (fourpi * (2.0_wp*leaf_half(il))**3 &
                            * ion_dnu(inu) * par%distance2cm**2)
           end do
        end do
@@ -561,5 +561,17 @@ contains
     end subroutine write_history
 
   end subroutine gas_rates_write
+
+  subroutine gas_rates_release()
+    call publish_shared(rate_owner)
+    call publish_shared(sec_owner)
+    if (shared_is_live(rate_owner(1))) call free_shared(rate_owner(1), gamma_HI)
+    if (shared_is_live(rate_owner(2))) call free_shared(rate_owner(2), gamma_HeI)
+    if (shared_is_live(rate_owner(3))) call free_shared(rate_owner(3), gamma_HeII)
+    if (shared_is_live(rate_owner(4))) call free_shared(rate_owner(4), heat_HI)
+    if (shared_is_live(rate_owner(5))) call free_shared(rate_owner(5), heat_HeI)
+    if (shared_is_live(rate_owner(6))) call free_shared(rate_owner(6), heat_HeII)
+    if (shared_is_live(sec_owner(1))) call free_shared(sec_owner(1), sec_edep)
+  end subroutine gas_rates_release
 
 end module gas_rates_mod
