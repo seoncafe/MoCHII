@@ -33,7 +33,7 @@ module ionizing_field_mod
   use qmc_mod,          only : qmc_uniforms_stream, QMC_MAXDIM, &
                                QMC_STREAM_STELLAR, QMC_STREAM_DIFFUSE, &
                                QMC_STREAM_FUV
-  use jtally_mod,       only : jtally_ion_reduce, jt_ion, jt_ion_on, &
+  use jtally_mod,       only : jtally_ion_reduce, jtally_ion_reset, jt_ion_on, &
                                slab_tally_on, slab_Iesc
   use ion_score_mod,    only : ion_score_reset, ion_score_reduce, &
                                ion_score_report_energy_closure, &
@@ -108,7 +108,7 @@ contains
        if (par%ion_add_dust .and. par%ion_dust_scatter) &
           ion_peel_scatter_hook => ion_peel_scatter
     end if
-    if (jt_ion_on) jt_ion(:,:) = 0.0_wp
+    call jtally_ion_reset()
     call ion_score_reset()
     !--- keep the last pass's escaping field: an iterating pass starts the
     !--- slab tally from zero, the imaging pass adds to what is already there.

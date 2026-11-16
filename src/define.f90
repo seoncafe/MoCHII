@@ -147,7 +147,7 @@ private :: c_expm1, c_log1p
      real(kind=wp) :: s_ext  = 1.0_wp
      !--- MoCHII: ionizing-band frequency bin index (0 = not an ionizing
      !--- photon).  Purely the diagnostic output-bin label of energy_eV: it
-     !--- addresses the jt_ion/J_nu tally and nothing else.  The grey s_ext
+     !--- addresses the ionizing-band spectral tally and nothing else.  The grey s_ext
      !--- rescale does not apply in the ionizing band.
      integer       :: inu    = 0
      !--- Physical ionizing-packet energy [eV], sampled from the emitting
@@ -308,13 +308,13 @@ private :: c_expm1, c_log1p
      real(kind=wp) :: density_rscale         = nan64
      real(kind=wp) :: density_powerlaw_index = nan64
      !--- disk vertical profile ('exp' = exp(-|z|/zscale), 'sech' = sech^2(z/zscale))
-     !--- and log-spiral arm modulation (1 + spiral_amp*sin(m*(ln r/tan(pitch)-phi)))
+     !--- and logarithmic spiral modulation (1 + spiral_amp*sin(m*(ln r/tan(pitch)-phi)))
      !--- applied to the cylinder dust density and to 'exp_spiral' disk sources.
      !--- spiral_m = 0 disables the arms.
      character(len=8)  :: density_zprofile = 'exp'
      integer           :: spiral_m         = 0
      real(kind=wp)     :: spiral_pitch     = 15.0_wp    ! pitch angle [deg]
-     real(kind=wp)     :: spiral_amp       = 0.5_wp     ! arm amplitude
+     real(kind=wp)     :: spiral_amp       = 0.5_wp     ! spiral amplitude
      real(kind=wp) :: distance2cm          = kpc2cm
      character(len=128) :: distance_unit   = 'kpc'
      character(len=128) :: source_geometry = 'point'
@@ -388,7 +388,7 @@ private :: c_expm1, c_log1p
      !--- tally arrays, so placing those in one MPI shared window races.  Which
      !--- arrays are shared is therefore fixed at the allocation site, where the
      !--- read-only structure (octree connectivity, Cartesian face and opacity
-     !--- arrays) calls create_shared_mem directly for one copy per node.
+     !--- arrays) calls allocate_shared directly for one copy per node.
      !--- use_master_slave selects how the ionizing-band photon indices are
      !--- split over the ranks (photon_schedule_mod): .false. = static cyclic,
      !--- .true. = rank 0 serves batches of num_send_at_once on demand.  On
@@ -722,7 +722,7 @@ private :: c_expm1, c_log1p
      !--- Without add_fuv the item has no effect.
      character(len=16)  :: fuv_sampling = 'separate'
      !--- Align diagnostic ionizing-energy bin edges to thresholds, so no bin
-     !--- straddles an ionization edge.  This affects the jt_ion/J_nu tally
+     !--- straddles an ionization edge.  This affects the ionizing-band spectral tally
      !--- resolution only; the transported energies are continuous.  Default ON.
      logical            :: ion_align_edges = .true.
      !--- further registry elements (default 0 = off; pass GAS-PHASE
@@ -957,7 +957,7 @@ private :: c_expm1, c_log1p
      real(kind=wp)      :: emis_line_floor = 1.0e-4_wp
      !--- write the ionizing-band mean intensity J_nu(nu, leaf) into
      !--- '<base>_rates' (dataset J_nu).  The binned tally behind it,
-     !--- jt_ion (nnu_band x nleaf values on EVERY rank), is kept only when
+     !--- private transport scores and their node-shared result are kept when
      !--- something needs it: this output, the SEDust emission
      !--- (ion_add_dust with dust_sed), whose leaf spectrum reads it, or
      !--- grain_pe, whose grain charge distribution reads it.  The

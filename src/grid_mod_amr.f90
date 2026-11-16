@@ -269,7 +269,7 @@ contains
         amr_grid%rhokap(il) = rho
      end do
   end if
-  call MPI_BARRIER(mpar%hostcomm, ierr)
+  call amr_opacity_sync()
 
   !--- normalize to the system target (rank 0 computes the factor; broadcast).
   opac_norm = 1.0_wp
@@ -300,7 +300,7 @@ contains
         amr_grid%rhokap(il) = amr_grid%rhokap(il) * opac_norm
      end do
   end if
-  call MPI_BARRIER(mpar%hostcomm, ierr)
+  call amr_opacity_sync()
 
   !--- realized system scalars (after normalization), reported to par.
   saved_distance_unit = par%distance_unit
@@ -312,7 +312,7 @@ contains
   par%distance_unit = saved_distance_unit
   par%distance2cm   = saved_distance2cm
   if (mpar%h_rank == 0) grid%rhokap(:,:,:) = 0.0_wp
-  call MPI_BARRIER(mpar%hostcomm, ierr)
+  call grid_shared_sync()
 
   if (mpar%p_rank == 0) then
      taupole      = amr_pole_tau()
@@ -372,13 +372,8 @@ contains
   use define
   implicit none
   type(grid_type), intent(inout) :: grid
-  ! grid_destroy frees ALL shared-memory windows (box grid + octree); just
-  ! nullify the AMR pointers afterwards.
   call grid_destroy(grid)
-  nullify(amr_grid%parent, amr_grid%children, amr_grid%level, amr_grid%ileaf, &
-          amr_grid%icell_of_leaf, amr_grid%cx, amr_grid%cy, amr_grid%cz, &
-          amr_grid%ch, amr_grid%neighbor, amr_grid%rhokap)
-  amr_grid%ncells = 0;  amr_grid%nleaf = 0
+  call amr_release()
   end subroutine grid_destroy_amr
 
 end module grid_mod_amr

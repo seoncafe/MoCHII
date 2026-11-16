@@ -65,8 +65,7 @@ contains
                                 gas_xHII_p => gas_xHII, gas_xHeI_p => gas_xHeI, &
                                 gas_xHeII_p => gas_xHeII, &
                                 gas_xHeIII_p => gas_xHeIII, &
-                                gas_ne_p => gas_ne, gas_Te_p => gas_Te
-    use memory_mod,      only : destroy_shared_mem
+                                gas_ne_p => gas_ne, gas_Te_p => gas_Te, gas_state_release
     implicit none
     real(kind=wp), allocatable :: s_nH(:), s_x1(:), s_x1p(:), s_x2(:), &
                                   s_x3(:), s_x4(:), s_ne(:), s_te(:), s_rk(:)
@@ -175,27 +174,9 @@ contains
     !--- old_*/s_* copies), so free them BEFORE the rebuild — collective,
     !--- every rank runs this routine.  Without the recycling every
     !--- re-refinement leaks a full grid's shared memory until finalize.
-    !--- jt_ion is an array on each rank, not a window — jtally_ion_resize
-    !--- deallocates it properly.
-    call destroy_shared_mem(amr_grid%parent)
-    call destroy_shared_mem(amr_grid%children)
-    call destroy_shared_mem(amr_grid%level)
-    call destroy_shared_mem(amr_grid%cx)
-    call destroy_shared_mem(amr_grid%cy)
-    call destroy_shared_mem(amr_grid%cz)
-    call destroy_shared_mem(amr_grid%ch)
-    call destroy_shared_mem(amr_grid%ileaf)
-    call destroy_shared_mem(amr_grid%icell_of_leaf)
-    call destroy_shared_mem(amr_grid%neighbor)
-    call destroy_shared_mem(amr_grid%rhokap)
-    call destroy_shared_mem(gas_nH_p)
-    call destroy_shared_mem(gas_xHI_p)
-    call destroy_shared_mem(gas_xHII_p)
-    call destroy_shared_mem(gas_xHeI_p)
-    call destroy_shared_mem(gas_xHeII_p)
-    call destroy_shared_mem(gas_xHeIII_p)
-    call destroy_shared_mem(gas_ne_p)
-    call destroy_shared_mem(gas_Te_p)
+    !--- jtally_ion_resize recreates the private scores and shared spectral result.
+    call amr_release()
+    call gas_state_release()
     if (mpar%p_rank == 0) write(*,'(a)') &
        ' AMR: recycled the shared-memory windows of the old grid'
 
@@ -206,7 +187,7 @@ contains
     call amr_build_neighbors
     call amr_alloc_phys()
     if (mpar%h_rank == 0) amr_grid%rhokap(1:nnew) = s_rk
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call amr_opacity_sync()
 
     !--- 6. recreate the gas state and dependent arrays
     call gas_state_recreate(nnew, s_nH, s_x1, s_x1p, s_x2, s_x3, s_x4, &

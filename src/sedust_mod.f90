@@ -29,7 +29,7 @@ module sedust_mod
 ! and the ZDA config all resolve inside it (grain_model_mod).
 !
 ! Each leaf's spectrum is solved once and reused.  The spectrum shape is a
-! function of the leaf's ionizing-band tally jt_ion, its volume, the grain
+! function of the leaf's ionizing-band tally jt_ion_sum, its volume, the grain
 ! model and (par%sed_pah_live) its x_HI/x_HII; it does not depend on
 ! Heat_dust, which only scales it afterwards.  After the final ionizing pass
 ! and the final gas solve none of these changes, so the infrared transport
@@ -200,7 +200,7 @@ contains
   ! Open the window in which leaf spectra are stored and reused.  Call it
   ! only once every input of the spectrum is final: after the last
   ! ionizing-band transport (the final or imaging pass of main.f90, or the
-  ! single pass of gas_niter < 1: the last writer of jt_ion; the infrared
+  ! single pass of gas_niter < 1: the last writer of jt_ion_sum; the infrared
   ! passes score into their own band estimator and never touch it,
   ! ion_score_mod::score_ion_path) and after the final gas solve (the last
   ! writer of gas_xHI/gas_xHII).  AMR
@@ -256,7 +256,7 @@ contains
   !=========================================================================
   subroutine solve_leaf_spectrum(il, pdf, esum)
     use octree_mod,    only : leaf_half
-    use jtally_mod,    only : jt_ion
+    use jtally_mod,    only : jt_ion_sum
     use ion_band_mod,  only : ion_dnu, nnu_band
     use gas_state_mod, only : gas_xHI, gas_xHII
     implicit none
@@ -271,7 +271,7 @@ contains
     !--- J_lambda [SI, W/m^2/sr/m] of this leaf on the band bins.
     do b = 1, nnu_band
        !--- J_nu = jt/(4 pi V_code d_cm^2 dnu); J_lambda = J_nu c/lambda^2
-       Jlam_b(b) = jt_ion(b,il)/(fourpi*(vol/par%distance2cm**3) &
+       Jlam_b(b) = jt_ion_sum(b,il)/(fourpi*(vol/par%distance2cm**3) &
                    *par%distance2cm**2*ion_dnu(b)) &
                    * (2.99792458e14_wp/lam_b(b)**2)      ! cgs per um
        Jlam_b(b) = Jlam_b(b)*1.0e3_wp                     ! -> SI per m
@@ -326,7 +326,7 @@ contains
   !=========================================================================
   subroutine sedust_compute_write(heat_dust)
     use mpi
-    use memory_mod, only : sum_over_ranks
+    use memory_mod, only : sum_to_root
     use octree_mod, only : amr_grid, leaf_half
     use utility,         only : get_base_name, is_finite
     implicit none
@@ -381,7 +381,7 @@ contains
     call MPI_ALLREDUCE(MPI_IN_PLACE, Ltot, nl_sed, MPI_DOUBLE_PRECISION, &
                        MPI_SUM, MPI_COMM_WORLD, ierr)
     if (nband > 0) then
-       call sum_over_ranks(em_band)
+       call sum_to_root(em_band)
        call dustemis_write(em_band, band_wl, nband)
        deallocate(em_band)
     end if

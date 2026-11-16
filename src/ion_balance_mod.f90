@@ -20,14 +20,17 @@ module ion_balance_mod
 ! I-fronts, a known failure mode).
 ! The leaves are divided over all ranks of MPI_COMM_WORLD (gas_state_mod,
 ! gas_leaf_owner_first/stride); each rank solves its own from the reduced
-! tallies, gas_state_publish sums the solved leaves into every node's shared
-! state, and the change measures are reduced over all ranks and broadcast
+! tallies into separate shared buffers. After old-state measures finish,
+! gas_state_publish exchanges the host buffers and copies the current state.
+! The change measures are reduced over all ranks and broadcast
 ! from rank 0 so that every rank takes the same exit decision.
 !---------------------------------------------------------------------------
   use define
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
-                            gas_state_publish, &
+                            gas_state_publish, gas_state_new_reset, &
+                            xHI_new, xHII_new, xHeI_new, xHeII_new, &
+                            xHeIII_new, ne_new, &
                             gas_leaf_owner_first, gas_leaf_owner_stride
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             secondary_ionization
@@ -1164,8 +1167,6 @@ contains
     real(kind=wp), intent(out) :: max_dx, dx_vol, dhe_vol(2), drift_vol(3)
     integer,       intent(out) :: xhi_counts(3)
 
-    real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
-                                  xHeII_new(:), xHeIII_new(:), ne_new(:)
     real(kind=wp) :: T, yHe, w, vol, sums(9)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, xHII
     logical :: caseA
@@ -1178,12 +1179,10 @@ contains
 
     !--- every rank solves its own leaves (gas_state_mod, "Where the cell
     !--- solves run"; until 2026-09-26 each node's rank 0 solved all of them
-    !--- alone), into arrays that are zero elsewhere, and gas_state_publish
-    !--- sums them over all ranks into every node's shared state
-    allocate(xHI_new(gas_nleaf), xHII_new(gas_nleaf), xHeI_new(gas_nleaf), &
-             xHeII_new(gas_nleaf), xHeIII_new(gas_nleaf), ne_new(gas_nleaf))
-    xHI_new = 0.0_wp;  xHII_new = 0.0_wp;  xHeI_new = 0.0_wp
-    xHeII_new = 0.0_wp;  xHeIII_new = 0.0_wp;  ne_new = 0.0_wp
+    !--- alone). Separate host-shared buffers hold the new state until all
+    !--- old-state measures finish; host leaders exchange foreign leaves.
+    !--- Separate host-shared new state; old gas state remains read-only.
+    call gas_state_new_reset(.false.)
 
     max_dx  = 0.0_wp
     sums    = 0.0_wp
@@ -1239,7 +1238,7 @@ contains
        sums(9) = sums(9) + vol*(xHeIII_new(il) - gas_xHeIII(il))
     end do
     !--- the metrics compare with the state before this update, so they are
-    !--- reduced before the new state goes into the shared arrays
+    !--- reduced before the new state replaces the current state
     call MPI_ALLREDUCE(MPI_IN_PLACE, max_dx, 1, MPI_DOUBLE_PRECISION, MPI_MAX, &
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE, sums, 9, MPI_DOUBLE_PRECISION, MPI_SUM, &
@@ -1248,9 +1247,7 @@ contains
     !--- reduction order, so the counts need no broadcast from rank 0
     call MPI_ALLREDUCE(MPI_IN_PLACE, xhi_counts, 3, MPI_INTEGER, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
-    call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
-                           ne_new)
-    deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new)
+    call gas_state_publish()
     dx_vol  = sums(1) / max(larger_state_sum(sums(2), sums(7)), tinest)
     dhe_vol = helium_change_measures(sums(3:6), sums(8:9))
     drift_vol = signed_change_measures(sums([7, 2, 8, 4, 9, 6]), dhe_vol)

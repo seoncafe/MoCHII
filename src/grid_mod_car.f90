@@ -5,6 +5,7 @@ module grid_mod
   use memory_mod
   !use read_mod
   implicit none
+  type(shared_owner), private :: grid_storage(4)
 contains
 
   !---------------------------------------------------------------------------------
@@ -108,9 +109,9 @@ contains
   endif
 
   ! allocate shared memories for xface, yface, zface
-  call create_shared_mem(grid%xface, [grid%nx+1])
-  call create_shared_mem(grid%yface, [grid%ny+1])
-  call create_shared_mem(grid%zface, [grid%nz+1])
+  call allocate_shared(grid_storage(1), grid%xface, [grid%nx+1])
+  call allocate_shared(grid_storage(2), grid%yface, [grid%ny+1])
+  call allocate_shared(grid_storage(3), grid%zface, [grid%nz+1])
   if (mpar%h_rank == 0) then
      grid%xface(:) = [ ((i-1)*grid%dx + grid%xmin, i=1,grid%nx+1) ]
      grid%yface(:) = [ ((j-1)*grid%dy + grid%ymin, j=1,grid%ny+1) ]
@@ -118,11 +119,11 @@ contains
   endif
 
   ! allocate shared memories for rhokap
-  call create_shared_mem(grid%rhokap, [grid%nx,grid%ny,grid%nz])
+  call allocate_shared(grid_storage(4), grid%rhokap, [grid%nx,grid%ny,grid%nz])
   if (mpar%h_rank == 0) then
      grid%rhokap(:,:,:) = 0.0_wp
   endif
-  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+  call grid_shared_sync()
 
   !---- Density Setup
   if (mpar%h_rank == 0) then
@@ -258,7 +259,7 @@ contains
         endif
      endif
   endif
-  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+  call grid_shared_sync()
 
   !--- Calculate equatorial and polar optical depths
   if (mpar%p_rank == 0) then
@@ -295,7 +296,14 @@ contains
   type(grid_type), intent(inout) :: grid
   integer :: ierr
 
-  call destroy_shared_mem_all()
+  call free_shared(grid_storage(1), grid%xface)
+  call free_shared(grid_storage(2), grid%yface)
+  call free_shared(grid_storage(3), grid%zface)
+  call free_shared(grid_storage(4), grid%rhokap)
   end subroutine grid_destroy
   !=================================================
+  ! One grouped publication for the observer grid's faces and opacity.
+  subroutine grid_shared_sync()
+    call publish_shared(grid_storage)
+  end subroutine grid_shared_sync
 end module grid_mod

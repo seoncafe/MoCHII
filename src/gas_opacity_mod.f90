@@ -17,7 +17,7 @@ module gas_opacity_mod
 !---------------------------------------------------------------------------
   use utility, only : abort_run
   use define
-  use octree_mod,    only : amr_grid
+  use octree_mod,    only : amr_grid, amr_opacity_sync
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_nleaf
   implicit none
   private
@@ -347,6 +347,7 @@ contains
     integer  :: il, ierr
 
     if (par%use_metals .and. n_elements > 0) call species_stage_cache_refresh()
+    call amr_opacity_sync()
     if (mpar%h_rank == 0) then
        !--- dust density tied to the COMPUTED
        !--- ionization state, refreshed every iteration; the PAH share
@@ -371,7 +372,7 @@ contains
           end block
        end if
     end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call amr_opacity_sync()
   end subroutine gas_opacity_fill
 
 end module gas_opacity_mod

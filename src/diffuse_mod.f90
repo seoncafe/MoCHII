@@ -61,9 +61,8 @@ module diffuse_mod
 ! total leaf luminosity, then a channel CDF within the leaf.
 !---------------------------------------------------------------------------
   use define
-  use mpi
-  use memory_mod,    only : create_shared_mem, destroy_shared_mem, get_window, &
-                           shared_host_rank, shared_host_size, shared_host_comm
+  use memory_mod,    only : shared_owner, allocate_shared, free_shared, publish_shared, shared_is_live, &
+                           shared_host_rank, shared_host_size
   use octree_mod,    only : amr_grid, leaf_half, leaf_cx, leaf_cy, leaf_cz
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, gas_ne, gas_Te, gas_nleaf
@@ -85,6 +84,8 @@ module diffuse_mod
                                    freefree_band_sample_energy, FF_ZMAX
   implicit none
   private
+
+  public :: diffuse_release
 
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
@@ -110,7 +111,7 @@ module diffuse_mod
   !--- on n_3 and Phi_3, so the launchers read what diffuse_build computed
   !--- instead of recomputing them.
   real(kind=wp), pointer, contiguous :: dif_hei(:,:) => null()  ! (3, nleaf) [eV cm^-3 s^-1]
-  integer :: dif_win(3) = MPI_WIN_NULL     ! dif_cdf, dif_ch, dif_hei
+  type(shared_owner) :: diffuse_owner(3)     ! dif_cdf, dif_ch, dif_hei
   real(kind=wp) :: diffuse_lum = 0.0_wp         ! total [erg/s]
   !--- luminosity carried by one diffuse packet [erg/s]: the diffuse
   !--- luminosity over the packet count diffuse_build set from the lpacket it
@@ -143,25 +144,25 @@ contains
     real(kind=wp) :: be3s, be1p, be1s
     real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
-    integer :: il, ic, ierr
+    integer :: il, ic
     logical :: all_channels
 
+    call diffuse_shared_sync()
     if (associated(dif_cdf)) then
        if (size(dif_cdf) /= gas_nleaf) then
-          call destroy_shared_mem(dif_cdf);  call destroy_shared_mem(dif_ch)
+          call free_shared(diffuse_owner(1), dif_cdf);  call free_shared(diffuse_owner(2), dif_ch)
        end if
     end if
     if (.not. associated(dif_cdf)) then
-       call create_shared_mem(dif_cdf, [gas_nleaf]);  call get_window(dif_cdf, dif_win(1))
-       call create_shared_mem(dif_ch, [NCH, gas_nleaf]);  call get_window(dif_ch, dif_win(2))
+       call allocate_shared(diffuse_owner(1), dif_cdf, [gas_nleaf])
+       call allocate_shared(diffuse_owner(2), dif_ch, [NCH, gas_nleaf])
     end if
     if (par%hei_diffuse .and. par%hei_metastable_coupling) then
        if (associated(dif_hei)) then
-          if (size(dif_hei, 2) /= gas_nleaf) call destroy_shared_mem(dif_hei)
+          if (size(dif_hei, 2) /= gas_nleaf) call free_shared(diffuse_owner(3), dif_hei)
        end if
        if (.not. associated(dif_hei)) then
-          call create_shared_mem(dif_hei, [3, gas_nleaf])
-          call get_window(dif_hei, dif_win(3))
+          call allocate_shared(diffuse_owner(3), dif_hei, [3, gas_nleaf])
        end if
     end if
 
@@ -268,11 +269,7 @@ contains
   contains
 
     subroutine diffuse_shared_sync()
-      integer :: k
-      do k = 1, 3
-         if (dif_win(k) /= MPI_WIN_NULL) call MPI_WIN_FENCE(0, dif_win(k), ierr)
-      end do
-      call MPI_BARRIER(shared_host_comm(), ierr)
+      call publish_shared(diffuse_owner)
     end subroutine diffuse_shared_sync
 
   end subroutine diffuse_build
@@ -779,5 +776,12 @@ contains
     end select
     eph = min(eph, par%eion_max*0.999_wp)
   end function ground_photon_energy
+
+  subroutine diffuse_release()
+    call publish_shared(diffuse_owner)
+    if (shared_is_live(diffuse_owner(1))) call free_shared(diffuse_owner(1), dif_cdf)
+    if (shared_is_live(diffuse_owner(2))) call free_shared(diffuse_owner(2), dif_ch)
+    if (shared_is_live(diffuse_owner(3))) call free_shared(diffuse_owner(3), dif_hei)
+  end subroutine diffuse_release
 
 end module diffuse_mod

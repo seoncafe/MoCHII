@@ -18,6 +18,7 @@ module octree_mod
   public
 
   type amr_grid_type
+    type(shared_owner) :: storage(11)
     ! ------ domain geometry ------
     real(wp) :: xmin = 0.0_wp, xmax = 1.0_wp, xrange = 1.0_wp
     real(wp) :: ymin = 0.0_wp, ymax = 1.0_wp, yrange = 1.0_wp
@@ -422,15 +423,15 @@ contains
     amr_grid%nleaf    = nleaf
     amr_grid%levelmax = maxval(leaf_level)
 
-    call create_shared_mem(amr_grid%parent,        [ncells])
-    call create_shared_mem(amr_grid%children,      [8, ncells])
-    call create_shared_mem(amr_grid%level,         [ncells])
-    call create_shared_mem(amr_grid%ileaf,         [ncells])
-    call create_shared_mem(amr_grid%cx,            [ncells])
-    call create_shared_mem(amr_grid%cy,            [ncells])
-    call create_shared_mem(amr_grid%cz,            [ncells])
-    call create_shared_mem(amr_grid%ch,            [ncells])
-    call create_shared_mem(amr_grid%icell_of_leaf, [nleaf])
+    call allocate_shared(amr_grid%storage(1), amr_grid%parent, [ncells])
+    call allocate_shared(amr_grid%storage(2), amr_grid%children, [8, ncells])
+    call allocate_shared(amr_grid%storage(3), amr_grid%level, [ncells])
+    call allocate_shared(amr_grid%storage(4), amr_grid%ileaf, [ncells])
+    call allocate_shared(amr_grid%storage(5), amr_grid%cx, [ncells])
+    call allocate_shared(amr_grid%storage(6), amr_grid%cy, [ncells])
+    call allocate_shared(amr_grid%storage(7), amr_grid%cz, [ncells])
+    call allocate_shared(amr_grid%storage(8), amr_grid%ch, [ncells])
+    call allocate_shared(amr_grid%storage(9), amr_grid%icell_of_leaf, [nleaf])
 
     if (mpar%h_rank == 0) then
       amr_grid%parent(1:ncells)       = t_parent(1:ncells)
@@ -443,7 +444,7 @@ contains
       amr_grid%ch(1:ncells)           = t_ch(1:ncells)
       amr_grid%icell_of_leaf(1:nleaf) = t_icell_of_leaf(1:nleaf)
     end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call publish_shared(amr_grid%storage(1:9))
 
     deallocate(t_parent, t_children, t_level, t_ileaf, &
                t_cx, t_cy, t_cz, t_ch, t_icell_of_leaf)
@@ -451,10 +452,10 @@ contains
 
   !=========================================================================
   ! Allocate the dust opacity of each leaf as shared memory.  h_rank==0 fills it
-  ! and calls MPI_BARRIER(mpar%hostcomm) after this returns.
+  ! and calls amr_opacity_sync after this returns.
   !=========================================================================
   subroutine amr_alloc_phys()
-    call create_shared_mem(amr_grid%rhokap, [amr_grid%nleaf])
+    call allocate_shared(amr_grid%storage(11), amr_grid%rhokap, [amr_grid%nleaf])
   end subroutine amr_alloc_phys
 
   !=========================================================================
@@ -466,7 +467,7 @@ contains
     integer  :: icell, ierr, iface, ineigh
     real(wp) :: cx, cy, cz, h, hp
 
-    call create_shared_mem(amr_grid%neighbor, [6, amr_grid%ncells])
+    call allocate_shared(amr_grid%storage(10), amr_grid%neighbor, [6, amr_grid%ncells])
 
     if (mpar%h_rank == 0) then
       amr_grid%neighbor = 0
@@ -493,7 +494,7 @@ contains
         end do
       end do
     end if
-    call MPI_BARRIER(mpar%hostcomm, ierr)
+    call publish_shared(amr_grid%storage(10:10))
   end subroutine amr_build_neighbors
 
   pure logical function is_ancestor(anc, desc)
@@ -646,7 +647,6 @@ contains
   ! table.  The caller must pass the state arrays already raster-ordered.
   !=========================================================================
   subroutine amr_build_car(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax)
-    use memory_mod, only : create_shared_mem
     use mpi
     implicit none
     integer,  intent(in) :: nx, ny, nz
@@ -722,5 +722,26 @@ contains
     allocate(tmp_r(new_max));  tmp_r(1:old_max) = t_ch;  tmp_r(old_max+1:) = 0.0_wp
     call move_alloc(tmp_r, t_ch)
   end subroutine grow_local_arrays
+
+  ! The caller finishes every old-tree reader before entering release.
+  subroutine amr_release()
+    call free_shared(amr_grid%storage(1), amr_grid%parent)
+    call free_shared(amr_grid%storage(2), amr_grid%children)
+    call free_shared(amr_grid%storage(3), amr_grid%level)
+    call free_shared(amr_grid%storage(4), amr_grid%ileaf)
+    call free_shared(amr_grid%storage(5), amr_grid%cx)
+    call free_shared(amr_grid%storage(6), amr_grid%cy)
+    call free_shared(amr_grid%storage(7), amr_grid%cz)
+    call free_shared(amr_grid%storage(8), amr_grid%ch)
+    call free_shared(amr_grid%storage(9), amr_grid%icell_of_leaf)
+    call free_shared(amr_grid%storage(10), amr_grid%neighbor)
+    call free_shared(amr_grid%storage(11), amr_grid%rhokap)
+    amr_grid%ncells=0
+    amr_grid%nleaf=0
+  end subroutine amr_release
+
+  subroutine amr_opacity_sync()
+    call publish_shared(amr_grid%storage(11:11))
+  end subroutine amr_opacity_sync
 
 end module octree_mod

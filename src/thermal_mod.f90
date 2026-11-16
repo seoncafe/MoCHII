@@ -20,7 +20,9 @@ module thermal_mod
   use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_xHeI, gas_xHeII, &
                             gas_xHeIII, gas_ne, gas_Te, gas_nleaf, &
                             gas_state_sync, &
-                            gas_state_publish, gas_leaf_owner_first, &
+                            gas_state_publish, gas_state_new_reset, &
+                            xHI_new, xHII_new, xHeI_new, xHeII_new, &
+                            xHeIII_new, ne_new, te_new, gas_leaf_owner_first, &
                             gas_leaf_owner_stride
   use gas_rates_mod, only : gamma_HI, gamma_HeI, gamma_HeII, &
                             heat_HI, heat_HeI, heat_HeII, secondary_ionization
@@ -239,9 +241,6 @@ contains
     real(kind=wp), intent(out) :: drift_vol(3)
     integer,       intent(out) :: xhi_counts(3)
 
-    real(kind=wp), allocatable :: xHI_new(:), xHII_new(:), xHeI_new(:), &
-                                  xHeII_new(:), xHeIII_new(:), ne_new(:), &
-                                  te_new(:)
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol, xHII
     real(kind=wp) :: max_local(2), max_host(2)
     real(kind=wp) :: sum_local(12), sum_host(12), metrics(9)
@@ -254,13 +253,8 @@ contains
 
     caseA = trim(par%recombination_continuum) /= 'on_the_spot'
     w     = par%ion_relax
-    allocate(xHI_new(gas_nleaf), xHII_new(gas_nleaf), xHeI_new(gas_nleaf), &
-             xHeII_new(gas_nleaf), xHeIII_new(gas_nleaf), ne_new(gas_nleaf), &
-             te_new(gas_nleaf))
-    !--- zero off this rank's leaves: gas_state_publish sums over the ranks
-    xHI_new = 0.0_wp;  xHII_new = 0.0_wp;  xHeI_new = 0.0_wp;  xHeII_new = 0.0_wp
-    xHeIII_new = 0.0_wp
-    ne_new  = 0.0_wp;  te_new   = 0.0_wp
+    !--- Separate host-shared new state; old gas state remains read-only.
+    call gas_state_new_reset(.true.)
 
     max_local = 0.0_wp
     sum_local = 0.0_wp
@@ -436,10 +430,8 @@ contains
     dhe_vol = helium_change_measures(sum_host(5:8), sum_host(10:11))
     drift_vol = signed_change_measures(sum_host([9, 2, 10, 6, 11, 8]), dhe_vol)
 
-    !--- every rank's leaves into every node's shared state
-    call gas_state_publish(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, &
-                           ne_new, te_new)
-    deallocate(xHI_new, xHII_new, xHeI_new, xHeII_new, xHeIII_new, ne_new, te_new)
+    !--- All old-state measures are finished before the current state changes.
+    call gas_state_publish()
 
     !--- The metrics are reduced over MPI_COMM_WORLD; global rank 0's copy is
     !--- broadcast so that every rank makes the same loop-exit decision
