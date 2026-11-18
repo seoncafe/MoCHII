@@ -837,13 +837,11 @@ private :: c_expm1, c_log1p
      !--- (hei_cascade_mod: 2^3S 19.82 eV, 2^1P 584 A = 21.22 eV, 2^1S
      !--- two-photon), the 2^1S energies from the Drake et al. (1969) shape
      !--- (hei_twophoton_mod), and the trapped 584 A photon split between
-     !--- photoionizing H and conversion to 2^1S (the 2.06 micron decay of
-     !--- 2^1P that ends the trapped photon's walk).
-     !--- Left out of the input it is on when the continuum is
-     !--- 'transported' (since 2026-09-25;
-     !--- setup.f90::read_parameters_with_implicit_defaults): nothing is
-     !--- absorbed on the spot then, so without this channel the
-     !--- excited-cascade photons would simply be lost.
+     !--- local H photoionization and conversion to 2^1S (the 2.06 micron
+     !--- decay that ends the trapped photon's walk). A 584 A photon can
+     !--- travel as continuum radiation after escaping a thin resonance.
+     !--- Left out of the input it is on when the continuum is 'transported'
+     !--- (setup.f90::read_parameters_with_implicit_defaults).
      logical            :: hei_diffuse  = .false.
      !--- He II EXCITED-level recombination radiation as a fifth diffuse
      !--- channel: what a He III recombination radiates on its way down
@@ -1302,7 +1300,7 @@ private :: c_expm1, c_log1p
      !--- on-the-spot disposal of the He+ -> He0 recombination photons that
      !--- can ionize hydrogen (hei_recombination_photons_mod).  With
      !--- par%recombination_continuum = 'on_the_spot' the excited cascade --
-     !--- 19.82 eV, 584 A with the p_584 split, the 2^1S two-photon
+     !--- 19.82 eV, the trapped 584 A H branch, and the 2^1S two-photon
      !--- continuum -- is absorbed by H0 where it is made, and of the ground
      !--- captures the share y that H0 absorbs (by opacity, over the Milne
      !--- spectrum) ionizes H instead of He0; each excited photon heats by

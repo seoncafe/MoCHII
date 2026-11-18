@@ -4,7 +4,7 @@ module hei_recombination_photons_mod
 ! two ways the code can dispose of them:
 !  - transported, as the He I channels of the diffuse field (diffuse_mod:
 !    the ground continuum as channel 2, the excited cascade as channel 4,
-!    par%hei_diffuse), or
+!    par%hei_diffuse, with the trapped 584 A H branch deposited locally), or
 !  - absorbed where they are made, the on-the-spot approximation
 !    (par%recombination_continuum = 'on_the_spot'), with par%hei_on_the_spot.
 ! One routine gives the decay branches to both, so the transported field and
@@ -54,7 +54,7 @@ module hei_recombination_photons_mod
   public :: hei_excited_decays, hei_excited_decays_coupled
   public :: hei_ground_nodes_type, hei_ground_nodes, hei_ground_share_H
   public :: hei_on_the_spot_sources, hei_on_the_spot_heating
-  public :: hei_twophoton_decays
+  public :: hei_twophoton_decays, hei_leaf_excited_decays, hei_584_hydrogen_rates
   public :: HEI_E3S, HEI_E1P
 
   !--- line energies of the two single-photon exits [eV]
@@ -75,16 +75,21 @@ contains
   ! r1p 584 A photons that ionize H, r2q 2^1S decays (including the
   ! transferred 584 A).  Dimensionless, per recombination.
   !=========================================================================
-  subroutine hei_excited_decays(T_K, xHI, xHeI, r3s, r1p, r2q)
+  subroutine hei_excited_decays(T_K, xHI, xHeI, r3s, r1p, r2q, line_is_thin)
     use hei_cascade_mod, only : hei_branch_fractions, hei_584_ionizes_H
     real(kind=wp), intent(in)  :: T_K, xHI, xHeI
     real(kind=wp), intent(out) :: r3s, r1p, r2q
+    logical, optional, intent(in) :: line_is_thin
     real(kind=wp) :: f3s, f1s, f1p, p584
     call hei_branch_fractions(T_K, f3s, f1s, f1p)
     !--- The trapped 584 A photon either photoionizes hydrogen or ends in
     !--- 2^1S (the 2.06 micron decay of 2^1P) and leaves as the two-photon
     !--- continuum instead.  Both outcomes are local.
     p584 = hei_584_ionizes_H(T_K, xHI, xHeI)
+    ! A transparent resonance returns its unconverted line in r1p.
+    if (present(line_is_thin)) then
+       if (line_is_thin) p584 = 1.0_wp
+    end if
     r3s = f3s
     r1p = f1p*p584
     r2q = f1s + f1p*(1.0_wp - p584)
@@ -107,7 +112,7 @@ contains
   ! tests/hei_metastable_coupling).
   !=========================================================================
   subroutine hei_excited_decays_coupled(il, T_K, ne, nHI, nHeI, nHeII, &
-                                        xHI, xHeI, r3s, r1p, r2q)
+                                        xHI, xHeI, r3s, r1p, r2q, line_is_thin)
     use recomb_mod,         only : alphaB_HeII
     use hei_cascade_mod,    only : hei_584_ionizes_H
     use hei_metastable_mod, only : hei_triplet_rates_type, hei_triplet_rates, &
@@ -116,6 +121,7 @@ contains
     integer,       intent(in)  :: il
     real(kind=wp), intent(in)  :: T_K, ne, nHI, nHeI, nHeII, xHI, xHeI
     real(kind=wp), intent(out) :: r3s, r1p, r2q
+    logical, optional, intent(in) :: line_is_thin
     type(hei_triplet_rates_type) :: hr
     real(kind=wp) :: n3, rec, sing, n1s, n1p, p584
     hr   = hei_triplet_rates(T_K)
@@ -125,6 +131,10 @@ contains
     n1s  = rec*hr%f1s + ne*n3*hr%q31a + sing*hr%f1s
     n1p  = rec*hr%f1p + ne*n3*hr%q31b + sing*hr%f1p
     p584 = hei_584_ionizes_H(T_K, xHI, xHeI)
+    ! A transparent resonance returns its unconverted line in r1p.
+    if (present(line_is_thin)) then
+       if (line_is_thin) p584 = 1.0_wp
+    end if
     r3s  = n3*hm_A31
     r1p  = n1p*p584
     r2q  = n1s + n1p*(1.0_wp - p584)
@@ -185,7 +195,7 @@ contains
     y     = hei_ground_share_H(g, nH*xHI, par%abund_He*nH*xHeI)
     aB    = alphaB_HeII(T)
     s_gnd = y*(alphaA_HeII(T) - aB)*ne*nHeII
-    call excited_exits(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q)
+    call hei_leaf_excited_decays(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q)
     s_exc = r3s + r1p + r2q*hei_2ph_photons_per_decay()
   end subroutine hei_on_the_spot_sources
 
@@ -212,7 +222,7 @@ contains
     nHeII = par%abund_He*nH*xHeII
     y  = hei_ground_share_H(g, nH*xHI, par%abund_He*nH*xHeI)
     aB = alphaB_HeII(T)
-    call excited_exits(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q)
+    call hei_leaf_excited_decays(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q)
     f = 1.0_wp
     if (present(f_exc)) f = f_exc
     heat = f*( y*(alphaA_HeII(T) - aB)*ne*nHeII*DE_HE_H           &
@@ -234,25 +244,55 @@ contains
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: T, nH, ne, xHI, xHeI, xHeII
     real(kind=wp) :: r3s, r1p
-    call excited_exits(il, T, nH, ne, xHI, xHeI, xHeII, alphaB_HeII(T), &
+    call hei_leaf_excited_decays(il, T, nH, ne, xHI, xHeI, xHeII, alphaB_HeII(T), &
                        r3s, r1p, r2q)
   end function hei_twophoton_decays
 
-  !--- the three exits per unit volume [cm^-3 s^-1], coupled or not
-  subroutine excited_exits(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q)
+  !--- Leaf rates [cm^-3 s^-1]. A trapped 584 A photon that H destroys
+  !--- contributes to r1p. With an optically thin He I resonance it can
+  !--- leave the leaf as a line photon instead. The explicit continuum
+  !--- transports this line after resonance escape. The case-B local
+  !--- treatment omits that escaping power, as it omits other nonlocal
+  !--- photons. Direct 2^1P -> 2^1S without trapping is neglected here
+  !--- (branching about 1/915); the trapped conversion remains in r2q.
+  subroutine hei_leaf_excited_decays(il, T, nH, ne, xHI, xHeI, xHeII, aB, r3s, r1p, r2q, escape584)
+    use hei_cascade_mod, only : hei_584_line_is_thin
+    use octree_mod, only : leaf_half
     integer,       intent(in)  :: il
     real(kind=wp), intent(in)  :: T, nH, ne, xHI, xHeI, xHeII, aB
     real(kind=wp), intent(out) :: r3s, r1p, r2q
+    real(kind=wp), optional, intent(out) :: escape584
     real(kind=wp) :: rec, nHe
+    logical :: thin
+
     nHe = par%abund_He*nH
+    thin = hei_584_line_is_thin(T, nHe*xHeI, 2.0_wp*leaf_half(il)*par%distance2cm)
     if (par%hei_metastable_coupling) then
        call hei_excited_decays_coupled(il, T, ne, nH*xHI, nHe*xHeI, &
-            nHe*xHeII, xHI, xHeI, r3s, r1p, r2q)
+            nHe*xHeII, xHI, xHeI, r3s, r1p, r2q, thin)
     else
        rec = ne*nHe*xHeII*aB
-       call hei_excited_decays(T, xHI, xHeI, r3s, r1p, r2q)
-       r3s = rec*r3s;  r1p = rec*r1p;  r2q = rec*r2q
+       call hei_excited_decays(T, xHI, xHeI, r3s, r1p, r2q, thin)
+       r3s = rec*r3s
+       r1p = rec*r1p
+       r2q = rec*r2q
     end if
-  end subroutine excited_exits
+    if (present(escape584)) escape584 = 0.0_wp
+    if (thin) then
+       if (present(escape584)) escape584 = r1p
+       r1p = 0.0_wp
+    end if
+  end subroutine hei_leaf_excited_decays
+
+  ! Convert the local destruction rate to the same neutral-H coefficients
+  ! as transport. A 7.622 eV photoelectron deposits its energy as heat.
+  pure subroutine hei_584_hydrogen_rates(nHI, absorbed584, gamma, heat)
+    real(kind=wp), intent(in) :: nHI, absorbed584
+    real(kind=wp), intent(out) :: gamma, heat
+
+    gamma = 0.0_wp
+    if (nHI > 0.0_wp) gamma = absorbed584/nHI
+    heat = gamma*(HEI_E1P - eth_HI)*ev2erg
+  end subroutine hei_584_hydrogen_rates
 
 end module hei_recombination_photons_mod

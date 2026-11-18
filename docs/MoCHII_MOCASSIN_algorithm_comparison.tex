@@ -406,6 +406,15 @@ this after source transport, without a gas solve between populations;
 both still see the frozen pass state
 (\ms{ionizing_field_mod.f90}{155--186,\allowbreak 217--220}).
 
+\Source In B and C, the trapped He\,\textsc{i} 584~\AA\ share destroyed by H
+adds a local ionization and 7.622 eV of heat in the emitting leaf. That
+share does not enter $L_{c,i}$, $N_{\rm dif}$, or the gas reemission yield.
+The complementary trapped share feeds the ionizing two-photon continuum.
+A line escaping a thin resonance may enter continuum transport. The local
+term enters the published H rates after reduction of the packet scores
+(\ms{hei_recombination_photons_mod.f90}{251--296};
+\ms{diffuse_mod.f90}{304--312}; \ms{gas_rates_mod.f90}{121--127}).
+
 \Source B/C can extend the source band into FUV below the hydrogen edge,
 with optional independent stratum normalization and count. Such photons
 can affect dust, metals, and enabled metastable photoionization

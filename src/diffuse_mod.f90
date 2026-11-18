@@ -114,6 +114,7 @@ module diffuse_mod
                                hei_2ph_energy_per_decay
   use hei_recombination_photons_mod, only : hei_excited_decays, &
                                            hei_excited_decays_coupled, &
+                                           hei_leaf_excited_decays, hei_584_hydrogen_rates, &
                                            HEI_E3S, HEI_E1P
   use heii_cascade_mod,  only : heii_branch_luminosity, heii_fb_sample_energy, &
                                 heii_2q_sample_energy, heii_lyman_sample_energy, &
@@ -131,6 +132,7 @@ module diffuse_mod
   public :: diffuse_build, gen_diffuse_photon, gen_diffuse_photon_qmc, &
             diffuse_nphot, diffuse_lum
   public :: hei_branch_energies, hei_branch_energies_coupled
+  public :: diffuse_apply_hei_584, report_hei_584_absorption
   public :: diffuse_channel_luminosity, metal_valence_luminosity_outside
   public :: reemitted_energy, absorber_psi, diffuse_absorber_leaf, &
             diffuse_explicit_leaf_emission, sample_absorber_diffuse_photon, &
@@ -161,7 +163,7 @@ module diffuse_mod
   !--- 2^3S population is coupled (par%hei_metastable_coupling): they depend
   !--- on n_3 and Phi_3, so the launchers read what diffuse_build computed
   !--- instead of recomputing them.
-  real(kind=wp), pointer, contiguous :: dif_hei(:,:) => null()  ! (3, nleaf) [eV cm^-3 s^-1]
+  real(kind=wp), pointer, contiguous :: dif_hei(:,:) => null()  ! (4, nleaf), last row is local 584 A absorption [cm^-3 s^-1]
   !--- absorption_reemission (r7), node-shared like the tables above:
   !--- reemitted_energy(s, i) = eps_re,s/max(psi_s, 1) [erg] (y_s(E) times the
   !--- photon energy; read by transport_ion_packet at an absorption by s),
@@ -174,6 +176,7 @@ module diffuse_mod
   !--- the channel table the launchers draw from: dif_ch, or explicit_ch
   !--- under absorption_reemission
   real(kind=wp), pointer, contiguous :: dif_launch(:,:) => null()
+  real(kind=wp) :: hei_584_absorptions = 0.0_wp  ! [s^-1] over the volume
   type(shared_owner) :: diffuse_owner(7)     ! dif_cdf, dif_ch, dif_hei, reemitted_energy,
                                            ! absorber_psi, explicit_ch, absorber_count
   !--- the last diffuse_build had a valid previous field (re-emission on)
@@ -225,11 +228,13 @@ contains
     real(kind=wp), parameter :: ETH_ABSORBER(NABSORBER) = [eth_HI, eth_HeI, eth_HeII]
     integer :: is, k
     logical :: valid
-    real(kind=wp) :: be3s, be1p, be1s
+    real(kind=wp) :: r3s, r1p, r2q, escape584
     real(kind=wp) :: lfb, llyman, l2q
     real(kind=wp) :: nHII, nHeII_n, nHeIII, xHeIII
     integer :: il, ic
     logical :: all_channels
+    integer, parameter :: LUMINOSITY_SUM_KIND = selected_real_kind(18, 300)
+    real(kind=LUMINOSITY_SUM_KIND) :: absorbed584
 
     call diffuse_shared_sync()
     nullify(dif_launch)
@@ -242,12 +247,12 @@ contains
        call allocate_shared(diffuse_owner(1), dif_cdf, [gas_nleaf])
        call allocate_shared(diffuse_owner(2), dif_ch, [NCH, gas_nleaf])
     end if
-    if (par%hei_diffuse .and. par%hei_metastable_coupling) then
+    if (par%hei_diffuse) then
        if (associated(dif_hei)) then
           if (size(dif_hei, 2) /= gas_nleaf) call free_shared(diffuse_owner(3), dif_hei)
        end if
        if (.not. associated(dif_hei)) then
-          call allocate_shared(diffuse_owner(3), dif_hei, [3, gas_nleaf])
+          call allocate_shared(diffuse_owner(3), dif_hei, [4, gas_nleaf])
        end if
     end if
     reemit_at_absorption = trim(par%diffuse_launch) == 'absorption_reemission'
@@ -295,23 +300,15 @@ contains
           dif_ch(2,il) = ne*nHeII_n*a1*ground_mean_energy(2, eth_HeI, kT_eV, T)*ev2erg*vol
           a1 = alphaA_HeIII(T) - alphaB_HeIII(T)
           dif_ch(3,il) = ne*nHeIII *a1*ground_mean_energy(3, eth_HeII, kT_eV, T)*ev2erg*vol
-          !--- channel 4: He I EXCITED-level recombination radiation
-          !--- (par%hei_diffuse): all case-B He II recombinations cascade to
-          !--- n = 2 and decay with the hei_cascade_mod branch fractions; only
-          !--- the H-ionizing part carries band luminosity.
-          if (par%hei_diffuse .and. par%hei_metastable_coupling) then
-             !--- with the 2^3S population coupled, the branch energies are
-             !--- per unit volume (hei_branch_energies_coupled)
-             call hei_branch_energies_coupled(il, T, ne, nH*gas_xHI(il), &
-                  nH*par%abund_He*gas_xHeI(il), nHeII_n, gas_xHI(il), &
-                  gas_xHeI(il), be3s, be1p, be1s)
-             dif_hei(:,il) = [be3s, be1p, be1s]
-             dif_ch(4,il) = vol*ev2erg*(be3s + be1p + be1s)
-          else if (par%hei_diffuse) then
-             a1 = alphaB_HeII(T)
-             call hei_branch_energies(T, gas_xHI(il), gas_xHeI(il), &
-                                      be3s, be1p, be1s)
-             dif_ch(4,il) = ne*nHeII_n*a1*vol*ev2erg*(be3s + be1p + be1s)
+          ! Channel 4 transports the triplet, the singlet two-photon
+          ! continuum, and 584 A photons escaping a thin resonance.
+          ! Trapped photons destroyed by H are stored as a local rate.
+          if (par%hei_diffuse) then
+             call hei_leaf_excited_decays(il, T, nH, ne, gas_xHI(il), gas_xHeI(il), &
+                  gas_xHeII(il), alphaB_HeII(T), r3s, r1p, r2q, escape584)
+             dif_hei(:,il) = [r3s*HEI_E3S, escape584*HEI_E1P, &
+                              r2q*hei_2ph_energy_per_decay(), r1p]
+             dif_ch(4,il) = vol*ev2erg*sum(dif_hei(1:3,il))
           end if
        end if
        !--- channels 6 and 7: the metal ground continua and the free-free
@@ -383,6 +380,14 @@ contains
 
     !--- leaf CDF over total energy; every rank forms the same sums from the
     !--- shared table, the node's rank 0 stores the CDF
+    absorbed584 = 0.0_LUMINOSITY_SUM_KIND
+    if (associated(dif_hei)) then
+       do il = 1, gas_nleaf
+          vol = (2.0_wp*leaf_half(il)*par%distance2cm)**3
+          absorbed584 = absorbed584 + real(dif_hei(4,il)*vol, LUMINOSITY_SUM_KIND)
+       end do
+    end if
+    hei_584_absorptions = real(absorbed584, wp)
     diffuse_lum = 0.0_wp
     diffuse_channel_luminosity = 0.0_wp
     diffuse_remainder_luminosity = 0.0_wp
@@ -437,6 +442,35 @@ contains
     end subroutine diffuse_shared_sync
 
   end subroutine diffuse_build
+
+  ! Apply the frozen emission of the pass to the already reduced H rates.
+  ! Ownership matches ion_score_apply_hhe, and gas_rates_compute publishes
+  ! the combined coefficients. The local absorption has no radiation path.
+  subroutine diffuse_apply_hei_584(gamma_HI, heat_HI)
+    real(kind=wp), intent(inout) :: gamma_HI(:), heat_HI(:)
+    real(kind=wp) :: gamma584, heat584
+    integer :: il
+
+    if (.not. associated(dif_hei)) return
+    do il = shared_host_rank() + 1, gas_nleaf, shared_host_size()
+       call hei_584_hydrogen_rates(gas_nH(il)*gas_xHI(il), dif_hei(4,il), gamma584, heat584)
+       gamma_HI(il) = gamma_HI(il) + gamma584
+       heat_HI(il) = heat_HI(il) + heat584
+    end do
+  end subroutine diffuse_apply_hei_584
+
+  subroutine report_hei_584_absorption()
+    real(kind=wp) :: power, ionization, heat
+
+    if (mpar%p_rank /= 0 .or. hei_584_absorptions <= 0.0_wp) return
+    power = hei_584_absorptions*HEI_E1P*ev2erg
+    ionization = hei_584_absorptions*eth_HI*ev2erg
+    heat = hei_584_absorptions*(HEI_E1P - eth_HI)*ev2erg
+    write(6,'(a,es23.15,a,3es23.15)') &
+       '     He I 584 A local H ionizations [1/s]: ', hei_584_absorptions, &
+       '  power / ionization / heat [erg/s]: ', power, ionization, heat
+  end subroutine report_hei_584_absorption
+
 
   !=========================================================================
   ! The frozen-state emission L_c,i of the last diffuse_build [erg/s],
@@ -619,12 +653,9 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), rand_number())
     else if (ch == 4) then
-       if (par%hei_metastable_coupling) then
-          be3s = dif_hei(1,il);  be1p = dif_hei(2,il);  be1s = dif_hei(3,il)
-       else
-          call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
-                                   be3s, be1p, be1s)
-       end if
+       be3s = dif_hei(1,il)
+       be1p = dif_hei(2,il)
+       be1s = dif_hei(3,il)
        ub = rand_number()*(be3s + be1p + be1s)
        if (ub <= be3s) then
           eph = HEI_E3S
@@ -729,12 +760,9 @@ contains
        kT_eV = kboltz_cgs*gas_Te(il)/ev2erg
        eph = ground_photon_energy(ch, eph, kT_eV, gas_Te(il), u(8))
     else if (ch == 4) then
-       if (par%hei_metastable_coupling) then
-          be3s = dif_hei(1,il);  be1p = dif_hei(2,il);  be1s = dif_hei(3,il)
-       else
-          call hei_branch_energies(gas_Te(il), gas_xHI(il), gas_xHeI(il), &
-                                   be3s, be1p, be1s)
-       end if
+       be3s = dif_hei(1,il)
+       be1p = dif_hei(2,il)
+       be1s = dif_hei(3,il)
        ub = u(8)*(be3s + be1p + be1s)
        if (ub <= be3s) then
           eph = HEI_E3S
