@@ -860,8 +860,9 @@ contains
   !   Lambda_SE(T, ne) = (sum_k n_u A_ul dE_ul) / ne   [erg cm^3 s^-1],
   ! summed over the NRAD radiative transitions -- the same quantity as
   ! cooling_eval, so the volume cooling is ne n_ion Lambda_SE and the n_e -> 0
-  ! limit is the low-density fit.  It decreases with n_e (the populations
-  ! saturate), which is the density suppression.  Split into two steps so the
+  ! limit is the low-density fit.  It usually decreases with n_e (the
+  ! populations saturate), which is the density suppression, but not
+  ! monotonically for every atom and temperature (nlevel_cooling_mod).  Split into two steps so the
   ! n_e-independent rate matrices (and the Upsilon evaluations inside them)
   ! are built once for each T and reused for the whole n_e column:
   !   nlevel_cooling_prepT -> Rcoll (collisional rates without the n_e factor)
@@ -970,9 +971,12 @@ contains
   ! the radiated power with both colliders in one statistical equilibrium
   ! minus that with electrons alone at the same (T, n_e).  The thermal
   ! balance carries the electron part from the (T, n_e) table
-  ! (nlevel_cooling_mod), so adding n_ion dP makes the total the joint
-  ! solve: the two colliders saturate the populations together instead of
-  ! each against its own critical density.  0 when the atom has no hydrogen
+  ! (nlevel_cooling_mod); adding n_ion dP brings in the joint solve, in which
+  ! the two colliders saturate the populations together instead of each
+  ! against its own critical density.  The total equals the raw joint solve
+  ! only where the electron part equals Lambda_SE itself; where it is the
+  ! fit-normalized lam_fit Lambda_SE(T,ne)/Lambda_SE(T,ne_floor), the
+  ! increment dP is added unnormalized.  0 when the atom has no hydrogen
   ! rates or nHI <= 0.
   !=========================================================================
   real(kind=wp) function nlevel_hcoll_cooling(atom, T, ne, nHI) result(dP)

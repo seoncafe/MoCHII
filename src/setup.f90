@@ -156,6 +156,8 @@ contains
   if (par%conv_drift_test .and. trim(par%conv_crit) /= 'vol' &
       .and. mpar%p_rank == 0) write(*,'(a)') &
      ' NOTE: par%conv_drift_test is read only with par%conv_crit = ''vol''.'
+  if (par%conv_stop_on_floor .and. trim(par%conv_crit) /= 'vol') &
+     call refuse_input('par%conv_stop_on_floor requires par%conv_crit = ''vol''.')
   select case (trim(par%conv_crit))
   case ('cell', 'vol', 'cell_fraction')
   case default
@@ -834,6 +836,8 @@ contains
      write(*,'(2a)')    'Convergence measure       : ', trim(par%conv_crit)
      if (trim(par%conv_crit) == 'vol') &
         write(*,'(a,l14)') 'Drift test on the floor   : ', par%conv_drift_test
+     if (trim(par%conv_crit) == 'vol') &
+        write(*,'(a,l14)') 'Statistical floor stop    : ', par%conv_stop_on_floor
      write(*,'(a,f14.4)') 'x_HI relative tolerance   : ', par%conv_xHI_tol
      if (trim(par%conv_crit) == 'cell_fraction') &
         write(*,'(a,f14.4)') 'Converged leaf fraction   : ', par%conv_cell_fraction

@@ -34,7 +34,7 @@ module gas_rates_mod
   public :: gas_rates_compute, gas_rates_write
   public :: gamma_HI, gamma_HeI, gamma_HeII, heat_HI, heat_HeI, heat_HeII
   public :: heat_dust
-  public :: run_converged, run_iters, run_final_dx, run_final_dte
+  public :: run_converged, run_iters, run_final_dx, run_final_dte, run_stop_reason
   public :: run_state_solved_in_field
   public :: secondary_ionization
 
@@ -67,6 +67,7 @@ module gas_rates_mod
   !--- and written to the rates-file header so an unconverged run is
   !--- self-documenting (the iteration can hit the cap without converging).
   logical       :: run_converged = .false.
+  character(len=96) :: run_stop_reason = 'not converged (input state; no gas iteration)'
   integer       :: run_iters     = 0
   real(kind=wp) :: run_final_dx  = 0.0_wp
   real(kind=wp) :: run_final_dte = 0.0_wp
@@ -239,7 +240,7 @@ contains
           call io_put_keyword(file,'NPHOTFUV',par%no_photons_fuv, &
              'FUV-stratum packets per pass', status)
     end if
-    call io_put_keyword(file,'CONVERGD',run_converged,'gas iteration converged',status)
+    call io_put_keyword(file,'CONVERGD',run_converged,trim(run_stop_reason),status)
     call io_put_keyword(file,'NITERDON',run_iters,   'gas iterations run',      status)
     call io_put_keyword(file,'FINALDX', run_final_dx, 'last-solve max|delta x_HII|', status)
     call io_put_keyword(file,'FINALDTE',run_final_dte,'last-solve max|delta Te|/Te', status)

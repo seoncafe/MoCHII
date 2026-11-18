@@ -639,16 +639,17 @@ therefore not itself evidence that the configured percentage was reached.
 
 \Source Write $\Delta x=x^{\rm new}-x^{\rm old}$, including the
 configured outer H/He relaxation. For positive gas volume, the measures
-are
+use $D(Q)=\max(\sum_i V_i Q_i^{\rm new},\sum_i V_i Q_i^{\rm old})$
+and are
 \begin{align}
  d_{\rm H}&=\frac{\sum_i V_i|\Delta x_{{\rm HII},i}|}
-                   {\sum_i V_i x_{{\rm HII},i}^{\rm new}},\\
+                   {D(x_{\rm HII})},\\
  d_{{\rm He},1}&=\frac{\sum_i V_i|\Delta x_{{\rm HeI},i}|}
- {\sum_i V_i(x_{{\rm HeII},i}+x_{{\rm HeIII},i})^{\rm new}},\\
+ {D(x_{\rm HeII}+x_{\rm HeIII})},\\
  d_{{\rm He},3}&=\frac{\sum_i V_i|\Delta x_{{\rm HeIII},i}|}
- {\sum_i V_i x_{{\rm HeIII},i}^{\rm new}},\qquad
+ {D(x_{\rm HeIII})},\qquad
  d_T=\frac{\sum_i V_i n_{e,i}^{\rm new}|\Delta T_i|}
- {\sum_i V_i n_{e,i}^{\rm new}T_i^{\rm new}}.
+ {D(n_e T)}.
  \label{eq:integratedsteps}
 \end{align}
 Tiny denominator floors are applied where the code requires them. The
@@ -656,23 +657,42 @@ He III measure is active only when its integrated abundance is strictly
 greater than 1\% of integrated ionized helium, rather than imposing that
 cut independently in each leaf
 (\ms{ion_balance_mod.f90}{1225--1254,\allowbreak 1340--1349};
-\ms{thermal_mod.f90}{363--373,\allowbreak 426--431}). These are normalized integrated
+\ms{thermal_mod.f90}{368--390,\allowbreak 436--447}). These are normalized integrated
 absolute steps: opposite signs do not cancel in their numerators.
 
 \Source With \code{conv\_crit='cell'}, the outer test is
 \begin{equation}
  \max_i|\Delta x_{{\rm HII},i}|<\code{gas\_tol},\qquad
- \max_i\frac{|\Delta T_i|}{T_i^{\rm old}}<\code{gas\_tol\_te}
+ \max_i\frac{|\Delta T_i|}{\max(T_i^{\rm old},T_i^{\rm new})}<\code{gas\_tol\_te}
  \quad\hbox{when temperature is solved}.
  \label{eq:cellstop}
 \end{equation}
 It does not impose a helium test or an eight-iteration window.
-With \code{conv\_crit='vol'}, each active composition measure instead
+With \code{conv\_crit='vol'} and optional floor stopping disabled
+(the default), each active composition measure instead
 passes the history test below, and temperature still requires the
 latest $d_T<\code{gas\_tol\_te}$
-(\ms{main.f90}{242,\allowbreak 501--515,\allowbreak 545--550}). The hydrogen balance residual and
+(\ms{main.f90}{267,\allowbreak 566--591,\allowbreak 621--635}). The hydrogen balance residual and
 changes in every metal stage are not extra conditions in these outer
-logical expressions (\ms{main.f90}{256--262}).
+logical expressions (\ms{main.f90}{566--591}).
+
+\Source The optional \code{conv\_stop\_on\_floor} set to true applies to
+\code{vol} in both MoCHII versions.  Each active composition measure
+and solved temperature must pass either eight-update extrapolation
+($\rho<0.95$, fitted remaining change below tolerance), or a floor test
+($\rho\ge0.95$, latest step below ten times tolerance, and $t<2.365$
+in each of three consecutive nonoverlapping eight-update signed windows).
+The temperature numerator is $\sum Vn_e^{\rm new}\Delta T_e$, divided
+by the same old/new maximum as $d_T$.  This is a statistical stop under
+a stationary-noise assumption, not proof of equilibrium or exclusion
+of drift below the finite-window resolution.  Any floor acceptance
+sets \code{CONVERGD=false}, while \code{require\_convergence} accepts
+the selected stop.  Temperature history is not saved: even a restart
+restoring composition requires eight fresh temperature updates for
+extrapolation and 24 for its floor test.  Re-refinement clears all
+histories.  The option defaults to false; the quoted comparisons retain
+their stated stopping settings.  See the convergence section of
+\path{docs/MoCHII_UserGuide.pdf} and \path{src/fixed_point_distance_mod.f90}.
 
 \Source With \code{conv\_crit='cell\_fraction'}, MoCHII applies
 Eq.~\eqref{eq:moccell} leaf by leaf with
@@ -687,7 +707,7 @@ cell without a hit. A crossing is a positive path tally $\sum\ell L$ over
 every segment scored in the leaf, of every band the gas iteration
 transports: the ionizing band and, with \code{add\_fuv}, the FUV band
 from \code{efuv\_min} to the Lyman limit
-(\ms{main.f90}{242,\allowbreak 501--526};
+(\ms{main.f90}{261--267,\allowbreak 566--591};
 \ms{ion_balance_mod.f90}{1266--1323};
 \ms{ion_score_mod.f90}{438,\allowbreak 1017--1020}). The share and the share
 of leaves without a crossing are printed every iteration whatever
@@ -699,17 +719,19 @@ still differs.
 \Source The declaration default for \code{conv\_crit} is \code{cell}.
 The composition and thermal tolerances are each 0.001; outer
 \code{ion\_relax} defaults to 1. Drift testing, strict convergence,
-and restart-history restoration default to false
-(\code{conv\_drift\_test}, \code{require\_convergence}, and
+floor stopping, and restart-history restoration default to false
+(\code{conv\_drift\_test}, \code{require\_convergence},
+\code{conv\_stop\_on\_floor}, and
 \code{restart\_iteration\_history}, respectively;
-\ms{define.f90}{937--955,\allowbreak 1030,\allowbreak 1089--1092,\allowbreak 1249--1252}). The default
+\ms{define.f90}{937--966,\allowbreak 1038,\allowbreak 1118--1122,\allowbreak 1281--1283}). The default
 \code{gas\_niter=0} means one fixed-state transfer, not an attempted
 iterative gas solve. A positive value sets the outer cap; there is no
 separate default 30-pass solve. Setup restricts the criterion name and
 relaxation range, and notes that a drift flag outside \code{vol} has no
-effect (\ms{setup.f90}{154--174,\allowbreak 680--683}).
+effect; enabling floor stopping outside \code{vol} is refused
+(\ms{setup.f90}{154--176,\allowbreak 694--697}).
 
-\Source For \code{vol}, require eight samples in every active composition
+\Source With optional floor stopping disabled, \code{vol} requires eight samples in every active composition
 history. For positive $d_k$ in that window, fit
 \begin{equation}
  b=\frac{\sum(k-\bar k)(\ln d_k-\overline{\ln d})}
@@ -740,7 +762,7 @@ $-\Delta x_{\rm HeI}$, or $\Delta x_{\rm HeIII}$ in the numerator.
 Zero signed mean gives $t_s=0$; nonzero mean with zero scatter gives an
 effectively infinite statistic. The drift test is applied in this
 fallback branch, not additionally to an available decaying-tail
-estimate (\ms{fixed_point_distance_mod.f90}{69--74,\allowbreak 119--192};
+estimate (\ms{fixed_point_distance_mod.f90}{80--89,\allowbreak 134--246};
 \ms{ion_balance_mod.f90}{1363--1373}).
 
 \Inferred Calling the second branch a Monte Carlo floor does not prove
@@ -751,7 +773,7 @@ confidence guarantee for serially correlated radiation/state iterates.
 Nor does it allow arbitrarily large stationary noise: the positive
 absolute step must still lie below \code{gas\_tol}. MoCHII does not
 increase the prescribed source count automatically in this gas loop
-(\ms{setup.f90}{70}; \ms{main.f90}{200--298}); varying diffuse counts
+(\ms{setup.f90}{70}; \ms{main.f90}{220--337}); varying diffuse counts
 are a different mechanism, given by Equation~\eqref{eq:ndif}.
 
 \subsection{Inner gas and dust solves are separate certificates}
@@ -783,7 +805,7 @@ bisections stop at $T_{\rm hi}/T_{\rm lo}-1<10^{-5}$, followed by a
 fresh ionization evaluation at the selected midpoint. There is no
 separate normalized heat/cool residual acceptance test or post-cap
 failure flag for this bisection
-(\ms{define.f90}{1249--1252}; \ms{thermal_mod.f90}{291--319}). A small
+(\ms{define.f90}{1280--1283}; \ms{thermal_mod.f90}{299--324}). A small
 outer temperature step at a clamped bound does not certify an
 unconstrained thermal root.
 
@@ -839,33 +861,35 @@ outer result in \code{CONVERGD} and its pass count. Exhausting the cap
 warns; \code{require\_convergence=.true.} aborts before normal final
 output through \code{abort\_run} (an \code{ERROR [rank 0]:} line, then
 \code{MPI\_ABORT} with exit status~1), while false allows the result with
-its failed flag (\ms{main.f90}{310--326}; \ms{utility.f90}{396--399}). Missing restart metal-rate state can force strict reconvergence, an
+its failed flag (\ms{main.f90}{341--381}; \ms{utility.f90}{396--399}). Missing restart metal-rate state can force strict reconvergence, an
 exception to the permissive fresh-run default
-(\ms{previous_state_mod.f90}{338--345}). A permitted
+(\ms{previous_state_mod.f90}{353--360}). A permitted
 gas-solving run then performs an additional final transfer, or imaging
 transfer, and another gas update. That update is still subject to
 \code{ion\_relax}; \code{FINALDX}/\code{FINALDTE} change, but the outer
 \code{CONVERGD} value is not retested. \code{STATESOL} reports an update
 in the written field, not an independently verified equilibrium residual
 or transport/state fixed point
-(\ms{main.f90}{300--370}; \ms{gas_rates_mod.f90}{242--247}). For
+(\ms{main.f90}{396--420}; \ms{gas_rates_mod.f90}{243--248}). For
 \code{gas\_niter<1}, no final gas solve is requested. This differs from
 A's direct output/exit after its last ordinary cell update.
 
 \Source Re-refinement forces MoCHII to continue and clears all
-composition histories, even if an old-grid criterion had passed. It
+composition and temperature histories, even if an old-grid criterion had passed. It
 also invalidates raw H/He field estimates and defers an iterate
 checkpoint until transfer has taken place on the new grid
-(\ms{main.f90}{264--296}; \ms{amr_refine_mod.f90}{223--228};
+(\ms{main.f90}{287--304}; \ms{amr_refine_mod.f90}{223--228};
 \ms{ion_score_mod.f90}{340--343}). Ordinary B restart can optionally
-restore histories; by default it does not. C always clears them,
+restore composition histories; by default it does not. Temperature
+history always starts empty in both modes. C always clears the
+composition histories too,
 regardless of the requested restoration flag. Initial estimator setup
 makes its first transfer entirely explicit; a later valid field permits
 absorber re-emission. Accordingly a fresh \code{vol} history requires
 eight new samples, whereas a B history restored from a checkpoint can
 already contain earlier samples
-(\ms{previous_state_mod.f90}{296--308,\allowbreak 349--377};
-\ms{main.f90}{110--114}; \ms{diffuse_mod.f90}{339--347}). This is a changed
+(\ms{previous_state_mod.f90}{311--323,\allowbreak 364--392};
+\ms{main.f90}{115--119,\allowbreak 216--223}; \ms{diffuse_mod.f90}{339--347}). This is a changed
 warm-start sequence, not a changed numerical tolerance. C adds no new
 outer acceptance test for every emission channel or the distribution
 of large history weights.
@@ -874,7 +898,7 @@ of large history weights.
 \begingroup\small
 \setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.12}
 \begin{longtable}{@{}P{.15\linewidth}P{.27\linewidth}P{.26\linewidth}P{.26\linewidth}@{}}
-\caption{Stopping-rule comparison. Defaults are assigned fresh-input
+\caption{Stopping-rule comparison with optional floor stopping disabled. Defaults are assigned fresh-input
 values, not universal recommended tolerances. Source evidence and
 exceptions are given in Section~\ref{sec:stopping}.}\label{tab:stops}\\
 \toprule Aspect & MOCASSIN (A) & v1.00 algorithm (B) & v1.10 re-emission (C)\\\midrule\endfirsthead

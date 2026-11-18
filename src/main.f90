@@ -25,14 +25,15 @@ program main
                               gamma_HI, gamma_HeI, gamma_HeII, &
                               heat_HI, heat_HeI, heat_HeII, &
                               run_converged, run_iters, run_final_dx, &
-                              run_final_dte, run_state_solved_in_field
+                              run_final_dte, run_state_solved_in_field, run_stop_reason
   use ion_balance_mod, only : gas_equilibrium_update, &
                               hydrogen_balance_residual_grid
   use thermal_mod,     only : gas_thermal_update
   use fixed_point_distance_mod, only : iteration_history, history_push, &
                                        history_reset, fixed_point_distance, &
                                        fixed_point_converged, net_drift, NWIN, &
-                                       hist_dx, hist_dhe1, hist_dhe3
+                                       hist_dx, hist_dhe1, hist_dhe3, &
+                                       floor_statistics, FLOOR_WINDOWS, FLOOR_CAP_FACTOR
   use cooling_mod,     only : cooling_setup
   use heii_cascade_mod, only : heii_cascade_transported
   use nlevel_cooling_mod, only : nlevel_cooling_report
@@ -52,7 +53,9 @@ program main
 
   type(grid_type)     :: grid
   real(kind=wp)       :: dtime, max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
-  real(kind=wp)       :: drift_vol(3)
+  real(kind=wp)       :: drift_vol(3), dte_signed
+  type(iteration_history) :: hist_te
+  logical :: stopped_on_floor = .false.
   real(kind=wp)       :: thermal_t0, thermal_dt
   real(kind=wp)       :: eps_hmax, eps_hvol
   !--- MOCASSIN's measure (ion_balance_mod::neutral_hydrogen_convergence_count):
@@ -211,6 +214,11 @@ program main
   niter = max(par%gas_niter, 1)
   call ionizing_field_setup()
   converged = .false.
+  ! No temperature dataset is added. Even with restored H/He histories,
+  ! restart begins with an empty T_e history (8 extrapolation / 24 floor steps).
+  call history_reset(hist_te)
+  if (par%conv_stop_on_floor .and. par%solve_te .and. mpar%p_rank == 0) &
+     write(*,'(a)') ' FLOOR: T_e history starts empty; it is not saved in restart files.'
   max_dx = 0.0_wp;  max_dte = 0.0_wp;  dx_vol = 0.0_wp;  dte_vol = 0.0_wp
   do iter = 1, niter
      refined_this_iteration = .false.
@@ -220,7 +228,7 @@ program main
      if (par%solve_te) then
         thermal_t0 = MPI_WTIME()
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol, xhi_counts)
+                                drift_vol, xhi_counts, dte_signed)
         thermal_dt = MPI_WTIME() - thermal_t0
         call record_change_history()
         if (mpar%p_rank == 0) then
@@ -254,6 +262,8 @@ program main
         '                  x_HI within', 100.0_wp*par%conv_xHI_tol, '%:', &
         100.0_wp*leaf_share(xhi_counts(2)), ' % of leaves,  no packet:', &
         100.0_wp*leaf_share(xhi_counts(3)), ' %'
+     if (par%conv_stop_on_floor .and. par%solve_te .and. mpar%p_rank == 0) &
+        write(*,'(a,es14.6)') '                  signed vol delta T_e = ', dte_signed
      converged = stopping_test_passed()
      !--- distance from the fixed point, H and He (fixed_point_distance_mod):
      !--- the step d, the decay ratio rho fitted over the last NWIN steps,
@@ -265,6 +275,8 @@ program main
         call report_fixed_point_distance(' He0-He+', hist_dhe1)
         if (dhe_vol(2) >= 0.0_wp) &
            call report_fixed_point_distance(' He+-He2+', hist_dhe3)
+        if (par%conv_stop_on_floor .and. par%solve_te) &
+           call report_fixed_point_distance(' T_e ', hist_te)
         if (trim(par%conv_crit) == 'vol' .and. hist_dx%n < NWIN) write(6,'(a,i0,a)') &
            '                  (the stopping test needs ', NWIN, ' iterations)'
      end if
@@ -288,10 +300,21 @@ program main
         call history_reset(hist_dx)      ! the old grid's steps say nothing
         call history_reset(hist_dhe1)    ! about the new one
         call history_reset(hist_dhe3)
+        call history_reset(hist_te)
+        stopped_on_floor = .false.
      end if
      if (converged) then
-        if (mpar%p_rank == 0) write(6,'(a,i4,a)') &
-           '     converged after ', iter, ' iterations'
+        if (mpar%p_rank == 0) then
+           if (stopped_on_floor) then
+              write(*,'(a,i0,a)') '     stopped on the Monte Carlo floor after ', iter, ' iterations'
+              call report_floor_stop('x_HII', hist_dx, par%gas_tol)
+              call report_floor_stop('He0-He+', hist_dhe1, par%gas_tol)
+              if (dhe_vol(2) >= 0.0_wp) call report_floor_stop('He+-He2+', hist_dhe3, par%gas_tol)
+              if (par%solve_te) call report_floor_stop('T_e', hist_te, par%gas_tol_te)
+           else
+              write(6,'(a,i4,a)') '     converged after ', iter, ' iterations'
+           end if
+        end if
         exit
      end if
      !--- the iterate, for a resume with par%restart_file (rank 0 writes;
@@ -303,6 +326,7 @@ program main
      if (par%rates_write_interval > 0 .and. iter < niter .and. .not. refined_this_iteration) then
         if (mod(iter, par%rates_write_interval) == 0) then
            run_converged = .false.
+           run_stop_reason = 'not converged (iteration checkpoint)'
            run_iters     = iter
            run_final_dx  = max_dx
            run_final_dte = max_dte
@@ -314,7 +338,22 @@ program main
 
   !--- record the convergence state (written to the rates header) and warn
   !--- when the iteration hit the cap without converging.
-  run_converged = converged
+  run_converged = converged .and. .not. stopped_on_floor
+  run_stop_reason = 'not converged at the iteration limit'
+  if (par%gas_niter < 1) run_stop_reason = 'not converged (input state; no gas iteration)'
+  if (converged) then
+     if (stopped_on_floor) then
+        run_stop_reason = 'stopped on the Monte Carlo floor'
+     else if (trim(par%conv_crit) == 'vol' .and. par%conv_stop_on_floor) then
+        run_stop_reason = 'converged by the extrapolation test'
+     else if (trim(par%conv_crit) == 'vol') then
+        run_stop_reason = 'converged by the requested volume tolerance test'
+     else if (trim(par%conv_crit) == 'cell') then
+        run_stop_reason = 'converged by the cell step test'
+     else
+        run_stop_reason = 'converged by the leaf fraction test'
+     end if
+  end if
   run_iters     = min(iter, niter)
   run_final_dx  = max_dx
   run_final_dte = max_dte
@@ -365,7 +404,7 @@ program main
   if (par%gas_niter >= 1) then
      if (par%solve_te) then
         call gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol, xhi_counts)
+                                drift_vol, xhi_counts, dte_signed)
      else
         call gas_equilibrium_update(max_dx, dx_vol, dhe_vol, drift_vol, &
                                     xhi_counts)
@@ -499,6 +538,8 @@ program main
 contains
 
   subroutine record_change_history()
+    if (par%conv_stop_on_floor .and. par%solve_te) &
+       call history_push(hist_te, dte_vol, dte_signed)
     call history_push(hist_dx, dx_vol, drift_vol(1))
     call history_push(hist_dhe1, dhe_vol(1), drift_vol(2))
     if (dhe_vol(2) >= 0.0_wp) then
@@ -513,7 +554,8 @@ contains
   !---   'cell'          max |delta x_HII| < gas_tol and, with solve_te,
   !---                   max |delta Te|/Te < gas_tol_te;
   !---   'vol'           composition_converged and, with solve_te,
-  !---                   the n_e-weighted vol |delta Te|/Te < gas_tol_te;
+  !---                   the n_e-weighted vol |delta Te|/Te < gas_tol_te
+  !---                   by default, or the same history test with floor stopping;
   !---   'cell_fraction' MOCASSIN's test (iteration_mod.f90, minConvergence):
   !---                   the share of leaves with gas whose x_HI changed by at
   !---                   most conv_xHI_tol (relative) is >= conv_cell_fraction;
@@ -522,13 +564,24 @@ contains
   !---                   converged; T_e, gas_tol, gas_tol_te and
   !---                   conv_drift_test do not enter it.
   logical function stopping_test_passed() result(done)
+    logical :: te_floor
+    stopped_on_floor = .false.
     select case (trim(par%conv_crit))
     case ('cell')
        done = max_dx < par%gas_tol
        if (par%solve_te) done = done .and. max_dte < par%gas_tol_te
     case ('vol')
        done = composition_converged()
-       if (par%solve_te) done = done .and. dte_vol < par%gas_tol_te
+       if (par%solve_te) then
+          if (par%conv_stop_on_floor) then
+             te_floor = .false.
+             done = fixed_point_converged(hist_te, par%gas_tol_te, &
+                       par%conv_drift_test, .true., te_floor) .and. done
+             stopped_on_floor = stopped_on_floor .or. te_floor
+          else
+             done = done .and. dte_vol < par%gas_tol_te
+          end if
+       end if
     case ('cell_fraction')
        done = leaf_share(xhi_counts(2)) >= par%conv_cell_fraction
     case default
@@ -566,12 +619,41 @@ contains
   !--- a floor read from the step ratios alone stopped a restart after 4
   !--- iterations with its H front still moving).
   logical function composition_converged() result(done)
-    done = fixed_point_converged(hist_dx, par%gas_tol, par%conv_drift_test) .and. &
-           fixed_point_converged(hist_dhe1, par%gas_tol, par%conv_drift_test)
-    if (dhe_vol(2) >= 0.0_wp) &
-       done = done .and. fixed_point_converged(hist_dhe3, par%gas_tol, &
-                                               par%conv_drift_test)
+    logical :: h_done, he_done, he3_done, h_floor, he_floor, he3_floor
+    h_done = fixed_point_converged(hist_dx, par%gas_tol, par%conv_drift_test, &
+                                  par%conv_stop_on_floor, h_floor)
+    he_done = fixed_point_converged(hist_dhe1, par%gas_tol, par%conv_drift_test, &
+                                   par%conv_stop_on_floor, he_floor)
+    done = h_done .and. he_done
+    stopped_on_floor = h_floor .or. he_floor
+    if (dhe_vol(2) >= 0.0_wp) then
+       he3_done = fixed_point_converged(hist_dhe3, par%gas_tol, par%conv_drift_test, &
+                                       par%conv_stop_on_floor, he3_floor)
+       done = done .and. he3_done
+       stopped_on_floor = stopped_on_floor .or. he3_floor
+    end if
   end function composition_converged
+
+  ! Print every active measure, including those accepted by extrapolation,
+  ! so the statistical stop and its finite accuracy cap can be audited.
+  subroutine report_floor_stop(label, h, tol)
+    character(len=*), intent(in) :: label
+    type(iteration_history), intent(in) :: h
+    real(kind=wp), intent(in) :: tol
+    real(kind=wp) :: rho, ts(FLOOR_WINDOWS)
+    logical :: accepted, by_floor
+    accepted = fixed_point_converged(h, tol, par%conv_drift_test, .true., by_floor)
+    call floor_statistics(h, rho, ts)
+    write(*,'(a,a,a,es14.5e3,a,es14.5e3,a,es14.5e3,a,l1)') &
+       ' FLOOR measure ', trim(label), ': d=', h%d(h%n), ' rho=', rho, &
+       ' cap=', FLOOR_CAP_FACTOR*tol, ' floor=', by_floor
+    if (h%n >= FLOOR_WINDOWS*NWIN) then
+       write(*,'(a,*(es14.5e3,1x))') '   t(oldest to newest)=', ts
+    else
+       write(*,'(a,i0,a,i0,a)') '   t windows unavailable (', h%n, ' < ', &
+          FLOOR_WINDOWS*NWIN, ' history entries; this measure passed extrapolation)'
+    end if
+  end subroutine report_floor_stop
 
   !--- one log line: the latest step d, the decay ratio rho, the drift still
   !--- to come e (or why e is not available), and the mean signed step s
@@ -579,10 +661,11 @@ contains
   subroutine report_fixed_point_distance(label, h)
     character(len=*),        intent(in) :: label
     type(iteration_history), intent(in) :: h
-    real(kind=wp) :: rho, dist, smean, tstat
+    real(kind=wp) :: rho, dist, smean, tstat, ts(FLOOR_WINDOWS)
     logical :: available
     character(len=40) :: tail
     call fixed_point_distance(h, rho, dist, available)
+    if (par%conv_stop_on_floor .and. .not. available) call floor_statistics(h, rho, ts)
     call net_drift(h, smean, tstat)
     write(tail,'(a,es10.2,a,f7.2)') ' s = ', smean, ' t = ', min(tstat, 9999.0_wp)
     if (available) then

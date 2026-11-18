@@ -2464,20 +2464,24 @@ single, multiple and preset sources).
 computed every iteration and \code{par\%conv\_crit} selects which gates the loop:
 the cell-max tests ($\max|\Delta x_{\rm HII}| <$ \code{gas\_tol},
 $\max|\Delta T_e|/T_e <$ \code{gas\_tol\_te}) and the
-volume-integrated tests
+volume-integrated tests.  Define
+\[
+\begin{aligned}
+ D(Q)&=\max\left(\sum VQ^{\rm old},\sum VQ^{\rm new},\mathrm{tiny}\right),\\
+ D_T&=\max\left(\sum Vn_e^{\rm old}T_e^{\rm old},
+                     \sum Vn_e^{\rm new}T_e^{\rm new},\mathrm{tiny}\right).
+\end{aligned}
+\]
+Then the normalized absolute steps are
 \begin{equation}
-  \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HII}|}
-       {\sum_{\rm leaf} V\,x_{\rm HII}} < \code{gas\_tol},
-  \qquad
-  \frac{\sum_{\rm leaf} V\,n_e\,|\Delta T_e|}
-       {\sum_{\rm leaf} V\,n_e\,T_e} < \code{gas\_tol\_te}.
+ d_x=\frac{\sum V|\Delta x_{\rm HII}|}{D(x_{\rm HII})},\qquad
+ d_T=\frac{\sum Vn_e^{\rm new}|\Delta T_e|}{D_T}.
 \end{equation}
 Each denominator is the larger of its values before and after the
 iteration, $\max(\sum V x_{{\rm HII},n-1},\,\sum V x_{{\rm HII},n})$ and its
 counterpart for $n_e T_e$, and $\max|\Delta T_e|/T_e$ divides by the larger
-$T_e$ of the cell: a measure is then at most 1 whether the ionized volume
-grows or collapses, where over the new state alone a collapse to $1/k$ of
-the volume would read $k-1$.
+$T_e$ of the cell.  This normalization treats global growth and decline
+symmetrically; it does not bound every spatial or thermal step by one.
 The volume measures fix both stall modes of the cell-max tests: front
 jitter occupies little volume (the front shell is a few thousand cells
 against $\sim$10$^5$ ionized ones, so its noise enters the $L_1$ norm
@@ -2486,20 +2490,19 @@ no-heating cells whose \code{te\_min}-pinned oscillation dominates
 $\max|\Delta T_e|$ in FUV/PDR configurations.  \code{'vol'} is the
 recommended production setting; \code{'cell'} (the historical
 behavior) remains the default so the recorded gates reproduce.
-\emph{The drift test (2026-09-25).}  Under \code{'vol'} the ionization
+\emph{The default volume test (\code{conv\_stop\_on\_floor = F}).}
+Under \code{'vol'} the ionization
 measures are no longer tested on their last step: with $d_n$ the step and
 $\rho$ its decay ratio, a measure passes when the drift still to come,
 $d_n\rho/(1-\rho)$, is below \code{gas\_tol}, or --- once the steps no
 longer fall ($\rho \ge 0.95$, the Monte Carlo floor) --- when $d_n$ is.
-\emph{Revised 2026-09-26:} $\rho$ is the least-squares slope of $\ln d$
+\emph{Revised 2026-09-26:} $\rho$ is the exponential of the least-squares slope of $\ln d$
 over the last 8 iterations and $d_n$ that fit's value at the latest one (it
 was the median of the last three ratios and the last step), no measure
 passes with fewer than 8 iterations of history, and the floor is accepted
 only when the signed step
 \begin{equation}
-  s_n = \frac{\sum_{\rm leaf} V\,(x_{{\rm HII},n} - x_{{\rm HII},n-1})}
-             {\max\left(\sum_{\rm leaf} V\,x_{{\rm HII},n-1},\,
-                         \sum_{\rm leaf} V\,x_{{\rm HII},n}\right)}
+  s_n = \frac{\sum V(x_{{\rm HII},n}-x_{{\rm HII},n-1})}{D(x_{\rm HII})}.
 \end{equation}
 (and its helium counterparts) has a mean over those 8 iterations that does
 not stand out of its scatter, $|\bar s| < 2.365\,\sigma_s/\sqrt{8}$ (Student's
@@ -2513,7 +2516,7 @@ $\ge 1$), which a slow decay under Monte Carlo noise also satisfies: a
 restart of HII40 onto the hydrogenic $\alpha_B$ ($-1.1\%$) passed after 4
 iterations with its H front still moving outward, $\rho \approx 0.97$.  Helium
 is tested alongside hydrogen, through
-$\sum V|\Delta x_{\rm HeI}|/\sum V(1-x_{\rm HeI})$ and, where He$^{2+}$ is at
+$\sum V|\Delta x_{\rm HeI}|/D(x_{\rm HeII}+x_{\rm HeIII})$ and, where He$^{2+}$ is at
 least 1\% of the ionized helium, the He$^{2+}$ counterpart
 (\code{fixed\_point\_distance\_mod}, gate \code{tests/convergence/}).  The
 step test stopped the HII40 benchmark at iteration 37: $x_{\rm HII}$ was
@@ -2528,11 +2531,40 @@ Measured on the FUV dusty Str\"omgren case at $8{\times}10^6$ packets
 measures decay smoothly to well-defined Monte Carlo floors of
 $2.7{\times}10^{-3}$ ($x$) and $6.6{\times}10^{-3}$ ($T_e$) by
 iteration $\sim$27, and running 30 further iterations leaves the
-solution unchanged ($V_{\rm ion}$ to 0.014\%) --- the floor IS
-convergence.  Set the tolerances just above the floor for the packet
+solution unchanged ($V_{\rm ion}$ to 0.014\%) in that measured interval.
+This observation does not establish physical equilibrium or exclude slower drift.  Set the tolerances just above the floor for the packet
 count in use (here $5{\times}10^{-3}$ and $10^{-2}$ would stop the
 loop at iteration $\sim$23); the floors scale as
 $1/\sqrt{N_{\rm packets}}$.
+\paragraph{Optional statistical floor stop.}
+With \code{par\%conv\_stop\_on\_floor = T} (default F), only
+\code{conv\_crit = 'vol'} changes.  Each applicable H/He measure and,
+when solved, the $n_e$-weighted temperature measure must pass either
+the eight-update decay extrapolation ($\rho<0.95$ and fitted remaining
+change below its tolerance), or a floor test: $\rho\ge0.95$, latest
+absolute step below ten times that tolerance, and signed-step
+Student statistic $t<2.365$ separately in all three consecutive,
+nonoverlapping eight-update windows of the latest 24 updates.
+Composition uses \code{gas\_tol}; temperature uses \code{gas\_tol\_te}.
+The signed temperature numerator is
+$\sum Vn_e^{\rm new}(T_e^{\rm new}-T_e^{\rm old})$, with the same
+$D_T$ denominator as the absolute step.  \code{conv\_drift\_test} does not weaken this option.
+A completely zero latest absolute-step window is the flat-floor limit
+$\rho=1$ and still requires all 24 signed updates; a mixture of zero
+and positive steps cannot pass the logarithmic-fit test.
+
+This statistical stop assumes the windows represent stationary noise.
+It cannot prove physical equilibrium or exclude drift below their
+finite resolution.  If any measure uses the floor condition,
+\code{CONVERGD} is false and text reports a Monte Carlo floor stop;
+\code{require\_convergence} nevertheless accepts that enabled stop.
+Only composition histories can be restored from existing rates files.
+Temperature history always starts empty: eight fresh updates are needed
+for its extrapolation and 24 for its floor test.  Re-refinement clears
+all histories.  No temperature-history dataset or new output keyword
+is added.  Full input usage and the statistical definitions are in the
+convergence section of \code{docs/MoCHII\_UserGuide.pdf}.
+
 \emph{MOCASSIN's test} (\code{par\%conv\_crit = 'cell\_fraction'}).
 A leaf with gas has converged in an iteration when
 \begin{equation}
@@ -2568,8 +2600,9 @@ themselves come from floating-point path sums and solved fractions, so a
 leaf near the crossing or the tolerance boundary can change its flag with
 the rank count.  The share and the share of leaves with no
 packet are printed every iteration whatever \code{par\%conv\_crit} is.
-With \code{par\%require\_convergence} (default off) a non-converged gas
-iteration prints a warning and, when the switch is set, aborts before
+With \code{par\%require\_convergence} (default off), a gas
+iteration that reaches its limit without an accepted stop prints a
+warning and, when the switch is set, aborts before
 writing output; either way the rates-file header records the convergence
 status in the keywords \code{CONVERGD}, \code{NITERDON}, \code{FINALDX},
 and \code{FINALDTE}.
