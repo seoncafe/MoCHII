@@ -2260,7 +2260,7 @@ Penning / photoionization of H               & $3.2{\times}10^{-8}$ & $4.2{\time
 undone share of triplet recombinations       & $3.1{\times}10^{-4}$ & $5.6{\times}10^{-4}$ \\
 \quad of which $\Phi_3$ / $C_3$              & 0.81 / 0.19 & 0.97 / 0.03 \\
 2$^3$S decaying by $A_{31}$                  & 0.974 & 0.977 \\
-channel 4: 19.82~eV / 584~\AA\ / 2$^1$S energy, coupled/uncoupled
+channel 4: He I packets and local 584~\AA\ destruction
                                              & 0.974 / 1.014 / 1.080 & 0.977 / 1.011 / 1.064 \\
 channel 4 total energy                       & $-1.27\%$ & $-1.20\%$ \\
 $\langle T[{\rm N_pN_e}]\rangle$ after the one update, on $-$ off
@@ -4099,7 +4099,7 @@ is the two-photon continuum instead.
 Which one wins is set by the H$^0$ and He$^0$ opacities the trapped photon
 sees, so it is a local, density- and ionization-dependent branching and not a
 constant.  MoCHII resolves it with the escape-probability closure of Wood,
-Mathis \& Ercolano (2004), Section~3.3,
+Mathis \& Ercolano (2004), Section~4.1,
 \begin{equation}
  p_{584} = \left[1 + \frac{77\,(y_{\rm He}/0.1)\,x({\rm He^0})}
                           {\sqrt{T}\;x({\rm H^0})}\right]^{-1},
@@ -4111,74 +4111,46 @@ and writes the result in neutral fractions ``assuming He/H $=0.1$'', so the
 77 carries that abundance; the factor $y_{\rm He}/0.1$ (since 2026-09-26) is
 exactly 1 for every run at He/H $=0.1$.  $p_{584}$ is
 the probability that the 584~\AA{} photon ends up ionizing hydrogen
-(\code{hei\_584\_ionizes\_H} in \code{hei\_cascade\_mod}).  Its two limits are
-the correct ones: $x({\rm H^0})\rightarrow0$ gives $p_{584}\rightarrow0$,
-nothing left to ionize and everything converted, while
-$x({\rm He^0})\rightarrow0$ gives $p_{584}\rightarrow1$, nothing left to
-convert.  K.~Wood's \code{ionize} and CMacIonize carry the same closure in
-two algebraically different arrangements, and the gate
-\code{tests/hei\_cascade/check\_hei\_584.f90} reproduces both to
-$2.2{\times}10^{-16}$ over a grid in $(T, x_{\rm H^0}, x_{\rm He^0})$.  The
-four codes in the reference trees sit at three different points on the
-question:
-\begin{center}
-\begin{tabular}{llll}
-\toprule
-code & cascade coefficients & fate of the 584~\AA{} photon & transported? \\
-\midrule
-Wood \code{ionize} & Eq.~(\ref{eq:hei-branch}), sum-normalized &
-  $p_{584}$ ionizes H; $1-p_{584}$ converts & no, on the spot \\
-CMacIonize & the same set and normalization & the same split &
-  no, on the spot \\
-MOCASSIN & singlet total $6.23{\times}10^{-14}(T_4)^{-0.827}$ &
-  all converted ($p_{584}=0$) & emissivity only \\
-MoCHII & Eq.~(\ref{eq:hei-branch}), sum-normalized &
-  Eq.~(\ref{eq:hei-584}) split & yes, full transport \\
-\bottomrule
-\end{tabular}
-\end{center}
-CMacIonize is also where MoCHII's flat-surrogate constant $0.56$ came from,
-as $2\times28\%$ of the two-photon distribution above the Lyman limit;
-Eq.~(\ref{eq:hei-branch}) and the Drake table replaced both of those
-constants above.  MOCASSIN does not resolve the competition at all: its
-comment states the assumption that all He\,\textsc{i} singlets end in
-$2^1$S, and the $6.23{\times}10^{-14}$ singlet total is that
-$p_{584}\rightarrow 0$ limit written as one coefficient.  MoCHII is now the
-only one of the four that applies the branching and then \emph{transports}
-what it produces: Wood and CMacIonize destroy the 584~\AA{} photon where it
-was created, so the deposition of whatever the branch yields is assumed
-local, while MoCHII carries the branch product through the grid with the
-same edge walk as any other packet and lets the grid decide where it is
-absorbed.
+(\code{hei\_584\_ionizes\_H} in \code{hei\_cascade\_mod}). At positive neutral
+He density its trapped-line limit is $p_{584}\to0$ when neutral H vanishes.
+The formal limit $p_{584}\to1$ as neutral He vanishes lies outside this
+closure. MoCHII tests the profile-mean He resonance optical depth across the
+emitting leaf. Below unity it lets the line escape the local resonance.
+The transported continuum propagates that escaping line with its normal
+opacities. The on-the-spot continuum omits escaping power. The direct
+2.06~$\mu$m decay without trapping is negligible in this approximation.
 
-Because $p_{584}$ depends only on the emitting leaf's own $T$, $x({\rm H^0})$
-and $x({\rm He^0})$, the split folds into the branch weights of
-\code{hei\_branch\_energies} at build time and needs no random variate of its
-own, so the nine-coordinate Sobol assignment below is unchanged:
+For the trapped branch, let $R_{1P}$ be the rate density feeding $2^1$P,
+including the collisional transfers when the metastable population is coupled.
+The rates added in the emitting leaf are
 \begin{equation}
-\begin{aligned}
- e(2^3{\rm S}) &= f_{2^3{\rm S}}\times 19.82~{\rm eV}, \\
- e(2^1{\rm P}) &= f_{2^1{\rm P}}\,p_{584}\times 21.22~{\rm eV}, \\
- e(2^1{\rm S}) &= \left[f_{2^1{\rm S}}
-                  + f_{2^1{\rm P}}(1-p_{584})\right]
-                  \times 8.9646~{\rm eV}.
-\end{aligned}
+ R_{\rm H}=p_{584}R_{1P},\qquad
+ \Delta\Gamma_{\rm HI}=\frac{R_{\rm H}}{n({\rm H^0})},\qquad
+ \Delta h_{\rm HI}=\Delta\Gamma_{\rm HI}(21.22-13.598)\,{\rm eV}.
 \end{equation}
-A converted decay radiates the two-photon pair, $20.62$~eV, and not
-$21.22$~eV; the difference of $0.60$~eV leaves as $2^1{\rm P}\rightarrow
-2^1{\rm S}$ at 2.06~$\mu$m, which is non-ionizing and therefore correctly
-absent from the band.  The He\,\textsc{i} two-photon nebular continuum
-takes its $2^1$S decays from the same exits
-(\code{hei\_twophoton\_decays}, Section~\ref{sec:twophoton}), which closes an
-internal inconsistency: \code{nebcont\_mod} had inherited MOCASSIN's singlet
-total, the $p_{584}\rightarrow0$ limit, while \code{diffuse\_mod} transported
-every $2^1$P decay as a 21.22-eV packet, the $p_{584}\rightarrow1$ limit, so
-the two modules disagreed about the fate of the same decay.  The domain of
-validity is recorded at the code site: this is an escape-probability closure
-for a 584~\AA{} line assumed optically thick, static and dust free.  Dust
-competes for the trapped photon and is not in the closure --- a small
-correction at the Lexington dust content, not a small one at higher
-dust-to-gas ratios.
+The rates are zero when there is no neutral hydrogen. They use the frozen gas
+state of the pass and are added to the reduced H coefficients before those
+coefficients are published to the gas solve and written with the other rates.
+The local line power $R_{\rm H} V\times21.22$~eV splits into the H ionization
+potential and photoelectron heat. It is accounted for separately from
+transported emission, absorption, and escape. The transported channel contains
+the 19.82~eV triplet line and the ionizing $2^1$S two-photon spectrum. It can
+also carry 584~\AA\ emission from a thin resonance. Its packet count and
+Sobol coordinates refer to transported power.
+
+The complementary trapped share feeds $2^1$S, yielding the two-photon pair
+(20.62~eV in total) and a 2.06~$\mu$m photon (0.60~eV). The same leaf
+branching supplies the written He\,\textsc{i} two-photon continuum
+(Section~\ref{sec:twophoton}). Wood's \code{ionize} and CMacIonize
+also deposit the H branch locally in the trapped limit. The historical
+MOCASSIN implementation sends all singlets to $2^1$S.
+
+The closure assumes optically thick, static He\,\textsc{i} with H$^0$
+present and negligible dust destruction. The optical-depth test excludes
+the transparent limit. Optical depth above unity alone does not ensure
+that the resonance-diffusion distance is small compared with gradients in
+the emitting gas. Detailed resonance transfer would also include frequency
+redistribution, velocities, and competition from dust.
 
 \paragraph{Effect of the 584~\AA{} split.}  Weighted by the $2^1$P emission
 rate on the converged grids, $\left<p_{584}\right> = 0.117$ at HII40 and
@@ -4244,7 +4216,7 @@ volume from the population $n_3$ of Eq.~(\ref{eq:heimeta}):
           + n_en_3q_{31s}\,f_{1S}/(f_{1S}+f_{1P}),\\
  N_{1P} &= n_en_{\rm HeII}\alpha_Bf_{1P} + n_en_3q_{31b}
           + n_en_3q_{31s}\,f_{1P}/(f_{1S}+f_{1P}),\\
- e(2^1{\rm P}) &= N_{1P}\,p_{584}\times21.22~{\rm eV},\qquad
+ e_{\mathrm{local}}(2^1{\rm P}) &= N_{1P}\,p_{584}\times21.22~{\rm eV},\qquad
  e(2^1{\rm S}) = [N_{1S} + N_{1P}(1-p_{584})]\times8.9646~{\rm eV}.
 \end{aligned}
 \end{equation}
@@ -5373,7 +5345,7 @@ unit volume
  r_{2q} = n_e\,n({\rm He^+})\,\alpha_B({\rm He\,II})
    \left[f_{1S} + \left(1-p_{584}\right) f_{1P}\right],
 \end{equation}
-with the branch fractions and the local $p_{584}$ of the transported channel
+with the branch fractions and the same $p_{584}$ in the trapped limit
 and the on-the-spot sources, and, with the 2$^3$S population coupled, the
 collisional transfers into the singlets added (Section~\ref{sec:heimeta}),
 so the written continuum, the transported field and the on-the-spot sources

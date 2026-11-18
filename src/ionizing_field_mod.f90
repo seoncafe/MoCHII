@@ -190,6 +190,12 @@ contains
     call jtally_ion_reduce()
     call ion_score_reduce()
     call gas_rates_compute()
+    if (trim(par%recombination_continuum) == 'transported' .and. par%hei_diffuse) then
+       block
+         use diffuse_mod, only : report_hei_584_absorption
+         call report_hei_584_absorption()
+       end block
+    end if
     call ion_score_report_energy_closure()
     !--- every pass, the imaging pass included: with par%ion_peel it is the
     !--- last pass, and its ledger is the one written to the rates file.

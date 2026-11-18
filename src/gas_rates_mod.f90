@@ -8,7 +8,8 @@ module gas_rates_mod
 !     H_i     = Int 4 pi J_nu sigma_i(E) dnu (1 - E_th,i/E)    [erg/s]
 ! per particle of species i (i = HI, HeI, HeII) are accumulated continuously
 ! rather than reconstructed from a binned tally.  This module normalizes those
-! reduced path sums by the leaf volume and hands them to the solver.  The
+! reduced path sums by the leaf volume, adds the trapped 584 A H rates,
+! and hands the combined coefficients to the solver.  The
 ! ionizing-band tally jt_ion_sum(inu, il) supplies diagnostics and dust physics,
 ! and is written out
 ! with par%jnu_output as J_nu = jt_ion_sum / (4 pi V_leaf dnu distance2cm^2)
@@ -83,6 +84,7 @@ contains
 
   !=========================================================================
   subroutine gas_rates_compute()
+    use diffuse_mod, only : diffuse_apply_hei_584
     implicit none
     integer  :: nleaf
 
@@ -121,6 +123,7 @@ contains
       call ion_score_apply_hhe(gamma_HI, gamma_HeI, gamma_HeII, &
                                heat_HI, heat_HeI, heat_HeII)
     end block
+    call diffuse_apply_hei_584(gamma_HI, heat_HI)
     call publish_shared(rate_owner)
     if (par%ion_add_dust) then
        block

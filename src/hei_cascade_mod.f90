@@ -52,7 +52,7 @@ module hei_cascade_mod
   implicit none
   private
 
-  public :: hei_cascade_setup, hei_branch_fractions, hei_584_ionizes_H
+  public :: hei_cascade_setup, hei_branch_fractions, hei_584_ionizes_H, hei_584_line_is_thin
 
   !--- BSS99 Table 1 + JSM, as tabulated in Wood's ionize/probset.f:
   !--- prefactor [cm^3 s^-1] and exponent of (T/1e4).
@@ -102,7 +102,7 @@ contains
   !
   !     p = [1 + 77 (y_He/0.1) x(He^0)/(sqrt(T) x(H^0))]^-1 ,
   !
-  ! from Wood, Mathis & Ercolano (2004) sect. 3.3, eq. 17 (read).  Their
+  ! from Wood, Mathis & Ercolano (2004) Section 4.1, Eq. (17).  Their
   ! derivation competes n(H0) a(H0) against n(He0) a(He0)/914 (914
   ! scatterings per conversion); written in the neutral FRACTIONS it is
   ! 1 + 0.77 f(He0)/[f(H0) (T/1e4 K)^1/2], and they state "He/H = 0.1 in
@@ -124,13 +124,31 @@ contains
   ! shift the line out of resonance are likewise absent.
   !
   ! Limits: x(H^0) -> 0 gives p -> 0, nothing left to ionize, everything
-  ! converts; x(He^0) -> 0 gives p -> 1, nothing left to convert.
+  ! converts. With H^0 present x(He^0) -> 0 formally gives p -> 1,
+  ! outside the trapped-line limit. Check the leaf optical depth first.
   !=========================================================================
   real(kind=wp) function hei_584_ionizes_H(T, xHI, xHeI) result(p)
     real(kind=wp), intent(in) :: T, xHI, xHeI
+    p = 0.0_wp
+    if (xHI <= 0.0_wp) return
     p = 1.0_wp/(1.0_wp + 77.0_wp*(par%abund_He/0.1_wp)/sqrt(max(T, tinest)) &
                 *max(xHeI, 0.0_wp)/max(xHI, tinest))
   end function hei_584_ionizes_H
+
+  ! Wood et al. Eq. (17) already fixes the profile-mean He cross section:
+  ! sigma_He/914 divided by sigma_H = 0.77/sqrt(T/1e4)/0.1.
+  ! In a leaf thin to resonance scattering the photon can leave the
+  ! resonance locally. The continuum can still absorb it along its path.
+  ! tau >= 1 only excludes the transparent limit: the trapped closure
+  ! requires many scatterings and a destruction displacement small beside
+  ! the gas gradients. This local estimate lacks wings, motion and dust.
+  logical function hei_584_line_is_thin(T, nHeI, width_cm) result(thin)
+    real(kind=wp), intent(in) :: T, nHeI, width_cm
+    real(kind=wp), parameter :: SIGMA_584 = 914.0_wp * 1.9e-18_wp * 0.77_wp / 0.1_wp
+
+    thin = nHeI*width_cm*SIGMA_584 < sqrt(max(T, tinest)/1.0e4_wp)
+  end function hei_584_line_is_thin
+
 
   !=========================================================================
   ! Report the fractions and how much of alpha_B(He II) the three fits
