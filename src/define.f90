@@ -942,8 +942,16 @@ private :: c_expm1, c_log1p
      !--- 2026-09-26, and the tests/ and results/ inputs that relied on it pin
      !--- .true.).
      logical            :: conv_drift_test = .false.
+     !--- Only with conv_crit='vol': retain decaying extrapolation, or stop
+     !--- on a Monte Carlo floor below 10 times the tolerance after three
+     !--- disjoint eight-step windows without detectable signed drift.
+     !--- Applies also to T_e when solved. Default false preserves the old
+     !--- tests. Valid for representative stationary noise; weak/correlated
+     !--- drift or canceling local changes can escape the finite-window test.
+     logical            :: conv_stop_on_floor = .false.
      !--- abort (nonzero exit) if the gas iteration hits gas_niter without
-     !--- converging; default off -> warn but still write the output.
+     !--- acceptance by the selected stopping test (including an opted-in
+     !--- floor stop); default off -> warn but still write the output.
      logical            :: require_convergence = .false.
      !--- leaf-by-leaf line emissivities -> '<base>_emis' (HDF5/FITS):
      !--- emis_h (SH95 H I lines) and emis_<el>_<stage> blocks
@@ -972,7 +980,7 @@ private :: c_expm1, c_log1p
      !--- hot-cell bias where n_HI and free electrons coexist).  Off by
      !--- default -> no change to the SH95 recombination H lines.
      logical            :: h_coll_effects = .false.
-     !--- He I 2^3S (triplet metastable) output: on the converged state,
+     !--- He I 2^3S (triplet metastable) output: on the written state,
      !--- write the 2^3S population of hei_metastable_mod leaf by leaf to
      !--- '<base>_heimeta' (n_2s3, Phi_3, alpha_3, Gamma_3, n_e, T_e).  Phi_3 (2^3S
      !--- photoionization, threshold 4.78 eV) uses the transported band;

@@ -198,9 +198,10 @@ contains
   !   dx_vol  = sum V |delta x_HII| / sum V x_HII
   !   dte_vol = sum V n_e |delta T_e| / sum V n_e T_e
   ! Each denominator is the larger of its value at the old and at the new
-  ! state (ion_balance_mod::larger_state_sum), so dx_vol is at most 1 also
-  ! when the ionized volume collapses; max_dte likewise divides by the
-  ! larger of the old and the new T_e of the cell.
+  ! state (ion_balance_mod::larger_state_sum), so dx_vol stays finite, at
+  ! most 2 (sum V |delta x| <= sum V x_old + sum V x_new), also when the
+  ! ionized volume collapses; max_dte divides by the larger of the old and
+  ! the new T_e of the cell and is at most 1.
   ! The n_e weight removes the cells with vanishing heating (deep PDR /
   ! vacuum), whose te_min-pinned oscillation dominates max_dte.
   ! dhe_vol(2), the same measure for helium, which enters the 'vol'
@@ -215,7 +216,9 @@ contains
   ! xhi_counts(3): MOCASSIN's measure, leaves with gas, leaves whose x_HI
   ! converged, leaves no packet crossed
   ! (ion_balance_mod::neutral_hydrogen_convergence_count; T_e does not
-  ! enter it).
+  ! enter it). Optional dte_signed uses sum V ne_new (Tnew-Told) divided
+  ! by max(sum V ne_new Tnew, sum V ne_old Told, tinest), the unchanged
+  ! absolute-step denominator. It is reduced before current-state publication.
   !
   ! Two validity counts are printed when not empty: the leaves whose thermal
   ! balance has no root below par%te_max (heating wins there, T is held at
@@ -232,7 +235,7 @@ contains
   ! heii_cascade_mod::heii_cascade_transported), and 'transported' carries
   ! every recombination photon.
   subroutine gas_thermal_update(max_dx, max_dte, dx_vol, dte_vol, dhe_vol, &
-                                drift_vol, xhi_counts)
+                                drift_vol, xhi_counts, dte_signed)
     use mpi
     use octree_mod, only : leaf_half
     use photo_xsec, only : sigma_HI, sigma_HeI
@@ -240,10 +243,12 @@ contains
     real(kind=wp), intent(out) :: max_dx, max_dte, dx_vol, dte_vol, dhe_vol(2)
     real(kind=wp), intent(out) :: drift_vol(3)
     integer,       intent(out) :: xhi_counts(3)
+    real(kind=wp), intent(out), optional :: dte_signed
 
     real(kind=wp) :: nH, ne, xHI, xHeI, xHeII, xHeIII, w, vol, xHII
     real(kind=wp) :: max_local(2), max_host(2)
     real(kind=wp) :: sum_local(12), sum_host(12), metrics(9)
+    real(kind=wp) :: signed_te_local, signed_te_host, signed_te_step
     real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
     real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(5), flag_host(5)
     real(kind=wp) :: gterm(3), grain_local(4), grain_host(4)
@@ -258,6 +263,8 @@ contains
 
     max_local = 0.0_wp
     sum_local = 0.0_wp
+    signed_te_local = 0.0_wp
+    signed_te_step = 0.0_wp
     grain_local = 0.0_wp
     xhi_counts = 0
     !--- the grain terms read T_d and the band field of this iteration
@@ -378,6 +385,10 @@ contains
        sum_local(10) = sum_local(10) + vol*(gas_xHeI(il) - xHeI_new(il))
        sum_local(11) = sum_local(11) + vol*(xHeIII_new(il) - gas_xHeIII(il))
        sum_local(12) = sum_local(12) + vol*gas_ne(il)*gas_Te(il)
+       ! Same new-electron-density weight as the absolute temperature step;
+       ! both temperatures still belong to distinct old/new state buffers.
+       if (par%conv_stop_on_floor) signed_te_local = signed_te_local &
+          + vol*ne_new(il)*(te_new(il) - gas_Te(il))
     end do
 
     call MPI_ALLREDUCE(max_local, max_host, 2, MPI_DOUBLE_PRECISION, MPI_MAX, &
@@ -427,6 +438,12 @@ contains
     max_dte = max_host(2)
     dx_vol  = sum_host(1) / max(larger_state_sum(sum_host(2), sum_host(9)), tinest)
     dte_vol = sum_host(3) / max(sum_host(4), sum_host(12), tinest)
+    ! Keep the original 12-value reduction untouched when the option is off.
+    if (par%conv_stop_on_floor) then
+       call MPI_ALLREDUCE(signed_te_local, signed_te_host, 1, MPI_DOUBLE_PRECISION, &
+                          MPI_SUM, MPI_COMM_WORLD, ierr)
+       signed_te_step = signed_te_host / max(sum_host(4), sum_host(12), tinest)
+    end if
     dhe_vol = helium_change_measures(sum_host(5:8), sum_host(10:11))
     drift_vol = signed_change_measures(sum_host([9, 2, 10, 6, 11, 8]), dhe_vol)
 
@@ -445,6 +462,9 @@ contains
     dte_vol = metrics(4)
     dhe_vol = metrics(5:6)
     drift_vol = metrics(7:9)
+    if (par%conv_stop_on_floor) &
+       call MPI_BCAST(signed_te_step, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    if (present(dte_signed)) dte_signed = signed_te_step
   end subroutine gas_thermal_update
 
 end module thermal_mod

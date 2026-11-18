@@ -180,7 +180,7 @@ module hei_metastable_mod
 contains
 
   !=========================================================================
-  ! Public entry: evaluate n_3 leaf by leaf on the converged state and write
+  ! Public entry: evaluate n_3 leaf by leaf on the written state and write
   ! '<base>_heimeta'.
   !=========================================================================
   subroutine hei_metastable_run()

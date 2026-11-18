@@ -4,8 +4,9 @@ module fixed_point_distance_mod
 ! the history of two volume-integrated measures of one fraction (e.g. x_HII)
 ! over successive iterations:
 !
-!   d_n = sum V |x_n - x_(n-1)| / sum V x_n     the step (L1), and
-!   s_n = sum V (x_n - x_(n-1)) / sum V x_n     its signed counterpart, the
+!   D_n = max(sum V x_n, sum V x_(n-1), tinest),
+!   d_n = sum V |x_n - x_(n-1)| / D_n          the step (L1), and
+!   s_n = sum V (x_n - x_(n-1)) / D_n          its signed counterpart, the
 !                                               net change of the ionized
 !                                               volume.
 !
@@ -15,7 +16,8 @@ module fixed_point_distance_mod
 !
 !     e_n = d_n rho / (1 - rho).
 !
-! rho is the least-squares slope of ln d over the last NWIN iterations, and
+! rho is the exponential of the least-squares slope of ln d over the last
+! NWIN iterations, and
 ! d_n in e_n is that fit's value at the latest iteration, so one noisy step
 ! moves neither.  When the steps do not fall (rho >= RHO_FLOOR) the linear
 ! model does not apply -- early on because the iteration is still in its
@@ -43,6 +45,12 @@ module fixed_point_distance_mod
 ! par%conv_drift_test (default .false. since 2026-10-18); without it the
 ! floor passes on d_n < tol alone.
 !
+! Optional stop_on_floor keeps the decaying extrapolation branch, but
+! replaces the floor branch by rho >= RHO_FLOOR, d_n < 10 tol, and t <
+! T_DRIFT in EACH of three consecutive disjoint NWIN windows (24 steps).
+! It overrides drift_test on that branch. The caller labels this statistical
+! stop separately from convergence at the requested tolerance.
+!
 ! Why (2026-09-26).  The test of 2026-09-25 took rho as the median of the
 ! last three ratios d_k/d_(k-1) and read the floor from any of those ratios
 ! reaching 1.  A slow decay under Monte Carlo noise satisfies both: the m9
@@ -65,6 +73,7 @@ module fixed_point_distance_mod
   public :: iteration_history, history_push, fixed_point_distance, &
             fixed_point_converged, history_reset, net_drift, NWIN
   public :: history_set, hist_dx, hist_dhe1, hist_dhe3
+  public :: floor_statistics, FLOOR_WINDOWS, FLOOR_CAP_FACTOR
 
   integer, parameter :: NHIST = 512
   !--- iterations in the window of the fits and of the drift test
@@ -72,6 +81,12 @@ module fixed_point_distance_mod
   real(kind=wp), parameter :: RHO_FLOOR = 0.95_wp
   !--- Student's t, two-sided 95%, NWIN - 1 = 7 degrees of freedom
   real(kind=wp), parameter :: T_DRIFT = 2.365_wp
+  ! Three disjoint windows demand repeated absence of detectable drift,
+  ! rather than relying on a single favorable eight-iteration fluctuation.
+  integer, parameter :: FLOOR_WINDOWS = 3
+  ! A statistical floor stop is useful only near the requested accuracy.
+  ! Refuse floors ten times the tolerance or larger; increase packets there.
+  real(kind=wp), parameter :: FLOOR_CAP_FACTOR = 10.0_wp
 
   type :: iteration_history
      integer :: n = 0
@@ -116,19 +131,28 @@ contains
   end subroutine history_reset
 
   !--- the stopping test of the header, for one measure
-  logical function fixed_point_converged(h, tol, drift_test) result(done)
+  logical function fixed_point_converged(h, tol, drift_test, stop_on_floor, on_floor) result(done)
     type(iteration_history), intent(in) :: h
     real(kind=wp),           intent(in) :: tol
-    logical, optional,       intent(in) :: drift_test
-    real(kind=wp) :: rho, dist, smean, tstat
-    logical :: available, test_drift
+    logical, optional,       intent(in) :: drift_test, stop_on_floor
+    logical, optional,       intent(out) :: on_floor
+    real(kind=wp) :: rho, dist, smean, tstat, window_t(FLOOR_WINDOWS)
+    logical :: available, test_drift, accept_floor
     test_drift = .true.
     if (present(drift_test)) test_drift = drift_test
     done = .false.
+    if (present(on_floor)) on_floor = .false.
+    accept_floor = .false.
+    if (present(stop_on_floor)) accept_floor = stop_on_floor
     if (h%n < NWIN) return
     call fixed_point_distance(h, rho, dist, available)
     if (available) then
        done = dist < tol
+    else if (accept_floor) then
+       call floor_statistics(h, rho, window_t)
+       done = h%n >= FLOOR_WINDOWS*NWIN .and. rho >= RHO_FLOOR &
+              .and. h%d(h%n) < FLOOR_CAP_FACTOR*tol .and. all(window_t < T_DRIFT)
+       if (present(on_floor)) on_floor = done
     else
        done = h%d(h%n) < tol
        if (test_drift) then
@@ -137,6 +161,36 @@ contains
        end if
     end if
   end function fixed_point_converged
+
+  ! Latest fit and three disjoint signed windows, oldest to newest.
+  ! The windows end at the current iteration; they shift together on the
+  ! next call, without counting overlapping windows as independent evidence.
+  ! Failure to detect drift is not proof of equilibrium: weak or correlated
+  ! drift can escape this finite test, or opposite local changes can cancel.
+  subroutine floor_statistics(h, rho, window_t)
+    type(iteration_history), intent(in) :: h
+    real(kind=wp), intent(out) :: rho, window_t(FLOOR_WINDOWS)
+    type(iteration_history) :: window
+    real(kind=wp) :: dist, smean
+    logical :: available
+    integer :: j, first, last
+    call fixed_point_distance(h, rho, dist, available)
+    ! log(0) has no fitted slope. A completely zero step window is the
+    ! stationary flat-floor limit, rho=1; it still needs all 24 signed steps.
+    ! A mixture of zero and positive steps keeps its invalid fit and fails.
+    if (h%n >= NWIN) then
+       if (all(h%d(h%n-NWIN+1:h%n) == 0.0_wp)) rho = 1.0_wp
+    end if
+    window_t = huge(1.0_wp)
+    if (h%n < FLOOR_WINDOWS*NWIN) return
+    do j = 1, FLOOR_WINDOWS
+       first = h%n - FLOOR_WINDOWS*NWIN + (j-1)*NWIN + 1
+       last = first + NWIN - 1
+       window%n = NWIN
+       window%s(1:NWIN) = h%s(first:last)
+       call net_drift(window, smean, window_t(j))
+    end do
+  end subroutine floor_statistics
 
   !--- rho and e_n of the latest entry, from the fit of ln d over the last
   !--- min(n, NWIN) entries.  available = .false. with fewer than four

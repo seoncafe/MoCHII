@@ -506,21 +506,22 @@ parameter & default & meaning \\
 \endlastfoot
 \code{xHI\_init} & 1.0 & initial $x_{\rm HI} = n_{\rm HI}/n_{\rm H}$ of every leaf, in [0, 1] (an \code{xHI} file column wins), $x_{\rm HII} = 1 - x_{\rm HI}$; an ionized start (1e-3) converges much faster than neutral \\
 \code{xHeI\_init}, \code{xHeII\_init} & 1, 0 & initial He fractions $x_{\rm HeI}$, $x_{\rm HeII}$ ($\ge 0$, sum $\le 1$; $x_{\rm HeIII} = 1 - $ \code{xHeI\_init} $-$ \code{xHeII\_init}).  With \code{conv\_crit = 'cell\_fraction'} and both left out of the input, helium starts as hydrogen does in each leaf, $x_{\rm HeI} = x_{\rm HI}$, $x_{\rm HeII} = 1 - x_{\rm HI}$, $x_{\rm HeIII} = 0$ (MOCASSIN's start); either one given is the start of both (the other at its default).  The metal stages of that mode are in \S\ref{sec:convergence} \\
-\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values, and so does gas whose previous leaf was vacuum: stored \code{n\_H} $= 0$, or, in a file without \code{n\_H} (written before 2026-11-13), stored $n_e = 0$ with ionized fractions, a state gas cannot have (the log names the rule; such a file cannot tell a vacuum leaf of a fully neutral initial state from neutral gas).  Stored gas with $n_e \le 0$ (an unsolved neutral state) is restored with the ion-balance floor $n_e = 10^{-30}\,n_{\rm H}$.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The convergence history restarts, so the \code{'vol'} test needs eight iterations, unless \code{restart\_iteration\_history} is set.  Gate \code{tests/restart/} \\
+\code{restart\_file} & '' & start from a previous run's \code{<base>\_rates} file (HDF5 or FITS): $x_{\rm HI}$, $x_{\rm HII}$, $x_{\rm HeI}$, $x_{\rm HeII}$, $x_{\rm HeIII}$, $T_e$, $n_e$, the metal photoionization rates and (with \code{hei\_metastable\_coupling}) $\Phi_3$, leaf by leaf, matched by position (each new leaf takes the previous leaf containing its center), so the grid may differ; leaves with no previous counterpart keep the \code{*\_init} values, and so does gas whose previous leaf was vacuum: stored \code{n\_H} $= 0$, or, in a file without \code{n\_H} (written before 2026-11-13), stored $n_e = 0$ with ionized fractions, a state gas cannot have (the log names the rule; such a file cannot tell a vacuum leaf of a fully neutral initial state from neutral gas).  Stored gas with $n_e \le 0$ (an unsolved neutral state) is restored with the ion-balance floor $n_e = 10^{-30}\,n_{\rm H}$.  A file written before 2026-09-26 carries no \code{x\_HII} and no \code{x\_HeIII}; they are then taken as $1 - x_{\rm HI}$ and $\max(0, 1 - x_{\rm HeI} - x_{\rm HeII})$ with a printed note each (beyond the ionization fronts those values have lost their digits until the first cell solve recovers them).  The composition histories restart unless \code{restart\_iteration\_history} is set.  The temperature history always starts empty: the optional temperature extrapolation needs eight fresh updates, and the temperature floor test needs 24 (\S\ref{sec:convergence}).  Gate \code{tests/restart/} \\
 \code{rates\_write\_interval} & 0 & every this many gas iterations, write the iterate to \code{<base>\_rates\_iterate} (the \code{\_rates} layout; header \code{CONVERGD} F, \code{STATESOL} F, \code{NITERDON} the iteration, \code{FINALDX}/\code{FINALDTE} that iteration's step), replacing the previous one through a temporary file and a rename, so a run stopped at any point can be resumed with \code{restart\_file}.  Not written at the last iteration or after convergence, where \code{\_rates} follows.  0 or negative = never \\
-\code{restart\_iteration\_history} & F & with \code{restart\_file}: also take the stopping-test histories the file carries (\code{ConvHist\_*}), so a resumed run of the same physics continues the 8-iteration window of the \code{'vol'} test instead of refilling it.  Off by default: after a change of binary, physics or packet count the old steps say nothing about the new iteration.  A file without the histories (written before 2026-10-13) is refused; without \code{restart\_file} the input is refused \\
+\code{restart\_iteration\_history} & F & with \code{restart\_file}: also take the stopping-test histories the file carries (\code{ConvHist\_*}), so a resumed run of the same physics continues the composition histories instead of refilling them.  The temperature history is not saved or restored and always needs fresh updates.  Off by default: after a change of binary, physics or packet count the old steps say nothing about the new iteration.  A file without the histories (written before 2026-10-13) is refused; without \code{restart\_file} the input is refused \\
 \code{abund\_He} & 0.1 & $n_{\rm He}/n_{\rm H}$ \\
 \code{gas\_niter} & 0 & iterations (0 = a single rates-only pass); the limit of the gas iteration whatever \code{conv\_crit} is \\
 \code{gas\_tol} & 1e-3 & convergence tolerance on the ionization state with \code{conv\_crit} 'cell' or 'vol' (with 'vol' it bounds the drift still to come in $x_{\rm HII}$ and helium); not used by 'cell\_fraction' \\
 \code{conv\_crit} & 'cell' & convergence measure: 'cell' (cell maxima; stalls at the front-cell noise floor), 'vol' (volume-integrated $L_1$; noise-robust, recommended) or 'cell\_fraction' (MOCASSIN's test: the share of leaves whose $x_{\rm HI}$ has converged); any other value is refused.  See \S\ref{sec:convergence} \\
 \code{conv\_xHI\_tol} & 0.05 & the largest relative change $|\Delta x_{\rm HI}|/x_{\rm HI}$ over one iteration of a leaf counted as converged (MOCASSIN's \code{convLimit}); $\ge 0$.  The share of such leaves is printed every iteration whatever \code{conv\_crit} is \\
 \code{conv\_cell\_fraction} & 0.95 & with \code{conv\_crit = 'cell\_fraction'}: the iteration stops when at least this share of the leaves with gas has converged (MOCASSIN's \code{minConvergence}/100); in $(0, 1]$ \\
-\code{conv\_drift\_test} & F & with \code{conv\_crit = 'vol'}: T requires a measure on its Monte Carlo floor to show also no net drift of the ionized volume over the last 8 iterations (Student's $t < 2.365$, \S\ref{sec:convergence}); F (the default since 2026-10-18; T from 2026-09-26, which the tests/ and results/ inputs that relied on it pin) accepts the floor on $d <$ \code{gas\_tol} alone, which does not see a front still moving slowly under the noise.  Read only with \code{'vol'} (a note says so when T is set otherwise) \\
+\code{conv\_drift\_test} & F & with \code{conv\_crit = 'vol'} and \code{conv\_stop\_on\_floor = F}: require a signed composition-step Student statistic $t < 2.365$ over the last eight iterations when accepting the noise floor.  F tests only the last absolute step against \code{gas\_tol}.  Does not control the optional floor stop \\
+\code{conv\_stop\_on\_floor} & F & with \code{conv\_crit = 'vol'}: permit a statistical floor stop using three consecutive, nonoverlapping eight-iteration windows and a last-step cap of ten times the relevant tolerance.  Also apply the decay or floor test to $T_e$ when \code{solve\_te = T}.  T is rejected in other convergence modes; the default F remains valid.  See \S\ref{sec:convergence} \\
 \code{ion\_relax} & 1.0 & under-relaxation on $x$ ($<1$ damps front oscillation) \\
 \code{recombination\_continuum} & 'transported' & what becomes of the ground-state recombination photons (the H\,\textsc{i}, He\,\textsc{i}, He\,\textsc{ii} ground continua): 'on\_the\_spot' absorbed where they are made, the balance uses $\alpha_B$ (Baker \& Menzel case B for the continuum; the He\,\textsc{i} photons that can ionize H are given to H by \code{hei\_on\_the\_spot}, the He\,\textsc{ii} ones to H and He$^0$ by \code{heii\_on\_the\_spot}); 'transported' (default since 2026-09-26; 'on\_the\_spot' before, which the tests/ and results/ inputs that relied on it pin) emitted as diffuse-field packets and followed through the grid, the balance uses $\alpha_A$, and the He\,\textsc{i}/He\,\textsc{iii} cascade channels follow it when the input leaves them out; the metal ground free--bound continua (channel 6) and the free--free emission inside the band (channel 7, H$^+$, He$^+$, He$^{2+}$ and, with \code{metal\_freefree}, the metal ions) are transported with it and are not transported in the other two modes (their photons leave); 'escaping' lost from an optically thin nebula, $\alpha_A$ and no packets.  Replaces \code{case\_ab} and \code{diffuse\_field} (2026-09-25) \\
 \code{lyman\_lines} & 'on\_the\_spot' & what becomes of the Lyman-\emph{line} photons ($n\ge3\to1$) of H\,\textsc{i} and He\,\textsc{ii}, which selects the SH95 recombination-line tables: 'on\_the\_spot' (default) absorbed by the ground state and re-emitted as Balmer lines and Ly$\alpha$ (case B; the photon is converted, not turned into heat), 'escaping' optically thin Lyman lines (case A).  The same case sets the H\,\textsc{i} and He\,\textsc{ii} two-photon continua (the $2s$ share of one Storey \& Hummer cascade) and the He\,\textsc{iii} cascade of the diffuse field (\code{heii\_diffuse}: in case A every He\,\textsc{ii} Lyman line to the series limit is emitted, which needs \code{eion\_max} $\ge54.36$~eV).  Independent of \code{recombination\_continuum}: a nebula whose continuum is transported still traps its Lyman lines.  Replaces \code{line\_case} \\
 \code{recomb\_model} & 'detailed\_balance' & H/He recombination coefficients: 'detailed\_balance' (default; 'badnell\_milne' until 2026-09-26, now refused) takes the ground-level $\alpha_1$ from the Milne relation on the transport cross sections, $\alpha_A$ of He\,\textsc{i} from the Badnell RR$+$DR fit ($\alpha_B = \alpha_A - \alpha_1$), and $\alpha_B$ of H\,\textsc{i} and He\,\textsc{ii} from a zero-density Storey \& Hummer $nl$-resolved cascade ($\alpha_A = \alpha_B + \alpha_1$; since 2026-09-26, 1.1\% below the earlier Badnell-minus-Milne value for H at $10^4$~K); 'hui\_gnedin' the Hui \& Gnedin (1997) fits, kept to reproduce earlier gates \\
-\code{require\_convergence} & F & if the gas iteration has not converged at \code{gas\_niter}, print a warning; when T, abort before writing output.  The convergence status is recorded in the \code{\_rates} header either way (\code{CONVERGD}, \code{NITERDON}, \code{FINALDX}, \code{FINALDTE}) \\
+\code{require\_convergence} & F & if no accepted stopping condition is met by \code{gas\_niter}, print a warning; when T, abort before writing output.  A statistical floor stop is accepted when enabled, while \code{CONVERGD} is false when any measure uses the floor test.  See \S\ref{sec:convergence} \\
 \end{longtable}
 }
 
@@ -536,7 +537,8 @@ measure} against a tolerance:
 \item coupled (\code{solve\_te}): converged when the $x_{\rm HII}$ change $<$
   \code{gas\_tol} \emph{and} the $T_e$ change $<$ \code{gas\_tol\_te}.
 \end{itemize}
-These two hold for \code{conv\_crit} 'cell' and 'vol'; 'cell\_fraction'
+These describe the ordinary tests; the optional statistical floor stop
+below is a separate accepted stopping condition.  They hold for \code{conv\_crit} 'cell' and 'vol'; 'cell\_fraction'
 counts converged leaves instead and has no $T_e$ test (below).
 
 \paragraph{Three measures (\code{conv\_crit}).}  All are computed every sweep;
@@ -548,44 +550,39 @@ counts converged leaves instead and has no $T_e$ test (below).
   \emph{stalls} at the front-cell noise floor ($\sim$2--4$\times10^{-2}$ at
   $4\times10^7$ packets) and a smaller \code{gas\_tol} is unreachable.  This is
   the historical default (kept so the recorded gates reproduce).
-\item[\code{'vol'}] the volume-integrated $L_1$ changes
+\item[\code{'vol'}] the volume-integrated $L_1$ changes. Define
   \[
-    d_x = \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HII}|}{\sum_{\rm leaf} V\,x_{\rm HII}},
-    \quad
-    d_{\rm He} = \frac{\sum_{\rm leaf} V\,|\Delta x_{\rm HeI}|}{\sum_{\rm leaf} V\,(1-x_{\rm HeI})},
-    \quad
-    \frac{\sum_{\rm leaf} V\,n_e\,|\Delta T_e|}{\sum_{\rm leaf} V\,n_e\,T_e}
-    < \code{gas\_tol\_te},
+  \begin{aligned}
+    D(Q)&=\max\left(\sum VQ^{\rm old},\sum VQ^{\rm new},\mathrm{tiny}\right),\\
+    D_T&=\max\left(\sum Vn_e^{\rm old}T_e^{\rm old},
+                       \sum Vn_e^{\rm new}T_e^{\rm new},\mathrm{tiny}\right).
+  \end{aligned}
+  \]
+  Then
+  \[
+  \begin{aligned}
+    d_x&=\frac{\sum V|\Delta x_{\rm HII}|}{D(x_{\rm HII})},\qquad
+    d_{\rm He}=\frac{\sum V|\Delta x_{\rm HeI}|}{D(x_{\rm HeII}+x_{\rm HeIII})},\\
+    d_T&=\frac{\sum Vn_e^{\rm new}|\Delta T_e|}{D_T}.
+  \end{aligned}
   \]
   with the He$^+\to$He$^{2+}$ measure added where He$^{2+}$ is at least 1\%
   of the ionized helium.  Each denominator is the larger of its values
-  before and after the iteration, so a measure is at most 1 whether the
-  ionized volume grows or collapses (the cell maximum
-  $\max|\Delta T_e|/T_e$ likewise divides by the larger $T_e$).  The ionization measures are tested on the
-  \emph{drift still to come}, not on the last step: with $\rho$ the decay
-  ratio fitted to $\ln d$ over the last 8 iterations, a measure passes when
-  $d\,\rho/(1-\rho) <$ \code{gas\_tol}, or, once it has stopped decaying
-  ($\rho \ge 0.95$), when $d <$ \code{gas\_tol} \emph{and} the signed
-  change of the ionized volume, $s = \sum V\,\Delta x_{\rm HII}/\sum V
-  x_{\rm HII}$ (and its helium counterparts), has no mean over those 8
-  iterations that stands out of its scatter (Student's $t < 2.365$;
-  with \code{conv\_drift\_test = T}; the default F, since 2026-10-18, drops this condition).  That
-  second condition is what tells the Monte Carlo floor, where the leaves
-  fluctuate about their fixed point and their changes cancel in $s$, from a
-  front still moving slowly, which changes the ionized volume with one sign
-  every iteration.  No measure passes before 8 iterations, restarts
-  included.  A test on the step
-  alone stops too early when $\rho$ is close to 1: on the HII40 benchmark
-  ($\rho \approx 0.86$) it stopped at iteration 37 with the He\,\textsc{i}
-  front 0.17~pc short of where it settles.  Of the 80-iteration run that
-  showed this (2026-09-25), the drift test of that day stopped at 58, at the
-  80-iteration answer; the window test described here has not been replayed
-  on it, since that run's log carries no signed change $s$.  Reading the floor off the step alone was not
-  enough either: a restart whose front was still moving slowly
-  ($\rho \approx 0.97$) passed after 4 iterations because one noisy step
-  ratio reached 1.  Each iteration prints $d$, $\rho$, the drift, the mean
-  signed step $s$ and its $t$ for $x_{\rm HII}$ and helium
-  (\code{fixed point} lines).
+  before and after the iteration.  This normalization treats global growth
+  and decline symmetrically; it does not bound every spatial or thermal
+  step by one (the cell maximum
+  $\max|\Delta T_e|/T_e$ likewise divides by the larger $T_e$).  With \code{conv\_stop\_on\_floor = F}, the ionization measures are tested on the
+  \emph{estimated change still to come}: fit $\ln d$ over the last eight
+  iterations, giving the decay ratio $\rho$ and fitted latest step
+  $d_{\rm fit}$.  A decaying measure ($\rho < 0.95$) passes when
+  $d_{\rm fit}\rho/(1-\rho) <$ \code{gas\_tol}.  Otherwise its last
+  step must be below \code{gas\_tol}; \code{conv\_drift\_test = T}
+  additionally requires the signed volume-change statistic $t < 2.365$
+  over those eight iterations.  The default F omits that extra test.
+  The composition histories must contain at least eight updates, while
+  $T_e$ is tested directly on its latest weighted absolute step.
+  Each iteration reports the composition step, fitted decay ratio,
+  estimated remaining change, mean signed step and Student statistic.
   Front jitter occupies little volume (a few thousand front cells against
   $\sim$$10^5$ ionized ones), so it enters the norm suppressed by that ratio;
   the $n_e$ weight drops the vacuum and \code{te\_min}-pinned no-heating cells
@@ -611,7 +608,7 @@ counts converged leaves instead and has no $T_e$ test (below).
   \code{efuv\_min} to 13.6~eV, whose packets cross the neutral gas that
   ionizing packets do not reach.  A leaf with $x^{\rm old}_{\rm HI}=0$ has converged when
   $x^{\rm new}_{\rm HI}=0$ too and a packet crossed it.  $T_e$,
-  \code{gas\_tol}, \code{gas\_tol\_te} and \code{conv\_drift\_test} do not
+  \code{gas\_tol}, \code{gas\_tol\_te}, \code{conv\_drift\_test} and \code{conv\_stop\_on\_floor} do not
   enter the test; \code{gas\_niter} is still the limit.  The analytic edge
   walk scores every leaf a direct flight crosses until $e^{-\tau}$
   underflows, whereas a MOCASSIN packet stops where it is absorbed; and
@@ -655,27 +652,69 @@ counts converged leaves instead and has no $T_e$ test (below).
   lines).
 \end{description}
 
-\paragraph{The Monte Carlo floor.}  Even the volume measures do not reach
-zero: they floor at a Monte Carlo level set by the packet count, scaling as
-$1/\sqrt{N_{\rm packets}}$ ($\sim$3$\times10^{-3}$ in $x$ and
-$\sim$7$\times10^{-3}$ in $T_e$ at $8\times10^6$ packets, measured on the
-FUV dusty Str\"omgren case).  Reaching the floor
-\emph{is} convergence --- iterating further leaves the solution unchanged.  So
-\textbf{set \code{gas\_tol}/\code{gas\_tol\_te} just above the floor for the
-packet count in use}: a tolerance below the floor can never be met and the
-loop runs to \code{gas\_niter} and warns.  Rules of thumb
-(\code{conv\_crit='vol'}): $\sim$$5\times10^{-3}/10^{-2}$ at $\sim$$10^7$
-packets, loosened to $\sim$$10^{-2}/2\times10^{-2}$ at $\sim$$10^6$ (the
-reduced-count \code{examples/} use the looser values for this reason).
+\paragraph{Optional statistical floor stop.}
+For example, enable the option in the input namelist with
+\begin{verbatim}
+ par%conv_crit = 'vol'
+ par%conv_stop_on_floor = T
+\end{verbatim}
+The option defaults to F, preserving the ordinary tests above.  With T,
+test every applicable measure: H\,\textsc{ii}, He$^0$--He$^+$,
+He$^+$--He$^{2+}$ when its abundance condition above is met, and $T_e$
+when \code{solve\_te = T}.  Each measure must satisfy either
+\begin{enumerate}\itemsep2pt
+\item decay: at least eight updates, $\rho < 0.95$, and
+  $d_{\rm fit}\rho/(1-\rho) < \epsilon$; or
+\item statistical floor: $\rho \ge 0.95$, the latest absolute step
+  $d < 10\epsilon$, and $t < 2.365$ separately in each of the three
+  consecutive, nonoverlapping eight-update windows of the latest
+  24 updates.
+\end{enumerate}
+Here $\epsilon$ is \code{gas\_tol} for composition and
+\code{gas\_tol\_te} for temperature.  If all latest eight absolute steps are exactly zero, they are treated
+as a flat floor ($\rho=1$), and still require 24 updates and all three
+signed-window tests.  A window mixing zero and positive absolute steps
+has no valid logarithmic fit and cannot pass the optional test.  The window count (three) and step multiplier
+(ten) are fixed constants, not input parameters.
+The signed temperature step uses the same new-state $n_e$ weights in its numerator and the same
+denominator as the absolute temperature step:
+\[
+ s_T = \frac{\sum V n_e^{\rm new}(T_e^{\rm new}-T_e^{\rm old})}{D_T}.
+\]
+For each window $t=|\overline{s}|/(\sigma_s/\sqrt{8})$, with the
+sample standard deviation $\sigma_s$; a zero mean gives $t=0$, and a
+nonzero constant signed step fails.  The signed steps cancel opposing
+changes, whereas the absolute steps retain their magnitude.
+\code{conv\_drift\_test} does not weaken this optional test.
 
-\paragraph{When it does not converge.}  Hitting \code{gas\_niter} without
-meeting the test is not fatal: the state is still written and a warning is
-printed on rank~0 (with the cell maxima, or with \code{'cell\_fraction'} the
-share of converged leaves against \code{conv\_cell\_fraction}).  Set \code{require\_convergence = T} to abort before the
-output instead.  Either way the \code{\_rates} header records the outcome in
-\code{CONVERGD} (0/1), \code{NITERDON} (sweeps run), \code{FINALDX}, and
-\code{FINALDTE}.  The derivation and the gate measurements are in
-\code{docs/MoCHII\_physics.pdf}.
+A statistical floor stop assumes these windows represent stationary
+Monte Carlo fluctuations.  It is not proof of physical equilibrium and
+cannot exclude drift below the finite-window resolution.  The packet
+count controls the Monte Carlo floor, approximately as
+$N_{\rm packets}^{-1/2}$; tolerances should reflect that uncertainty.
+When every measure passes the decay test, the log and line-output
+header report convergence by extrapolation.  If any measure uses the
+floor test, they report a Monte Carlo floor stop and \code{CONVERGD}
+is false.
+
+Composition histories may be restored with
+\code{restart\_iteration\_history}; temperature history is never saved,
+so even such a restart needs eight fresh temperature updates for
+extrapolation and 24 for the temperature floor test.  Re-refinement
+clears all stopping histories.  Neither \code{'cell'} nor
+\code{'cell\_fraction'} uses the optional floor stop.
+
+\paragraph{When no stopping condition passes.}
+Hitting \code{gas\_niter} without an accepted stop prints a warning
+and writes the state, unless \code{require\_convergence = T} aborts
+before output.  An enabled statistical floor stop satisfies
+\code{require\_convergence}.  The existing \code{CONVERGD} header
+is true when every enabled measure passes by extrapolation; it is false
+when any measure uses the optional floor test.  With the option off,
+the existing convergence tests retain their meaning.  \code{NITERDON} records the sweeps run;
+\code{FINALDX} and \code{FINALDTE} remain the final cell maxima,
+not the fitted remaining changes.  The stop reason appears in text;
+no additional rates dataset or header keyword is introduced.
 
 \subsection{Thermal balance and metals}
 {\small
@@ -893,7 +932,7 @@ extension & content \\
 \code{Heat\_HI/HeI/HeII} & photoheating per particle [erg/s] \\
 \code{Heat\_dust} & grain heating [erg\,s$^{-1}$\,cm$^{-3}$] (when \code{ion\_add\_dust}) \\
 \code{T\_dust} & equilibrium mixture dust temperature [K] (when \code{ion\_add\_dust}) \\
-\code{x\_HI}, \code{x\_HII}, \code{x\_HeI}, \code{x\_HeII}, \code{x\_HeIII}, \code{n\_e}, \code{T\_e} & converged state; every fraction to its own relative precision ($x_{\rm HI} + x_{\rm HII} = 1$ and $x_{\rm HeI} + x_{\rm HeII} + x_{\rm HeIII} = 1$ to rounding): beyond the ionization fronts $x_{\rm HII}$ and $x_{\rm HeIII}$ fall to $10^{-10}$--$10^{-100}$, where $1 - x_{\rm HI}$ and $1 - x_{\rm HeI} - x_{\rm HeII}$ keep none of their digits, so read \code{x\_HII} and \code{x\_HeIII} \\
+\code{x\_HI}, \code{x\_HII}, \code{x\_HeI}, \code{x\_HeII}, \code{x\_HeIII}, \code{n\_e}, \code{T\_e} & written state (check the convergence status); every fraction to its own relative precision ($x_{\rm HI} + x_{\rm HII} = 1$ and $x_{\rm HeI} + x_{\rm HeII} + x_{\rm HeIII} = 1$ to rounding): beyond the ionization fronts $x_{\rm HII}$ and $x_{\rm HeIII}$ fall to $10^{-10}$--$10^{-100}$, where $1 - x_{\rm HI}$ and $1 - x_{\rm HeI} - x_{\rm HeII}$ keep none of their digits, so read \code{x\_HII} and \code{x\_HeIII} \\
 \code{n\_H} & hydrogen number density [cm$^{-3}$], 0 in vacuum (the same block as \code{n\_H} in \code{<base>\_emis}); \code{restart\_file} takes a stored leaf as vacuum if and only if its \code{n\_H} is 0 (written since 2026-11-13) \\
 \code{ConvHist\_*} & stopping-test histories \code{ConvHist\_x\_HII}, \code{ConvHist\_HeI\_HeII}, \code{ConvHist\_HeII\_HeIII} (iteration, 2): the step $d$ and the signed step $s$ of each gas iteration, oldest first, for $x_{\rm HII}$, He$^0$--He$^+$ and He$^+$--He$^{2+}$ (the last only while He$^{2+}$ is present); \code{restart\_iteration\_history} reads them back \\
 \code{Phi\_HeI\_23S} & He\,\textsc{i} $2^3S$ photoionization rate $\Phi_3$ [s$^{-1}$] of the last transport pass (with \code{hei\_metastable\_coupling}); \code{restart\_file} reads it back, since the $2^3S$ split of the He\,\textsc{i} diffuse channel of the first pass is solved with it (a file without it restarts with $\Phi_3 = 0$, with a note) \\
@@ -907,7 +946,7 @@ extension & content \\
 \end{tabular}
 \end{center}
 The file header also carries the convergence record of the gas
-iteration: \code{CONVERGD} (did it converge), \code{NITERDON}
+iteration: \code{CONVERGD} (ordinary convergence; false for a statistical floor stop alone), \code{NITERDON}
 (iterations run), \code{FINALDX} and \code{FINALDTE} (the cell maxima
 $\max|\Delta x_{\rm HII}|$ and $\max|\Delta T_e|/T_e$ of the final
 solve, or of the last iteration in a \code{\_rates\_iterate} file, whichever \code{conv\_crit} is set), and \code{STATESOL} (the

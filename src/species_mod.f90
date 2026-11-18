@@ -2022,7 +2022,7 @@ contains
   end function metal_freefree
 
   !=========================================================================
-  ! Converged stage fractions of every element -> output file blocks.
+  ! Stage fractions of every element in the written field -> output file blocks.
   !=========================================================================
   subroutine species_write(file, status)
     use iofile_mod

@@ -1,11 +1,11 @@
 module lines_mod
 !---------------------------------------------------------------------------
-! MoCHII: collisional line luminosities on the converged state.
+! MoCHII: collisional line luminosities on the written state.
 !
 ! For every registry (element, stage) with an n-level file
 ! data/atomic/excitation/<par%metal_excitation_model>/nlevel_<el>_<stage>.txt
 ! (H I: data/atomic/nlevel_h_1.txt), solve the n-level atom per leaf at
-! the converged (T_e, n_e), multiply by the cascade stage density, and
+! the written (T_e, n_e), multiply by the cascade stage density, and
 ! integrate over the grid:  L_line = sum_leaf j_line n_ion V  [erg/s].
 ! H beta (the normalization of every L/L(Hbeta) column) and the other H I
 ! and He II recombination lines from the Storey & Hummer (1995) tables
@@ -45,6 +45,7 @@ contains
   subroutine lines_write()
     use utility, only : get_base_name, abort_run
     use iofile_mod
+    use gas_rates_mod, only : run_stop_reason
     implicit none
     type(nlevel_atom_type) :: atom
     type(io_file_type) :: efile
@@ -129,7 +130,7 @@ contains
 
       outname = trim(get_base_name(par%out_file))//'_lines.txt'
       open(newunit=unit, file=trim(outname), status='replace')
-      write(unit,'(a)') '# MoCHII line luminosities (converged state)'
+      write(unit,'(a)') '# MoCHII line luminosities ('//trim(run_stop_reason)//')'
       write(unit,'(a)') '# H I recombination lines: Storey & Hummer (1995) '// &
          'case '//trim(lyman_line_case())//', bilinear (log T, log ne) '// &
          'interpolation'
