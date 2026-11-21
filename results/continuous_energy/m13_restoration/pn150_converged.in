@@ -76,5 +76,6 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_pn150.py needs UV and infrared metal blends.
  par%out_file        = 'pn150_converged.h5'
 /

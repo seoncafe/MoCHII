@@ -12,6 +12,8 @@ for r in open('../pn150_p27_nodrift_lines.txt'):
     if el in ('h', 'he', 'hc') or wl <= 0 or wl >= 911.75: continue
     n = L*wl*1e-8/h_c
     tot += n; by[(el, st)] += n; top.append((n, el, st, wl))
+if not top:
+    raise SystemExit("No metal lines below 911.75 A in pn150_p27_nodrift_lines.txt; use line_selection='all'.")
 print(f'metal lines below 911.75 A: {tot:.4e} photons/s = {tot/Q:.4f} Q(H)')
 for (el, st), n in by.most_common(10): print(f'  {el:3s} {st}: {n/Q:.4f} Q')
 for n, el, st, wl in sorted(top, reverse=True)[:10]: print(f'  {el:3s} {st} {wl:9.2f} A  {n/Q:.4f} Q')

@@ -200,6 +200,16 @@ contains
     real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped, energy_lost
     integer :: status, il, inu, ic, nleaf
 
+    ! The final transport of a rates-only run does not refresh the metal
+    ! opacity. Publish the fractions for its newly written rates here.
+    ! A solved state or iteration checkpoint has already refreshed them.
+    if (par%use_metals .and. par%gas_niter < 1) then
+       block
+         use species_mod, only : species_stage_cache_refresh
+         call species_stage_cache_refresh()
+       end block
+    end if
+
     if (mpar%p_rank /= 0) return
     nleaf = amr_grid%nleaf
 
@@ -440,7 +450,7 @@ contains
     if (par%use_metals) then
        block
          use species_mod, only : species_write
-         call species_write(file, status)
+         call species_write(file, status, include_rates=.true.)
        end block
     end if
 

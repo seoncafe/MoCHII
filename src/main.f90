@@ -87,6 +87,10 @@ program main
   !--- species also BEFORE opacity: with par%ion_metal_abs the opacity fill
   !--- consumes the registry stage fractions.
   if (par%use_metals) call species_setup(amr_grid%nleaf)
+  block
+    use lines_mod, only : line_selection_setup
+    call line_selection_setup()
+  end block
   !--- gather active metal photoionization thresholds for the aligned band.
   nmetal = 0
   if (par%use_metals) then
@@ -382,9 +386,9 @@ program main
   !--- transport of that state (the imaging pass when par%ion_peel is set,
   !--- which rebuilds the same tally with observer peeling) gives the field
   !--- that is written; the gas is then solved once more in that field, so
-  !--- the written state -- H, He, T_e, n_e and the metal stages that
-  !--- species_write re-derives from the written rates -- is the solution
-  !--- of the written field.  Without the final solve the written H/He
+  !--- H, He, T_e, n_e and the metal stage fractions are consistent with
+  !--- the written rates. The opacity refresh publishes the metal stages
+  !--- for output. Without the final solve the written H/He
   !--- state and n_e belonged to the iterate before the written field while
   !--- the written metal stages belonged to the written field, and before
   !--- convergence the two disagreed (2026-10-12: channel 6 from the written

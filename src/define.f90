@@ -956,10 +956,12 @@ private :: c_expm1, c_log1p
      !--- [erg/s/cm^3; sum(emis*V) = L_line, rows match <base>_lines.txt]
      !--- with wl_* wavelength arrays, plus the state needed for maps
      !--- (LeafXYZ, n_H, n_e, T_e, x_HI/HII/HeI/HeII, x_<el>_stages).
-     !--- The metal blocks carry the lines with L >= emis_line_floor
-     !--- L(Hbeta) only (a full CHIANTI atom has up to ~1e4 lines); the
-     !--- text table carries every line.
+     !--- Diagnostic lines (including the H/He recombination tables), all lines,
+     !--- or a list of transitions read from 'file:<path>'. Only 'all' applies
+     !--- emis_line_floor to metal maps. Explicit selections map every requested
+     !--- line when emis_output is enabled, regardless of its luminosity.
      logical            :: emis_output  = .false.
+     character(len=PATH_LEN) :: line_selection = 'diagnostic'
      real(kind=wp)      :: emis_line_floor = 1.0e-4_wp
      !--- write the ionizing-band mean intensity J_nu(nu, leaf) into
      !--- '<base>_rates' (dataset J_nu).  The binned tally behind it,

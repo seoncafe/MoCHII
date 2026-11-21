@@ -1804,12 +1804,12 @@ for their ground-term fine structure in a sibling file
 \code{hcoll\_<el>\_<stage>.txt}, read by \code{nlevel\_load} and solved in
 the same statistical equilibrium as the electron rates (\S\ref{sec:pdr}).
 
-Table~\ref{tab:metallines_phys} lists the principal collisional
-diagnostic lines each metal block produces (the complete transition list
-for each ion is written to \code{<base>\_lines.txt}); only active-registry
-ions with an \code{nlevel\_<el>\_<stage>} file get a block.  The
-H\,\textsc{i}/He\,\textsc{ii}/He\,\textsc{i} recombination-line set is
-documented separately in the recombination-lines subsection below.
+Table~\ref{tab:metallines_phys} lists principal collisional transitions
+available for selection. The complete transition list is written with
+\code{line\_selection = 'all'}. The default \code{'diagnostic'} uses
+selected transitions from N, O, and S. The User Guide lists the selections
+and file syntax. The H\,\textsc{i}/He\,\textsc{ii}/He\,\textsc{i}
+recombination-line set is documented below.
 
 \begingroup\small
 \begin{longtable}{@{}l p{10.8cm}@{}}
@@ -1863,10 +1863,9 @@ ion (block) & principal lines \\
 \end{longtable}
 \endgroup
 \noindent\small The table is the principal-line list of the first version.
-With \code{'chianti'} every stage with an atom has a block (every line of
-the atom is in \code{<base>\_lines.txt}; \code{\_emis} carries those with
-$L \ge$ \code{emis\_line\_floor}$\,L({\rm H}\beta)$, default $10^{-4}$),
-including Ar\,\textsc{ii} and Ca\,\textsc{iv} from Stout.  Stages without
+With \code{'chianti'} and \code{line\_selection = 'all'} every active
+stage with an atom enters the text table, including Ar\,\textsc{ii} and
+Ca\,\textsc{iv} from Stout. Stages without
 an atom, tracked in the ionization balance only: C\,\textsc{vii};
 Ar\,\textsc{i}, Cl\,\textsc{i}, Ca\,\textsc{i}, Fe\,\textsc{i} (no
 electron-impact data in CHIANTI 11.0.2 or Stout); Cl\,\textsc{v},
@@ -2913,13 +2912,24 @@ Eq.~(\ref{eq:rates}).  The ionization state is \emph{re-solved}
 $\mathcal{H}$ and $\mathcal{C}$ depend on the fractions
 $(x_{\rm HI}, x_{\rm HeI}, x_{\rm HeII}, n_e)$, which themselves depend on
 $T$.  The ionization response is mild, so $\mathcal{N}(T)$ is monotone
-through its root and bisection on $\log T_e$ in
-[\code{te\_min}, \code{te\_max}] is safe: each step takes the geometric
-midpoint $\sqrt{T_{\rm lo}T_{\rm hi}}$ (up to 60 steps, stopping at
-$T_{\rm hi}/T_{\rm lo}-1 < 10^{-5}$), and if cooling already wins at
-\code{te\_min} ($\mathcal{N}\le 0$) the leaf is pinned to \code{te\_min}
-while if heating still wins at \code{te\_max} it is pinned to
-\code{te\_max}.  With \code{charge\_exchange\_heating} (on by default)
+through its root. Starting from the leaf's present temperature $T_0$ (its
+previous solution, or \code{te\_start} or the restart temperature in the
+first gas update, projected into [\code{te\_min}, \code{te\_max}], with
+$0 < \code{te\_min} < \code{te\_max}$ required when \code{solve\_te} is
+enabled), the solver steps in $\ln T_e$ in the direction that
+$\mathcal{N}(T)$ drives $T_e$ (steps of $0.05$ doubling up to $0.1$) to
+the first sign change, then refines the bracket with Brent's method
+(Brent 1973, ch.\ 4; inverse quadratic or secant steps with a bisection
+safeguard) to $10^{-5}$ in $\ln T_e$ (up to 100 iterations). If no sign
+change is reached before \code{te\_min} or \code{te\_max}, $T_e$ is
+clamped exactly at that bound. In thermally bistable leaves this keeps
+the branch the gas is on (two crossings closer than about $10\%$ in $T$
+can be stepped over, and the starting temperature selects the branch in
+the first gas update). Warnings count leaves where Brent's refinement
+reached its 100-step cap and trial temperatures or final states whose
+ionization fixed point did not meet its tests in 200 iterations; a
+nonfinite $\mathcal{N}(T)$ stops the run with the leaf index. With
+\code{charge\_exchange\_heating} (on by default)
 $\mathcal{H}$ also carries the kinetic energy the charge-exchange reactions
 release or take up (Eq.~\ref{eq:cxheat}, \S\ref{sec:cx}), evaluated with the
 fractions of the same trial $T$.
@@ -3037,7 +3047,7 @@ The solved $T_e$ is written directly (only the ionization fractions carry
 the under-relaxation \code{par\%ion\_relax}), $n_e$ is rebuilt from the
 new state --- including the trace-metal electrons under
 \code{par\%metal\_ne} --- and, as in the ionization-only path, the
-bisections are divided over all MPI ranks and their results summed into
+thermal root finds are divided over all MPI ranks and their results summed into
 every node's shared state (the iteration loop above),
 so the convergence metrics are the same on every rank.  The loop is gated by the $T_e$
 convergence measures defined above (\code{gas\_tol\_te}, cell-max or
@@ -5149,10 +5159,23 @@ with hydrogen rates, $n_{\rm ion}$ times
 \code{nlevel\_hcoll\_cooling} $= P(e + {\rm H}) - P(e)$ --- the radiated
 power of the atom with both colliders minus that with electrons alone ---
 to the electron share taken from the $(T, n_e)$ table
-(\code{species\_mod::metal\_cooling\_H}).  So every ground-term transition
-is included ([O\,\textsc{i}] 63/145\,$\mu$m, [C\,\textsc{i}]
-609/370\,$\mu$m, [C\,\textsc{ii}] 158\,$\mu$m), and the cooling and the
-emitted line are one physics.
+(\code{species\_mod::metal\_cooling\_H}).  The increment is solved on the
+levels whose excitation energy lies below $15\,kT_{\rm lev}$, plus every
+level a hydrogen rate reaches (\code{hcoll\_thermal\_levels}), rather than
+on the full atom: at $T_{\rm lev}$ a level above the cut has a Boltzmann
+factor below $e^{-15}\approx 3{\times}10^{-7}$ against the ground state.
+The level set must not change while the thermal balance varies $T$ in one
+root find, otherwise the cooling would jump at each threshold; it is
+therefore fixed for the leaf at $T_{\rm lev} = 2\,T$ of the leaf at the
+start of the gas update.  Against the full atoms, on 6,000 states of the
+clumpy H\,\textsc{ii} model each evaluated at 0.8, 1 and 1.25 times its
+temperature (800--11{,}300~K, CHIANTI C\,\textsc{i}, C\,\textsc{ii},
+O\,\textsc{i}), the largest relative change in $dP$ is
+$7.4{\times}10^{-8}$, at about 15 times lower cost.  So every ground-term
+transition is included ([O\,\textsc{i}] 63/145\,$\mu$m, [C\,\textsc{i}]
+609/370\,$\mu$m, [C\,\textsc{ii}] 158\,$\mu$m), and the cooling increment
+and the emitted line, which is solved on the full atom, agree to that
+precision.
 
 The term it replaces was physically wrong in four ways.  Only
 [C\,\textsc{ii}] 158 and [O\,\textsc{i}] 63\,$\mu$m had it, as a separate
@@ -5206,22 +5229,32 @@ every level of the 125 atoms of both models balances to $\le
 \code{tests/ion\_stages/check\_source\_excitation\_atom.f90};
 de-excitation $q_{ul} = 8.629{\times}10^{-6}\,\Upsilon/(g_u\sqrt T)$,
 excitation by detailed balance).  \code{lines\_mod} integrates
-$L_{\rm line} = \sum_{\rm leaf} j\,n_{\rm ion}V$ on the converged state
-and normalizes to the SH95 H$\beta$; the metal lines are divided over
+$L_{\rm line} = \sum_{\rm leaf} j\,n_{\rm ion}V$ on the written state
+and normalizes to the SH95 H$\beta$ when its luminosity is nonzero
+(when $L({\rm H}\beta)=0$, the ratio column is written as \code{NaN} and
+absolute luminosities stay); the metal lines are divided over
 all ranks by leaf.  The Fortran chain was verified
 against the Python reference solver on an identical state: 26 line
 luminosities agree to four significant digits.
-With \code{par\%emis\_output} the same solve also writes the
-emissivities leaf by leaf (\code{\_emis}: an
-\code{emis\_<el>\_<stage>} block for each ion, carrying the lines with
-$L \ge$ \code{par\%emis\_line\_floor}$\,L({\rm H}\beta)$ (default
-$10^{-4}$; a full CHIANTI atom has up to $\sim10^4$ lines, all in the text
-table), and \code{emis\_h} for
-the SH95 lines, [erg\,s$^{-1}$\,cm$^{-3}$] with
-$\sum {\rm emis}\cdot V = L_{\rm line}$, verified to $4{\times}10^{-4}$\%),
-together with \code{n\_H}, $n_e$, $T_e$, the H/He fractions, and the
-metal stage fractions --- a self-contained input for line maps and
-position--velocity work.
+Only ions carrying selected lines are solved in the final line
+synthesis, each with its full atom (the thermal balance always uses the
+full atoms); each needed ion is solved once in each emitting leaf (one
+solve gives both the integrated luminosities and the maps), reusing the
+electron-collision and radiative rate matrices while consecutive leaves
+share the same $T_e$, with metal stage fractions taken from the
+published state.  With \code{par\%emis\_output}, cached upper-level
+populations are gathered to rank~0 with one contribution for each leaf
+for the maps after the luminosity sum. Explicit and built-in
+diagnostic selections map every requested transition regardless of
+\code{par\%emis\_line\_floor}. With \code{'all'},
+metal maps carry positive lines at or above
+\code{par\%emis\_line\_floor}$\,L({\rm H}\beta)$ (default $10^{-4}$)
+when H$\beta$ is nonzero (none when $L({\rm H}\beta)=0$). The file records
+the leaf emissivities in erg\,s$^{-1}$\,cm$^{-3}$, so
+$\sum {\rm emis}\cdot V = L_{\rm line}$, along with the geometry, gas
+state, and metal stage fractions (\code{Gamma\_*\_stages} and
+\code{Heat\_*\_stages} are in \code{\_rates}). The line selection leaves
+the thermal balance unchanged.
 
 \subsection{The two-photon continuum: emission, cooling, transport}
 \label{sec:twophoton}

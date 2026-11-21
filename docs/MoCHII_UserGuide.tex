@@ -729,10 +729,10 @@ parameter & default & meaning \\
 \endhead
 \bottomrule
 \endlastfoot
-\code{solve\_te} & T & bisection on $\log T_e$ in [\code{te\_min}, \code{te\_max}] coupled with the ionization (heating = cooling in every leaf); F holds every leaf at \code{te\_fixed} \\
+\code{solve\_te} & T & from the leaf's present $T_e$ (\code{te\_start} or restart $T_e$ in the first pass), step in $\ln T_e$ ($0.05$ doubling to $0.1$) to the first sign change of heating minus cooling, then Brent's method to $10^{-5}$ in $\ln T_e$ (clamped at \code{te\_min} or \code{te\_max} if no sign change is reached), coupled with the ionization; F holds every leaf at \code{te\_fixed} \\
 \code{te\_fixed} & 1e4 & with \code{solve\_te = F} only: $T_e$ [K], $> 0$, held in every leaf for the whole run; a restart's stored $T_e$ is replaced by it (a \code{RESTART:} line says so).  Given with \code{solve\_te = T}, the input is refused \\
 \code{te\_start} & 1e4 & with \code{solve\_te = T} only: the starting $T_e$ [K], $> 0$, of every leaf (the $T_e$ of the first pass) unless a restart file supplies one.  Given with \code{solve\_te = F}, the input is refused \\
-\code{te\_min}, \code{te\_max} & 1e3, 5e4 & bisection bracket [K] \\
+\code{te\_min}, \code{te\_max} & 1e3, 5e4 & temperature root-find bounds [K] ($0 < \code{te\_min} < \code{te\_max}$ required with \code{solve\_te = T}) \\
 \code{gas\_tol\_te} & 1e-3 & convergence tolerance on $T_e$ (with \code{solve\_te}): $\max|\Delta T_e|/T_e$ under \code{conv\_crit = 'cell'}, the $n_e$-weighted volume measure under \code{'vol'}, not used under \code{'cell\_fraction'} (\S\ref{sec:convergence}) \\
 \code{metal\_excitation\_model} & 'chianti' & the metal atoms (\code{data/atomic/excitation/<model>/}: levels, radiative and collision rows, the matching cooling fits, the atomic-H collision files), used for the cooling, the level populations, the lines and the charge-exchange product populations.  'chianti' (default): full CHIANTI 11.0.2 atoms for 67 stages and Stout atoms for Cl\,\textsc{vii}, Ar\,\textsc{ii}, Ca\,\textsc{iv} (70 atoms, 6629 levels); no line cooling for C\,\textsc{vii}, Ar\,\textsc{i}, Cl\,\textsc{i}, Ca\,\textsc{i}, Fe\,\textsc{i}, Cl\,\textsc{v}, Ca\,\textsc{iii} (no data).  'mocassin\_v2': the MOCASSIN v2 atoms (55) plus the CHIANTI Fe\,\textsc{ii} forbidden rows, for parity runs.  Every stage with an atom cools and emits.  Measured cost of 'chianti' against 'mocassin\_v2' (262144 leaves, 11 metals, 72 ranks, 2026-10-11): setup $+0.5$~min, one iteration $+0.45$~min, line output $+2.7$~min, 672 against 647~MB on each rank.  'extended' (removed 2026-10-11) is refused, as are \code{fe\_levels\_full} and \code{additional\_line\_cooling} \\
 \code{neutral\_hydrogen\_excitation} & T & atomic-hydrogen impact on the C\,\textsc{i}, C\,\textsc{ii}, O\,\textsc{i} ground-term fine structure (Abrahamsson et al.\ 2007, Barinovs et al.\ 2005; \code{hcoll\_<el>\_<stage>.txt} beside the atom) in the same level equilibrium as the electrons, for cooling and lines; the dominant excitation of these coolants in neutral gas.  F only for parity with electron-only codes \\
@@ -769,7 +769,8 @@ parameter & default & meaning \\
 \endlastfoot
 \code{jnu\_output} & F & write \code{J\_nu} (band mean intensity per bin and leaf) into \code{\_rates}.  The tally behind it is $n_{\rm bin}\times n_{\rm leaf}$ values on \emph{every} MPI rank, and nothing else reads it except the SEDust emission, so it is kept only with this item or \code{dust\_sed} (off by default since 2026-09-26; the tally was always kept before).  The rates never use it \\
 \code{emis\_output} & F & write \code{\_emis} (HDF5/FITS): leaf-by-leaf line emissivities + the state needed for maps (Section~\ref{sec:outputs}) \\
-\code{emis\_line\_floor} & 1e-4 & the metal blocks of \code{\_emis} carry the lines with $L \ge$ this times $L({\rm H}\beta)$ (a full CHIANTI atom has up to $\sim10^4$ lines); \code{\_lines.txt} carries every line \\
+\code{line\_selection} & 'diagnostic' & final line set: \code{'diagnostic'}, \code{'all'}, or \code{'file:<path>'}; see Section~\ref{sec:lineout} \\
+\code{emis\_line\_floor} & 1e-4 & only with \code{line\_selection = 'all'}: positive metal lines at or above this fraction of $L({\rm H}\beta)$ are mapped when $L({\rm H}\beta)>0$ \\
 \code{hei\_metastable} & F & write \code{\_heimeta} (HDF5/FITS): the He\,\textsc{i} 2$^3$S metastable density $n_3$, its photoionization rate $\Phi_3$ and heating $\Gamma_3$, the recombination coefficient into 2$^3$S $\alpha_3$, plus $n_{\rm H}$, $n_e$, $T_e$, and leaf geometry (the 10833~\AA\ absorption diagnostic; Section~\ref{sec:outputs}).  An input that leaves \code{add\_fuv} and \code{efuv\_min} out transports the FUV extension from 4.78~eV, so the soft-UV part of $\Phi_3$ is included \\
 \code{hei\_metastable\_coupling} & T & couple the He\,\textsc{i} 2$^3$S population (the same $n_3$ \code{hei\_metastable} writes; Bray et al.\ 2000 electron-impact rates, $\alpha_3 = f_{3S}\alpha_B$(He\,\textsc{ii})) into the ionization balance (2$^3$S ionization by electrons and photons returns He to He$^+$; Penning + associative ionization by H$^0$, Garc\'{\i}a Mu\~noz 2025, ionizes H), the thermal balance (the excitations into and out of 2$^3$S, its ionization, its photoionization heating and Penning, with a closed energy ledger), and, with \code{hei\_diffuse}, the He\,\textsc{i} diffuse channel (19.82~eV photons $= n_3A_{31}$; the collisional transfers feed the 2$^1$S two-photon and 584~\AA\ branches).  $\Phi_3$ covers the transported band only: without \code{add\_fuv} the $[4.78, 13.6)$~eV part is missing, which for a 40~kK star is $\sim$10$\times$ the part above 13.6~eV --- hence the \code{add\_fuv}/\code{efuv\_min} defaults above.  F drops the coupling (the diagnostic \code{hei\_metastable} uses the same population either way) and reproduces the earlier solve bit for bit; it was F between 2026-10-09 and 2026-10-11 \\
 \code{h\_coll\_effects} & F & add the collisional H\,\textsc{i} Balmer component (excitation of neutral H) as separate \code{hc} rows/blocks; matters at fronts and hot cells \\
@@ -994,19 +995,55 @@ luminosities in a full-spectrum run.
 \subsection{Line and emissivity outputs}
 \label{sec:lineout}
 \code{<base>\_lines.txt} is a text table of integrated line luminosities on
-the converged state, one row for each line: element, ionization stage,
-wavelength [\AA], $L$ [erg\,s$^{-1}$], and $L/L({\rm H}\beta)$.  It is
-written by every run: the H and He recombination lines need only $n_e$,
-$T_e$ and the He ionization state, so an H/He model at fixed temperature
-gets its table too, with the metal blocks simply absent.  With
-\code{emis\_output} the same line set is also written leaf-by-leaf to
-\code{<base>\_emis} (HDF5, or FITS with \code{file\_format='fits'}) as
-emissivity blocks in erg\,s$^{-1}$\,cm$^{-3}$, where
-$\sum {\rm emis}\cdot V = L_{\rm line}$ and the block row order matches the
-text table.  Every line comes from one of two sources: recombination-line
-tables (H and He, Table~\ref{tab:reclines}) and $n$-level
-statistical-equilibrium solves (the metals plus the optional collisional
-H\,\textsc{i} component, Table~\ref{tab:metallines}).
+the written state. Each row gives the element, ionization stage, vacuum
+wavelength [\AA], $L$ [erg\,s$^{-1}$], and $L/L({\rm H}\beta)$.
+The H$\beta$ reference is calculated even when the table excludes that
+transition. When $L({\rm H}\beta)=0$, every ratio is written as
+\code{NaN} and the absolute luminosities are still printed.
+With \code{emis\_output}, \code{<base>\_emis} (HDF5 or FITS)
+stores the mapped line emissivities in erg\,s$^{-1}$\,cm$^{-3}$ in text
+table order within each block, with $\sum {\rm emis}\cdot V = L_{\rm line}$.
+
+\begin{itemize}
+\item \code{'diagnostic'} (default) writes the H and He recombination
+lines, the enabled collisional Balmer entries, and the following metal
+transitions for elements present in the model. The vacuum wavelengths shown
+are for the default CHIANTI atoms:
+[N\,\textsc{ii}] 6549.86 and 6585.27,
+[O\,\textsc{i}] 6302.05,
+[O\,\textsc{ii}] 3729.84 and 3727.09,
+[O\,\textsc{iii}] 4960.29 and 5008.24,
+[S\,\textsc{ii}] 6732.67 and 6718.29, and
+[S\,\textsc{iii}] 9070.05 and 9532.25~\AA.
+The MOCASSIN atoms use the corresponding transitions with their own energies.
+\item \code{'all'} writes every available integrated line. Metal maps
+require positive luminosity at or above the threshold, which is
+\code{emis\_line\_floor} times the H$\beta$ luminosity.
+When H$\beta$ is zero, this mode suppresses metal maps. The H and He
+recombination maps and enabled collisional Balmer maps are independent of the floor.
+\item \code{'file:<path>'} writes exactly the requested transitions, in
+the atom or recombination table order. Each line of the plain-text selection
+has four space-separated fields: ion, lower and upper level identifiers,
+and reference vacuum wavelength in \AA. Blank lines and text following
+\code{\#} are ignored. For example, for the default excitation model:
+\begin{verbatim}
+o_3 3 4 5008.24
+h_1 2 4 4862.70
+\end{verbatim}
+Metal level identifiers are the integers in the selected atom's
+\code{NLEV} table, ordered by energy for the transition.
+Use \code{h\_1}, \code{he\_1}, or \code{he\_2} with the lower and upper
+integers in the recombination table's \code{LINE} record.
+With \code{h\_coll\_effects}, \code{hc\_1} accepts the Balmer blends
+$2\to3$, $2\to4$, and $2\to5$ at 6564.60, 4862.65, and 4341.66~\AA.
+The reference must agree within 0.0051~\AA, which allows rounding to
+two decimals. Missing, ambiguous, and repeated transitions are errors.
+\end{itemize}
+
+Every line selected by \code{'diagnostic'} or a file gets a map when
+\code{emis\_output} is enabled, even if its luminosity is zero. For a metal
+ion the same level populations supply the text and map outputs. Changing
+the selection does not change the atoms used for thermal balance.
 
 \begingroup\small
 \begin{longtable}{@{}l p{3.3cm} p{6.0cm} p{3.0cm}@{}}
@@ -1019,7 +1056,7 @@ block & source & lines & weighting, when present \\
 \code{emis\_h} & Storey \& Hummer (1995) H\,\textsc{i}, case set by
   \code{lyman\_lines} & H$\alpha$ 6565, H$\beta$ 4863, H$\gamma$ 4342,
   H$\delta$ 4103, Pa$\alpha$ 1.876\,$\mu$m, Pa$\beta$ 1.282\,$\mu$m,
-  Br$\gamma$ 2.166\,$\mu$m & always; $n_e\,n_{\rm HII}$ \\
+  Br$\gamma$ 2.166\,$\mu$m & $n_e\,n_{\rm HII}$ \\
 \code{emis\_heii} & SH95 He\,\textsc{ii} (case per \code{lyman\_lines}) &
   1640, 3204, 4543, 4687, 5413, 10126 & only where an He\,\textsc{iii}
   zone exists; $n_e\,n_{\rm HeIII}$ \\
@@ -1040,17 +1077,11 @@ a note is printed and the H\,\textsc{i}/He\,\textsc{ii} tables switch to
 case A while He\,\textsc{i} stays case B.\normalsize
 
 \medskip
-The metal line blocks \code{emis\_<el>\_<stage>} follow the $n$-level solve.
-One block is written for every active registry ion (element abundance $>0$)
-that has an atom in the selected model,
-\code{data/atomic/excitation/<model>/\allowbreak nlevel\_<el>\_<stage>.txt}
-(stage 1 is the neutral atom), with the lines of
-$L \ge$ \code{emis\_line\_floor}$\,L({\rm H}\beta)$.  Every metal abundance defaults to 0, so an element is active only
-when the input sets its \code{par\%abund\_<El>} $>0$ (and \code{use\_metals},
-which then follows by default).  Only the principal lines are listed below
---- the full transition list of each block is in \code{<base>\_lines.txt}.
-The list below dates from the first atoms (2026-07); with the full
-\code{'chianti'} atoms every stage I--VII with an atom has a block.
+Metal line blocks \code{emis\_<el>\_<stage>} contain the mapped transitions.
+Stage 1 is neutral. The atom is read from
+\code{data/atomic/excitation/<model>/\allowbreak nlevel\_<el>\_<stage>.txt}.
+The following table identifies common transitions available for selection
+from the excitation models.
 
 \begingroup\small
 \begin{longtable}{@{}l p{12.6cm}@{}}
@@ -1114,8 +1145,9 @@ carries the state a map needs without the rates file: \code{LeafXYZ} (leaf
 centers) with the \code{DIST\_CM} keyword, \code{LeafSize} (leaf edge length;
 $V = ($\code{LeafSize}$\cdot$\code{DIST\_CM}$)^3$), \code{n\_H}, \code{n\_e},
 \code{T\_e}, \code{x\_HI}, \code{x\_HII}, \code{x\_HeI}, \code{x\_HeII}, \code{x\_HeIII}, and,
-with \code{use\_metals}, the \code{x\_<el>\_stages}, \code{Gamma\_<el>\_stages}
-and \code{Heat\_<el>\_stages} blocks (same layout as the rates file).
+with \code{use\_metals}, the \code{x\_<el>\_stages} fractions.
+The \code{Gamma\_<el>\_stages} and \code{Heat\_<el>\_stages} arrays are in
+\code{<base>\_rates}.
 The Python reader \code{EmisData}, in
 \code{tools/\allowbreak python/\allowbreak mochii\_output.py}, turns these blocks into line maps
 without the rates file.

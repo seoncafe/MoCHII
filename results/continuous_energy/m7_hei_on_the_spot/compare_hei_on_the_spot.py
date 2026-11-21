@@ -43,9 +43,11 @@ for col, tag in enumerate(('hii40', 'hii20')):
                   f'on dT {on["T"] - tr["T"]:+.2f} K, He front {on["fHe"] - tr["fHe"]:+.4f} pc, '
                   f'H front {on["fH"] - tr["fH"]:+.4f} pc')
     moved = []
+    for a, b in (('off', 'on'), ('off', 'transported'), ('on', 'transported')):
+        report_missing_lines(report, res[a]['L'], res[b]['L'], a, b, 1e-3)
     for key, v in on['L'].items():
         v0 = off['L'].get(key)
-        if v0 and v0 > 1e-3 and v > 0 and abs(v/v0 - 1) > 5e-3:
+        if v0 is not None and v0 > 1e-3 and abs(v/v0 - 1) > 5e-3:
             moved.append((abs(v/v0 - 1), key, v0, v, v/v0 - 1, tr['L'].get(key, np.nan)))
     moved.sort(reverse=True)
     report.append('  lines (rel. Hb > 1e-3) moving > 0.5%, on vs off (transported shown):')

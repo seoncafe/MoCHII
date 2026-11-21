@@ -246,6 +246,12 @@ contains
      call refuse_input('par%recomb_model must be ''detailed_balance'' '// &
         '(default) or ''hui_gnedin''.')
   endif
+  select case (par%line_selection)
+  case ('diagnostic', 'all')
+  case default
+     if (index(par%line_selection, 'file:') /= 1 .or. len_trim(par%line_selection(6:)) == 0) &
+        call refuse_input("par%line_selection must be 'diagnostic', 'all', or 'file:<path>'.")
+  end select
   if (trim(par%metal_excitation_model) == 'extended') call refuse_input( &
      'par%metal_excitation_model = ''extended'' was removed 2026-10-11: '// &
      'use ''chianti'' (full CHIANTI 11.0.2 atoms, the default).')
@@ -708,9 +714,9 @@ contains
         'par%recombination_continuum must be ''on_the_spot'', ' // &
         '''transported'' (default) or ''escaping''.')
   endif
-  if (par%solve_te .and. par%te_min >= par%te_max) then
+  if (par%solve_te .and. .not. (par%te_min > 0.0_wp .and. par%te_min < par%te_max)) then
      call refuse_input( &
-        'par%solve_te needs par%te_min < par%te_max.')
+        'par%solve_te needs 0 < par%te_min < par%te_max.')
   endif
   if (par%ion_peel .and. (par%nxim < 1 .or. par%nyim < 1)) then
      call refuse_input( &

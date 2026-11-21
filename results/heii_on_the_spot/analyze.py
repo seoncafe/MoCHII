@@ -37,6 +37,9 @@ def lines(base):
         s = ln.split()
         if len(s) >= 6 and s[-1] == 'HeII4687':
             out['4686'] = float(s[3])
+    missing = {'Hbeta', '4686'} - out.keys()
+    if missing:
+        raise ValueError(f"{base}_lines.txt: missing required lines {', '.join(sorted(missing))}")
     return out
 
 

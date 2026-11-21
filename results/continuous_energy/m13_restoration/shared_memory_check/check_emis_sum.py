@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Leaf emissivities of the metal lines (emis_<el>_<stage>, summed onto rank 0
 in chunks since 2026-10-12) against the line luminosities of _lines.txt:
-sum(emis V) must equal L for every written line.  Run: python3 check_emis_sum.py emis"""
+sum(emis V) must equal L for every mapped line.  Run: python3 check_emis_sum.py emis"""
 import sys, h5py, numpy as np
 base = sys.argv[1]
 L = {}
 for row in open(base + '_lines.txt'):
-    if row.startswith('#'): continue
+    if row.startswith('#') or not row.strip(): continue
     f = row.split()
     L[(f[0], int(f[1]), round(float(f[2]), 2))] = float(f[3])
 with h5py.File(base + '_emis.h5', 'r') as h:
@@ -23,7 +23,16 @@ with h5py.File(base + '_emis.h5', 'r') as h:
         em = em.reshape(len(wl), -1) if em.shape[0] == len(wl) else em.T
         s = em @ vol
         for w, v in zip(wl, s):
-            ref = L[(el, int(st), round(float(w), 2))]
-            worst = max(worst, abs(v/ref - 1)); nlines += 1
+            key = (el, int(st), round(float(w), 2))
+            if key not in L:
+                raise SystemExit(f'{base}_lines.txt: missing mapped transition {key}')
+            ref = L[key]
+            if ref == 0.0 and v != 0.0:
+                raise SystemExit(f'{base}: nonzero map integral for zero-luminosity transition {key}')
+            if ref != 0.0:
+                worst = max(worst, abs(v/ref - 1))
+            nlines += 1
         nsets += 1
+if not nlines:
+    raise SystemExit(f'{base}_emis.h5: no mapped metal transitions to check')
 print(f'{nsets} metal stages, {nlines} lines: max |sum(emis V)/L - 1| = {worst:.3e}')

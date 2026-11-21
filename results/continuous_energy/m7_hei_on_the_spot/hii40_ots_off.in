@@ -59,6 +59,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_hei_on_the_spot.py needs the full metal line list.
  par%out_file = 'hii40_ots_off.h5'
  par%hei_on_the_spot = .false.
  par%restart_file = '../m5_converged/hii40_ots_converged_rates.h5'

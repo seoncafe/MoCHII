@@ -92,9 +92,10 @@ for tag in ('hii40', 'hii20'):
         s13 = ' '.join(f'{v:.4f}' for v in b['vm'][el])
         report.append(f'    {el:2s} {s11}  ->  {s13}')
     moved = []
+    report_missing_lines(report, a['L'], b['L'], 'm11', 'm13', 1e-3)
     for key, v in b['L'].items():
         v0 = a['L'].get(key)
-        if v0 and v0 > 1e-3 and v > 0 and abs(v/v0 - 1) > 5e-3:
+        if v0 is not None and v0 > 1e-3 and abs(v/v0 - 1) > 5e-3:
             moved.append((abs(v/v0 - 1), key, v0, v, v/v0 - 1))
     new = sorted(((v, key) for key, v in b['L'].items() if key not in a['L'] and v > 1e-3),
                  reverse=True)

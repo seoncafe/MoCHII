@@ -47,6 +47,8 @@ def lines(path):
         p = ln.split()
         if len(p) >= 5:
             out[(p[0], int(p[1]), float(p[2]))] = float(p[4])
+    if hb is None:
+        raise ValueError(f'{path}: missing L(Hbeta)')
     return hb, out
 
 
@@ -85,6 +87,14 @@ def cloudy(tag):
     return dict(r=r, T=o['Te'], H0=o['HI'], He1=o['HeII'])
 
 
+def report_missing_lines(report, reference, measured, reference_name, measured_name, floor):
+    for available, missing, name in ((reference, measured, measured_name),
+                                     (measured, reference, reference_name)):
+        for (el, stage, wavelength), ratio in sorted(available.items()):
+            if ratio > floor and (el, stage, wavelength) not in missing:
+                report.append(f'    missing in {name}: {el} {stage} {wavelength:.2f} A')
+
+
 edges = np.arange(0.0, 6.0, 0.02)
 rc = 0.5*(edges[1:] + edges[:-1])
 fig, axes = plt.subplots(4, 2, figsize=(10, 12.5), sharex='col')
@@ -110,11 +120,12 @@ for col, tag in enumerate(('hii40', 'hii20')):
                   f'{n["fHe"] - c["fHe"]:+.4f} pc, H front {n["fH"] - c["fH"]:+.4f} pc')
     report.append(f'  control - m5: dT {c["T"] - res["m5"]["T"]:+.2f} K, L(Hb) '
                   f'{100*(c["Hb"]/res["m5"]["Hb"] - 1):+.3f}% (restart band)')
-    # lines relative to Hbeta that move by more than 0.5% new vs control
+    report_missing_lines(report, c['L'], n['L'], 'control', 'new', 1e-4)
+    # Lines relative to Hbeta that move by more than 0.5% new vs control.
     moved = []
     for key, v in n['L'].items():
         v0 = c['L'].get(key)
-        if v0 and v0 > 1e-4 and v > 0:
+        if v0 is not None and v0 > 1e-4:
             d = v/v0 - 1
             if abs(d) > 5e-3:
                 moved.append((abs(d), key, v0, v, d))

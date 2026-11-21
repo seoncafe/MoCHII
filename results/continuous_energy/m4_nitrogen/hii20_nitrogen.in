@@ -59,6 +59,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_nitrogen.py needs [N I] and [N III].
  par%out_file        = 'hii20_nitrogen.h5'
  par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
  par%hei_metastable_coupling = .false.   ! pinned: this input predates the default .true.

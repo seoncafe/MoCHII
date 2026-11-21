@@ -80,5 +80,6 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_l6.py needs UV and infrared metal blends.
  par%out_file        = 'ledger_l6vf_metals.h5'
 /
