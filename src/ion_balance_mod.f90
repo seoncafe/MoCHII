@@ -125,7 +125,8 @@ contains
   !    helium fractions (the lag rhe_* already carry), so the exit test then
   !    also requires x_HI and x_HeII to have stopped moving.
   subroutine solve_ion_cell(gH, gHe1, gHe2, nH, T, caseA, &
-                            xHI, xHeI, xHeII, ne, il, f_h_only, xHII, xHeIII)
+                            xHI, xHeI, xHeII, ne, il, f_h_only, xHII, xHeIII, &
+                            settled_out)
     use species_mod, only : species_ne_prepare, species_metal_sums, n_elements
     use hei_metastable_mod, only : hei_triplet_rates_type, hei_triplet_rates, &
                                    hei_triplet_destruction, &
@@ -154,6 +155,10 @@ contains
     !--- 1 - x_HeI - x_HeII is rounding once He2+ is scarce.  Left out, the
     !--- solve starts from max(0, 1 - x_HeI - x_HeII).
     real(kind=wp), intent(inout), optional :: xHeIII
+    !--- .true. when the fixed point met its n_e and stage tests before the
+    !--- 200-iteration cap (the state returned is the last iterate either way)
+    logical, intent(out), optional :: settled_out
+    logical :: fixed_point_met
     real(kind=wp) :: aH, aHe2, aHe3, cH, cHe1, cHe2, yHe
     real(kind=wp) :: ne_old, xHe3, r1, r2
     real(kind=wp) :: nem, r_cx_in, r_cx_out
@@ -266,6 +271,7 @@ contains
     ne = max(ne, NE_FLOOR_PER_H*nH)
     nem = 0.0_wp;  r_cx_in = 0.0_wp;  r_cx_out = 0.0_wp
     sfix = 0.0_wp
+    fixed_point_met = .false.
     do it = 1, 200
        ne_old = ne
        xHI_old = xHI;  yH_old = yH;  xHeII_old = xHeII;  xHe3_old = xHe3
@@ -425,8 +431,12 @@ contains
           hydrogen_settled() &
           .and. abs(xHeII - xHeII_old) <= 1.0e-10_wp*xHeII + tiny(1.0_wp) &
           .and. abs(xHe3 - xHe3_old) <= 1.0e-10_wp*xHe3 + tiny(1.0_wp)
-       if (abs(ne - ne_old) <= 1.0e-10_wp*ne .and. settled) exit
+       if (abs(ne - ne_old) <= 1.0e-10_wp*ne .and. settled) then
+          fixed_point_met = .true.
+          exit
+       end if
     end do
+    if (present(settled_out)) settled_out = fixed_point_met
     !--- the share of the on-the-spot photons given to H0 that it can absorb
     !--- at the state reached: no more than the recombinations (and charge
     !--- exchanges) that make H0.  1 wherever the balance closed; below 1

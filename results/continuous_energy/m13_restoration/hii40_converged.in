@@ -60,6 +60,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_m13.py needs the full metal line list.
  par%out_file        = 'hii40_converged.h5'
  par%restart_file = '../m11_hecx_solver/hii40_converged_rates.h5'
 /

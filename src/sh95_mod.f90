@@ -22,6 +22,8 @@ module sh95_mod
 
   public :: sh95_setup, sh95_nlines, sh95_label, sh95_wl, sh95_emis
 
+  public :: sh95_levels
+
   integer, parameter :: MAXL = 12
 
   type sh95_tab_type
@@ -29,6 +31,7 @@ module sh95_mod
      real(kind=wp), allocatable :: tgrid(:), dgrid(:), etab(:,:,:)
      character(len=12) :: labels(MAXL)
      real(kind=wp)     :: wls(MAXL)
+     integer :: upper(MAXL), lower(MAXL)
   end type sh95_tab_type
   type(sh95_tab_type) :: tab(3)
 
@@ -64,6 +67,13 @@ contains
   end function sh95_wl
 
   !=========================================================================
+  subroutine sh95_levels(k, ion, lower, upper)
+    integer, intent(in) :: k, ion
+    integer, intent(out) :: lower, upper
+    lower = tab(ion)%lower(k)
+    upper = tab(ion)%upper(k)
+  end subroutine sh95_levels
+
   subroutine sh95_setup()
     use mpi
     implicit none
@@ -99,7 +109,7 @@ implicit none
     logical,             intent(in)    :: required
     character(len=256) :: line
     character(len=16)  :: key
-    integer :: unit, ios, ia, nu_, nl_, ierr, islash
+    integer :: unit, ios, ia, islash
 
     if (t%nlin > 0) return                     ! already loaded
     open(newunit=unit, file=fname, status='old', iostat=ios)
@@ -125,7 +135,8 @@ implicit none
           read(line,*) key, t%dgrid
        case ('LINE')
           t%nlin = t%nlin + 1
-          read(line,*) key, t%labels(t%nlin), nu_, nl_, t%wls(t%nlin)
+          read(line,*) key, t%labels(t%nlin), t%upper(t%nlin), &
+               t%lower(t%nlin), t%wls(t%nlin)
           do ia = 1, t%nT
              read(unit,*) t%etab(ia, :, t%nlin)
           end do

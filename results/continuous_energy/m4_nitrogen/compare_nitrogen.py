@@ -64,12 +64,20 @@ for col, tag in enumerate(('hii40', 'hii20')):
             rel[p[0].strip()] = float(p[-1])
     for el, st, lam, clam, name in LAB:
         o = pick(Lo, el, st, lam); n = pick(Ln, el, st, lam)
-        if name == '[N I] 5198+5200': o += pick(Lo, 'n', 1, 5201.71); n += pick(Ln, 'n', 1, 5201.71)
+        if name == '[N I] 5198+5200':
+            # Match the two components separately before forming their sum.
+            o = sum(pick(Lo, el, st, w, tol=1.0) for w in (lam, 5201.71))
+            n = sum(pick(Ln, el, st, w, tol=1.0) for w in (lam, 5201.71))
+        if np.isnan(o) or np.isnan(n):
+            missing = ', '.join(label for label, value in ((old, o), (new, n)) if np.isnan(value))
+            print(f'  {name:16s} missing transition in {missing}')
+            continue
         c = np.nan
         if clam:
             key = [k for k in rel if k.lower().startswith('n  2') and abs(float(k.split()[2][:-1]) - clam) < 0.5]
             if key: c = rel[key[0]]
-        print(f'  {name:16s} {o:.4e} -> {n:.4e} rel Hb ({100*(n/o-1):+7.2f}%)   Cloudy {c:.4e}')
+        change = f'{100*(n/o - 1):+7.2f}%' if o != 0 else 'undefined (zero reference)'
+        print(f'  {name:16s} {o:.4e} -> {n:.4e} rel Hb ({change})   Cloudy {c:.4e}')
     edges = np.arange(0.0, 6.0, 0.02); rc = 0.5*(edges[1:] + edges[:-1])
     po, pn = profiles(old + '_rates.h5', edges), profiles(new + '_rates.h5', edges)
     c = cloudy(tag)

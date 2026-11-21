@@ -78,5 +78,6 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! euv_lines.py needs metal lines shortward of the H edge.
  par%out_file        = 'pn150_p27_nodrift.h5'
 /

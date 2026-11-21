@@ -15,6 +15,8 @@ def load(tag):
     for ln in open(f'{d}/sec_{tag}_lines.txt'):
         m = re.search(r'L\(Hbeta\)\s*=\s*([0-9.eE+-]+)', ln)
         if m: lines['Hb'] = float(m.group(1))
+    if 'Hb' not in lines:
+        raise ValueError(f'{d}/sec_{tag}_lines.txt: missing L(Hbeta)')
     r['lines'] = lines
     return r
 C = {t: load(t) for t in ('off_new', 'on_new', 'on_old')}
@@ -28,5 +30,5 @@ for t, r in C.items():
     ne_v = np.sum(V*r['ne'])/V.sum()
     neutral = r['xHI'] > 0.5
     print(f'{t:8s} <T[NpNe]>={TNpNe:9.2f} K  <xHI>_V={xHI_v:.5e}  <xHeI>_V={xHeI_v:.5e}'
-          f'  <xHeII>_V={xHeII_v:.5e}  <ne>_V={ne_v:.5e}  L(Hb)={r["lines"].get("Hb",np.nan):.5e}'
+          f'  <xHeII>_V={xHeII_v:.5e}  <ne>_V={ne_v:.5e}  L(Hb)={r["lines"]["Hb"]:.5e}'
           f'  V(xHI>0.5)={V[neutral].sum()/V.sum():.5f}')

@@ -59,6 +59,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_m9.py and compare_m10.py need the full metal line list.
  par%out_file        = 'hii20_converged.h5'
  par%restart_file = '../m8_defaults/hii20_converged_rates.h5'
 /

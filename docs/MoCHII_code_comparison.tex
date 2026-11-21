@@ -1428,7 +1428,7 @@ two-photon, opt-in & none in this tree; $\Te$ from the internal energy \\
 $u=\ln(n_{\rm HII}/n_{\rm HI})$ at each $\nelec$ rather than substituted
 into & separate & \textbf{yes}, metal--H and He--H & yes, default on, damped fixed
 point & yes, all shells, default on & ground continua and free--free
-transported, no lines & outer bisection in
+transported, no lines & outer Brent root find in
 $\log\Te$ \\
 \end{longtable}
 \endgroup
@@ -1763,7 +1763,7 @@ density.
 \MoCHII{} deliberately separates two products:
 
 \begin{itemize}[leftmargin=2em]
-\item Tier-1 line cooling, evaluated cheaply inside the thermal bisection:
+\item Tier-1 line cooling, evaluated cheaply inside the thermal root find:
   $\Lambda(T, \nelec)$ tables built from the $n$-level solve at the local
   $\nelec$ (the default since 2026-07-26), or the analytic fits of the
   optically thin low-density limit as an option; and
@@ -1787,8 +1787,8 @@ table computed from the same solver.
 
 All three codes solve ionization and temperature under the current
 radiation field, iterating the spatial solution where required.  \MoCHII{}
-brackets the root of heating minus cooling in
-$\log \Te$ and re-solves the H/He and metal ionization at every trial
+finds the root of heating minus cooling in
+$\log \Te$ with Brent's method and re-solves the H/He and metal ionization at every trial
 temperature.  Its current budget includes photoionization heating,
 H/He recombination and collisional losses, free-free emission with a
 tabulated Gaunt integral (H/He and, by default, the trace metals with
@@ -3210,7 +3210,7 @@ Mostly validation; the code changes are one-line parameters.
 \item \code{te\_max}: allow $10^5$--$10^6$ K for X-ray-heated zones.
   Any ion used above $10^5$ K needs its Tier-1 fit regenerated over the
   wider range (a flag in \code{chianti\_cooling.py}, not new code); the
-  bisection itself is range-agnostic.
+  root find itself is range-agnostic.
 \item Recommended hard-field defaults, documented in the example
   inputs: \code{use\_sec\_ion=.true.}\ (a 150 kK field makes
   $E_0>40$ eV photoelectrons routine, and X-ray fields more so) and
@@ -3749,7 +3749,7 @@ Primary design, keeping ``fitted offline, evaluated online'':
 \item \code{species\_mod::metal\_cooling} evaluates
   bilinear-in-$(\log T,\log\nelec)$; the memory cost is trivial
   ($\sim$60$\times$7 values for each ion) and the evaluation stays a
-  handful of multiply-adds inside the bisection --- the
+  handful of multiply-adds inside the thermal root find --- the
   \code{species\_ne} cache pattern applies unchanged.
 \item The lowest-density node MUST reproduce the current fits to fit
   accuracy (regression guard), so HII20/HII40 and every recorded gate
@@ -3850,7 +3850,7 @@ Monte Carlo transport engine does little to help.
 \MoCHII{}'s iteration loop transports Monte Carlo packets, tallies the
 cell radiation field, solves the \emph{equilibrium} ionization and thermal
 balance in each cell (\code{solve\_ion\_cell}: a damped fixed point on
-$\nelec$ with a bisection on $\Te$), refreshes the opacity, and repeats
+$\nelec$ with a Brent root find on $\Te$), refreshes the opacity, and repeats
 until converged.  The state solver is therefore a \emph{root finder}:
 given the rates it returns the steady state.  It integrates no
 $\mathrm{d}n_i/\mathrm{d}t$, carries no velocity field, and solves no

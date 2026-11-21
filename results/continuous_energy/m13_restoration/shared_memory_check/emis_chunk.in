@@ -60,6 +60,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! check_emis_sum.py checks maps across the metal stages.
  par%out_file = 'emis_chunk.h5'
  par%charge_exchange_heating = .false.   ! pinned: this input predates the default .true.
  par%twophoton_quenching = 'lumped_ne'   ! pinned: this input predates the default 'colliders'

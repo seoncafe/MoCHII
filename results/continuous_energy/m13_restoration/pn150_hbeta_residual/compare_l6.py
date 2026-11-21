@@ -124,7 +124,7 @@ def read_mochii_lines(fn):
 
 
 def mochii_blend(rows, el, stage, wins):
-    tot, n = 0.0, 0
+    tot, n, missing = 0.0, 0, []
     for w in wins:
         if isinstance(w, tuple):
             lo, hi = w
@@ -136,9 +136,11 @@ def mochii_blend(rows, el, stage, wins):
                    and abs(r[2] - w) < tol]
             if len(hit) > 1:     # keep the nearest one for a single line
                 hit = [min(hit, key=lambda r: abs(r[2] - w))]
+        if not hit:
+            missing.append(w)
         tot += sum(r[3] for r in hit)
         n += len(hit)
-    return tot, n
+    return (np.nan if missing else tot), n, missing
 
 
 def read_cloudy_lin(fn):
@@ -248,17 +250,20 @@ def main():
               "%.3f" % (lhb / JIN_HBETA), "%.3f" % (c_hb / JIN_HBETA), ""))
     table = []
     for label, med, (el, st, wins), clabs in ROWS:
-        mo, n = mochii_blend(mrows, el, st, wins)
+        mo, n, missing = mochii_blend(mrows, el, st, wins)
         mo /= lhb
         cl = sum(crel[k] for k in clabs)
         table.append((label, mo, cl, med))
-        pr(fmt % (label, "%.4g" % mo, "%.4g" % cl, "%.4g" % med,
-                  "%.3f" % (mo / cl) if cl > 0 else "-",
-                  "%.3f" % (mo / med), "%.3f" % (cl / med), n))
+        pr(fmt % (label, "missing" if missing else "%.4g" % mo, "%.4g" % cl, "%.4g" % med,
+                  "%.3f" % (mo / cl) if cl > 0 and not missing else "-",
+                  "-" if missing else "%.3f" % (mo / med), "%.3f" % (cl / med), n))
+        if missing:
+            pr(f"  MoCHII missing {el} {st}, wavelength or window [A]: {missing}")
     r = np.array([t[1] / t[2] for t in table])
     pr("")
-    pr("MoCHII/C25 over the %d rows: median %.3f, within 10%% %d, within 25%% %d"
-       % (len(r), np.median(r), (abs(r - 1) <= 0.10).sum(), (abs(r - 1) <= 0.25).sum()))
+    r = r[np.isfinite(r)]
+    pr("MoCHII/C25 over the %d available rows: median %.3f, within 10%% %d, within 25%% %d"
+       % (len(r), np.median(r) if r.size else np.nan, (abs(r - 1) <= 0.10).sum(), (abs(r - 1) <= 0.25).sum()))
     pr("")
     tab = {t[0]: t for t in table}
 

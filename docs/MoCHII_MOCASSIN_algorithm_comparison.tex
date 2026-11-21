@@ -807,14 +807,25 @@ has its own 100-call cap when that calculation is used
 (\mc{update_mod.f90}{81--89,\allowbreak 590--599}). These are compiled limits, not
 \code{maxIterateMC} input values.
 
-\Source MoCHII's thermal solve evaluates heating minus cooling at
-\code{te\_min}/\code{te\_max}, default 1000/50000 K. If no bracket lies
-inside, it takes the corresponding bound. Otherwise up to 60 geometric
-bisections stop at $T_{\rm hi}/T_{\rm lo}-1<10^{-5}$, followed by a
-fresh ionization evaluation at the selected midpoint. There is no
-separate normalized heat/cool residual acceptance test or post-cap
-failure flag for this bisection
-(\ms{define.f90}{1280--1283}; \ms{thermal_mod.f90}{299--324}). A small
+\Source MoCHII's thermal solve starts from the leaf's present
+temperature $T_0$ (its previous solution, or \code{te\_start} or the
+restart temperature in the first gas update, projected into
+[\code{te\_min}, \code{te\_max}], default 1000/50000 K, with
+$0 < \code{te\_min} < \code{te\_max}$ required when \code{solve\_te} is
+enabled). From $T_0$ it steps in $\ln T$ in the direction that heating
+minus cooling drives $T$ (steps of $0.05$ doubling up to $0.1$) to the
+first sign change, keeping the leaf's current branch in thermally
+bistable leaves (two crossings closer than about $10\%$ in $T$ can be
+stepped over). If no sign change is reached before \code{te\_min} or
+\code{te\_max}, $T$ is clamped exactly at that bound; otherwise Brent's
+method (Brent 1973, ch.\ 4) refines the bracket to $10^{-5}$ in $\ln T$
+(up to 100 iterations), followed by a fresh ionization evaluation at the
+selected temperature. Warnings count leaves where Brent's refinement
+reached its 100-step cap and trial or final states whose ionization
+fixed point did not meet its tests in 200 iterations; a nonfinite heating
+minus cooling aborts the run with the leaf index. There is no separate
+normalized heat/cool residual acceptance test (\ms{define.f90}{1280--1283};
+\ms{thermal_mod.f90}{314--422, 577--590}). A small
 outer temperature step at a clamped bound does not certify an
 unconstrained thermal root.
 
@@ -930,7 +941,7 @@ Maximum & \code{maxIterateMC=30} &
 At cap & Writes results and exits with cap message &
 \both{Warns and may output; \code{require\_convergence=true} aborts before normal output; default false}\\
 Inner gas T & Heat/cool residual below 1\%; at most 50 evaluations &
-\both{Bracket ratio below $10^{-5}$ or 60 bisections; bound clamping possible}\\
+\both{Step in $\ln T$ from $T_0$ to first sign change, then Brent's method to $10^{-5}$ in $\ln T$ (at most 100 iterations); bound clamping possible}\\
 Inner ions/$n_e$ & H I/He I/He II relative changes at most 1\%; 25 evaluations; no independent $n_e$ test &
 \both{200 iterations with $n_e$ relative step $10^{-10}$, plus enabled coupled-ion tests; optional second charge loop}\\
 Inner failure & Diagnoses failed local solves without vetoing outer H I flag &

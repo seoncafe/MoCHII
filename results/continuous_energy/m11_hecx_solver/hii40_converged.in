@@ -59,6 +59,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_m11.py, compare_m13.py, and the Wood tables need the full metal line list.
  par%out_file        = 'hii40_converged.h5'
  par%restart_file = '../m10_drift_test/hii40_converged_rates.h5'
 /

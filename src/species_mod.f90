@@ -242,6 +242,9 @@ module species_mod
   !--- form 9: the reverse rate of each product term at the cached T (its
   !--- population, which depends on n_e, is applied in species_metal_sums)
   real(kind=wp) :: cch_cxs(MAX_CXS_TERM, MAX_ST, MAX_EL), cch_T = 0.0_wp
+  !--- the leaf of the cache; species_fractions reuses the cached
+  !--- coefficients at the same (leaf, T) and photoionization rates
+  integer :: cch_il = 0
 
   !--- form 9: term populations of the product ion on the (log T, log n_e)
   !--- grid, from its n-level atom at setup
@@ -1239,6 +1242,7 @@ contains
        end do
     end do
     cch_T = T
+    cch_il = il
   end subroutine species_ne_prepare
 
   !=========================================================================
@@ -1448,6 +1452,7 @@ contains
   ! par%use_metals cooling path whatever heats the gas.
   !=========================================================================
   real(kind=wp) function metal_cooling_H(il, T, nH, ne, nHI, nHII) result(cool)
+    use gas_state_mod, only : gas_Te
     implicit none
     integer,       intent(in) :: il
     real(kind=wp), intent(in) :: T, nH, ne, nHI, nHII
@@ -1463,7 +1468,10 @@ contains
           if (.not. elems(ie)%has_hcoll(i)) cycle
           nion = elems(ie)%abund*nH*frac(i)
           if (nion <= 0.0_wp) cycle
-          cool = cool + nion*nlevel_hcoll_cooling(hatom(ie,i)%a, T, ne, nHI)
+          !--- level set fixed for the leaf's whole root find: twice the leaf
+          !--- temperature at the start of the gas update
+          cool = cool + nion*nlevel_hcoll_cooling(hatom(ie,i)%a, T, ne, nHI, &
+                                                  2.0_wp*gas_Te(il))
        end do
     end do
   end function metal_cooling_H
@@ -1929,15 +1937,37 @@ contains
        frac(1) = 1.0_wp
        return
     end if
-    do it = 1, ns-1
-       ionization(it) = egam(ie)%g(it,il) &
-            + ne*metal_electron_impact_ionization(elems(ie), it, T)
-       if (elems(ie)%cxi_form(it) > 0) &
-          ionization(it) = ionization(it) + nHII*cxi_rate(ie, it, T)
-       recombination(it) = ne*alpha_rec(elems(ie), it, T)
-       if (elems(ie)%cxr_form(it) > 0) &
-          recombination(it) = recombination(it) + nHI*cxr_rate(ie, it, T, ne)
-    end do
+    !--- The thermal balance asks for the fractions of every element several
+    !--- times at one trial (leaf, T) (metal_cooling, metal_cooling_H,
+    !--- metal_freefree, metal_heating, ...): reuse the T-dependent
+    !--- coefficients species_ne_prepare evaluated for that (leaf, T) -- the
+    !--- same functions of the same arguments, summed in the same order --
+    !--- when its photoionization rates are still the leaf's.  Only the n_e-dependent product populations of form 9 are
+    !--- evaluated here.
+    if (cch_il == il .and. cch_T == T .and. &
+        all(cch_gam(1:ns-1,ie) == egam(ie)%g(1:ns-1,il))) then
+       do it = 1, ns-1
+          ionization(it) = cch_gam(it,ie) + ne*cch_ci(it,ie)
+          if (elems(ie)%cxi_form(it) > 0) &
+             ionization(it) = ionization(it) + nHII*cch_cxi(it,ie)
+          recombination(it) = ne*cch_rec(it,ie)
+          if (elems(ie)%cxr_form(it) == 9) then
+             recombination(it) = recombination(it) + nHI*cxr_rate(ie, it, T, ne)
+          else if (elems(ie)%cxr_form(it) > 0) then
+             recombination(it) = recombination(it) + nHI*cch_cxr(it,ie)
+          end if
+       end do
+    else
+       do it = 1, ns-1
+          ionization(it) = egam(ie)%g(it,il) &
+               + ne*metal_electron_impact_ionization(elems(ie), it, T)
+          if (elems(ie)%cxi_form(it) > 0) &
+             ionization(it) = ionization(it) + nHII*cxi_rate(ie, it, T)
+          recombination(it) = ne*alpha_rec(elems(ie), it, T)
+          if (elems(ie)%cxr_form(it) > 0) &
+             recombination(it) = recombination(it) + nHI*cxr_rate(ie, it, T, ne)
+       end do
+    end if
     call adjacent_ion_fractions(ionization(1:ns-1), recombination(1:ns-1), frac(1:ns), status)
     if (status /= 0) call ion_stage_balance_error(ie, status)
   end subroutine species_fractions
@@ -2024,48 +2054,33 @@ contains
   !=========================================================================
   ! Stage fractions of every element in the written field -> output file blocks.
   !=========================================================================
-  subroutine species_write(file, status)
+  subroutine species_write(file, status, include_rates)
     use iofile_mod
-    use octree_mod,    only : amr_grid
-    use gas_state_mod, only : gas_nH, gas_xHI, gas_xHII, gas_ne, gas_Te
     implicit none
     type(io_file_type), intent(inout) :: file
     integer, intent(inout) :: status
-    real(kind=wp), allocatable :: fr(:,:)
-    real(kind=wp) :: frac(MAX_ST), nHI, nHII
+    logical, intent(in) :: include_rates
     character(len=64) :: extname
-    integer :: ie, il, i, nleaf
+    integer :: ie
 
     if (status /= 0) return
-    nleaf = amr_grid%nleaf
     do ie = 1, n_elements
-       allocate(fr(elems(ie)%nstage, nleaf))
-       do il = 1, nleaf
-          nHI  = gas_nH(il)*gas_xHI(il)
-          nHII = gas_nH(il)*gas_xHII(il)
-          if (gas_nH(il) > 0.0_wp) then
-             call species_fractions(ie, il, gas_Te(il), gas_ne(il), &
-                                    nHI, nHII, frac)
-          else
-             frac = 0.0_wp;  frac(1) = 1.0_wp
-          end if
-          fr(:,il) = frac(1:elems(ie)%nstage)
-       end do
-       call io_append_image(file, fr, status, bitpix=-64)
+       call io_append_image(file, stage_frac(ie)%g, status, bitpix=-64)
        write(extname,'(3a)') 'x_', trim(elems(ie)%name), '_stages'
        call io_put_keyword(file,'EXTNAME',trim(extname), &
             'ion fractions (stage, leaf)',status)
        call io_put_keyword(file,'ABUND',elems(ie)%abund,'n(X)/n(H)',status)
-       deallocate(fr)
 
-       call io_append_image(file, egam(ie)%g, status, bitpix=-64)
-       write(extname,'(3a)') 'Gamma_', trim(elems(ie)%name), '_stages'
-       call io_put_keyword(file,'EXTNAME',trim(extname), &
-            'photoionization rates (transition, leaf) [s^-1]',status)
-       call io_append_image(file, eheat(ie)%g, status, bitpix=-64)
-       write(extname,'(3a)') 'Heat_', trim(elems(ie)%name), '_stages'
-       call io_put_keyword(file,'EXTNAME',trim(extname), &
-            'photoheating rates (transition, leaf) [erg/s per ion]',status)
+       if (include_rates) then
+          call io_append_image(file, egam(ie)%g, status, bitpix=-64)
+          write(extname,'(3a)') 'Gamma_', trim(elems(ie)%name), '_stages'
+          call io_put_keyword(file,'EXTNAME',trim(extname), &
+               'photoionization rates (transition, leaf) [s^-1]',status)
+          call io_append_image(file, eheat(ie)%g, status, bitpix=-64)
+          write(extname,'(3a)') 'Heat_', trim(elems(ie)%name), '_stages'
+          call io_put_keyword(file,'EXTNAME',trim(extname), &
+               'photoheating rates (transition, leaf) [erg/s per ion]',status)
+       end if
     end do
   end subroutine species_write
 

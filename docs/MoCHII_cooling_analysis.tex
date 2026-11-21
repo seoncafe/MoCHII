@@ -1081,7 +1081,7 @@ there is no \HeIII{} recombination cooling.
 called from \code{iterateT} (:392), which re-solves the ionization balance at
 every trial temperature (:365) and then steps on the residual
 \code{heatInt - coolInt} (:397) --- the same arrangement as \MoCHII{}'s
-bisection with the ionization solved inside it.  Collisionally excited line
+Brent root find with the ionization solved inside it.  Collisionally excited line
 photons are not transported: when a diffuse packet is drawn as a line photon it
 escapes (\code{photon\_mod.f90}:925--927), so the line cooling is optically
 thin, as in \MoCHII{}.  Only the resonance lines of a user list are followed,

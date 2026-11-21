@@ -200,6 +200,16 @@ contains
     real(kind=wp) :: energy_emitted, energy_absorbed, energy_escaped, energy_lost
     integer :: status, il, inu, ic, nleaf, writer_ierr
 
+    ! The final transport of a rates-only run does not refresh the metal
+    ! opacity. Publish the fractions for its newly written rates here.
+    ! A solved state or iteration checkpoint has already refreshed them.
+    if (par%use_metals .and. par%gas_niter < 1) then
+       block
+         use species_mod, only : species_stage_cache_refresh
+         call species_stage_cache_refresh()
+       end block
+    end if
+
     ! All ranks call this writer. Hold the other ranks until rank 0 has
     ! copied the shared frozen emission; the next diffuse_build overwrites
     ! it before its first collective. Keep default-mode execution unchanged.
@@ -487,7 +497,7 @@ contains
     if (par%use_metals) then
        block
          use species_mod, only : species_write
-         call species_write(file, status)
+         call species_write(file, status, include_rates=.true.)
        end block
     end if
 

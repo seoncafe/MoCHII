@@ -45,9 +45,10 @@ for tag in ('hii40', 'hii20'):
                       f'  H front {a["fH"]:.4f} -> {b["fH"]:.4f}  He front {a["fHe"]:.4f} -> {b["fHe"]:.4f} pc')
     a, b = res[(tag, 'converged')]
     moved = []
+    report_missing_lines(report, a['L'], b['L'], 'm8', 'm9', 1e-3)
     for key, v in b['L'].items():
         v0 = a['L'].get(key)
-        if v0 and v0 > 1e-3 and v > 0 and abs(v/v0 - 1) > 5e-3:
+        if v0 is not None and v0 > 1e-3 and abs(v/v0 - 1) > 5e-3:
             moved.append((abs(v/v0 - 1), key, v0, v, v/v0 - 1))
     moved.sort(reverse=True)
     report.append('  production lines (rel. Hb > 1e-3) moving > 0.5%, m8 -> m9:')

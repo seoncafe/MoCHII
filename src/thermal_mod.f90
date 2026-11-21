@@ -8,9 +8,12 @@ module thermal_mod
 !     C(T) = cooling_total(T, ...)                        (cooling_mod)
 ! where the ionization fractions at each trial T come from solve_ion_cell
 ! (photo + collisional vs recombination at that T).  Since C rises and the
-! ionization response is mild, the net function H - C is monotone through
-! the root: bisection on log T in [par%te_min, par%te_max] (~40 iterations
-! to 1e-4 relative).
+! ionization response is mild, H - C falls through a stable root.  Where
+! more than one stable root exists (thermal bistability), the one reached
+! from the leaf's present temperature is taken: a bracket is searched from
+! T_e in the direction heating or cooling drives it, with steps in ln T of
+! 0.05 doubling up to 0.1, and Brent's method refines it to 1e-5 in ln T; no
+! sign change before te_min or te_max clamps T_e exactly there.
 !
 ! gas_thermal_update replaces gas_equilibrium_update when par%solve_te:
 ! it writes x, n_e AND T_e (under-relaxation on x) and returns
@@ -34,6 +37,8 @@ module thermal_mod
                               neutral_hydrogen_convergence_count
   use ion_score_mod,   only : band_path_luminosity
   use cooling_mod,     only : cooling_total
+  use utility,         only : abort_run
+  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   implicit none
   private
 
@@ -46,7 +51,7 @@ contains
   ! leaf; the ionization state at T is solved self-consistently.
   !=========================================================================
   subroutine net_rate(il, T, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net, &
-                      heat_star, heat_heii_ots, grain_terms)
+                      heat_star, heat_heii_ots, grain_terms, ionization_settled)
     integer,       intent(in)    :: il
     real(kind=wp), intent(in)    :: T
     logical,       intent(in)    :: caseA
@@ -62,13 +67,15 @@ contains
     !--- the grain terms [erg cm^-3 s^-1]: photoelectric heating, accretion
     !--- cooling, neutral gas-grain cooling
     real(kind=wp), intent(out), optional :: grain_terms(3)
+    !--- the ionization fixed point at T met its tests (solve_ion_cell)
+    logical,       intent(out), optional :: ionization_settled
     real(kind=wp) :: nH, heat, yHe, dgHI, dgHeI, dhHI, dhHeI, dhHeII, f_h_only
 
     nH = gas_nH(il)
     yHe = par%abund_He
     call solve_ion_cell(gamma_HI(il), gamma_HeI(il), gamma_HeII(il), &
                         nH, T, caseA, xHI, xHeI, xHeII, ne, il, f_h_only, xHII, &
-                        xHeIII)
+                        xHeIII, ionization_settled)
     !--- photoheating; with par%use_sec_ion the part of each fast
     !--- photoelectron's energy that ionizes or excites instead of heating is
     !--- taken off, at the state the solve just reached.
@@ -249,8 +256,15 @@ contains
     real(kind=wp) :: max_local(2), max_host(2)
     real(kind=wp) :: sum_local(12), sum_host(12), metrics(9)
     real(kind=wp) :: signed_te_local, signed_te_host, signed_te_step
-    real(kind=wp) :: tlo, thi, tmid, net_lo, net_hi, net_mid, te
-    real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(5), flag_host(5)
+    real(kind=wp) :: t0, ta, tb, dir, du, net_lo, net_mid, te
+    logical :: bracketed, ion_settled, trial_settled, root_found
+    real(kind=wp) :: ua, ub, uc, fa, fb, fc, ustep, uprev, tol1, um, p, q, r, sr
+    !--- root tolerance on ln T: the bracket |ln T_hi - ln T_lo| that the
+    !--- former bisection reached (T_hi/T_lo - 1 < 1e-5)
+    real(kind=wp), parameter :: LNT_TOL = 1.0e-5_wp
+    !--- first and largest step of the bracket search in ln T
+    real(kind=wp), parameter :: LNT_FIRST_STEP = 0.05_wp, LNT_MAX_STEP = 0.1_wp
+    real(kind=wp) :: h_star, h_ots, tau_leaf, flag_local(8), flag_host(8)
     real(kind=wp) :: gterm(3), grain_local(4), grain_host(4)
     real(kind=wp), parameter :: E_HEII_LYA = 40.813_wp, TAU_THIN = 1.0e-2_wp
     logical :: caseA, at_te_max
@@ -294,35 +308,117 @@ contains
           cycle
        end if
 
-       !--- bisection on log T; ionization re-solved at each trial T.
+       !--- root in log T; ionization re-solved at each trial T.
        xHI = gas_xHI(il);  xHII = gas_xHII(il)
        xHeI = gas_xHeI(il);  xHeII = gas_xHeII(il);  xHeIII = gas_xHeIII(il)
-       tlo = par%te_min;  thi = par%te_max
-       call net_rate(il, tlo, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_lo)
-       call net_rate(il, thi, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_hi)
+       !--- The stable root reached from the leaf's present temperature:
+       !--- start at T0 = gas_Te projected into [te_min, te_max] and step in
+       !--- ln T in the direction of dT/dt (up where heating wins, down where
+       !--- cooling wins) to the first sign change of H - C; Brent's method
+       !--- then refines that bracket.  Where the gas is thermally bistable
+       !--- (two stable roots, e.g., at an ionization front), this keeps the
+       !--- branch the gas is on.  The step starts at LNT_FIRST_STEP and
+       !--- doubles up to LNT_MAX_STEP: two crossings closer together than
+       !--- that (a stable branch narrower than about 10 % in T) can be
+       !--- stepped over.  T0 is the previous solution, or te_start (or the
+       !--- restart temperature) in the first gas update, which therefore
+       !--- also picks the branch there.  No sign change before a bound
+       !--- clamps T exactly at that bound.
+       t0 = min(max(gas_Te(il), par%te_min), par%te_max)
+       call net_rate(il, t0, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_lo, &
+                     ionization_settled=trial_settled)
+       call check_trial(il, t0, net_lo, trial_settled)
        at_te_max = .false.
-       if (net_lo <= 0.0_wp) then
-          te = tlo               ! cooling wins even at te_min (no heating)
-       else if (net_hi >= 0.0_wp) then
-          te = thi               ! heating wins even at te_max
-          at_te_max = .true.
+       bracketed = .false.
+       if (net_lo == 0.0_wp) then
+          te = t0
        else
-          do it = 1, 60
-             tmid = sqrt(tlo*thi)
-             call net_rate(il, tmid, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, &
-                           net_mid)
-             if (net_mid > 0.0_wp) then
-                tlo = tmid
+          dir = sign(1.0_wp, net_lo)
+          ta = t0;  ua = log(t0);  fa = net_lo
+          du = LNT_FIRST_STEP
+          do
+             !--- the next trial, exactly at the bound when the step reaches it
+             if (dir > 0.0_wp) then
+                tb = min(exp(ua + du), par%te_max)
              else
-                thi = tmid
+                tb = max(exp(ua - du), par%te_min)
              end if
-             if (thi/tlo - 1.0_wp < 1.0e-5_wp) exit
+             if (tb == ta) exit                     ! already at the bound
+             ub = log(tb)
+             call net_rate(il, tb, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, fb, &
+                           ionization_settled=trial_settled)
+             call check_trial(il, tb, fb, trial_settled)
+             if (fb == 0.0_wp .or. (fb > 0.0_wp .neqv. fa > 0.0_wp)) then
+                bracketed = .true.
+                exit
+             end if
+             ta = tb;  ua = ub;  fa = fb
+             if (tb == par%te_min .or. tb == par%te_max) exit
+             du = min(2.0_wp*du, LNT_MAX_STEP)
           end do
-          te = sqrt(tlo*thi)
+          if (.not. bracketed) then
+             te = ta                                ! clamped at the bound
+             at_te_max = dir > 0.0_wp
+          else if (fb == 0.0_wp) then
+             te = tb
+          else
+          !--- Brent's method on u = ln T inside the bracket [ua, ub]:
+          !--- inverse quadratic or secant steps, a bisection step whenever
+          !--- they would not shrink it fast enough (Brent 1973, ch. 4), to
+          !--- a bracket of LNT_TOL in ln T.
+          uc = ua;  fc = fa;  ustep = ub - ua;  uprev = ustep
+          root_found = .false.
+          do it = 1, 100
+             if ((fb > 0.0_wp .and. fc > 0.0_wp) .or. (fb < 0.0_wp .and. fc < 0.0_wp)) then
+                uc = ua;  fc = fa;  ustep = ub - ua;  uprev = ustep
+             end if
+             if (abs(fc) < abs(fb)) then
+                ua = ub;  ub = uc;  uc = ua
+                fa = fb;  fb = fc;  fc = fa
+             end if
+             tol1 = 2.0_wp*epsilon(1.0_wp)*abs(ub) + 0.5_wp*LNT_TOL
+             um = 0.5_wp*(uc - ub)
+             if (abs(um) <= tol1 .or. fb == 0.0_wp) then
+                root_found = .true.
+                exit
+             end if
+             if (abs(uprev) >= tol1 .and. abs(fa) > abs(fb)) then
+                sr = fb/fa
+                if (ua == uc) then
+                   p = 2.0_wp*um*sr;  q = 1.0_wp - sr
+                else
+                   q = fa/fc;  r = fb/fc
+                   p = sr*(2.0_wp*um*q*(q - r) - (ub - ua)*(r - 1.0_wp))
+                   q = (q - 1.0_wp)*(r - 1.0_wp)*(sr - 1.0_wp)
+                end if
+                if (p > 0.0_wp) q = -q
+                p = abs(p)
+                if (2.0_wp*p < min(3.0_wp*um*q - abs(tol1*q), abs(uprev*q))) then
+                   uprev = ustep;  ustep = p/q
+                else
+                   ustep = um;  uprev = ustep
+                end if
+             else
+                ustep = um;  uprev = ustep
+             end if
+             ua = ub;  fa = fb
+             if (abs(ustep) > tol1) then
+                ub = ub + ustep
+             else
+                ub = ub + sign(tol1, um)
+             end if
+             call net_rate(il, exp(ub), caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, fb, &
+                           ionization_settled=trial_settled)
+             call check_trial(il, exp(ub), fb, trial_settled)
+          end do
+          if (.not. root_found) flag_local(6) = flag_local(6) + 1.0_wp
+          te = exp(ub)
+          end if
        end if
        !--- final consistent state at te.
        call net_rate(il, te, caseA, xHI, xHII, xHeI, xHeII, xHeIII, ne, net_mid, &
-                     h_star, h_ots, gterm)
+                     h_star, h_ots, gterm, ion_settled)
+       if (.not. ion_settled) flag_local(7) = flag_local(7) + 1.0_wp
        vol = (2.0_wp*leaf_half(il))**3
        grain_local(1) = grain_local(1) + vol*h_star
        grain_local(2:4) = grain_local(2:4) + vol*gterm
@@ -395,7 +491,7 @@ contains
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(sum_local, sum_host, 12, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
-    call MPI_ALLREDUCE(flag_local, flag_host, 5, MPI_DOUBLE_PRECISION, MPI_SUM, &
+    call MPI_ALLREDUCE(flag_local, flag_host, 8, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
     call MPI_ALLREDUCE(grain_local, grain_host, 4, MPI_DOUBLE_PRECISION, MPI_SUM, &
                        MPI_COMM_WORLD, ierr)
@@ -412,6 +508,17 @@ contains
           ' (code length^3 erg cm^-3 s^-1); per photoheating', &
           grain_host(2:4)/max(grain_host(1), tinest)
     if (mpar%p_rank == 0 .and. flag_host(1) > 0.0_wp) then
+       if (flag_host(6) > 0.0_wp) write(*,'(a,i0,a)') &
+          '                  WARNING: ', nint(flag_host(6)), ' leaves where the'// &
+          ' temperature root search reached its 100-step cap'
+       if (flag_host(8) > 0.0_wp) write(*,'(a,i0,a)') &
+          '                  WARNING: ', nint(flag_host(8)), ' trial temperatures'// &
+          ' of the root search whose ionization fixed point did not meet its'// &
+          ' tests in 200 iterations (their H - C sign comes from the last iterate)'
+       if (flag_host(7) > 0.0_wp) write(*,'(a,i0,a)') &
+          '                  WARNING: ', nint(flag_host(7)), ' leaves where the'// &
+          ' ionization fixed point at the solved temperature did not meet its'// &
+          ' tests in 200 iterations (the last iterate is written)'
        if (flag_host(2) > 0.0_wp) write(*,'(a,i0,a,es9.2,a,f9.1,a)') &
           '                  NOTE: ', nint(flag_host(2)), ' leaves (', &
           flag_host(3)/flag_host(1), ' of the gas volume) at te_max = ', &
@@ -465,6 +572,23 @@ contains
     if (par%conv_stop_on_floor) &
        call MPI_BCAST(signed_te_step, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     if (present(dte_signed)) dte_signed = signed_te_step
+  contains
+
+    !--- a trial value of H - C must be finite to give a sign; a trial whose
+    !--- ionization fixed point did not settle is counted (flag 8)
+    subroutine check_trial(il, T, net, settled)
+      integer,       intent(in) :: il
+      real(kind=wp), intent(in) :: T, net
+      logical,       intent(in) :: settled
+      character(len=160) :: msg
+      if (.not. ieee_is_finite(net)) then
+         write(msg,'(a,i0,a,es12.5,a)') 'gas_thermal_update: nonfinite heating - cooling in leaf ', &
+              il, ' at T = ', T, ' K'
+         call abort_run(trim(msg))
+      end if
+      if (.not. settled) flag_local(8) = flag_local(8) + 1.0_wp
+    end subroutine check_trial
+
   end subroutine gas_thermal_update
 
 end module thermal_mod

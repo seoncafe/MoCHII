@@ -59,6 +59,7 @@
 
  par%source_geometry = 'point'
  par%file_format     = 'hdf5'
+ par%line_selection = 'all'  ! compare_new_physics.py needs the full metal line list.
  par%out_file = 'hii20_ctl.h5'
  par%charge_exchange_heating = .false.
  par%hei_metastable_coupling = .false.
