@@ -1004,24 +1004,48 @@ With \code{emis\_output}, \code{<base>\_emis} (HDF5 or FITS)
 stores the mapped line emissivities in erg\,s$^{-1}$\,cm$^{-3}$ in text
 table order within each block, with $\sum {\rm emis}\cdot V = L_{\rm line}$.
 
+The namelist key \code{par\%line\_selection} chooses which lines are
+computed and written:
+
 \begin{itemize}
-\item \code{'diagnostic'} (default) writes the H and He recombination
-lines, the enabled collisional Balmer entries, and the following metal
-transitions for elements present in the model. The vacuum wavelengths shown
-are for the default CHIANTI atoms:
-[N\,\textsc{ii}] 6549.86 and 6585.27,
-[O\,\textsc{i}] 6302.05,
-[O\,\textsc{ii}] 3729.84 and 3727.09,
-[O\,\textsc{iii}] 4960.29 and 5008.24,
-[S\,\textsc{ii}] 6732.67 and 6718.29, and
-[S\,\textsc{iii}] 9070.05 and 9532.25~\AA.
-The MOCASSIN atoms use the corresponding transitions with their own energies.
-\item \code{'all'} writes every available integrated line. Metal maps
+\item \code{par\%line\_selection = 'diagnostic'} (the default): the lines
+included are a fixed list set in the code
+(\code{lines\_mod::diagnostic\_transitions}); it is not chosen by
+brightness or by \code{emis\_line\_floor}. With
+\code{par\%line\_selection = 'diagnostic'} the list contains
+  \begin{itemize}
+  \item every H and He recombination line the code computes from its tables:
+  7 H\,\textsc{i} lines (H$\alpha$ and H$\beta$ among them), 6 He\,\textsc{ii}
+  lines, and 8 He\,\textsc{i} lines (the Storey \& Hummer 1995 and Porter et
+  al.\ tables; these are cheap, and H$\beta$ is the reference of every ratio);
+  \item the 11 forbidden lines of the MOCASSIN comparison maps (the lines of
+  its \code{plot.in}), for the elements present in the model, with the
+  vacuum wavelengths of the default CHIANTI atoms:
+  [N\,\textsc{ii}] 6549.86 and 6585.27,
+  [O\,\textsc{i}] 6302.05,
+  [O\,\textsc{ii}] 3729.84 and 3727.09,
+  [O\,\textsc{iii}] 4960.29 and 5008.24,
+  [S\,\textsc{ii}] 6732.67 and 6718.29, and
+  [S\,\textsc{iii}] 9070.05 and 9532.25~\AA;
+  \item the collisional Balmer entries (H$\alpha$, H$\beta$, H$\gamma$) when
+  \code{h\_coll\_effects} is on.
+  \end{itemize}
+In a model with H, He, N, O and S this makes 32 lines. Each metal line is
+identified by its ion and its lower and upper levels, checked against the
+reference wavelength, not by the wavelength alone; with
+\code{metal\_excitation\_model = 'mocassin\_v2'} the same transitions are
+taken with that atom's level order and energies (6302.03, 3729.88, 6732.69,
+6718.31, 9072.11 and 9535.16~\AA\ for the lines whose wavelength differs).
+A line of an element absent from the model is skipped, with one log note.
+Only the six ions N$^{+}$, O$^{0}$, O$^{+}$, O$^{2+}$, S$^{+}$ and S$^{2+}$ are
+solved in the final line synthesis, each with its full atom. For other lines
+use \code{'all'} or a \code{'file:<path>'} list.
+\item \code{par\%line\_selection = 'all'} writes every available integrated line. Metal maps
 require positive luminosity at or above the threshold, which is
 \code{emis\_line\_floor} times the H$\beta$ luminosity.
 When H$\beta$ is zero, this mode suppresses metal maps. The H and He
 recombination maps and enabled collisional Balmer maps are independent of the floor.
-\item \code{'file:<path>'} writes exactly the requested transitions, in
+\item \code{par\%line\_selection = 'file:<path>'} writes exactly the requested transitions, in
 the atom or recombination table order. Each line of the plain-text selection
 has four space-separated fields: ion, lower and upper level identifiers,
 and reference vacuum wavelength in \AA. Blank lines and text following
